@@ -4,14 +4,7 @@
 # This stores the map of local IP and share name and external blob endpoint IP. 
 # 
 
-IPMAP="/tmp/azfs-ipmap.txt" 
-
-#  
-# How often does the watchdog look for unmounts and/or IP address changes for 
-# Blob endpoints. 
-# 
-
-MONITOR_INTERVAL_SECS=5 
+IPMAP="/tmp/azfs-ipmap.txt"
 
 # 
 # Default order in which we try the network prefixes for a free local IP to use. 
@@ -149,7 +142,6 @@ is_host_ip()
     return 0 
 } 
 
- 
 # 
 # Is the given address one of the addresses directly reachable from the host? 
 # 
@@ -239,7 +231,7 @@ get_free_local_ip()
         } 
 
         if [ $_4thoctet -eq 255 ]; then 
-            continue 
+            continue
         fi 
 
         if [ -z "$local_ip" ]; then 
@@ -266,161 +258,14 @@ update_ipmap()
 
 { 
     echo "" 
-} 
+}
 
-
-# 
-# Watchdog for monitoring unmounts and more importantly change in blob endpoint 
-# addresses possibly as a result of migration. 
-# 
-# TODO: This must be a separate process started by init/systemd. 
-# 
-
-azfs_watchdog() 
-{ 
-    # Disable signal to make this slightly more resilient. 
-    trap "" INT QUIT TSTP 
-
-    while :; do 
-        sleep $MONITOR_INTERVAL_SECS 
-
-        findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs) 
-
-        if [ $? -ne 0 ]; then 
-            echo "findmnt failed!" 
-            # Hope things improve next time around! 
-            continue 
-        fi 
-
-        # Nothing mounted, so nothing to check. 
-        if [ -z "$findmnt" ]; then 
-            continue 
-        fi 
-
-        # 
-        # Go over all lines in $IPMAP and check them for two things: 
-        # 1. Is that entry still mounted, if not remove the entry. 
-        # 2. Has the Blob endpoint address changed from what is stored? 
-        #    If yes, update DNAT rule to point to the new address. 
-        # 
-        # Sample line in $IPMAP. 
-        # nfsv3stdaccount20.blob.preprod.core.windows.net:/nfsv3stdaccount20/fstestbase3 10.100.100.100 52.239.178.215 
-        #  
-        # where the format is 
-        # <blobendpoint:/account/container local_ip blobendpoint_ip 
-        # 
-
-        IFS=$'\n' lines=$(cat $IPMAP) 
-
-        for line in $lines; do 
-            if [ -z "$line" ]; then 
-                continue 
-            fi 
-
-            l_share=$(echo "$line" | awk '{print $1}') 
-            l_host=$(echo "$l_share" | cut -d: -f1) 
-            l_dir=$(echo "$l_share" | cut -d: -f2) 
-            l_ip=$(echo "$line" | awk '{print $2}') 
-            l_nfsip=$(echo "$line" | awk '{print $3}') 
- 
-            if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then 
-                echo "Skipping invalid line in $IPMAP: [$line]" 
-                continue 
-            fi 
-
-
-            # Since we added it to the IPMAP file, it cannot be invalid. 
-
-            if ! is_valid_ipv4_address "$l_ip"; then 
-                echo "[BUG] local ip ($l_ip) is invalid!" 
-                continue 
-            fi 
-
- 
-            # Since we added it to the IPMAP file, it cannot be invalid. 
-			
-            if ! is_valid_ipv4_address "$l_nfsip"; then 
-                echo "[BUG] Blob endpoint ip ($l_nfsip) is invalid!" 
-                continue 
-            fi 
-
- 
-            # 
-            # Local share name. Note that we mount the local IP and not the actual Blob endpoint IP and 
-            # map local IP to actual Blob endpoint IP using DNAT rule. 
-            # 
-
-            m_share="$l_ip:$l_dir" 
-          
-            # 
-            # Delete entry from IPMAP if share is unmounted. 
-            # TODO: What if user unmounts and mounts before MONITOR_INTERVAL_SECS secs? 
-            # 
-
-            if ! echo "$findmnt" | grep " nfs $m_share " > /dev/null; then 
-                # delete the line from IPMAP file. 
-                echo "[$date] Deleting unmounted share $m_share" 
-                chattr -i $IPMAP 
-                sed -i "/ $l_ip $l_nfsip/d" $IPMAP 
-                chattr +i $IPMAP 
-                iptables -t nat -D OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$l_nfsip" 
-            fi 
- 
-            # 
-            # Check if blob endpoint IP address changed. 
-            # This is the migration check. 
-            # 
-
-            new_ip=$(resolve_ipv4 "$l_host") 
- 
-            # If we fail to resolve the host name, try next time. 
-
-            if [ $? -ne 0 ]; then 
-                echo "resolve_ipv4($l_host) failed!" 
-                continue 
-            fi 
- 
-            if ! is_valid_ipv4_address "$new_ip"; then 
-                echo "resolve_ipv4($l_host) returned invalid IPv4 address ($new_ip)!" 
-                continue 
-            fi 
- 
-            # 
-            # If the IP changed for the Blob endpoint, we need to update the DNAT rule. 
-            # This will take care of migration/failover causing the Blob endpoint IP to change. 
-            # 
-            # TODO: Make this less frequent than the unmount check. 
-            # 
-            #echo "$l_host: new_ip=$new_ip, l_nfsip=$l_nfsip" 
-
-            if [ "$new_ip" != "$l_nfsip" ]; then 
-                echo "IP for $l_host changed [$l_nfsip -> $new_ip]" 
-                chattr -i $IPMAP 
-                sed -i "/ $l_ip $l_nfsip/d" $IPMAP 
-                chattr +i $IPMAP 
- 
-                # Delete old DNAT rule and the conntrack entry to stop current active connections too. 
-                iptables -t nat -D OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$l_nfsip" 
-                conntrack -D conntrack -p tcp -d "$l_ip" -r "$l_nfsip" 
- 
-                # Add new DNAT rule. 
-
-                iptables -t nat -A OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$new_ip" 
-                chattr -i $IPMAP 
-                echo "$l_host:$l_dir $l_ip $new_ip" >> $IPMAP 
-                chattr +i $IPMAP 
-            fi 
-        done 
-    done 
-} 
-
- 
 
 ##### Action starts here ##### 
- 
+
 # [52.239.178.215:/nfsv3stdaccount20/fstestbase3 /mnt/azfs -o rw,tcp,nolock,nconnect=16] 
 echo "Got arguments: [$*]" 
- 
+
 # 
 # Truncate IPMAP if it exists. 
 # Keep it protected from undesired mods using the immutable attribute. 
@@ -428,10 +273,10 @@ echo "Got arguments: [$*]"
 
 > $IPMAP 
 chattr +i $IPMAP 
- 
+
 # 
 # If old watchdog running, kill it. 
-# 
+#
 
 pids=$(pidof -x /sbin/mount.azfs) 
 
@@ -446,21 +291,23 @@ done
  
 nfs_host=$(get_host_from_share "$1") 
 
- 
+
 if ! is_valid_blob_fqdn $nfs_host; then 
     echo "Not a valid Azure Blob NFS endpoint: $nfs_host" 
     exit 1 
-fi 
+fi
 
  
 nfs_ip=$(resolve_ipv4 $nfs_host) 
+
 if [ -z "$nfs_ip" ]; then 
     echo "Cannot resolve IP address for $nfs_host!" 
     exit 1 
 fi 
- 
+
 
 nfs_dir=$(get_dir_from_share "$1") 
+
 if [ -z "$nfs_dir" ]; then 
     # TODO: Check for /account/container format. 
     echo "Improper share name: $1" 
@@ -481,10 +328,11 @@ echo "nfs_dir=[$nfs_dir]"
 echo "mount_point=[$mount_point]" 
 echo "mount_options=[$mount_options]" 
 echo "local_ip=$local_ip" 
- 
+
 
 # 
 # Set DNAT rule for forwarding local_ip traffic to the actual blob endpoint IP. 
+#
 
 iptables -t nat -A OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip" 
 
@@ -493,7 +341,7 @@ if [ $? -ne 0 ]; then
     exit 1 
 fi 
 
- 
+
 mount -t nfs -o "$mount_options" "${local_ip}:${nfs_dir}" "$mount_point" 
 
 if [ $? -ne 0 ]; then 
@@ -503,7 +351,7 @@ if [ $? -ne 0 ]; then
     exit 1 
 fi 
 
- 
+
 # Update IPMAP. 
 chattr -i $IPMAP 
 echo "$nfs_host:$nfs_dir $local_ip $nfs_ip" >> $IPMAP 
