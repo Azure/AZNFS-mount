@@ -3,14 +3,12 @@
 # 
 # This stores the map of local IP and share name and external blob endpoint IP. 
 # 
-
-IPMAP="/tmp/azfs-ipmap.txt"
+MOUNTMAP="/run/azblobnfs/mountmap"
 
 # 
 # Default order in which we try the network prefixes for a free local IP to use. 
 # This can be overriden using AZFS_IP_PREFIXES environment variable. 
 # 
-
 DEFAULT_AZFS_IP_PREFIXES="10.100 192.168 172.16" 
 
 IP_PREFIXES="${AZFS_IP_PREFIXES:-${DEFAULT_AZFS_IP_PREFIXES}}" 
@@ -18,8 +16,7 @@ IP_PREFIXES="${AZFS_IP_PREFIXES:-${DEFAULT_AZFS_IP_PREFIXES}}"
 # 
 # Check if the given string is a correctly formatted IPv6 address. 
 # 
-
-is_valid_ipv6_address() 
+function is_valid_ipv6_address() 
 {
     # First line does basic sanity check, needed to weed out CIDR format addresses. 
     [[ $1 =~ ^[a-fA-F0-9:]+$ ]] && 
@@ -29,8 +26,7 @@ is_valid_ipv6_address()
 # 
 # Check if the given string is a valid IPv4 address. 
 # 
-
-is_valid_ipv4_address() 
+function is_valid_ipv4_address() 
 { 
     # ip route allows 10.10 as a valid address and treats it as 10.10.0.0, so we need the first coarse filter too. 
     [[ $1 =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && 
@@ -40,14 +36,15 @@ is_valid_ipv4_address()
 # 
 # Check if the given string is probably a hostname (as opposed to an IP address). 
 # 
-
-is_probably_hostname() 
+function is_probably_hostname() 
 { 
     ! ip route save match $1 > /dev/null 2>&1
 } 
 
-is_valid_blob_fqdn() 
-
+#
+# Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
+#
+function is_valid_blob_fqdn() 
 { 
     # XXX Are there other valid blob endpoint fqdns? 
     [[ $1 =~ ^([a-z0-9]{3,24}).blob(.preprod)?.core.windows.net$ ]] 
@@ -56,15 +53,13 @@ is_valid_blob_fqdn()
 # 
 # Blob fqdn to IPv4 adddress. 
 # 
-
-resolve_ipv4() 
+function resolve_ipv4() 
 { 
     local hname="$1" 
 
     # 
     # If already IPv4 address, return it. 
     # 
-
     if ! is_probably_hostname "$hname"; then 
         echo "$hname" 
         return 0 
@@ -73,7 +68,6 @@ resolve_ipv4()
     # 
     # else, resolve hostname to IPv4 address. 
     # 
-
     host_op=$(host -4 -t A "$hname") 
     if [ $? -ne 0 ]; then 
         echo "Bad server: $hname" 
@@ -85,7 +79,6 @@ resolve_ipv4()
     #       Though we should handle public ZRS endpoints for handling cases where 
     #       the currently connected cluster goes down. 
     # 
-
     local cnt_ip=$(echo "$host_op" | grep " has address " | awk '{print $4}' | wc -l) 
 
     if [ $cnt_ip -ne 1 ]; then 
@@ -94,6 +87,7 @@ resolve_ipv4()
     fi 
 
     local ipv4_addr=$(echo "$host_op" | grep " has address " | head -n1 | awk '{print $4}') 
+    
     if ! is_valid_ipv4_address "$ipv4_addr"; then 
         echo "host returned bad IPv4 address $ipv4_addr for hostname $hname!!" 
         return 1 
@@ -106,8 +100,7 @@ resolve_ipv4()
 # 
 # Get host from host:/dir 
 # 
-
-get_host_from_share() 
+function get_host_from_share() 
 { 
     local share="$1" 
     echo $share | cut -d: -f1 
@@ -116,8 +109,7 @@ get_host_from_share()
 # 
 # Get dir from host:/dir 
 # 
-
-get_dir_from_share() 
+function get_dir_from_share() 
 { 
     local share="$1" 
     echo $share | cut -d: -f2 
@@ -126,8 +118,7 @@ get_dir_from_share()
 #
 # Is the given address one of the host addresses? 
 # 
-
-is_host_ip() 
+function is_host_ip() 
 { 
     # XXX Don't make this local as status gathering doesn't work well when collecting command o/p to local variables. 
     route=$(ip -4 route get fibmatch $1 2>/dev/null) 
@@ -145,8 +136,7 @@ is_host_ip()
 # 
 # Is the given address one of the addresses directly reachable from the host? 
 # 
-
-is_link_ip() 
+function is_link_ip() 
 { 
     # XXX Don't make this local as status gathering doesn't work well when collecting command o/p to local variables. 
     route=$(ip -4 route get fibmatch $1 2>/dev/null) 
@@ -165,8 +155,7 @@ is_link_ip()
 # Check if a given IPv4 address is responding to ICMP pings. 
 # Uses a 3 secs timeout to bail out in time if address is not responding. 
 # 
-
-is_pinging() 
+function is_pinging() 
 { 
     local ip=$1; 
 
@@ -179,8 +168,7 @@ is_pinging()
 # 
 # Get a local IP that's free to use. 
 # 
-
-get_free_local_ip() 
+function get_free_local_ip() 
 { 
     for ip_prefix in $IP_PREFIXES; do 
 
@@ -216,7 +204,7 @@ get_free_local_ip()
         for ((_4thoctet=100; _4thoctet<255; _4thoctet++)) { 
             local_ip="${ip_prefix}.$_4thoctet" 
 
-            if egrep "\<$local_ip\>" $IPMAP >/dev/null; then 
+            if egrep "\<$local_ip\>" $MOUNTMAP >/dev/null; then 
                 echo "$local_ip is in use by azfs!" 1>&2 
                 continue; 
             fi 
@@ -254,49 +242,43 @@ get_free_local_ip()
     return 1 
 } 
 
-update_ipmap() 
-
+#
+# MOUNTMAP is accessed by both mount.azfs and azfswatchdog service. Update it only after taking exclusive lock. 
+#
+function update_mountmap() 
 { 
-    echo "" 
+    flock /run/azblobnfs/mountmap -c "eval $*" 
 }
-
-
-##### Action starts here ##### 
 
 # [52.239.178.215:/nfsv3stdaccount20/fstestbase3 /mnt/azfs -o rw,tcp,nolock,nconnect=16] 
 echo "Got arguments: [$*]" 
 
-# 
-# Truncate IPMAP if it exists. 
-# Keep it protected from undesired mods using the immutable attribute. 
-# 
-
-> $IPMAP 
-chattr +i $IPMAP 
-
-# 
-# If old watchdog running, kill it. 
 #
+# Check if MOUNTMAP file exists.
+#
+if [ -f $MOUNTMAP ] then
+    echo "MOUNTMAP exist."
+else
+    echo "MOUNTMAP doesn't exist."
+    exit 1
+fi
 
-pids=$(pidof -x /sbin/mount.azfs) 
+#
+# Check if azfs watchdog service is running. 
+#
+is_azfswatchdog_active = $(systemctl is-active --quiet azfswatchdog) 
 
-for pid in $pids; do 
-    # Avoid killing ourselves! 
-    if [ $pid -ne $$ ]; then 
-        echo "Killing old watchdog with pid $pid" 
-        kill -9 $pid 
-    fi 
-done 
+if [ $is_azfswatchdog_active -ne 0 ]
+    echo "Azfs Watchdog not running"
+    exit 1
+fi
 
- 
 nfs_host=$(get_host_from_share "$1") 
-
 
 if ! is_valid_blob_fqdn $nfs_host; then 
     echo "Not a valid Azure Blob NFS endpoint: $nfs_host" 
     exit 1 
 fi
-
  
 nfs_ip=$(resolve_ipv4 $nfs_host) 
 
@@ -304,7 +286,6 @@ if [ -z "$nfs_ip" ]; then
     echo "Cannot resolve IP address for $nfs_host!" 
     exit 1 
 fi 
-
 
 nfs_dir=$(get_dir_from_share "$1") 
 
@@ -314,13 +295,10 @@ if [ -z "$nfs_dir" ]; then
     exit 1 
 fi 
 
- 
 mount_point="$2" 
 mount_options="$4" 
-
  
 local_ip=$(get_free_local_ip) 
- 
 
 echo "nfs_host=[$nfs_host]" 
 echo "nfs_ip=[$nfs_ip]" 
@@ -329,18 +307,15 @@ echo "mount_point=[$mount_point]"
 echo "mount_options=[$mount_options]" 
 echo "local_ip=$local_ip" 
 
-
 # 
 # Set DNAT rule for forwarding local_ip traffic to the actual blob endpoint IP. 
 #
-
 iptables -t nat -A OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip" 
 
 if [ $? -ne 0 ]; then 
     echo "iptables failed to set DNAT rule [$local_ip -> $nfs_ip]" 
     exit 1 
-fi 
-
+fi
 
 mount -t nfs -o "$mount_options" "${local_ip}:${nfs_dir}" "$mount_point" 
 
@@ -351,12 +326,6 @@ if [ $? -ne 0 ]; then
     exit 1 
 fi 
 
-
-# Update IPMAP. 
-chattr -i $IPMAP 
-echo "$nfs_host:$nfs_dir $local_ip $nfs_ip" >> $IPMAP 
-chattr +i $IPMAP 
+# Update MOUNTMAP.
+update_mountmap echo "$nfs_host:$nfs_dir $local_ip $nfs_ip" >> $MOUNTMAP
  
-
-# Start the watchdog. 
-azfs_watchdog & 
