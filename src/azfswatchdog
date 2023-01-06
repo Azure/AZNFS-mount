@@ -1,5 +1,10 @@
 #!/bin/bash 
 
+#
+# Load the functions used for logging.
+#
+. /sbin/log
+
 #  
 # How often does the watchdog look for unmounts and/or IP address changes for 
 # Blob endpoints. 
@@ -40,7 +45,7 @@ function resolve_ipv4()
     # If already IPv4 address, return it. 
     # 
     if ! is_probably_hostname "$hname"; then 
-        echo "$hname" 
+        pecho "$hname" 
         return 0 
     fi 
 
@@ -49,7 +54,7 @@ function resolve_ipv4()
     # 
     host_op=$(host -4 -t A "$hname") 
     if [ $? -ne 0 ]; then 
-        echo "Bad server: $hname" 
+        eecho "Bad server: $hname" 
         return 1 
     fi 
 
@@ -61,13 +66,13 @@ function resolve_ipv4()
     local cnt_ip=$(echo "$host_op" | grep " has address " | awk '{print $4}' | wc -l) 
 
     if [ $cnt_ip -ne 1 ]; then 
-        echo "host returned $cnt_ip address(es) for $hname, expected 1" 
+        eecho "host returned $cnt_ip address(es) for $hname, expected 1" 
         return 1 
     fi 
 
     local ipv4_addr=$(echo "$host_op" | grep " has address " | head -n1 | awk '{print $4}') 
     if ! is_valid_ipv4_address "$ipv4_addr"; then 
-        echo "host returned bad IPv4 address $ipv4_addr for hostname $hname!!" 
+        eecho "host returned bad IPv4 address $ipv4_addr for hostname $hname!!" 
         return 1 
     fi 
 
@@ -87,25 +92,25 @@ function update_mountmap()
 # Create the MOUNTMAP if it doesn't exists. 
 #
 if [ -d run ] then
-    echo " /run directory exist."
+    pecho " /run directory exist."
     
     if [ -d /run/azblobnfs ] then    
-        echo " /run/azblobnfs directory exist."
+        pecho " /run/azblobnfs directory exist."
         
         if [ -f $MOUNTMAP ] then
-            echo "$MOUNTMAP exist."
+            pecho "$MOUNTMAP exist."
         else
             touch $MOUNTMAP
-            echo "Created $MOUNTMAP"
+            secho "Created $MOUNTMAP"
         fi
     else
         mkdir /run/azblobnfs
         touch $MOUNTMAP
-        echo "Created $MOUNTMAP"
+        secho "Created $MOUNTMAP"
     fi
 else 
     mkdir -p $MOUNTMAP
-    echo "Created $MOUNTMAP"
+    secho "Created $MOUNTMAP"
 fi
 
 # 
@@ -122,7 +127,7 @@ while :; do
     findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs) 
 
     if [ $? -ne 0 ]; then 
-        echo "findmnt failed!" 
+        eecho "findmnt failed!" 
         # Hope things improve next time around! 
         continue 
     fi 
@@ -158,19 +163,19 @@ while :; do
         l_nfsip=$(echo "$line" | awk '{print $3}') 
 
         if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then 
-            echo "Skipping invalid line in $MOUNTMAP: [$line]" 
+            wecho "Skipping invalid line in $MOUNTMAP: [$line]" 
             continue 
         fi 
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid. 
         if ! is_valid_ipv4_address "$l_ip"; then 
-            echo "[BUG] local ip ($l_ip) is invalid!" 
+            eecho "[BUG] local ip ($l_ip) is invalid!" 
             continue 
         fi
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid. 
         if ! is_valid_ipv4_address "$l_nfsip"; then 
-            echo "[BUG] Blob endpoint ip ($l_nfsip) is invalid!" 
+            eecho "[BUG] Blob endpoint ip ($l_nfsip) is invalid!" 
             continue 
         fi 
 
@@ -186,7 +191,7 @@ while :; do
         # 
         if ! echo "$findmnt" | grep " nfs $m_share " > /dev/null; then 
             # delete the line from MOUNTMAP file. 
-            echo "[$date] Deleting unmounted share $m_share" 
+            pecho "[$date] Deleting unmounted share $m_share" 
             update_mountmap sed -i "/ $l_ip $l_nfsip/d" $MOUNTMAP
             iptables -t nat -D OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$l_nfsip" 
         fi 
@@ -199,12 +204,12 @@ while :; do
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then 
-            echo "resolve_ipv4($l_host) failed!" 
+            eecho "resolve_ipv4($l_host) failed!" 
             continue
         fi
 
         if ! is_valid_ipv4_address "$new_ip"; then 
-            echo "resolve_ipv4($l_host) returned invalid IPv4 address ($new_ip)!" 
+            eecho "resolve_ipv4($l_host) returned invalid IPv4 address ($new_ip)!" 
             continue 
         fi 
 
@@ -217,7 +222,7 @@ while :; do
         # echo "$l_host: new_ip=$new_ip, l_nfsip=$l_nfsip"
         #
         if [ "$new_ip" != "$l_nfsip" ]; then 
-            echo "IP for $l_host changed [$l_nfsip -> $new_ip]"
+            pecho "IP for $l_host changed [$l_nfsip -> $new_ip]"
             update_mountmap sed -i "/ $l_ip $l_nfsip/d" $MOUNTMAP
 
             # Delete old DNAT rule and the conntrack entry to stop current active connections too. 

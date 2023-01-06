@@ -1,5 +1,10 @@
 #!/bin/bash 
 
+#
+# Load the functions used for logging.
+# 
+. /sbin/log
+
 # 
 # This stores the map of local IP and share name and external blob endpoint IP. 
 # 
@@ -61,7 +66,7 @@ function resolve_ipv4()
     # If already IPv4 address, return it. 
     # 
     if ! is_probably_hostname "$hname"; then 
-        echo "$hname" 
+        pecho "$hname" 
         return 0 
     fi 
 
@@ -70,7 +75,7 @@ function resolve_ipv4()
     # 
     host_op=$(host -4 -t A "$hname") 
     if [ $? -ne 0 ]; then 
-        echo "Bad server: $hname" 
+        eecho "Bad server: $hname" 
         return 1 
     fi 
 
@@ -82,14 +87,14 @@ function resolve_ipv4()
     local cnt_ip=$(echo "$host_op" | grep " has address " | awk '{print $4}' | wc -l) 
 
     if [ $cnt_ip -ne 1 ]; then 
-        echo "host returned $cnt_ip address(es) for $hname, expected 1" 
+        eecho "host returned $cnt_ip address(es) for $hname, expected 1" 
         return 1 
     fi 
 
     local ipv4_addr=$(echo "$host_op" | grep " has address " | head -n1 | awk '{print $4}') 
     
     if ! is_valid_ipv4_address "$ipv4_addr"; then 
-        echo "host returned bad IPv4 address $ipv4_addr for hostname $hname!!" 
+        eecho "host returned bad IPv4 address $ipv4_addr for hostname $hname!!" 
         return 1 
     fi 
 
@@ -197,7 +202,7 @@ function get_free_local_ip()
         fi 
 
         if [ -z "$ip_prefix" ]; then 
-            echo "ip_prefix is nil!" 
+            eecho "ip_prefix is nil!" 
             return 1 
         fi 
 
@@ -205,7 +210,7 @@ function get_free_local_ip()
             local_ip="${ip_prefix}.$_4thoctet" 
 
             if egrep "\<$local_ip\>" $MOUNTMAP >/dev/null; then 
-                echo "$local_ip is in use by azfs!" 1>&2 
+                pecho "$local_ip is in use by azfs!" 1>&2 
                 continue; 
             fi 
 
@@ -214,7 +219,7 @@ function get_free_local_ip()
             #       the client's network. 
             # 
 
-            echo "Using local IP $local_ip for azfs" 1>&2 
+            pecho "Using local IP $local_ip for azfs" 1>&2 
             break 
         } 
 
@@ -223,7 +228,7 @@ function get_free_local_ip()
         fi 
 
         if [ -z "$local_ip" ]; then 
-            echo "local_ip is nil!" 
+            eecho "local_ip is nil!" 
             return 1 
         fi 
 
@@ -236,8 +241,8 @@ function get_free_local_ip()
     # If we come here we didn't get a free address to use. 
     # 
 
-    echo "Couldn't find a free local IP to use for azfs using DEFAULT_AZFS_IP_PREFIXES=$DEFAULT_AZFS_IP_PREFIXES!" 
-    echo "Set AZFS_IP_PREFIXES env variable correctly to provide free addresses for use by azfs!" 
+    eecho "Couldn't find a free local IP to use for azfs using DEFAULT_AZFS_IP_PREFIXES=$DEFAULT_AZFS_IP_PREFIXES!" 
+    eecho "Set AZFS_IP_PREFIXES env variable correctly to provide free addresses for use by azfs!" 
 
     return 1 
 } 
@@ -251,15 +256,15 @@ function update_mountmap()
 }
 
 # [52.239.178.215:/nfsv3stdaccount20/fstestbase3 /mnt/azfs -o rw,tcp,nolock,nconnect=16] 
-echo "Got arguments: [$*]" 
+pecho "Got arguments: [$*]" 
 
 #
 # Check if MOUNTMAP file exists.
 #
 if [ -f $MOUNTMAP ] then
-    echo "MOUNTMAP exist."
+    pecho "MOUNTMAP exist."
 else
-    echo "MOUNTMAP doesn't exist."
+    eecho "MOUNTMAP doesn't exist."
     exit 1
 fi
 
@@ -269,21 +274,21 @@ fi
 is_azfswatchdog_active = $(systemctl is-active --quiet azfswatchdog) 
 
 if [ $is_azfswatchdog_active -ne 0 ]
-    echo "Azfs Watchdog not running"
+    eecho "Azfs Watchdog not running"
     exit 1
 fi
 
 nfs_host=$(get_host_from_share "$1") 
 
 if ! is_valid_blob_fqdn $nfs_host; then 
-    echo "Not a valid Azure Blob NFS endpoint: $nfs_host" 
+    eecho "Not a valid Azure Blob NFS endpoint: $nfs_host" 
     exit 1 
 fi
  
 nfs_ip=$(resolve_ipv4 $nfs_host) 
 
 if [ -z "$nfs_ip" ]; then 
-    echo "Cannot resolve IP address for $nfs_host!" 
+    eecho "Cannot resolve IP address for $nfs_host!" 
     exit 1 
 fi 
 
@@ -291,7 +296,7 @@ nfs_dir=$(get_dir_from_share "$1")
 
 if [ -z "$nfs_dir" ]; then 
     # TODO: Check for /account/container format. 
-    echo "Improper share name: $1" 
+    eecho "Improper share name: $1" 
     exit 1 
 fi 
 
@@ -313,14 +318,14 @@ echo "local_ip=$local_ip"
 iptables -t nat -A OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip" 
 
 if [ $? -ne 0 ]; then 
-    echo "iptables failed to set DNAT rule [$local_ip -> $nfs_ip]" 
+    eecho "iptables failed to set DNAT rule [$local_ip -> $nfs_ip]" 
     exit 1 
 fi
 
 mount -t nfs -o "$mount_options" "${local_ip}:${nfs_dir}" "$mount_point" 
 
 if [ $? -ne 0 ]; then 
-    echo "mount failed!" 
+    eecho "mount failed!" 
     # clear the DNAT rule. 
     iptables -t nat -D OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip" 
     exit 1 
