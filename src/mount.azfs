@@ -62,17 +62,13 @@ function resolve_ipv4()
 { 
     local hname="$1" 
 
-    # 
-    # If already IPv4 address, return it. 
-    # 
+    # If already IPv4 address, return it.
     if ! is_probably_hostname "$hname"; then 
         pecho "$hname" 
         return 0 
     fi 
 
-    # 
-    # else, resolve hostname to IPv4 address. 
-    # 
+    # else, resolve hostname to IPv4 address.
     host_op=$(host -4 -t A "$hname") 
     if [ $? -ne 0 ]; then 
         eecho "Bad server: $hname" 
@@ -184,7 +180,7 @@ function get_free_local_ip()
         for ((_3rdoctet=100; _3rdoctet<255; _3rdoctet++)) { 
             ip_prefix="${ip_prefix}.$_3rdoctet" 
 
-            if is_host_ip $ip_prefix; then 
+            if [is_host_ip $ip_prefix; then 
                 echo "$ip_prefix is host network!" 1>&2 
                 continue 
             fi 
@@ -261,7 +257,7 @@ pecho "Got arguments: [$*]"
 #
 # Check if MOUNTMAP file exists.
 #
-if [ -f $MOUNTMAP ] then
+if [ -f $MOUNTMAP ]; then
     pecho "MOUNTMAP exist."
 else
     eecho "MOUNTMAP doesn't exist."
@@ -273,7 +269,7 @@ fi
 #
 is_azfswatchdog_active = $(systemctl is-active --quiet azfswatchdog) 
 
-if [ $is_azfswatchdog_active -ne 0 ]
+if [ $is_azfswatchdog_active -ne 0 ]; then
     eecho "Azfs Watchdog not running"
     exit 1
 fi

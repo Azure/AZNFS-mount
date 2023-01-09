@@ -41,17 +41,13 @@ function resolve_ipv4()
 { 
     local hname="$1" 
 
-    # 
     # If already IPv4 address, return it. 
-    # 
     if ! is_probably_hostname "$hname"; then 
         pecho "$hname" 
         return 0 
     fi 
 
-    # 
-    # else, resolve hostname to IPv4 address. 
-    # 
+    # else, resolve hostname to IPv4 address.
     host_op=$(host -4 -t A "$hname") 
     if [ $? -ne 0 ]; then 
         eecho "Bad server: $hname" 
@@ -91,13 +87,13 @@ function update_mountmap()
 #
 # Create the MOUNTMAP if it doesn't exists. 
 #
-if [ -d run ] then
+if [ -d run ]; then
     pecho " /run directory exist."
     
-    if [ -d /run/azblobnfs ] then    
+    if [ -d /run/azblobnfs ]; then    
         pecho " /run/azblobnfs directory exist."
         
-        if [ -f $MOUNTMAP ] then
+        if [ -f $MOUNTMAP ]; then
             pecho "$MOUNTMAP exist."
         else
             touch $MOUNTMAP
