@@ -1,14 +1,9 @@
 #!/bin/bash 
 
 #
-# Load the functions used for logging.
+# Load common aznfs helpers.
 # 
-. /sbin/log
-
-# 
-# This stores the map of local IP and share name and external blob endpoint IP. 
-# 
-MOUNTMAP="/run/azblobnfs/mountmap"
+. /opt/microsoft/aznfs/common.sh
 
 # 
 # Default order in which we try the network prefixes for a free local IP to use. 
@@ -16,110 +11,59 @@ MOUNTMAP="/run/azblobnfs/mountmap"
 # 
 DEFAULT_AZFS_IP_PREFIXES="10.100 192.168 172.16" 
 
-IP_PREFIXES="${AZFS_IP_PREFIXES:-${DEFAULT_AZFS_IP_PREFIXES}}" 
-
-# 
-# Check if the given string is a correctly formatted IPv6 address. 
-# 
-function is_valid_ipv6_address() 
-{
-    # First line does basic sanity check, needed to weed out CIDR format addresses. 
-    [[ $1 =~ ^[a-fA-F0-9:]+$ ]] && 
-    ip -6 route save match "$1" > /dev/null 2>&1 
-} 
-
-# 
-# Check if the given string is a valid IPv4 address. 
-# 
-function is_valid_ipv4_address() 
-{ 
-    # ip route allows 10.10 as a valid address and treats it as 10.10.0.0, so we need the first coarse filter too. 
-    [[ $1 =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && 
-    ip -4 route save match $1 > /dev/null 2>&1 
-} 
-
-# 
-# Check if the given string is probably a hostname (as opposed to an IP address). 
-# 
-function is_probably_hostname() 
-{ 
-    ! ip route save match $1 > /dev/null 2>&1
-} 
+IP_PREFIXES="${AZFS_IP_PREFIXES:-${DEFAULT_AZFS_IP_PREFIXES}}"
 
 #
 # Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
 #
-function is_valid_blob_fqdn() 
+is_valid_blob_fqdn() 
 { 
     # XXX Are there other valid blob endpoint fqdns? 
     [[ $1 =~ ^([a-z0-9]{3,24}).blob(.preprod)?.core.windows.net$ ]] 
 } 
 
 # 
-# Blob fqdn to IPv4 adddress. 
+# Get blob endpoint from account.blob.core.windows.net:/account/container. 
 # 
-function resolve_ipv4() 
+get_host_from_share() 
 { 
-    local hname="$1" 
+    local hostshare="$1"
+    local host=$(echo $hostshare | cut -d: -f1)
+    local share=$(echo $hostshare | cut -d: -f2)
 
-    # If already IPv4 address, return it.
-    if ! is_probably_hostname "$hname"; then 
-        pecho "$hname" 
-        return 0 
-    fi 
+    if [ -z "$host" -o -z "$share" ]; then
+        eecho "Bad share name: $hostshare"
+        eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'."
+        exit 1
+    fi
 
-    # else, resolve hostname to IPv4 address.
-    host_op=$(host -4 -t A "$hname") 
-    if [ $? -ne 0 ]; then 
-        eecho "Bad server: $hname" 
-        return 1 
-    fi 
-
-    # 
-    # TODO: We should disallow ZRS endpoints which resolve to multiple addresses. 
-    #       Though we should handle public ZRS endpoints for handling cases where 
-    #       the currently connected cluster goes down. 
-    # 
-    local cnt_ip=$(echo "$host_op" | grep " has address " | awk '{print $4}' | wc -l) 
-
-    if [ $cnt_ip -ne 1 ]; then 
-        eecho "host returned $cnt_ip address(es) for $hname, expected 1" 
-        return 1 
-    fi 
-
-    local ipv4_addr=$(echo "$host_op" | grep " has address " | head -n1 | awk '{print $4}') 
-    
-    if ! is_valid_ipv4_address "$ipv4_addr"; then 
-        eecho "host returned bad IPv4 address $ipv4_addr for hostname $hname!!" 
-        return 1 
-    fi 
-
-    echo $ipv4_addr 
-    return 0 
-}
-
-# 
-# Get host from host:/dir 
-# 
-function get_host_from_share() 
-{ 
-    local share="$1" 
-    echo $share | cut -d: -f1 
+    echo "$host"
 } 
 
 # 
-# Get dir from host:/dir 
+# Get /account/container from account.blob.core.windows.net:/account/container.
 # 
-function get_dir_from_share() 
+get_dir_from_share() 
 { 
-    local share="$1" 
-    echo $share | cut -d: -f2 
+    local hostshare="$1"
+    local share=$(echo $hostshare | cut -d: -f2)
+    local account=$(echo $share | cut -d/ -f1)
+    local container=$(echo $share | cut -d/ -f2)
+    local extra=$(echo $share | cut -d/ -f3)
+
+    if [ -z "$account" -o -z "$container" -o -n "$extra" ]; then
+        eecho "Bad share name: $hostshare"
+        eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'."
+        exit 1
+    fi
+
+    echo "$share"
 } 
 
 #
 # Is the given address one of the host addresses? 
 # 
-function is_host_ip() 
+is_host_ip() 
 { 
     # XXX Don't make this local as status gathering doesn't work well when collecting command o/p to local variables. 
     route=$(ip -4 route get fibmatch $1 2>/dev/null) 
@@ -137,7 +81,7 @@ function is_host_ip()
 # 
 # Is the given address one of the addresses directly reachable from the host? 
 # 
-function is_link_ip() 
+is_link_ip() 
 { 
     # XXX Don't make this local as status gathering doesn't work well when collecting command o/p to local variables. 
     route=$(ip -4 route get fibmatch $1 2>/dev/null) 
@@ -156,7 +100,7 @@ function is_link_ip()
 # Check if a given IPv4 address is responding to ICMP pings. 
 # Uses a 3 secs timeout to bail out in time if address is not responding. 
 # 
-function is_pinging() 
+is_pinging() 
 { 
     local ip=$1; 
 
@@ -169,7 +113,7 @@ function is_pinging()
 # 
 # Get a local IP that's free to use. 
 # 
-function get_free_local_ip() 
+get_free_local_ip() 
 { 
     for ip_prefix in $IP_PREFIXES; do 
 
@@ -241,58 +185,73 @@ function get_free_local_ip()
     eecho "Set AZFS_IP_PREFIXES env variable correctly to provide free addresses for use by azfs!" 
 
     return 1 
-} 
-
-#
-# MOUNTMAP is accessed by both mount.azfs and azfswatchdog service. Update it only after taking exclusive lock. 
-#
-function update_mountmap() 
-{ 
-    flock /run/azblobnfs/mountmap -c "eval $*" 
 }
 
-# [52.239.178.215:/nfsv3stdaccount20/fstestbase3 /mnt/azfs -o rw,tcp,nolock,nconnect=16] 
-pecho "Got arguments: [$*]" 
+#
+# Ensure aznfswatchdog service is running, if not bail out with an appropriate
+# error.
+#
+# TODO: Make sure this works on all supported distros.  
+#
+ensure_aznfswatchdog()
+{
+    is_aznfswatchdog_active=$(systemctl is-active --quiet aznfswatchdog) 
+    if [ $is_aznfswatchdog_active -ne 0 ]; then
+        eecho "aznfswatchdog service not running!"
+        pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
+        pecho "If the problem persists, contact Microsoft."
+        exit 1
+    fi
+}
+
+# [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16] 
+vecho "[$(date -u)] Got arguments: [$*]"
 
 #
-# Check if MOUNTMAP file exists.
+# Check if aznfswatchdog service is running. 
 #
-if [ -f $MOUNTMAP ]; then
-    pecho "MOUNTMAP exist."
-else
-    eecho "MOUNTMAP doesn't exist."
-    exit 1
-fi
+ensure_aznfswatchdog
 
 #
-# Check if azfs watchdog service is running. 
+# MOUNTMAP file must have been created by aznfswatchdog service.
 #
-is_azfswatchdog_active = $(systemctl is-active --quiet azfswatchdog) 
-
-if [ $is_azfswatchdog_active -ne 0 ]; then
-    eecho "Azfs Watchdog not running"
+if [ ! -f $MOUNTMAP ]; then
+    eecho "[FATAL] ${MOUNTMAP} not found!"
+    pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
+    pecho "If the problem persists, contact Microsoft."
     exit 1
 fi
 
 nfs_host=$(get_host_from_share "$1") 
 
 if ! is_valid_blob_fqdn $nfs_host; then 
-    eecho "Not a valid Azure Blob NFS endpoint: $nfs_host" 
+    eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}."
+    eecho "Must be of the form 'account.blob.core.windows.net'."
     exit 1 
 fi
- 
-nfs_ip=$(resolve_ipv4 $nfs_host) 
+
+nfs_ip=$(resolve_ipv4 ${nfs_host})
 
 if [ -z "$nfs_ip" ]; then 
     eecho "Cannot resolve IP address for $nfs_host!" 
     exit 1 
-fi 
+fi
+
+#
+# If user is using private endpoint then we can directly mount without the help
+# of aznfswatchdog service.
+#
+if is_private_ip $nfs_ip; then
+    vecho "Host IP is private ($nfs_ip), using direct NFS mount."
+    mount -t nfs $*
+    exit
+fi
 
 nfs_dir=$(get_dir_from_share "$1") 
 
-if [ -z "$nfs_dir" ]; then 
-    # TODO: Check for /account/container format. 
-    eecho "Improper share name: $1" 
+if [ -z "$nfs_dir" ]; then
+    eecho "Bad share name: $1"
+    eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'." 
     exit 1 
 fi 
 
@@ -308,9 +267,7 @@ echo "mount_point=[$mount_point]"
 echo "mount_options=[$mount_options]" 
 echo "local_ip=$local_ip" 
 
-# 
-# Set DNAT rule for forwarding local_ip traffic to the actual blob endpoint IP. 
-#
+# Set DNAT rule for forwarding local_ip traffic to the actual blob endpoint IP.
 iptables -t nat -A OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip" 
 
 if [ $? -ne 0 ]; then 
