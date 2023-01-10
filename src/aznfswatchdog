@@ -90,8 +90,9 @@ while :; do
         fi 
 
         # 
-        # Local share name. Note that we mount the local IP and not the actual Blob endpoint IP and 
-        # map local IP to actual Blob endpoint IP using DNAT rule. 
+        # Local share name. Note that we mount the local IP and not the actual
+        # Blob endpoint IP and map local IP to actual Blob endpoint IP using 
+        # DNAT rule. 
         # 
         m_share="$l_ip:$l_dir" 
       

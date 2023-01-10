@@ -36,7 +36,7 @@ _log()
 }
 
 #
-# plain echo with file logging.
+# Plain echo with file logging.
 #
 pecho()
 {
@@ -50,7 +50,7 @@ pecho()
 }
 
 #
-# success echo.
+# Success echo.
 #
 secho()
 {
@@ -64,7 +64,7 @@ secho()
 }
 
 #
-# warning echo.
+# Warning echo.
 #
 wecho()
 {
@@ -78,7 +78,7 @@ wecho()
 }
 
 #
-# error echo.
+# Error echo.
 #
 eecho()
 {
@@ -92,7 +92,7 @@ eecho()
 }
 
 #
-# verbose echo, no-op unless AZNFS_VERBOSE env variable is set.
+# Verbose echo, no-op unless AZNFS_VERBOSE env variable is set.
 #
 vecho()
 {
@@ -114,7 +114,10 @@ vecho()
 # 
 function is_valid_ipv4_address() 
 { 
-    # ip route allows 10.10 as a valid address and treats it as 10.10.0.0, so we need the first coarse filter too. 
+    #
+    # ip route allows 10.10 as a valid address and treats it as 10.10.0.0, so 
+    # we need the first coarse filter too.
+    #
     [[ $1 =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && 
     ip -4 route save match $1 > /dev/null 2>&1 
 }
@@ -158,7 +161,7 @@ function resolve_ipv4()
 
 #
 # Function to check if an IP is private.
-# 
+#
 is_private_ip() 
 { 
     local ip=$1
@@ -167,14 +170,18 @@ is_private_ip()
         return 1
     fi
 
-    # Check if the IP belongs to the private IP range (10.0.0.0/8, 172.16.0.0/12, or 192.168.0.0/16). 
+    #
+    # Check if the IP belongs to the private IP range (10.0.0.0/8,
+    # 172.16.0.0/12, or 192.168.0.0/16).f
+    #
     [[ $ip =~ ^10\..* ]] || 
     [[ $ip =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\..* ]] || 
     [[ $ip =~ ^192\.168\..* ]]
 }
 
 #
-# MOUNTMAP is accessed by both mount.azfs and azfswatchdog service. Update it only after taking exclusive lock. 
+# MOUNTMAP is accessed by both mount.aznfs and aznfswatchdog service. Update it 
+# only after taking exclusive lock.
 #
 function update_mountmap() 
 { 
