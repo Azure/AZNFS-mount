@@ -96,7 +96,7 @@ eecho()
 #
 vecho()
 {
-    if [ -z "$AZNFS_VERBOSE" ]; then
+    if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
         return
     fi
 
@@ -112,7 +112,7 @@ vecho()
 # 
 # Check if the given string is a valid IPv4 address. 
 # 
-function is_valid_ipv4_address() 
+is_valid_ipv4_address() 
 { 
     #
     # ip route allows 10.10 as a valid address and treats it as 10.10.0.0, so 
@@ -122,11 +122,21 @@ function is_valid_ipv4_address()
     ip -4 route save match $1 > /dev/null 2>&1 
 }
 
+#
+# Check if the given string is a valid IPv4 prefix.
+# 10, 10.10, 10.10.10, 10.10.10.10 are valid prefixes, while
+# 1000, 10.256, 10. are not valid prefixes. 
+#
+is_valid_ipv4_prefix()
+{
+    ip -4 route get fibmatch $1 > /dev/null 2>&1
+}
+
 # 
 # Blob fqdn to IPv4 adddress.
 # Caller must make sure that it is called only for hostname and not IP address.
 # 
-function resolve_ipv4() 
+resolve_ipv4() 
 { 
     local hname="$1"
 
@@ -183,9 +193,10 @@ is_private_ip()
 # MOUNTMAP is accessed by both mount.aznfs and aznfswatchdog service. Update it 
 # only after taking exclusive lock.
 #
-function update_mountmap() 
+update_mountmap() 
 { 
     flock $MOUNTMAP -c "eval $*"
 }
 
 mkdir -p $RUNDIR
+mkdir -p $OPTDIR

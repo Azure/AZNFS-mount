@@ -1,24 +1,19 @@
 #!/bin/bash 
 
-#
-# Load the functions used for logging.
-#
-. /opt/microsoft/aznfs/common.sh
-
 #  
 # How often does the watchdog look for unmounts and/or IP address changes for 
 # Blob endpoints.
 # 
-MONITOR_INTERVAL_SECS=5 
+MONITOR_INTERVAL_SECS=5
 
 #
-# Create the MOUNTMAP if it doesn't exists. 
+# Load common aznfs helpers.
 #
-if [ ! -d $RUNDIR ]; then
-    mkdir -p $RUNDIR
-    touch $MOUNTMAP
-fi
+. /opt/microsoft/aznfs/common.sh
 
+#
+# Create the MOUNTMAP if it does not exist. 
+#
 if [ ! -f $MOUNTMAP ]; then
     touch $MOUNTMAP
 fi 
@@ -26,12 +21,8 @@ fi
 # 
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint 
 # addresses possibly as a result of migration. 
-# 
-# Disable signal to make this slightly more resilient.
 #
-trap "" INT QUIT TSTP 
-
-while :; do 
+while :; do
     sleep $MONITOR_INTERVAL_SECS 
 
     findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs) 
@@ -78,14 +69,14 @@ while :; do
         fi 
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid. 
-        if ! is_valid_ipv4_address "$l_ip"; then 
-            eecho "[BUG] local ip ($l_ip) is invalid!" 
+        if ! is_private_ip "$l_ip"; then 
+            eecho "[FATAL] local ip ($l_ip) is invalid!" 
             continue 
         fi
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid. 
-        if ! is_valid_ipv4_address "$l_nfsip"; then 
-            eecho "[BUG] Blob endpoint ip ($l_nfsip) is invalid!" 
+        if ! is_valid_ipv4_address "$l_nfsip" || is_private_ip "$l_nfsip"; then 
+            eecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!" 
             continue 
         fi 
 
