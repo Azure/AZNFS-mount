@@ -1,4 +1,4 @@
-#!/bin/bash 
+#! /bin/bash 
 
 #
 # Load common aznfs helpers.
