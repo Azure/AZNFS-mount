@@ -200,3 +200,4 @@ update_mountmap()
 
 mkdir -p $RUNDIR
 mkdir -p $OPTDIR
+touch $LOGFILE

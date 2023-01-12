@@ -18,6 +18,10 @@ if [ ! -f $MOUNTMAP ]; then
     touch $MOUNTMAP
 fi 
 
+if [ ! -f $LOGFILE ]; then
+    touch $LOGFILE
+fi 
+
 # 
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint 
 # addresses possibly as a result of migration. 
@@ -45,7 +49,7 @@ while :; do
     #    If yes, update DNAT rule to point to the new address. 
     # 
     # Sample line in $MOUNTMAP. 
-    # nfsv3stdaccount20.blob.preprod.core.windows.net:/nfsv3stdaccount20/fstestbase3 10.100.100.100 52.239.178.215 
+    # account.blob.preprod.core.windows.net:/nfsv3stdaccount20/fstestbase3 10.100.100.100 52.239.178.215 
     #  
     # where the format is 
     # <blobendpoint>:/account/container local_ip blobendpoint_ip 
