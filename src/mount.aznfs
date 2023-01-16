@@ -1,4 +1,4 @@
-#! /bin/bash 
+#!/bin/bash 
 
 #
 # Load common aznfs helpers.
@@ -255,7 +255,7 @@ get_free_local_ip()
 ensure_aznfswatchdog()
 {
     is_aznfswatchdog_active=$(systemctl is-active --quiet aznfswatchdog) 
-    if [ $is_aznfswatchdog_active -ne 0 ]; then
+    if [[ $is_aznfswatchdog_active -ne 0 ]]; then
         eecho "aznfswatchdog service not running!"
         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
         pecho "If the problem persists, contact Microsoft."
