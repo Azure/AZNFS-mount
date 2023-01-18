@@ -20,13 +20,13 @@ is_valid_blob_fqdn()
 { 
     # XXX Are there other valid blob endpoint fqdns? 
     [[ $1 =~ ^([a-z0-9]{3,24}).blob(.preprod)?.core.windows.net$ ]] 
-} 
+}
 
 # 
 # Get blob endpoint from account.blob.core.windows.net:/account/container. 
 # 
 get_host_from_share() 
-{ 
+{
     local hostshare="$1"
     local host=$(echo $hostshare | cut -d: -f1)
     local share=$(echo $hostshare | cut -d: -f2)
@@ -38,7 +38,7 @@ get_host_from_share()
     fi
 
     echo "$host"
-} 
+}
 
 # 
 # Get /account/container from account.blob.core.windows.net:/account/container.
@@ -47,9 +47,9 @@ get_dir_from_share()
 { 
     local hostshare="$1"
     local share=$(echo $hostshare | cut -d: -f2)
-    local account=$(echo $share | cut -d/ -f1)
-    local container=$(echo $share | cut -d/ -f2)
-    local extra=$(echo $share | cut -d/ -f3)
+    local account=$(echo $share | cut -d/ -f2)
+    local container=$(echo $share | cut -d/ -f3)
+    local extra=$(echo $share | cut -d/ -f4)
 
     if [ -z "$account" -o -z "$container" -o -n "$extra" ]; then
         eecho "Bad share name: ${hostshare}."

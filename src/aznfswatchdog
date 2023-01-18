@@ -99,7 +99,7 @@ while :; do
             # delete the line from MOUNTMAP file. 
             pecho "[$date] Deleting unmounted share $m_share" 
             update_mountmap sed -i "/ $l_ip $l_nfsip/d" $MOUNTMAP
-            iptables -t nat -D OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$l_nfsip" 
+            iptables -t nat -D OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$l_nfsip"
         fi 
 
         # 
