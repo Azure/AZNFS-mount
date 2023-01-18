@@ -162,14 +162,14 @@ get_free_local_ip()
 { 
     for ip_prefix in $IP_PREFIXES; do 
 
-        vecho "Trying IP prefix ${ip_prefix}."
+        # vecho "Trying IP prefix ${ip_prefix}."
 
         num_octets=$(octets_in_ipv4_prefix $ip_prefix)
 
         if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
-            eecho "Invalid IPv4 prefix: $ip_prefix"
-            eecho "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
-            eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
+            # eecho "Invalid IPv4 prefix: $ip_prefix"
+            # eecho "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
+            # eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
             continue
         fi
         
@@ -182,12 +182,12 @@ get_free_local_ip()
                 ip_prefix="${ip_prefix}.$_3rdoctet" 
 
                 if is_host_ip $ip_prefix; then
-                    vecho "$ip_prefix is host network!" 1>&2 
+                    # vecho "$ip_prefix is host network!" 1>&2 
                     continue 
                 fi 
 
                 if is_link_ip $ip_prefix; then 
-                    vecho "$ip_prefix is link network!" 1>&2 
+                    # vecho "$ip_prefix is link network!" 1>&2 
                     continue 
                 fi 
 
@@ -203,17 +203,17 @@ get_free_local_ip()
             local_ip="${ip_prefix}.$_4thoctet" 
 
             if is_host_ip $local_ip; then 
-                vecho "$local_ip belongs to host!" 1>&2 
+                # vecho "$local_ip belongs to host!" 1>&2 
                 continue 
             fi 
 
             if is_link_ip $ip_prefix; then 
-                vecho "$ip_prefix is link network!" 1>&2 
+                # vecho "$ip_prefix is link network!" 1>&2 
                 continue 
             fi 
 
             if egrep "\<$local_ip\>" $MOUNTMAP >/dev/null; then 
-                eecho "$local_ip is in use by aznfs!" 1>&2 
+                # eecho "$local_ip is in use by aznfs!" 1>&2 
                 continue
             fi 
 
@@ -225,11 +225,11 @@ get_free_local_ip()
             #       we will incorrectly treat it as non-exixtent.  
             # 
             if is_pinging $local_ip; then
-                eecho "Skipping $local_ip as it appears to be in use on the network!" 1>&2
+                # eecho "Skipping $local_ip as it appears to be in use on the network!" 1>&2
                 continue
             fi
 
-            vecho "Using local IP $local_ip for aznfs" 1>&2 
+            # vecho "Using local IP $local_ip for aznfs" 1>&2 
             break 
         done
 
