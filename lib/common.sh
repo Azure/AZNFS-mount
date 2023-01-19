@@ -198,6 +198,6 @@ update_mountmap()
     flock $MOUNTMAP -c "eval $*"
 }
 
-mkdir -p $RUNDIR
+mkdir -p $RUNDIR  # do we have to check if these commands fails? 
 mkdir -p $OPTDIR
-touch $LOGFILE
+touch $LOGFILE  # log file is created as part of aznfswatchdog service, do we need to create it here as well? 

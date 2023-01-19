@@ -328,12 +328,19 @@ vecho "mount_point=[$mount_point]"
 vecho "mount_options=[$mount_options]" 
 vecho "local_ip=$local_ip" 
 
-# Set DNAT rule for forwarding local_ip traffic to the actual blob endpoint IP.
-iptables -t nat -A OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip" 
+# Check if DNAT rule for forwarding local_ip traffic to the actual blob endpoint IP already exists.
+iptables -t nat -C OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip"
 
-if [ $? -ne 0 ]; then 
-    eecho "iptables failed to set DNAT rule [$local_ip -> $nfs_ip]" 
-    exit 1 
+if [ $? -ne 0 ]
+    # Set DNAT rule for forwarding local_ip traffic to the actual blob endpoint IP.
+    iptables -t nat -A OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip" 
+
+    if [ $? -ne 0 ]; then 
+        eecho "iptables failed to set DNAT rule [$local_ip -> $nfs_ip]." 
+        exit 1 
+    fi
+else
+    pecho "DNAT rule [$local_ip -> $nfs_ip] already exists."
 fi
 
 mount -t nfs -o "$mount_options" "${local_ip}:${nfs_dir}" "$mount_point" 
@@ -341,10 +348,16 @@ mount -t nfs -o "$mount_options" "${local_ip}:${nfs_dir}" "$mount_point"
 if [ $? -ne 0 ]; then 
     eecho "mount failed!" 
     # clear the DNAT rule. 
-    iptables -t nat -D OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip" 
+    iptables -t nat -D OUTPUT -p tcp -d "$local_ip" -j DNAT --to-destination "$nfs_ip"
+    if [ $? -ne 0 ]; then 
+        eecho "iptables failed to delete DNAT rule [$local_ip -> $nfs_ip]." 
+    fi 
     exit 1 
 fi 
 
-# Update MOUNTMAP.
-update_mountmap echo "$nfs_host:$nfs_dir $local_ip $nfs_ip" >> $MOUNTMAP
+# Update MOUNTMAP if desired entry doesn't already exist.
+grep -q "$nfs_host:$nfs_dir $local_ip $nfs_ip" $MOUNTMAP
+if [ $? -ne 0 ]
+    update_mountmap echo "$nfs_host:$nfs_dir $local_ip $nfs_ip" >> $MOUNTMAP
+fi
  
