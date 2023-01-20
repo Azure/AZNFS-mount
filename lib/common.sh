@@ -11,13 +11,9 @@ LOGFILE="${OPTDIR}/${APPNAME}.log"
 MOUNTMAP="${RUNDIR}/mountmap"
 
 RED="\e[2;31m"
-RED_BOLD="\e[1;31m"
 GREEN="\e[2;32m"
-GREEN_BOLD="\e[1;32m"
 YELLOW="\e[2;33m"
-YELLOW_BOLD="\e[1;33m"
 NORMAL="\e[0m"
-NORMAL_BOLD="\e[0;1m"
 
 _log()
 {
@@ -198,6 +194,55 @@ update_mountmap()
     flock $MOUNTMAP -c "eval $*"
 }
 
-mkdir -p $RUNDIR  # do we have to check if these commands fails? 
+#
+# Check if the desired DNAT rule already exist. If not, add new DNAT rule.
+#
+add_iptable_entry()
+{
+    iptables -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+    if [ $? -ne 0 ]; then
+        iptables -t nat -A OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+        if [ $? -ne 0 ]; then 
+            eecho "iptables failed to set DNAT rule [$1 -> $2]." 
+            exit 1 
+        fi
+    else
+        pecho "DNAT rule [$1 -> $2] already exists."
+    fi
+}
+
+#
+# Delete entry from iptables if the share is unmounted or the IP for blob FQDN
+# is resolving into new IP.
+#
+delete_iptable_entry()
+{
+    iptables -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+    if [ $? -ne 0 ]; then 
+        eecho "iptables failed to delete DNAT rule [$1 -> $2]."
+    fi
+}
+
+mkdir -p $RUNDIR
+if [ $? -ne 0 ]; then
+    eecho "Not able to create '${RUNDIR}', Try again."
+    exit 1
+fi
+
 mkdir -p $OPTDIR
-touch $LOGFILE  # log file is created as part of aznfswatchdog service, do we need to create it here as well? 
+if [ $? -ne 0 ]; then
+    eecho "Not able to create '${OPTDIR}', Try again."
+    exit 1
+fi
+
+touch $LOGFILE
+if [ $? -ne 0 ]; then
+    eecho "Not able to create '${LOGFILE}', Try again."
+    exit 1
+fi
+
+touch $MOUNTMAP
+if [ $? -ne 0 ]; then
+    eecho "Not able to create '${MOUNTMAP}', Try again."
+    exit 1
+fi

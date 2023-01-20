@@ -1,36 +1,32 @@
 #!/bin/bash 
 
-#  
+#
 # How often does the watchdog look for unmounts and/or IP address changes for 
-# Blob endpoints.
-# 
+# Blob endpoints. 
+#
 MONITOR_INTERVAL_SECS=5
 
-#
 # Load common aznfs helpers.
-#
 . /opt/microsoft/aznfs/common.sh
 
-#
 # Create the MOUNTMAP if it does not exist.
-#
 if [ ! -f $MOUNTMAP ]; then
     touch $MOUNTMAP
 fi
 
+# Create the LOGFILE if it does not exist.
 if [ ! -f $LOGFILE ]; then
     touch $LOGFILE
 fi
 
 # 
-# Watchdog for monitoring unmounts and more importantly change in blob endpoint 
+# Watchdog for monitoring unmounts and more importantly change in blob endpoint
 # addresses possibly as a result of migration. 
 #
 while :; do
     sleep $MONITOR_INTERVAL_SECS
 
     findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs)
-
     if [ $? -ne 0 ]; then
         eecho "findmnt failed!"
         # Hope things improve next time around!
@@ -49,10 +45,10 @@ while :; do
     #    If yes, update DNAT rule to point to the new address.
     #
     # Sample line in $MOUNTMAP.
-    # account.blob.preprod.core.windows.net:/nfsv3stdaccount20/fstestbase3 10.100.100.100 52.239.178.215
+    # account.blob.preprod.core.windows.net:/testaccount/testcontainer 10.100.100.100 52.230.170.200
     # 
     # where the format is
-    # <blobendpoint>:/account/container local_ip blobendpoint_ip
+    # <blobendpoint>:/account/container LOCAL_IP blobendpoint_ip
     # 
     IFS=$'\n' lines=$(cat $MOUNTMAP) 
 
@@ -68,42 +64,39 @@ while :; do
         l_nfsip=$(echo "$line" | awk '{print $3}')
 
         if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then 
-            wecho "Skipping invalid line in $MOUNTMAP: [$line]."
-            update_mountmap sed -i "/$line/d" $MOUNTMAP # Shouldn't we delete this bad entry from mountmap? 
-            continue 
-        fi 
-
-        # Since we added it to the MOUNTMAP file, it cannot be invalid. 
-        if ! is_private_ip "$l_ip"; then 
-            eecho "[FATAL] local ip ($l_ip) is invalid!" 
+            wecho "Deleting invalid line in $MOUNTMAP: [$line]."
+            update_mountmap sed -i "/$line/d" $MOUNTMAP 
             continue 
         fi
 
-        # Since we added it to the MOUNTMAP file, it cannot be invalid. 
-        if ! is_valid_ipv4_address "$l_nfsip" || is_private_ip "$l_nfsip"; then 
-            eecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!" 
-            continue 
-        fi 
+        # Since we added it to the MOUNTMAP file, it cannot be invalid.
+        if ! is_private_ip "$l_ip"; then
+            eecho "[FATAL] local ip ($l_ip) is invalid!"
+            continue
+        fi
 
-        # 
+        # Since we added it to the MOUNTMAP file, it cannot be invalid.
+        if ! is_valid_ipv4_address "$l_nfsip" || is_private_ip "$l_nfsip"; then
+            eecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
+            continue
+        fi
+
+        #
         # Local share name. Note that we mount the local IP and not the actual
-        # Blob endpoint IP and map local IP to actual Blob endpoint IP using 
-        # DNAT rule. 
-        # 
-        m_share="$l_ip:$l_dir" 
-      
-        # 
-        # Delete entry from MOUNTMAP if share is unmounted. 
-        # TODO: What if user unmounts and mounts before MONITOR_INTERVAL_SECS secs? 
-        # 
-        if ! echo "$findmnt" | grep " nfs $m_share " > /dev/null; then 
-            # delete the line from MOUNTMAP file. 
-            pecho "[$(date -u)] Deleting unmounted share $m_share" 
+        # Blob endpoint IP and map local IP to actual Blob endpoint IP using
+        # DNAT rule.
+        #
+        m_share="$l_ip:$l_dir"
+
+        #
+        # Delete entry from MOUNTMAP if share is unmounted.
+        # TODO: What if user unmounts and mounts before MONITOR_INTERVAL_SECS secs?
+        #
+        if ! echo "$findmnt" | grep " nfs $m_share " > /dev/null; then
+            # delete the line from MOUNTMAP file.
+            pecho "[$(date -u)] Deleting unmounted share ${m_share}."
             update_mountmap sed -i "/ $l_ip $l_nfsip/d" $MOUNTMAP
-            iptables -t nat -D OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$l_nfsip"
-            if [ $? -ne 0 ]; then 
-                eecho "iptables failed to delete DNAT rule [$l_ip -> $l_nfsip]."
-            fi
+            delete_iptable_entry $l_ip $l_nfsip
         fi
 
         #
@@ -123,38 +116,23 @@ while :; do
             continue
         fi
 
-        # 
-        # If the IP changed for the Blob endpoint, we need to update the DNAT rule. 
-        # This will take care of migration/failover causing the Blob endpoint IP to change. 
-        # 
-        # TODO: Make this less frequent than the unmount check. 
-        # 
+        #
+        # If the IP changed for the Blob endpoint, we need to update the DNAT rule.
+        # This will take care of migration/failover causing the Blob endpoint IP to change.
+        #
+        # TODO: Make this less frequent than the unmount check.
+        #
         # echo "$l_host: new_ip=$new_ip, l_nfsip=$l_nfsip"
         #
         if [ "$new_ip" != "$l_nfsip" ]; then 
-            pecho "IP for $l_host changed [$l_nfsip -> $new_ip]"
+            pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
             update_mountmap sed -i "/ $l_ip $l_nfsip/d" $MOUNTMAP
 
-            # Delete old DNAT rule and the conntrack entry to stop current active connections too. 
-            iptables -t nat -D OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$l_nfsip"
-            if [ $? -ne 0 ]; then 
-                eecho "iptables failed to delete DNAT rule [$l_ip -> $l_nfsip]."
-            fi
-            
-            conntrack -D conntrack -p tcp -d "$l_ip" -r "$l_nfsip" 
+            # Delete old DNAT rule and the conntrack entry to stop current active connections too.
+            delete_iptable_entry $l_ip $l_nfsip
+            conntrack -D conntrack -p tcp -d "$l_ip" -r "$l_nfsip"
 
-            # Check if the desired DNAT rule already exists. 
-            iptables -t nat -C OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$new_ip"
-            if [ $? -ne 0 ]
-                # Add new DNAT rule.
-                iptables -t nat -A OUTPUT -p tcp -d "$l_ip" -j DNAT --to-destination "$new_ip"
-                if [ $? -ne 0 ]; then 
-                    eecho "iptables failed to set DNAT rule [$l_ip -> $new_ip]." 
-                    exit 1 
-                fi
-            else
-                pecho "DNAT rule [$local_ip -> $nfs_ip] already exists."
-            fi
+            add_iptable_entry $l_ip $new_ip
 
             # Add new entry in MOUNTMAP if it doesn't already exist.
             grep -q "$l_host:$l_dir $l_ip $new_ip" $MOUNTMAP
