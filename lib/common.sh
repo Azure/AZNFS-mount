@@ -1,14 +1,13 @@
 #! /bin/bash
 
 APPNAME="aznfs"
-RUNDIR="/run/${APPNAME}"
 OPTDIR="/opt/microsoft/${APPNAME}"
 LOGFILE="${OPTDIR}/${APPNAME}.log" 
 
 # 
 # This stores the map of local IP and share name and external blob endpoint IP. 
 # 
-MOUNTMAP="${RUNDIR}/mountmap"
+MOUNTMAP="${OPTDIR}/mountmap"
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -28,7 +27,7 @@ _log()
     color=$1
     msg=$2
 
-    echo $echoarg -e "${color}${msg}${NORMAL}" |& tee -a $LOGFILE
+    echo $echoarg -e "$(date -u) $(hostname): ${color}${msg}${NORMAL}" >> $LOGFILE
 }
 
 #
@@ -132,7 +131,7 @@ is_valid_ipv4_prefix()
 # Blob fqdn to IPv4 adddress.
 # Caller must make sure that it is called only for hostname and not IP address.
 # 
-resolve_ipv4() 
+resolve_ipv4()
 { 
     local hname="$1"
 
@@ -189,9 +188,38 @@ is_private_ip()
 # MOUNTMAP is accessed by both mount.aznfs and aznfswatchdog service. Update it 
 # only after taking exclusive lock.
 #
-update_mountmap() 
-{ 
-    flock $MOUNTMAP -c "eval $*"
+# Add entry to $MOUNTMAP in case of a new mount or IP change for blob FQDN.
+#
+add_mountmap()
+{
+    grep -q $1 $MOUNTMAP
+    if [ $? -ne 0 ]; then
+        chattr -i $MOUNTMAP
+        flock $MOUNTMAP -c "echo $1 >> $MOUNTMAP"
+        chattr +i $MOUNTMAP
+    else
+        pecho "[$1] already exists in MOUNTMAP."
+    fi
+}
+
+#
+# Delete entry from $MOUNTMAP in case of unmount or IP change for blob FQDN.
+#
+delete_mountmap()
+{
+    chattr -i $MOUNTMAP
+    flock $MOUNTMAP -c "sed -i '%$1%d' $MOUNTMAP"
+    chattr +i $MOUNTMAP
+}
+
+#
+# Reconciel the MOUNTMAP file from findmnt and iptables output.
+# 
+# Note: This will be added in subsequent revisions.
+#
+reconcile_mountmap()
+{
+
 }
 
 #
@@ -199,12 +227,11 @@ update_mountmap()
 #
 add_iptable_entry()
 {
-    iptables -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+    iptables -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
     if [ $? -ne 0 ]; then
         iptables -t nat -A OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
-        if [ $? -ne 0 ]; then 
-            eecho "iptables failed to set DNAT rule [$1 -> $2]." 
-            exit 1 
+        if [ $? -ne 0 ]; then
+            return 1
         fi
     else
         pecho "DNAT rule [$1 -> $2] already exists."
@@ -217,32 +244,32 @@ add_iptable_entry()
 #
 delete_iptable_entry()
 {
-    iptables -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
-    if [ $? -ne 0 ]; then 
-        eecho "iptables failed to delete DNAT rule [$1 -> $2]."
+    iptables -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
+    if [ $? -eq 0 ]; then
+        iptables -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+        if [ $? -ne 0 ]; then
+            return 1
+        fi
+    else
+        pecho "DNAT rule [$1 -> $2] does not exist."
     fi
 }
 
-mkdir -p $RUNDIR
-if [ $? -ne 0 ]; then
-    eecho "Not able to create '${RUNDIR}', Try again."
-    exit 1
-fi
-
 mkdir -p $OPTDIR
 if [ $? -ne 0 ]; then
-    eecho "Not able to create '${OPTDIR}', Try again."
+    eecho "[FATAL] Not able to create '${OPTDIR}'."
     exit 1
 fi
 
 touch $LOGFILE
 if [ $? -ne 0 ]; then
-    eecho "Not able to create '${LOGFILE}', Try again."
+    eecho "[FATAL] Not able to create '${LOGFILE}'."
     exit 1
 fi
 
 touch $MOUNTMAP
 if [ $? -ne 0 ]; then
-    eecho "Not able to create '${MOUNTMAP}', Try again."
+    eecho "[FATAL] Not able to create '${MOUNTMAP}'."
     exit 1
 fi
+chattr +i $MOUNTMAP

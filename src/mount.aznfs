@@ -39,7 +39,7 @@ get_host_from_share()
     if [ -z "$host" -o -z "$share" ]; then
         eecho "Bad share name: ${hostshare}."
         eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'."
-        exit 1
+        return 1
     fi
 
     echo "$host"
@@ -59,7 +59,7 @@ get_dir_from_share()
     if [ -z "$account" -o -z "$container" -o -n "$extra" ]; then
         eecho "Bad share name: ${hostshare}."
         eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'."
-        exit 1
+        return 1
     fi
 
     echo "$share"
@@ -119,6 +119,10 @@ is_pinging()
     ping -4 -W3 -c1 $ip > /dev/null
 }
 
+#
+# Returns number of octets in an IPv4 prefix. 
+# If IP prefix is not valid or is not a private IP address prefix, it returns 0.
+#
 octets_in_ipv4_prefix()
 {
     local ip=$1
@@ -160,12 +164,11 @@ octets_in_ipv4_prefix()
 }
 
 # 
-# Get a local IP that is free to use. 
+# Get a local IP that is free to use. Set global variable LOCAL_IP if found.
 # 
 get_free_local_ip() 
 { 
-    for ip_prefix in $IP_PREFIXES; do 
-
+    for ip_prefix in $IP_PREFIXES; do
         vecho "Trying IP prefix ${ip_prefix}."
 
         num_octets=$(octets_in_ipv4_prefix $ip_prefix)
@@ -186,12 +189,12 @@ get_free_local_ip()
                 ip_prefix="${ip_prefix}.$_3rdoctet" 
 
                 if is_host_ip $ip_prefix; then
-                    vecho "$ip_prefix is host network!" 1>&2 
+                    vecho "Skipping host address ${ip_prefix}!"
                     continue 
                 fi 
 
                 if is_link_ip $ip_prefix; then 
-                    vecho "$ip_prefix is link network!" 1>&2 
+                    vecho "Skipping link network ${ip_prefix}!"
                     continue 
                 fi 
 
@@ -207,17 +210,17 @@ get_free_local_ip()
             local_ip="${ip_prefix}.$_4thoctet" 
 
             if is_host_ip $local_ip; then 
-                vecho "$local_ip belongs to host!" 1>&2 
+                vecho "Skipping host address ${local_ip}!"
                 continue 
             fi 
 
             if is_link_ip $ip_prefix; then 
-                vecho "$ip_prefix is link network!" 1>&2 
+                vecho "Skipping link network ${ip_prefix}!"
                 continue 
             fi 
 
             if egrep "\<$local_ip\>" $MOUNTMAP >/dev/null; then 
-                eecho "$local_ip is in use by aznfs!" 1>&2 
+                eecho "$local_ip is in use by aznfs!"
                 continue
             fi 
 
@@ -229,11 +232,11 @@ get_free_local_ip()
             #       we will incorrectly treat it as non-exixtent.  
             # 
             if is_pinging $local_ip; then
-                eecho "Skipping $local_ip as it appears to be in use on the network!" 1>&2
+                eecho "Skipping $local_ip as it appears to be in use on the network!"
                 continue
             fi
 
-            vecho "Using local IP ($local_ip) for aznfs." 1>&2 
+            vecho "Using local IP ($local_ip) for aznfs."
             break 
         done
 
@@ -246,8 +249,36 @@ get_free_local_ip()
         return 0
     done
 
-    # If we come here we didn't get a free address to use.
+    # If we come here we did not get a free address to use.
     return 1
+}
+
+#
+# Parse mount options from the mount command executed by the user.
+#
+parse_arguments()
+{
+    # Skip share and mountdir. 
+    shift
+    shift
+    local next_arg_is_mount_options=false
+    
+    OPTIONS=
+    MOUNT_OPTIONS=
+
+    for arg in $*; do
+        if [ "$arg" == "-o" ]; then
+            next_arg_is_mount_options=true
+            continue
+        fi
+
+        if $next_arg_is_mount_options; then
+            MOUNT_OPTIONS=$arg
+            next_arg_is_mount_options=false
+        else
+            OPTIONS="$OPTIONS $arg"
+        fi
+    done
 }
 
 #
@@ -268,7 +299,7 @@ ensure_aznfswatchdog()
 }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16] 
-vecho "[$(date -u)] Got arguments: [$*]"
+vecho "Got arguments: [$*]"
 
 # Check if aznfswatchdog service is running.
 ensure_aznfswatchdog
@@ -276,12 +307,16 @@ ensure_aznfswatchdog
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f $MOUNTMAP ]; then
     eecho "[FATAL] ${MOUNTMAP} not found!"
-    pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
+    pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
     pecho "If the problem persists, contact Microsoft."
     exit 1
 fi
 
-nfs_host=$(get_host_from_share "$1") 
+nfs_host=$(get_host_from_share "$1")
+
+if [ $? -ne 0 ]; then
+    exit 1
+fi
 
 if ! is_valid_blob_fqdn $nfs_host; then 
     eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
@@ -301,12 +336,16 @@ fi
 # of aznfswatchdog service.
 #
 if is_private_ip $nfs_ip; then
-    vecho "Host IP is private ($nfs_ip), using direct NFS mount."
+    vecho "${nfs_host} ($nfs_ip) seems to be using private link, using direct NFS mount."
     mount -t nfs $*
     exit
 fi
 
-nfs_dir=$(get_dir_from_share "$1") 
+nfs_dir=$(get_dir_from_share "$1")
+
+if [ $? -ne 0 ]; then
+    exit 1
+fi
 
 if [ -z "$nfs_dir" ]; then
     eecho "Bad share name: ${1}."
@@ -314,8 +353,12 @@ if [ -z "$nfs_dir" ]; then
     exit 1 
 fi 
 
-mount_point="$2" 
-mount_options="$4" 
+mount_point="$2"
+
+OPTIONS=
+MOUNT_OPTIONS=
+
+parse_arguments $*
  
 get_free_local_ip
 
@@ -329,24 +372,32 @@ vecho "nfs_host=[$nfs_host]"
 vecho "nfs_ip=[$nfs_ip]"
 vecho "nfs_dir=[$nfs_dir]"
 vecho "mount_point=[$mount_point]"
-vecho "mount_options=[$mount_options]"
+vecho "options=[$OPTIONS]"
+vecho "mount_options=[$MOUNT_OPTIONS]"
 vecho "local_ip=$LOCAL_IP"
 
-# Check if DNAT rule for forwarding LOCAL_IP traffic to the actual blob endpoint IP already exists.
-add_iptable_entry $LOCAL_IP $nfs_ip
+# Add DNAT rule for forwarding LOCAL_IP traffic to the actual blob endpoint IP address.
+if ! add_iptable_entry $LOCAL_IP $nfs_ip; then
+    eecho "iptables failed to set DNAT rule [$LOCAL_IP -> $nfs_ip]."
+    exit 1
+fi
 
-mount -t nfs -o "$mount_options" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 
+mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 
 
 if [ $? -ne 0 ]; then 
     eecho "mount failed!" 
     # clear the DNAT rule.
-    delete_iptable_entry $LOCAL_IP $nfs_ip 
+    if ! delete_iptable_entry $LOCAL_IP $nfs_ip; then
+        eecho "iptables failed to delete DNAT rule [$LOCAL_IP -> $nfs_ip]."
+        exit 1
+    fi
     exit 1 
 fi 
 
-# Update MOUNTMAP if desired entry does not already exist.
-grep -q "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip" $MOUNTMAP
-if [ $? -ne 0 ]; then
-    update_mountmap echo "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip" >> $MOUNTMAP
+# Add new entry in MOUNTMAP if it does not already exist.
+if ! add_mountmap "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
+    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in MOUNTMAP."
+    exit 1
 fi
+
  
