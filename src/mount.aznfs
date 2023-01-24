@@ -382,22 +382,20 @@ if ! add_iptable_entry $LOCAL_IP $nfs_ip; then
     exit 1
 fi
 
-mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 
+# Add new entry in MOUNTMAP if it does not already exist.
+if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
+    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in MOUNTMAP."
+    exit 1
+fi
 
-if [ $? -ne 0 ]; then 
-    eecho "mount failed!" 
+mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point"
+
+if [ $? -ne 0 ]; then
+    eecho "mount failed!"
     # clear the DNAT rule.
     if ! delete_iptable_entry $LOCAL_IP $nfs_ip; then
         eecho "iptables failed to delete DNAT rule [$LOCAL_IP -> $nfs_ip]."
         exit 1
     fi
-    exit 1 
-fi 
-
-# Add new entry in MOUNTMAP if it does not already exist.
-if ! add_mountmap "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
-    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in MOUNTMAP."
     exit 1
 fi
-
- 

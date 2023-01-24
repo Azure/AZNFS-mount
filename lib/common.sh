@@ -27,6 +27,7 @@ _log()
     color=$1
     msg=$2
 
+    echo $echoarg -e "${color}${msg}${NORMAL}"
     echo $echoarg -e "$(date -u) $(hostname): ${color}${msg}${NORMAL}" >> $LOGFILE
 }
 
@@ -190,12 +191,15 @@ is_private_ip()
 #
 # Add entry to $MOUNTMAP in case of a new mount or IP change for blob FQDN.
 #
-add_mountmap()
+ensure_mountmap_exist()
 {
     grep -q "$1" $MOUNTMAP
     if [ $? -ne 0 ]; then
         chattr -i $MOUNTMAP
         flock $MOUNTMAP -c "echo $1 >> $MOUNTMAP"
+        if [ $? -ne 0 ]; then
+            return 1
+        fi
         chattr +i $MOUNTMAP
     else
         pecho "[$1] already exists in MOUNTMAP."
@@ -205,10 +209,13 @@ add_mountmap()
 #
 # Delete entry from $MOUNTMAP in case of unmount or IP change for blob FQDN.
 #
-delete_mountmap()
+ensure_mountmap_not_exist()
 {
     chattr -i $MOUNTMAP
-    flock $MOUNTMAP -c "sed -i '%$1%d' $MOUNTMAP"
+    flock $MOUNTMAP -c "sed -i '\%$1%d' $MOUNTMAP"
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
     chattr +i $MOUNTMAP
 }
 
@@ -240,7 +247,7 @@ add_iptable_entry()
 
 #
 # Delete entry from iptables if the share is unmounted or the IP for blob FQDN
-# is resolving into new IP.
+# is resolving into new IP. Also remove the entry from conntrack.
 #
 delete_iptable_entry()
 {
@@ -248,6 +255,12 @@ delete_iptable_entry()
     if [ $? -eq 0 ]; then
         iptables -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
+            return 1
+        fi
+
+        conntrack -D conntrack -p tcp -d "$1" -r "$2"
+        if [ $? -eq 0 ]; then
+            eecho "Failed to delete netfilter connection tracking [$l_ip -> $l_nfsip]."
             return 1
         fi
     else

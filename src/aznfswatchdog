@@ -41,11 +41,6 @@ while :; do
         exit 1
     fi
 
-    # Nothing mounted, so nothing to check.
-    if [ -z "$findmnt" ]; then
-        continue
-    fi
-
     #
     # Go over all lines in $MOUNTMAP and check them for two things:
     # 1. Is that entry still mounted, if not remove the entry.
@@ -73,7 +68,7 @@ while :; do
 
         if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then 
             wecho "[FATAL] Deleting invalid line in $MOUNTMAP: [$line]."
-            if ! delete_mountmap "$line"; then
+            if ! ensure_mountmap_not_exist "$line"; then
                 eecho "Failed to delete [$line] from MOUNTMAP."
             fi
             continue 
@@ -82,7 +77,7 @@ while :; do
         # Since we added it to the MOUNTMAP file, it cannot be invalid.
         if ! is_private_ip "$l_ip"; then
             wecho "[FATAL] local ip ($l_ip) is invalid!"
-            if ! delete_mountmap "$line"; then
+            if ! ensure_mountmap_not_exist "$line"; then
                 eecho "Failed to delete [$line] from MOUNTMAP."
             fi
             continue
@@ -91,7 +86,7 @@ while :; do
         # Since we added it to the MOUNTMAP file, it cannot be invalid.
         if ! is_valid_ipv4_address "$l_nfsip" || is_private_ip "$l_nfsip"; then
             wecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
-            if ! delete_mountmap "$line"; then
+            if ! ensure_mountmap_not_exist "$line"; then
                 eecho "Failed to delete [$line] from MOUNTMAP."
             fi
             continue
@@ -116,7 +111,7 @@ while :; do
                 exit 1
             fi
             
-            if ! delete_mountmap "$line"; then
+            if ! ensure_mountmap_not_exist "$line"; then
                 eecho "Failed to delete [$line] from MOUNTMAP."
                 exit 1
             fi
@@ -151,13 +146,8 @@ while :; do
                 eecho "iptables failed to delete DNAT rule [$l_ip -> $l_nfsip]."
                 exit 1
             fi
-            
-            conntrack -D conntrack -p tcp -d "$l_ip" -r "$l_nfsip"
-            if [ $? -ne 0 ]; then
-                eecho "Failed to delete netfilter connection tracking [$l_ip -> $l_nfsip]."
-            fi
 
-            if ! delete_mountmap "$line"; then
+            if ! ensure_mountmap_not_exist "$line"; then
                 eecho "Failed to delete [$line] from MOUNTMAP."
                 exit 1
             fi
@@ -169,7 +159,7 @@ while :; do
             fi
 
             # Add new entry in MOUNTMAP if it does not already exist.
-            if ! add_mountmap "$l_host:$l_dir $l_ip $new_ip"; then
+            if ! ensure_mountmap_not_exist "$l_host:$l_dir $l_ip $new_ip"; then
                 eecho "Failed to add [$l_host:$l_dir $l_ip $new_ip] in MOUNTMAP."
                 exit 1
             fi
