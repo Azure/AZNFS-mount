@@ -192,7 +192,7 @@ is_private_ip()
 #
 add_mountmap()
 {
-    grep -q $1 $MOUNTMAP
+    grep -q "$1" $MOUNTMAP
     if [ $? -ne 0 ]; then
         chattr -i $MOUNTMAP
         flock $MOUNTMAP -c "echo $1 >> $MOUNTMAP"
@@ -217,10 +217,10 @@ delete_mountmap()
 # 
 # Note: This will be added in subsequent revisions.
 #
-reconcile_mountmap()
-{
+#reconcile_mountmap()
+#{
 
-}
+#}
 
 #
 # Check if the desired DNAT rule already exist. If not, add new DNAT rule.
@@ -261,15 +261,19 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-touch $LOGFILE
-if [ $? -ne 0 ]; then
-    eecho "[FATAL] Not able to create '${LOGFILE}'."
-    exit 1
+if [ ! -f $LOGFILE ]; then
+    touch $LOGFILE
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Not able to create '${LOGFILE}'."
+        exit 1
+    fi
 fi
 
-touch $MOUNTMAP
-if [ $? -ne 0 ]; then
-    eecho "[FATAL] Not able to create '${MOUNTMAP}'."
-    exit 1
+if [ ! -f $MOUNTMAP ]; then
+    touch $MOUNTMAP
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Not able to create '${MOUNTMAP}'."
+        exit 1
+    fi
+    chattr +i $MOUNTMAP
 fi
-chattr +i $MOUNTMAP

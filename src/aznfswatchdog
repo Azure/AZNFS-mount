@@ -27,7 +27,7 @@ fi
 while :; do
     sleep $MONITOR_INTERVAL_SECS
 
-    reconcile_mountmap
+    # reconcile_mountmap
 
     findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
     #
@@ -160,6 +160,7 @@ while :; do
             if ! delete_mountmap "$line"; then
                 eecho "Failed to delete [$line] from MOUNTMAP."
                 exit 1
+            fi
 
             # Add DNAT rule for forwarding local ip traffic to the new blob endpoint IP address.
             if ! add_iptable_entry $l_ip $new_ip; then

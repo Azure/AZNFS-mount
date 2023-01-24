@@ -289,7 +289,7 @@ parse_arguments()
 #
 ensure_aznfswatchdog()
 {
-    is_aznfswatchdog_active=$(systemctl is-active --quiet aznfswatchdog) 
+    is_aznfswatchdog_active=$(systemctl is-active --quiet aznfswatchdog)
     if [[ $is_aznfswatchdog_active -ne 0 ]]; then
         eecho "aznfswatchdog service not running!"
         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
@@ -298,7 +298,7 @@ ensure_aznfswatchdog()
     fi
 }
 
-# [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16] 
+# [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
 
 # Check if aznfswatchdog service is running.
@@ -318,10 +318,10 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-if ! is_valid_blob_fqdn $nfs_host; then 
+if ! is_valid_blob_fqdn $nfs_host; then
     eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
     eecho "Must be of the form 'account.blob.core.windows.net'."
-    exit 1 
+    exit 1
 fi
 
 nfs_ip=$(resolve_ipv4 ${nfs_host})
