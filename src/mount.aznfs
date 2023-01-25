@@ -16,6 +16,11 @@ DEFAULT_AZNFS_IP_PREFIXES="10.100 192.168 172.16"
 #
 LOCAL_IP=""
 
+#
+# Proccess ID of the current process.
+#
+PID=""
+
 IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
 
 #
@@ -122,6 +127,9 @@ is_pinging()
 #
 # Returns number of octets in an IPv4 prefix. 
 # If IP prefix is not valid or is not a private IP address prefix, it returns 0.
+# 
+# f.e. For 10 it will return 1, for 10.10 it will return 2, for 10.10.10 it will
+# return 3 and for 10.10.10.10, it will return 4.
 #
 octets_in_ipv4_prefix()
 {
@@ -244,6 +252,19 @@ get_free_local_ip()
             continue
         fi
 
+        #
+        # Add this entry to MOUNTMAP with PID siffix. This is to avoid assigning
+        # same local ip to parallel mount requests. This entry will be deleted
+        # from MOUNTMAP and original entry will be added just after mount.
+        #
+
+        PID=$$
+
+        if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $local_ip $nfs_ip $PID"; then
+            eecho "Failed to add [$nfs_host:$nfs_dir $local_ip $nfs_ip $PID] in MOUNTMAP."
+            return 1
+        fi
+
         # Happy path!
         LOCAL_IP=$local_ip
         return 0
@@ -294,7 +315,7 @@ ensure_aznfswatchdog()
         eecho "aznfswatchdog service not running!"
         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
         pecho "If the problem persists, contact Microsoft."
-        exit 1
+        return 1
     fi
 }
 
@@ -302,7 +323,9 @@ ensure_aznfswatchdog()
 vecho "Got arguments: [$*]"
 
 # Check if aznfswatchdog service is running.
-ensure_aznfswatchdog
+if ! ensure_aznfswatchdog; then
+    exit 1
+fi
 
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f $MOUNTMAP ]; then
@@ -326,9 +349,9 @@ fi
 
 nfs_ip=$(resolve_ipv4 ${nfs_host})
 
-if [ -z "$nfs_ip" ]; then 
-    eecho "Cannot resolve IP address for ${nfs_host}!" 
-    exit 1 
+if [ -z "$nfs_ip" ]; then
+    eecho "Cannot resolve IP address for ${nfs_host}!"
+    exit 1
 fi
 
 #
@@ -363,8 +386,13 @@ parse_arguments $*
 get_free_local_ip
 
 if [ $? -ne 0 ]; then
-    eecho "Could not find a free local IP to use for aznfs using DEFAULT_AZNFS_IP_PREFIXES=${DEFAULT_AZNFS_IP_PREFIXES}!"
-    eecho "Set AZNFS_IP_PREFIXES env variable correctly to provide free addresses for use by aznfs!"
+    if [ -z AZNFS_IP_PREFIXES ]; then
+        eecho "Could not find a free local IP to use for aznfs using DEFAULT_AZNFS_IP_PREFIXES=${DEFAULT_AZNFS_IP_PREFIXES}!"
+        eecho "Set AZNFS_IP_PREFIXES env variable correctly to provide free addresses for use by aznfs!"
+    else
+        eecho "Could not find a free local IP to use for aznfs using AZNFS_IP_PREFIXES=${AZNFS_IP_PREFIXES}!"
+        eecho "Ensure AZNFS_IP_PREFIXES env variable is set properly!"
+    fi
     exit 1
 fi
 
@@ -382,12 +410,6 @@ if ! add_iptable_entry $LOCAL_IP $nfs_ip; then
     exit 1
 fi
 
-# Add new entry in MOUNTMAP if it does not already exist.
-if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
-    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in MOUNTMAP."
-    exit 1
-fi
-
 mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point"
 
 if [ $? -ne 0 ]; then
@@ -397,5 +419,17 @@ if [ $? -ne 0 ]; then
         eecho "iptables failed to delete DNAT rule [$LOCAL_IP -> $nfs_ip]."
         exit 1
     fi
+    exit 1
+fi
+
+# Remove the entry with PID for this mount before adding the original entry. 
+if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
+    eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from MOUNTMAP."
+    exit 1
+fi
+
+# Add new entry in MOUNTMAP if it does not already exist.
+if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
+    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in MOUNTMAP."
     exit 1
 fi

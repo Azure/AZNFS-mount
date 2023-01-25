@@ -20,16 +20,21 @@ if [ ! -f $LOGFILE ]; then
     touch $LOGFILE
 fi
 
-# 
+#
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
-# addresses possibly as a result of migration. 
+# addresses possibly as a result of migration.
 #
 while :; do
     sleep $MONITOR_INTERVAL_SECS
 
-    # reconcile_mountmap
+    #
+    # TODO: Add a function reconcile_mountmap() and call it from here. This
+    #       should reconstruct the MOUNTMAP file from findmnt and output of
+    #       iptables. This will be added in subsequent revisions.
+    #
 
     findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
+
     #
     # For no matching mounts also, findmnt exits with a failure return, so check
     # for both exit status and non-empty error o/p.
@@ -49,7 +54,7 @@ while :; do
     #
     # Sample line in $MOUNTMAP.
     # account.blob.preprod.core.windows.net:/testaccount/testcontainer 10.100.100.100 52.230.170.200
-    # 
+    #
     # where the format is
     # <blobendpoint>:/account/container LOCAL_IP blobendpoint_ip
     # 
@@ -65,13 +70,14 @@ while :; do
         l_dir=$(echo "$l_share" | cut -d: -f2)
         l_ip=$(echo "$line" | awk '{print $2}')
         l_nfsip=$(echo "$line" | awk '{print $3}')
+        l_pid=$(echo "$line" | awk '{print $4}')
 
-        if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then 
+        if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAP: [$line]."
             if ! ensure_mountmap_not_exist "$line"; then
                 eecho "Failed to delete [$line] from MOUNTMAP."
             fi
-            continue 
+            continue
         fi
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid.
@@ -90,6 +96,22 @@ while :; do
                 eecho "Failed to delete [$line] from MOUNTMAP."
             fi
             continue
+        fi
+
+        #
+        # This entry was added by get_free_local_ip() call in mount.aznfs to
+        # to ensure two parallel mount requests do not get same local ip. Skip
+        # this entry if PID is active.
+        #
+        if [ ! -z $l_pid ]; then
+            if ! ps -p $l_pid > /dev/null; then
+                wecho "[FATAL] PID ($l_pid) is not active!"
+                if ! ensure_mountmap_not_exist "$line"; then
+                    eecho "Failed to delete [$line] from MOUNTMAP."
+                fi
+            else
+                continue
+            fi
         fi
 
         #
@@ -159,7 +181,7 @@ while :; do
             fi
 
             # Add new entry in MOUNTMAP if it does not already exist.
-            if ! ensure_mountmap_not_exist "$l_host:$l_dir $l_ip $new_ip"; then
+            if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $new_ip"; then
                 eecho "Failed to add [$l_host:$l_dir $l_ip $new_ip] in MOUNTMAP."
                 exit 1
             fi

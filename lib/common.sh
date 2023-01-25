@@ -193,10 +193,12 @@ is_private_ip()
 #
 ensure_mountmap_exist()
 {
+    exec {mountmapfd}< $MOUNTMAP 
+    flock -e $mountmapfd
     grep -q "$1" $MOUNTMAP
     if [ $? -ne 0 ]; then
         chattr -i $MOUNTMAP
-        flock $MOUNTMAP -c "echo $1 >> $MOUNTMAP"
+        echo $1 >> $MOUNTMAP
         if [ $? -ne 0 ]; then
             return 1
         fi
@@ -204,6 +206,7 @@ ensure_mountmap_exist()
     else
         pecho "[$1] already exists in MOUNTMAP."
     fi
+    flock -u $mountmapfd
 }
 
 #
@@ -211,23 +214,16 @@ ensure_mountmap_exist()
 #
 ensure_mountmap_not_exist()
 {
+    exec {mountmapfd}< $MOUNTMAP
+    flock -e $mountmapfd
     chattr -i $MOUNTMAP
-    flock $MOUNTMAP -c "sed -i '\%$1%d' $MOUNTMAP"
+    sed -i "\%$1%d" $MOUNTMAP
     if [ $? -ne 0 ]; then
         return 1
     fi
     chattr +i $MOUNTMAP
+    flock -u $mountmapfd
 }
-
-#
-# Reconciel the MOUNTMAP file from findmnt and iptables output.
-# 
-# Note: This will be added in subsequent revisions.
-#
-#reconcile_mountmap()
-#{
-
-#}
 
 #
 # Check if the desired DNAT rule already exist. If not, add new DNAT rule.
@@ -259,7 +255,7 @@ delete_iptable_entry()
         fi
 
         conntrack -D conntrack -p tcp -d "$1" -r "$2"
-        if [ $? -eq 0 ]; then
+        if [ $? -ne 0 ]; then
             eecho "Failed to delete netfilter connection tracking [$l_ip -> $l_nfsip]."
             return 1
         fi
