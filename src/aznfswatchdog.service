@@ -1,15 +1,11 @@
 [Unit]
-Description= azfs watchdog for NFSv3 mounts
-
-# [TODO] Discuss before/after which processes watchdog needs to be started.  
+Description= aznfs watchdog for NFSv3 mounts
+  
 Before=
 After=
 
 [Service]
 User=root
-
-#Environment variables
-# [TODO] Does AZFS_IP_PREFIXES var need to be set here? 
 
 ExecStart=/usr/sbin/aznfswatchdog
 Restart=always
