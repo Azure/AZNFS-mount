@@ -1,0 +1,10 @@
+Package: aznfs
+version: x.y.z
+Priority: required
+Architecture: arm64
+Origin: Microsoft
+Maintainer: Azure Storage XNFSv3 IDC Team <xnfsv3devsidc@microsoft.com>
+Homepage: https://github.com/Azure/BlobNFS-mount/blob/main/README.md
+Description: Mount helper program to keep NFSv3 mount points working after account migration.
+  This program detects change in destination IP of account by resolving Blob-FQDN after account migration and change the old IP
+  with new IP without breaking the connection.

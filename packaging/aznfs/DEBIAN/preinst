@@ -1,0 +1,8 @@
+#!/bin/bash
+
+sudo apt-get install -y conntrack
+sudo apt-get install -y iptables
+sudo apt-get install -y systemd
+sudo apt-get install -y bind9-host
+sudo apt-get install -y iproute2
+sudo apt-get install -y util-linux
