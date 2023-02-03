@@ -321,7 +321,7 @@ ensure_aznfswatchdog()
     if ! systemctl is-active --quiet aznfswatchdog; then
         eecho "aznfswatchdog service not running!"
         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
-        pecho "If the problem persists, contact Microsoft."
+        pecho "If the problem persists, contact Microsoft support."
         return 1
     fi
 }
@@ -338,7 +338,7 @@ fi
 if [ ! -f "$MOUNTMAP" ]; then
     eecho "[FATAL] ${MOUNTMAP} not found!"
     pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
-    pecho "If the problem persists, contact Microsoft."
+    pecho "If the problem persists, contact Microsoft support."
     exit 1
 fi
 
@@ -349,7 +349,7 @@ fi
 
 if ! is_valid_blob_fqdn "$nfs_host"; then
     eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
-    eecho "Must be of the form 'account.blob.core.windows.net'."
+    eecho "Must be of the form 'account.blob.core.windows.net'!"
     exit 1
 fi
 
@@ -365,8 +365,8 @@ if [ $? -ne 0 ]; then
 fi
 
 if [ -z "$nfs_dir" ]; then
-    eecho "Bad share name: ${1}."
-    eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'." 
+    eecho "Bad share name: ${1}!"
+    eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'!" 
     exit 1 
 fi 
 
@@ -399,11 +399,11 @@ vecho "local_ip=$LOCAL_IP"
 
 # Add DNAT rule for forwarding LOCAL_IP traffic to the actual blob endpoint IP address.
 if ! add_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
-    eecho "iptables failed to set DNAT rule [$LOCAL_IP -> $nfs_ip]."
+    eecho "iptables failed to set DNAT rule [$LOCAL_IP -> $nfs_ip]!"
 
     # Remove the entry with PID for this mount added in get_free_local_ip() above. 
     if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}."
+        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
     fi
 
     exit 1
@@ -415,13 +415,13 @@ if [ $? -ne 0 ]; then
     eecho "Mount failed!"
 
     # Clear the DNAT rule.
-    if ! delete_iptable_entry $LOCAL_IP $nfs_ip; then
-        eecho "iptables failed to delete DNAT rule [$LOCAL_IP -> $nfs_ip]."
+    if ! delete_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
+        eecho "iptables failed to delete DNAT rule [$LOCAL_IP -> $nfs_ip]!"
     fi
 
     # Remove the entry with PID for this mount added in get_free_local_ip() above. 
     if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}."
+        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
     fi
 
     exit 1
@@ -432,11 +432,11 @@ fi
 # any other thread from using this local IP.
 #
 if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
-    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in ${MOUNTMAP}."
+    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in ${MOUNTMAP}!"
 
     # Remove the entry with PID for this mount added in get_free_local_ip() above. 
     if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}."
+        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
     fi
 
     eecho "Mount failed!"
@@ -448,7 +448,7 @@ fi
 
 # Remove the entry with PID for this mount before adding the original entry. 
 if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-    vecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}."
+    vecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
     
     #
     # We do not fail in this case as aznfswatchdog will be able to correctly

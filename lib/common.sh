@@ -211,12 +211,12 @@ ensure_mountmap_exist()
             echo "$1" >> $MOUNTMAP
             if [ $? -ne 0 ]; then
                 chattr -f +i $MOUNTMAP
-                eecho "[$1] failed to add to $MOUNTMAP"
+                eecho "[$1] failed to add to ${MOUNTMAP}!"
                 return 1
             fi
             chattr -f +i $MOUNTMAP
         else
-            pecho "[$1] already exists in $MOUNTMAP."
+            pecho "[$1] already exists in ${MOUNTMAP}."
         fi 
     ) 9<$MOUNTMAP
 }
@@ -232,7 +232,7 @@ ensure_mountmap_not_exist()
         sed -i "\%$1%d" $MOUNTMAP
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAP
-            eecho "[$1] failed to remove from $MOUNTMAP"
+            eecho "[$1] failed to remove from ${MOUNTMAP}!"
             return 1
         fi
         chattr -f +i $MOUNTMAP
@@ -248,7 +248,7 @@ add_iptable_entry()
     if [ $? -ne 0 ]; then
         iptables -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
-            eecho "Failed to add DNAT rule [$1 -> $2]."
+            eecho "Failed to add DNAT rule [$1 -> $2]!"
             return 1
         fi
     else
@@ -266,13 +266,13 @@ delete_iptable_entry()
     if [ $? -eq 0 ]; then
         iptables -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
-            eecho "Failed to delete DNAT rule [$1 -> $2]."
+            eecho "Failed to delete DNAT rule [$1 -> $2]!"
             return 1
         fi
 
         conntrack -D conntrack -p tcp -d "$1" -r "$2"
         if [ $? -ne 0 ]; then
-            eecho "Failed to delete netfilter connection tracking [$1 -> $2]."
+            eecho "Failed to delete netfilter connection tracking [$1 -> $2]!"
             return 1
         fi
     else
@@ -282,14 +282,14 @@ delete_iptable_entry()
 
 mkdir -p $OPTDIR
 if [ $? -ne 0 ]; then
-    eecho "[FATAL] Not able to create '${OPTDIR}'."
+    eecho "[FATAL] Not able to create '${OPTDIR}'!"
     exit 1
 fi
 
 if [ ! -f $LOGFILE ]; then
     touch $LOGFILE
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to create '${LOGFILE}'."
+        eecho "[FATAL] Not able to create '${LOGFILE}'!"
         exit 1
     fi
 fi
@@ -297,7 +297,7 @@ fi
 if [ ! -f $MOUNTMAP ]; then
     touch $MOUNTMAP
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to create '${MOUNTMAP}'."
+        eecho "[FATAL] Not able to create '${MOUNTMAP}'!"
         exit 1
     fi
     chattr -f +i $MOUNTMAP

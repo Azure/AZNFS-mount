@@ -75,7 +75,7 @@ while :; do
         l_pid=$(echo "$line" | awk '{print $4}')
 
         if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
-            wecho "[FATAL] Deleting invalid line in $MOUNTMAP: [$line]."
+            wecho "[FATAL] Deleting invalid line in $MOUNTMAP: [$line]!"
             if ! ensure_mountmap_not_exist "$line"; then
                 eecho "Failed to delete [$line] from ${MOUNTMAP}!"
             fi
@@ -130,7 +130,7 @@ while :; do
         if ! echo "$findmnt" | grep " nfs $m_share " > /dev/null; then
             # delete the line from MOUNTMAP file.
             pecho "Deleting unmounted share from ${MOUNTMAP} [$line]."
-            if ! delete_iptable_entry $l_ip $l_nfsip; then
+            if ! delete_iptable_entry "$l_ip" "$l_nfsip"; then
                 eecho "iptables failed to delete DNAT rule [$l_ip -> $l_nfsip]!"
 
                 #
@@ -178,7 +178,7 @@ while :; do
             pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
 
             # Delete old DNAT rule and the conntrack entry to stop current active connections too.
-            if ! delete_iptable_entry $l_ip $l_nfsip; then
+            if ! delete_iptable_entry "$l_ip" "$l_nfsip"; then
                 eecho "iptables failed to delete DNAT rule [$l_ip -> $l_nfsip]!"
 
                 #
@@ -189,7 +189,7 @@ while :; do
             fi
 
             # Add DNAT rule for forwarding local ip traffic to the new blob endpoint IP address.
-            if add_iptable_entry $l_ip $new_ip; then
+            if add_iptable_entry "$l_ip" "$new_ip"; then
                 
                 #
                 # Add new entry in MOUNTMAP.
