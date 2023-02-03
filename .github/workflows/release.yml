@@ -6,3 +6,41 @@ name: Release to github for Mount Helper
 
 on:
   workflow_dispatch:
+
+
+jobs:
+  package_mount_helper:
+    name: Package and Release Mount Helper
+    runs-on: ubuntu-latest
+    steps:
+      -name: Checkout repository
+        uses: actions/checkout@v3
+      -name: Run Package.sh
+        run: |
+          chmod +x ./package.sh
+          ./package.sh
+        shell: bash
+      -name: Create Release
+        id: crete_release
+        uses: actions/crete_release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            # This could be filled depends on the release.ref
+          draft: false
+          prerelease: false
+      -name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.crete_release.outputs.upload_url }}
+          asset_path: ./mount_helper_package.deb
+          asset_name: mount_helper_package.deb
+
+  upload_installer_script:
+    needs: package_mount_helper
