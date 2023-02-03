@@ -1,5 +1,5 @@
 Package: aznfs
-version: x.y.z
+Version: x.y.z
 Priority: required
 Architecture: arm64
 Origin: Microsoft

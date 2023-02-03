@@ -1,0 +1,8 @@
+#
+# Release workflow for Mount Helper Script.
+#
+
+name: Release to github for Mount Helper
+
+on:
+  workflow_dispatch:

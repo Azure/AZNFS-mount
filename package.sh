@@ -20,7 +20,7 @@ cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/* ${STG_DIR}/${pkg_dir}/
 # Insert current build number.
 sed -i -e "s/Version: x.y.z/Version: ${BUILD_NUMBER}/g" ${STG_DIR}/${pkg_dir}/DEBIAN/control
 
-# Copy any other static package file(s).
+# Copy other static package file(s).
 mkdir -p ${STG_DIR}/${pkg_dir}/sbin
 cp -avf ${SOURCE_DIR}/src/mount.aznfs ${STG_DIR}/${pkg_dir}/sbin/
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/${pkg_dir}/sbin/
@@ -32,4 +32,3 @@ cd $STG_DIR
 
 # Create the package.
 dpkg-deb --build $pkg_dir
-
