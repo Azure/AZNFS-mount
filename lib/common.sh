@@ -28,7 +28,10 @@ _log()
     msg=$2
 
     echo $echoarg -e "${color}${msg}${NORMAL}"
-    echo $echoarg -e "$(date -u) $(hostname): ${color}${msg}${NORMAL}" >> $LOGFILE
+    (
+        flock -e 9
+        echo $echoarg -e "$(date -u) $(hostname): ${color}${msg}${NORMAL}" >> $LOGFILE
+    ) 9<$LOGFILE
 }
 
 #
@@ -92,16 +95,23 @@ eecho()
 #
 vecho()
 {
-    if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
-        return
-    fi
-
     echoarg=""
     color=$NORMAL
     if [ "$1" == "-n" ]; then
         echoarg="-n"
         shift
     fi
+
+    # Unless AZNFS_VERBOSE flag is set, do not echo to console.
+    if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
+        (
+            flock -e 9
+            echo $echoarg -e "$(date -u) $(hostname): ${color}${*}${NORMAL}" >> $LOGFILE
+        ) 9<$LOGFILE
+
+        return
+    fi
+
     _log $echoarg $color "${*}"
 }
 
@@ -137,22 +147,22 @@ resolve_ipv4()
     local hname="$1"
 
     # Resolve hostname to IPv4 address.
-    host_op=$(host -4 -t A "$hname") 
+    host_op=$(host -4 -t A "$hname" | sort) 
     if [ $? -ne 0 ]; then
         eecho "Bad Blob FQDN: $hname" 
         return 1 
     fi 
 
     # 
-    # TODO: For ZRS accounts, we will get 3 IP addresses, that needs to be 
-    #       handled.
+    # For ZRS accounts, we will get 3 IP addresses whose order keeps changing.
+    # We sort the output of host so that we always look at the same address.
     # 
-    local cnt_ip=$(echo "$host_op" | grep " has address " | awk '{print $4}' | wc -l) 
+    local cnt_ip=$(echo "$host_op" | grep " has address " | awk '{print $4}' | head -n1 | wc -l) 
 
     if [ $cnt_ip -ne 1 ]; then 
         eecho "host returned $cnt_ip address(es) for ${hname}, expected 1!" 
         return 1 
-    fi 
+    fi
 
     local ipv4_addr=$(echo "$host_op" | grep " has address " | head -n1 | awk '{print $4}') 
     
@@ -193,20 +203,22 @@ is_private_ip()
 #
 ensure_mountmap_exist()
 {
-    exec {mountmapfd}< $MOUNTMAP 
-    flock -e $mountmapfd
-    grep -q "$1" $MOUNTMAP
-    if [ $? -ne 0 ]; then
-        chattr -i $MOUNTMAP
-        echo $1 >> $MOUNTMAP
+    (
+        flock -e 9
+        grep -q "$1" $MOUNTMAP
         if [ $? -ne 0 ]; then
-            return 1
-        fi
-        chattr +i $MOUNTMAP
-    else
-        pecho "[$1] already exists in MOUNTMAP."
-    fi
-    flock -u $mountmapfd
+            chattr -f -i $MOUNTMAP
+            echo "$1" >> $MOUNTMAP
+            if [ $? -ne 0 ]; then
+                chattr -f +i $MOUNTMAP
+                eecho "[$1] failed to add to $MOUNTMAP"
+                return 1
+            fi
+            chattr -f +i $MOUNTMAP
+        else
+            pecho "[$1] already exists in $MOUNTMAP."
+        fi 
+    ) 9<$MOUNTMAP
 }
 
 #
@@ -214,15 +226,17 @@ ensure_mountmap_exist()
 #
 ensure_mountmap_not_exist()
 {
-    exec {mountmapfd}< $MOUNTMAP
-    flock -e $mountmapfd
-    chattr -i $MOUNTMAP
-    sed -i "\%$1%d" $MOUNTMAP
-    if [ $? -ne 0 ]; then
-        return 1
-    fi
-    chattr +i $MOUNTMAP
-    flock -u $mountmapfd
+    (
+        flock -e 9
+        chattr -f -i $MOUNTMAP
+        sed -i "\%$1%d" $MOUNTMAP
+        if [ $? -ne 0 ]; then
+            chattr -f +i $MOUNTMAP
+            eecho "[$1] failed to remove from $MOUNTMAP"
+            return 1
+        fi
+        chattr -f +i $MOUNTMAP
+    ) 9<$MOUNTMAP
 }
 
 #
@@ -232,12 +246,13 @@ add_iptable_entry()
 {
     iptables -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
     if [ $? -ne 0 ]; then
-        iptables -t nat -A OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+        iptables -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
+            eecho "Failed to add DNAT rule [$1 -> $2]."
             return 1
         fi
     else
-        pecho "DNAT rule [$1 -> $2] already exists."
+        wecho "DNAT rule [$1 -> $2] already exists."
     fi
 }
 
@@ -251,16 +266,17 @@ delete_iptable_entry()
     if [ $? -eq 0 ]; then
         iptables -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
+            eecho "Failed to delete DNAT rule [$1 -> $2]."
             return 1
         fi
 
         conntrack -D conntrack -p tcp -d "$1" -r "$2"
         if [ $? -ne 0 ]; then
-            eecho "Failed to delete netfilter connection tracking [$l_ip -> $l_nfsip]."
+            eecho "Failed to delete netfilter connection tracking [$1 -> $2]."
             return 1
         fi
     else
-        pecho "DNAT rule [$1 -> $2] does not exist."
+        wecho "DNAT rule [$1 -> $2] does not exist."
     fi
 }
 
@@ -284,5 +300,5 @@ if [ ! -f $MOUNTMAP ]; then
         eecho "[FATAL] Not able to create '${MOUNTMAP}'."
         exit 1
     fi
-    chattr +i $MOUNTMAP
+    chattr -f +i $MOUNTMAP
 fi

@@ -222,12 +222,17 @@ get_free_local_ip()
                 continue 
             fi 
 
-            if is_link_ip $ip_prefix; then 
-                vecho "Skipping link network ${ip_prefix}!"
+            if is_link_ip $local_ip; then 
+                vecho "Skipping link network ${local_ip}!"
                 continue 
-            fi 
+            fi
 
-            if egrep "\<$local_ip\>" $MOUNTMAP >/dev/null; then 
+            if [ "$nfs_ip" == "$local_ip" ]; then
+                vecho "Skipping private endpoint IP ${nfs_ip}!"
+                continue
+            fi
+
+            if egrep "\<$local_ip\>" "$MOUNTMAP" >/dev/null; then 
                 eecho "$local_ip is in use by aznfs!"
                 continue
             fi 
@@ -253,17 +258,20 @@ get_free_local_ip()
         fi
 
         #
-        # Add this entry to MOUNTMAP with PID siffix. This is to avoid assigning
+        # Add this entry to MOUNTMAP with PID suffix. This is to avoid assigning
         # same local ip to parallel mount requests. This entry will be deleted
         # from MOUNTMAP and original entry will be added just after mount.
         #
-
         PID=$$
-
-        if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $local_ip $nfs_ip $PID"; then
-            eecho "Failed to add [$nfs_host:$nfs_dir $local_ip $nfs_ip $PID] in MOUNTMAP."
+        local mountmap_entry="$nfs_host:$nfs_dir $local_ip $nfs_ip $PID"
+        chattr -f -i $MOUNTMAP
+        echo "$mountmap_entry" >> $MOUNTMAP
+        if [ $? -ne 0 ]; then
+            chattr -f +i $MOUNTMAP
+            eecho "[$mountmap_entry] failed to reserve!"
             return 1
         fi
+        chattr -f +i $MOUNTMAP
 
         # Happy path!
         LOCAL_IP=$local_ip
@@ -310,8 +318,7 @@ parse_arguments()
 #
 ensure_aznfswatchdog()
 {
-    is_aznfswatchdog_active=$(systemctl is-active --quiet aznfswatchdog)
-    if [[ $is_aznfswatchdog_active -ne 0 ]]; then
+    if ! systemctl is-active --quiet aznfswatchdog; then
         eecho "aznfswatchdog service not running!"
         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
         pecho "If the problem persists, contact Microsoft."
@@ -328,7 +335,7 @@ if ! ensure_aznfswatchdog; then
 fi
 
 # MOUNTMAP file must have been created by aznfswatchdog service.
-if [ ! -f $MOUNTMAP ]; then
+if [ ! -f "$MOUNTMAP" ]; then
     eecho "[FATAL] ${MOUNTMAP} not found!"
     pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
     pecho "If the problem persists, contact Microsoft."
@@ -336,36 +343,23 @@ if [ ! -f $MOUNTMAP ]; then
 fi
 
 nfs_host=$(get_host_from_share "$1")
-
 if [ $? -ne 0 ]; then
     exit 1
 fi
 
-if ! is_valid_blob_fqdn $nfs_host; then
+if ! is_valid_blob_fqdn "$nfs_host"; then
     eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
     eecho "Must be of the form 'account.blob.core.windows.net'."
     exit 1
 fi
 
-nfs_ip=$(resolve_ipv4 ${nfs_host})
-
-if [ -z "$nfs_ip" ]; then
+nfs_ip=$(resolve_ipv4 "$nfs_host")
+if [ $? -ne 0 ]; then
     eecho "Cannot resolve IP address for ${nfs_host}!"
     exit 1
 fi
 
-#
-# If user is using private endpoint then we can directly mount without the help
-# of aznfswatchdog service.
-#
-if is_private_ip $nfs_ip; then
-    vecho "${nfs_host} ($nfs_ip) seems to be using private link, using direct NFS mount."
-    mount -t nfs $*
-    exit
-fi
-
 nfs_dir=$(get_dir_from_share "$1")
-
 if [ $? -ne 0 ]; then
     exit 1
 fi
@@ -383,10 +377,9 @@ MOUNT_OPTIONS=
 
 parse_arguments $*
  
-get_free_local_ip
-
+flock -e $MOUNTMAP get_free_local_ip
 if [ $? -ne 0 ]; then
-    if [ -z AZNFS_IP_PREFIXES ]; then
+    if [ -z "$AZNFS_IP_PREFIXES" ]; then
         eecho "Could not find a free local IP to use for aznfs using DEFAULT_AZNFS_IP_PREFIXES=${DEFAULT_AZNFS_IP_PREFIXES}!"
         eecho "Set AZNFS_IP_PREFIXES env variable correctly to provide free addresses for use by aznfs!"
     else
@@ -405,31 +398,62 @@ vecho "mount_options=[$MOUNT_OPTIONS]"
 vecho "local_ip=$LOCAL_IP"
 
 # Add DNAT rule for forwarding LOCAL_IP traffic to the actual blob endpoint IP address.
-if ! add_iptable_entry $LOCAL_IP $nfs_ip; then
+if ! add_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
     eecho "iptables failed to set DNAT rule [$LOCAL_IP -> $nfs_ip]."
+
+    # Remove the entry with PID for this mount added in get_free_local_ip() above. 
+    if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
+        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}."
+    fi
+
     exit 1
 fi
 
+# Do the actual mount.
 mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point"
-
 if [ $? -ne 0 ]; then
-    eecho "mount failed!"
-    # clear the DNAT rule.
+    eecho "Mount failed!"
+
+    # Clear the DNAT rule.
     if ! delete_iptable_entry $LOCAL_IP $nfs_ip; then
         eecho "iptables failed to delete DNAT rule [$LOCAL_IP -> $nfs_ip]."
-        exit 1
     fi
+
+    # Remove the entry with PID for this mount added in get_free_local_ip() above. 
+    if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
+        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}."
+    fi
+
+    exit 1
+fi
+
+#
+# Add new entry in MOUNTMAP before removing the placeholder entry to prevent
+# any other thread from using this local IP.
+#
+if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
+    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in ${MOUNTMAP}."
+
+    # Remove the entry with PID for this mount added in get_free_local_ip() above. 
+    if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
+        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}."
+    fi
+
+    eecho "Mount failed!"
+
+    # Unmount the share mounted above as we are failing the mount.
+    umount "${LOCAL_IP}:${nfs_dir}"
     exit 1
 fi
 
 # Remove the entry with PID for this mount before adding the original entry. 
 if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-    eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from MOUNTMAP."
-    exit 1
+    vecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}."
+    
+    #
+    # We do not fail in this case as aznfswatchdog will be able to correctly
+    # remove this entry with PID.
+    #
 fi
 
-# Add new entry in MOUNTMAP if it does not already exist.
-if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
-    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in MOUNTMAP."
-    exit 1
-fi
+exit 0
