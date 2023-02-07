@@ -30,7 +30,7 @@ _log()
     echo $echoarg -e "${color}${msg}${NORMAL}"
     (
         flock -e 9
-        echo $echoarg -e "$(date -u) $(hostname): ${color}${msg}${NORMAL}" >> $LOGFILE
+        echo $echoarg -e "$(date -u) $(hostname) $$: ${color}${msg}${NORMAL}" >> $LOGFILE
     ) 9<$LOGFILE
 }
 
@@ -205,7 +205,7 @@ ensure_mountmap_exist()
 {
     (
         flock -e 9
-        grep -q "$1" $MOUNTMAP
+        egrep -q "^${1}$" $MOUNTMAP
         if [ $? -ne 0 ]; then
             chattr -f -i $MOUNTMAP
             echo "$1" >> $MOUNTMAP
@@ -229,7 +229,7 @@ ensure_mountmap_not_exist()
     (
         flock -e 9
         chattr -f -i $MOUNTMAP
-        sed -i "\%$1%d" $MOUNTMAP
+        sed -i "\%^${1}$%d" $MOUNTMAP
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAP
             eecho "[$1] failed to remove from ${MOUNTMAP}!"

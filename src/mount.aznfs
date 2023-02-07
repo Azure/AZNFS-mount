@@ -11,6 +11,8 @@
 # 
 DEFAULT_AZNFS_IP_PREFIXES="10.100 192.168 172.16"
 
+IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
+
 #
 # Local IP that is free to use.
 #
@@ -20,8 +22,6 @@ LOCAL_IP=""
 # Proccess ID of the current process.
 #
 PID=""
-
-IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
 
 #
 # Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
@@ -171,29 +171,27 @@ octets_in_ipv4_prefix()
     echo 0
 }
 
-# 
-# Get a local IP that is free to use. Set global variable LOCAL_IP if found.
-# 
-get_free_local_ip() 
-{ 
-    for ip_prefix in $IP_PREFIXES; do
-        vecho "Trying IP prefix ${ip_prefix}."
+search_free_local_ip_with_prefix()
+{
+    initial_ip_prefix=$1
+    num_octets=$(octets_in_ipv4_prefix $ip_prefix)
 
-        num_octets=$(octets_in_ipv4_prefix $ip_prefix)
+    if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
+        eecho "Invalid IPv4 prefix: ${ip_prefix}."
+        eecho "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
+        eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
+        return 1
+    fi
+    
+    local local_ip=""
 
-        if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
-            eecho "Invalid IPv4 prefix: ${ip_prefix}."
-            eecho "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
-            eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
-            continue
-        fi
-        
-        local local_ip=""
-
+    _3rdoctet=100
+    ip_prefix=$initial_ip_prefix
+    while true; do
         if [ $num_octets -eq 2 ]; then
             # Start from 100 onwards to make aznfs local addresses more identifiable. 
 
-            for ((_3rdoctet=100; _3rdoctet<255; _3rdoctet++)); do 
+            for ((; _3rdoctet<255; _3rdoctet++)); do 
                 ip_prefix="${ip_prefix}.$_3rdoctet" 
 
                 if is_host_ip $ip_prefix; then
@@ -204,13 +202,18 @@ get_free_local_ip()
                 if is_link_ip $ip_prefix; then 
                     vecho "Skipping link network ${ip_prefix}!"
                     continue 
-                fi 
+                fi
 
                 break 
             done
 
             if [ $_3rdoctet -eq 255 ]; then 
-                continue 
+                #
+                # If the IP prefix had 2 octets and we exhausted all possible
+                # values of the 3rd and 4th octet, then we have failed the
+                # search for free local IP within the given prefix.
+                #
+                return 1
             fi
         fi
 
@@ -232,8 +235,9 @@ get_free_local_ip()
                 continue
             fi
 
-            if egrep "\<$local_ip\>" "$MOUNTMAP" >/dev/null; then 
-                eecho "$local_ip is in use by aznfs!"
+            if egrep " \<$local_ip\> " "$MOUNTMAP" >/dev/null; then
+                # Avoid excessive logs. 
+                # vecho "$local_ip is in use by aznfs!"
                 continue
             fi 
 
@@ -245,16 +249,27 @@ get_free_local_ip()
             #       we will incorrectly treat it as non-exixtent.  
             # 
             if is_pinging $local_ip; then
-                eecho "Skipping $local_ip as it appears to be in use on the network!"
+                vecho "Skipping $local_ip as it appears to be in use on the network!"
                 continue
             fi
 
             vecho "Using local IP ($local_ip) for aznfs."
-            break 
+            break
         done
 
         if [ $_4thoctet -eq 255 ]; then 
-            continue
+            if [ $num_octets -eq 2 ]; then
+                let _3rdoctet++
+                ip_prefix=$initial_ip_prefix
+                continue
+            else
+                #
+                # If the IP prefix had 3 octets and we exhausted all possible
+                # values of the 4th octet, then we have failed the search for 
+                # free local IP within the given prefix.
+                #
+                return 1
+            fi
         fi
 
         #
@@ -276,6 +291,22 @@ get_free_local_ip()
         # Happy path!
         LOCAL_IP=$local_ip
         return 0
+
+    done
+
+    # We will never reach here.
+}
+
+# 
+# Get a local IP that is free to use. Set global variable LOCAL_IP if found.
+# 
+get_free_local_ip() 
+{
+    for ip_prefix in $IP_PREFIXES; do
+        vecho "Trying IP prefix ${ip_prefix}."
+        if search_free_local_ip_with_prefix "$ip_prefix"; then
+            return 0
+        fi
     done
 
     # If we come here we did not get a free address to use.
@@ -377,8 +408,14 @@ MOUNT_OPTIONS=
 
 parse_arguments $*
  
-flock -e $MOUNTMAP get_free_local_ip
-if [ $? -ne 0 ]; then
+exec {fd}<$MOUNTMAP
+flock -e $fd
+get_free_local_ip
+ret=$?
+flock -u $fd
+exec {fd}<&-
+
+if [ $ret -ne 0 ]; then
     if [ -z "$AZNFS_IP_PREFIXES" ]; then
         eecho "Could not find a free local IP to use for aznfs using DEFAULT_AZNFS_IP_PREFIXES=${DEFAULT_AZNFS_IP_PREFIXES}!"
         eecho "Set AZNFS_IP_PREFIXES env variable correctly to provide free addresses for use by aznfs!"
@@ -446,7 +483,7 @@ if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
     exit 1
 fi
 
-# Remove the entry with PID for this mount before adding the original entry. 
+# Remove the entry with PID for this mount after adding the original entry. 
 if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
     vecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
     

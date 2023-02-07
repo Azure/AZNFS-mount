@@ -106,14 +106,21 @@ while :; do
         # this entry if PID is active.
         #
         if [ -n "$l_pid" ]; then
+            #
+            # If the line was deleted by the mount.aznfs after we read it from
+            # MOUNTMAP and till we reached this point, ignore this line.
+            #
+            if ! egrep -q "^${line}$" $MOUNTMAP; then
+                continue
+            fi
+
             if ! ps -p $l_pid > /dev/null; then
                 wecho "[FATAL] PID ($l_pid) is not active!"
                 if ! ensure_mountmap_not_exist "$line"; then
                     eecho "Failed to delete [$line] from ${MOUNTMAP}!"
                 fi
-            else
-                continue
             fi
+            continue
         fi
 
         #
