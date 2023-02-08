@@ -479,7 +479,8 @@ if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
     eecho "Mount failed!"
 
     # Unmount the share mounted above as we are failing the mount.
-    umount "${LOCAL_IP}:${nfs_dir}"
+    unmount_and_delete_iptable_entry "$LOCAL_IP" "$nfs_dir" "$nfs_ip"
+
     exit 1
 fi
 

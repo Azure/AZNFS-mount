@@ -280,6 +280,28 @@ delete_iptable_entry()
     fi
 }
 
+#
+# Must be called only when $l_ip:$l_dir is mounted.
+#
+unmount_and_delete_iptable_entry()
+{
+    local l_ip=$1
+    local l_dir=$2
+    local l_nfsip=$3
+
+    pecho "Unmounting [${l_ip}:${l_dir}]."
+
+    # Unmount the share mounted above as we are failing the mount.
+    if umount -lf "${l_ip}:${l_dir}"; then
+        # Clear the DNAT rule.
+        if ! delete_iptable_entry "$l_ip" "$l_nfsip"; then
+            eecho "iptables failed to delete DNAT rule [$l_ip -> $l_nfsip]!"
+        fi
+    else
+        eecho "Failed to unmount [${l_ip}:${l_dir}]!"
+    fi
+}
+
 mkdir -p $OPTDIR
 if [ $? -ne 0 ]; then
     eecho "[FATAL] Not able to create '${OPTDIR}'!"

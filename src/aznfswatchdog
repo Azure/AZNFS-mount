@@ -101,6 +101,14 @@ while :; do
         fi
 
         #
+        # If mount.aznfs program is killed in a state where IPtable entry is
+        # added, entry with PID is added, mount has happened but the final 
+        # entry is not added, aznfswatchdog should fix it by removing the entry
+        # with PID and by adding original entry.
+        #
+        fixup_mountmap=false
+
+        #
         # This entry was added by get_free_local_ip() call in mount.aznfs to
         # to ensure two parallel mount requests do not get same local ip. Skip
         # this entry if PID is active.
@@ -119,8 +127,10 @@ while :; do
                 if ! ensure_mountmap_not_exist "$line"; then
                     eecho "Failed to delete [$line] from ${MOUNTMAP}!"
                 fi
+                fixup_mountmap=true
+            else
+                continue
             fi
-            continue
         fi
 
         #
@@ -151,6 +161,24 @@ while :; do
                 eecho "Failed to delete [$line] from ${MOUNTMAP}!"
             fi
             continue
+        else 
+            if $fixup_mountmap; then
+                if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $l_nfsip"; then
+                    eecho "Failed to add [$l_host:$l_dir $l_ip $l_nfsip] in ${MOUNTMAP}!"
+
+                    #
+                    # Since we do not have the entry in MOUNTMAP to track the
+                    # mount, safe to unmount it. It is better to unmount it now
+                    # than leaving it around which can render it unusable at
+                    # an arbitrary point in future when the account is
+                    # migrated. 
+                    #
+                    # Note: User may already be using the mount and we will
+                    #       unmount under him.
+                    #
+                    unmount_and_delete_iptable_entry "$l_ip" "$l_dir" "$l_nfsip"
+                fi
+            fi
         fi
 
         #
