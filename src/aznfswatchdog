@@ -147,15 +147,15 @@ while :; do
         if ! echo "$findmnt" | grep " nfs $m_share " > /dev/null; then
             # delete the line from MOUNTMAP file.
             pecho "Deleting unmounted share from ${MOUNTMAP} [$line]."
-            if ! delete_iptable_entry "$l_ip" "$l_nfsip"; then
-                eecho "iptables failed to delete DNAT rule [$l_ip -> $l_nfsip]!"
 
-                #
-                # Fallthrough to delete the mountmap entry. The iptable entry
-                # will be leaked but not deleting mountmap entry might cause
-                # this situation to occur again and again and flood the logs.
-                #
-            fi
+            delete_iptable_entry "$l_ip" "$l_nfsip"
+
+            #
+            # Ignore the status of delete_iptable_entry and fallthrough to
+            # delete the mountmap entry. The iptable entry will be leaked but
+            # not deleting mountmap entry might cause this situation to occur 
+            # again and again and flood the logs.
+            #
             
             if ! ensure_mountmap_not_exist "$line"; then
                 eecho "Failed to delete [$line] from ${MOUNTMAP}!"
@@ -213,15 +213,14 @@ while :; do
             pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
 
             # Delete old DNAT rule and the conntrack entry to stop current active connections too.
-            if ! delete_iptable_entry "$l_ip" "$l_nfsip"; then
-                eecho "iptables failed to delete DNAT rule [$l_ip -> $l_nfsip]!"
+            delete_iptable_entry "$l_ip" "$l_nfsip"
 
-                #
-                # Fallthrough to add new iptable entry since it will be added 
-                # at the front of the chain, the new entry will be used instead
-                # of the old one.
-                #
-            fi
+            #
+            # Ignore the status of delete_iptable_entry and fallthrough to
+            # delete the mountmap entry. The iptable entry will be leaked but
+            # not deleting mountmap entry might cause this situation to occur 
+            # again and again and flood the logs.
+            #
 
             # Add DNAT rule for forwarding local ip traffic to the new blob endpoint IP address.
             if add_iptable_entry "$l_ip" "$new_ip"; then

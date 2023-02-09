@@ -451,10 +451,15 @@ mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point
 if [ $? -ne 0 ]; then
     eecho "Mount failed!"
 
-    # Clear the DNAT rule.
-    if ! delete_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
-        eecho "iptables failed to delete DNAT rule [$LOCAL_IP -> $nfs_ip]!"
-    fi
+    # Clear the DNAT rule and the conntrack entry to stop current active connections too.
+    delete_iptable_entry "$LOCAL_IP" "$nfs_ip"
+
+    #
+    # Ignore the status of delete_iptable_entry and fallthrough to delete the
+    # mountmap entry. The iptable entry will be leaked but not deleting
+    # mountmap entry might cause this situation to occur again and again and
+    # flood the logs.
+    #
 
     # Remove the entry with PID for this mount added in get_free_local_ip() above. 
     if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then

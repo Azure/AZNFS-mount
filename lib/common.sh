@@ -270,11 +270,9 @@ delete_iptable_entry()
             return 1
         fi
 
-        conntrack -D conntrack -p tcp -d "$1" -r "$2"
-        if [ $? -ne 0 ]; then
-            eecho "Failed to delete netfilter connection tracking [$1 -> $2]!"
-            return 1
-        fi
+        # Ignore status of conntrack because entry may not exist (timed out).
+        output=$(conntrack -D conntrack -p tcp -d "$1" -r "$2" 2>&1)
+        vecho "$output"
     else
         wecho "DNAT rule [$1 -> $2] does not exist."
     fi
