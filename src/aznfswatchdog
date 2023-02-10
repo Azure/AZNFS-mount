@@ -76,27 +76,21 @@ while :; do
 
         if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAP: [$line]!"
-            if ! ensure_mountmap_not_exist "$line"; then
-                eecho "Failed to delete [$line] from ${MOUNTMAP}!"
-            fi
+            ensure_mountmap_not_exist "$line"
             continue
         fi
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid.
         if ! is_private_ip "$l_ip"; then
             wecho "[FATAL] local ip ($l_ip) is invalid!"
-            if ! ensure_mountmap_not_exist "$line"; then
-                eecho "Failed to delete [$line] from ${MOUNTMAP}!"
-            fi
+            ensure_mountmap_not_exist "$line"
             continue
         fi
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid.
         if ! is_valid_ipv4_address "$l_nfsip"; then
             wecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
-            if ! ensure_mountmap_not_exist "$line"; then
-                eecho "Failed to delete [$line] from ${MOUNTMAP}!"
-            fi
+            ensure_mountmap_not_exist "$line"
             continue
         fi
 
@@ -124,9 +118,7 @@ while :; do
 
             if ! ps -p $l_pid > /dev/null; then
                 wecho "[FATAL] PID ($l_pid) is not active!"
-                if ! ensure_mountmap_not_exist "$line"; then
-                    eecho "Failed to delete [$line] from ${MOUNTMAP}!"
-                fi
+                ensure_mountmap_not_exist "$line"
                 fixup_mountmap=true
             else
                 continue
@@ -157,14 +149,11 @@ while :; do
             # again and again and flood the logs.
             #
             
-            if ! ensure_mountmap_not_exist "$line"; then
-                eecho "Failed to delete [$line] from ${MOUNTMAP}!"
-            fi
+            ensure_mountmap_not_exist "$line"
             continue
         else 
             if $fixup_mountmap; then
                 if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $l_nfsip"; then
-                    eecho "Failed to add [$l_host:$l_dir $l_ip $l_nfsip] in ${MOUNTMAP}!"
 
                     #
                     # Since we do not have the entry in MOUNTMAP to track the
@@ -231,7 +220,6 @@ while :; do
                 # used local_ip is not used by any other new aznfs mount.
                 # 
                 if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $new_ip"; then
-                    eecho "Failed to add [$l_host:$l_dir $l_ip $new_ip] in ${MOUNTMAP}!"
                     eecho "This can likely be due to some unexpected manipulation of the ${MOUNTMAP} file."
                     eecho "Aznfswatchdog service exiting, will not monitor Azure NFS shares for change in endpoint IP."
                     eecho "Please contact Microsoft support."
@@ -240,7 +228,6 @@ while :; do
 
                 # Delete the entry from MOUNTMAP.
                 if ! ensure_mountmap_not_exist "$line"; then
-                    eecho "Failed to delete [$line] from ${MOUNTMAP}!"
                     eecho "This can likely be due to some unexpected manipulation of the ${MOUNTMAP} file."
                     eecho "Aznfswatchdog service exiting, will not monitor Azure NFS shares for change in endpoint IP."
                     eecho "Please contact Microsoft support."
@@ -252,7 +239,6 @@ while :; do
                     exit 0
                 fi
             else
-                eecho "iptables failed to set DNAT rule [$l_ip -> $new_ip]!"
                 eecho "Will reattempt the operation in next iteration."
             fi
         fi 

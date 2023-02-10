@@ -426,22 +426,14 @@ if [ $ret -ne 0 ]; then
     exit 1
 fi
 
-vecho "nfs_host=[$nfs_host]"
-vecho "nfs_ip=[$nfs_ip]"
-vecho "nfs_dir=[$nfs_dir]"
-vecho "mount_point=[$mount_point]"
-vecho "options=[$OPTIONS]"
-vecho "mount_options=[$MOUNT_OPTIONS]"
-vecho "local_ip=$LOCAL_IP"
+vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
 
 # Add DNAT rule for forwarding LOCAL_IP traffic to the actual blob endpoint IP address.
 if ! add_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
-    eecho "iptables failed to set DNAT rule [$LOCAL_IP -> $nfs_ip]!"
+    # Do not log anything here since we have already logged in add_iptable_entry.
 
     # Remove the entry with PID for this mount added in get_free_local_ip() above. 
-    if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
-    fi
+    ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
 
     exit 1
 fi
@@ -462,9 +454,7 @@ if [ $? -ne 0 ]; then
     #
 
     # Remove the entry with PID for this mount added in get_free_local_ip() above. 
-    if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
-    fi
+    ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
 
     exit 1
 fi
@@ -474,12 +464,8 @@ fi
 # any other thread from using this local IP.
 #
 if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
-    eecho "Failed to add [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip] in ${MOUNTMAP}!"
-
     # Remove the entry with PID for this mount added in get_free_local_ip() above. 
-    if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-        eecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
-    fi
+    ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
 
     eecho "Mount failed!"
 
@@ -489,14 +475,11 @@ if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
     exit 1
 fi
 
-# Remove the entry with PID for this mount after adding the original entry. 
-if ! ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"; then
-    vecho "Failed to delete [$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID] from ${MOUNTMAP}!"
-    
-    #
-    # We do not fail in this case as aznfswatchdog will be able to correctly
-    # remove this entry with PID.
-    #
-fi
+#
+# Remove the entry with PID for this mount after adding the original entry.
+# We do not fail if this fails as aznfswatchdog will be able to correctly
+# remove this entry with PID.
+#
+ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
 
 exit 0
