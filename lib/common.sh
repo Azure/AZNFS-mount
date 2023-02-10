@@ -29,9 +29,9 @@ _log()
 
     echo $echoarg -e "${color}${msg}${NORMAL}"
     (
-        flock -e 9
+        flock -e 999
         echo $echoarg -e "$(date -u) $(hostname) $$: ${color}${msg}${NORMAL}" >> $LOGFILE
-    ) 9<$LOGFILE
+    ) 999<$LOGFILE
 }
 
 #
@@ -105,9 +105,9 @@ vecho()
     # Unless AZNFS_VERBOSE flag is set, do not echo to console.
     if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
         (
-            flock -e 9
+            flock -e 999
             echo $echoarg -e "$(date -u) $(hostname): ${color}${*}${NORMAL}" >> $LOGFILE
-        ) 9<$LOGFILE
+        ) 999<$LOGFILE
 
         return
     fi
@@ -204,7 +204,7 @@ is_private_ip()
 ensure_mountmap_exist()
 {
     (
-        flock -e 9
+        flock -e 999
         egrep -q "^${1}$" $MOUNTMAP
         if [ $? -ne 0 ]; then
             chattr -f -i $MOUNTMAP
@@ -218,7 +218,7 @@ ensure_mountmap_exist()
         else
             pecho "[$1] already exists in ${MOUNTMAP}."
         fi 
-    ) 9<$MOUNTMAP
+    ) 999<$MOUNTMAP
 }
 
 #
@@ -227,7 +227,7 @@ ensure_mountmap_exist()
 ensure_mountmap_not_exist()
 {
     (
-        flock -e 9
+        flock -e 999
         chattr -f -i $MOUNTMAP
         sed -i "\%^${1}$%d" $MOUNTMAP
         if [ $? -ne 0 ]; then
@@ -236,7 +236,7 @@ ensure_mountmap_not_exist()
             return 1
         fi
         chattr -f +i $MOUNTMAP
-    ) 9<$MOUNTMAP
+    ) 999<$MOUNTMAP
 }
 
 #
@@ -244,9 +244,9 @@ ensure_mountmap_not_exist()
 #
 add_iptable_entry()
 {
-    iptables -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
+    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
     if [ $? -ne 0 ]; then
-        iptables -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+        iptables -w 60 -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
             eecho "Failed to add DNAT rule [$1 -> $2]!"
             return 1
@@ -262,9 +262,9 @@ add_iptable_entry()
 #
 delete_iptable_entry()
 {
-    iptables -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
+    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
     if [ $? -eq 0 ]; then
-        iptables -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+        iptables -w 60 -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
             eecho "Failed to delete DNAT rule [$1 -> $2]!"
             return 1
