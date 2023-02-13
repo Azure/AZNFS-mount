@@ -28,6 +28,8 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/${pkg_dir}/sbin/
 mkdir -p ${STG_DIR}/${pkg_dir}/${opt_dir}
 cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/${pkg_dir}/${opt_dir}/
 
+cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/lib/systemd/system
+
 cd $STG_DIR
 
 # Create the package.
