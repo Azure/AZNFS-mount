@@ -41,6 +41,3 @@ jobs:
         upload_url: ${{ steps.crete_release.outputs.upload_url }}
         asset_path: ./mount_helper_package.deb
         asset_name: mount_helper_package.deb
-
-  upload_installer_script:
-    needs: package_mount_helper
