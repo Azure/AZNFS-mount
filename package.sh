@@ -10,6 +10,7 @@ echo "===== package.sh called. ====="
 pkg_name="aznfs"
 pkg_dir=${pkg_name}_${BUILD_NUMBER}_amd64
 opt_dir="/opt/microsoft/${pkg_name}"
+system_dir="/lib/systemd/system"
 
 # Create the directory to hold the package control and data files.
 mkdir -p ${STG_DIR}/${pkg_dir}
@@ -28,7 +29,8 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/${pkg_dir}/sbin/
 mkdir -p ${STG_DIR}/${pkg_dir}/${opt_dir}
 cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/${pkg_dir}/${opt_dir}/
 
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/lib/systemd/system
+mkdir -p ${STG_DIR}/${pkg_dir}/${system_dir}
+cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${pkg_dir}/${system_dir}
 
 cd $STG_DIR
 
