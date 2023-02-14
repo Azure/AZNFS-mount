@@ -1,1 +1,16 @@
 #!/bin/bash
+
+# Exit on error.
+set -e
+
+echo "===== postinst called. ====="
+
+chmod +x /sbin/aznfswatchdog
+chmod u+s,+x /sbin/mount.aznfs
+
+systemctl daemon-reload
+systemctl enable aznfswatchdog
+systemctl start aznfswatchdog
+systemctl status aznfswatchdog
+
+echo "===== postinst done. ====="

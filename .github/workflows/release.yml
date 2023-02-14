@@ -39,5 +39,5 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.crete_release.outputs.upload_url }}
-        asset_path: ./mount_helper_package.deb
-        asset_name: mount_helper_package.deb
+        asset_path: ./aznfs.deb
+        asset_name: aznfs.deb

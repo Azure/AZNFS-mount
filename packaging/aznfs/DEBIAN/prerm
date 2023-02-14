@@ -1,1 +1,8 @@
 #!/bin/bash
+
+# Exit on error.
+set -e
+
+echo "===== prerm called. ====="
+
+echo "===== prerm called. ====="
