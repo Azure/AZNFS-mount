@@ -3,11 +3,7 @@
 # Exit on error.
 set -e
 
-echo "===== prerm called. ====="
-
 systemctl stop aznfswatchdog
 systemctl disable aznfswatchdog
 systemctl daemon-reload
 echo "Stopped aznfswatchdog service."
-
-echo "===== prerm called. ====="

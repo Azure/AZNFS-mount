@@ -3,10 +3,7 @@
 # Exit on error.
 set -e
 
-echo "===== package.sh called. ====="
-
 #STG_DIR, BUILD_NUMBER and SOURCE_DIR will be taken as env var.
-
 pkg_name="aznfs"
 pkg_dir=${pkg_name}_${BUILD_NUMBER}_amd64
 opt_dir="/opt/microsoft/${pkg_name}"
@@ -36,5 +33,3 @@ cd $STG_DIR
 
 # Create the package.
 dpkg-deb --build $pkg_dir
-
-echo "====== package.sh done. ====="

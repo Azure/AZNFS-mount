@@ -2,7 +2,3 @@
 
 # Exit on error.
 set -e
-
-echo "===== preinst called. ====="
-
-echo "===== preinst done. ====="
