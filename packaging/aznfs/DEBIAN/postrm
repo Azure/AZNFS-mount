@@ -5,4 +5,8 @@ set -e
 
 echo "===== postrm called. ====="
 
+chattr -i /opt/microsoft/aznfs/mountmap
+rm -r /opt/microsoft/aznfs
+echo "Cleaned /opt/microsoft/aznfs directory."
+
 echo "===== postrm called. ====="
