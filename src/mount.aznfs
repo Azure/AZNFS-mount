@@ -435,6 +435,8 @@ if ! add_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
     # Remove the entry with PID for this mount added in get_free_local_ip() above. 
     ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
 
+    eecho "Mount Failed!"
+
     exit 1
 fi
 
