@@ -18,11 +18,12 @@ jobs:
     - name: Run Package.sh
       run: |
         chmod +x ./package.sh
+        chmod +x ./packaging/aznfs/DEBIAN/*
         ./package.sh
       shell: bash
     - name: Create Release
-      id: crete_release
-      uses: actions/crete_release@v1
+      id: create_release
+      uses: actions/create_release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
