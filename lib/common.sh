@@ -106,7 +106,7 @@ vecho()
     if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
         (
             flock -e 999
-            echo $echoarg -e "$(date -u) $(hostname): ${color}${*}${NORMAL}" >> $LOGFILE
+            echo $echoarg -e "$(date -u) $(hostname) $$: ${color}${*}${NORMAL}" >> $LOGFILE
         ) 999<$LOGFILE
 
         return
