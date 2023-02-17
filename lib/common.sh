@@ -272,7 +272,7 @@ delete_iptable_entry()
 
         # Ignore status of conntrack because entry may not exist (timed out).
         output=$(conntrack -D conntrack -p tcp -d "$1" -r "$2" 2>&1)
-        vecho "$output"
+        # vecho "$output"
     else
         wecho "DNAT rule [$1 -> $2] does not exist."
     fi
