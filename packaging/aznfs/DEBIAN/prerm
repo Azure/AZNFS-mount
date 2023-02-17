@@ -3,6 +3,17 @@
 # Exit on error.
 set -e
 
+# Verify if remaining mounts are there, warn the user about this.
+remaining_mounts=$(cat /opt/microsoft/aznfs/mountmap | wc -l)
+if [ remaining_mounts -ne 0 ]; then
+	echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!"
+	read -n 1 -p "Are you sure you want to continue? Y/N: " result
+	if [ $result -eq "N" -o $result -eq "n" ]; then
+		exit 1
+	fi
+fi	
+
+# Stop aznfswatchdog service and clean it.
 systemctl stop aznfswatchdog
 systemctl disable aznfswatchdog
 systemctl daemon-reload

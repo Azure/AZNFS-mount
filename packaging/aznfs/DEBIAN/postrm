@@ -1,8 +1,10 @@
 #!/bin/bash
 
-# Exit on error.
-set -e
+chattr -if /opt/microsoft/aznfs/mountmap
 
-chattr -i /opt/microsoft/aznfs/mountmap
 rm -r /opt/microsoft/aznfs
-echo "Cleaned /opt/microsoft/aznfs directory."
+if [ $? -ne 0 ]; then
+	echo "Failed to clean [/opt/microsoft/aznfs]!"
+else
+	echo "Cleaned [/opt/microsoft/aznfs] directory."
+fi

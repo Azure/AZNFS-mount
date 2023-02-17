@@ -3,9 +3,11 @@
 # Exit on error.
 set -e
 
+# Make these files executable.
 chmod +x /sbin/aznfswatchdog
 chmod +x /sbin/mount.aznfs
 
+# Start aznfswatchdog service.
 systemctl daemon-reload
 systemctl enable aznfswatchdog
 systemctl start aznfswatchdog

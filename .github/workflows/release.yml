@@ -7,7 +7,6 @@ name: Release to github for Mount Helper
 on:
   workflow_dispatch:
 
-
 jobs:
   package_mount_helper:
     name: Package and Release Mount Helper
