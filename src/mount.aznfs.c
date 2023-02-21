@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
         perror("setreuid failed!");
     }
 
-    char arguments[50];
+    char arguments[2000];
     strcpy(arguments, "/opt/microsoft/aznfs/mountscript.sh ");
     
     for (int i = 1; i < argc; i++)
