@@ -6,6 +6,10 @@ name: Release to github for Mount Helper
 
 on:
   workflow_dispatch:
+    inputs:
+      versionName:
+        description: 'Version Name'
+        required: true
 
 jobs:
   package_mount_helper:
@@ -17,29 +21,18 @@ jobs:
     - name: Run Package.sh
       shell: bash
       run: |
-        export BUILD_NUMBER="1.0.0"
+        export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
         export STG_DIR=$GITHUB_WORKSPACE
         export SOURCE_DIR=$GITHUB_WORKSPACE
         chmod +x $GITHUB_WORKSPACE/package.sh
         $GITHUB_WORKSPACE/package.sh
     - name: Create Release
-      id: create_release
-      uses: actions/create_release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        name: Release ${{ github.event.inputs.versionName }}
+        tag_name: ${{ github.event.inputs.versionName }}
+        files: |
+          ${{ github.workspace}}/aznfs_${{ github.event.inputs.versionName }}_amd64.deb
+          ${{ github.workspace}}/scripts/installerScript.sh
         body: |
-          # This could be filled depends on the release.ref
-        draft: false
-        prerelease: false
-    - name: Upload Release Asset
-      id: upload-release-asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.crete_release.outputs.upload_url }}
-        asset_path: ./aznfs.deb
-        asset_name: aznfs.deb
+          New Release ${{ github.event.inputs.versionName }}
