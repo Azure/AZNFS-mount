@@ -14,6 +14,7 @@ mkdir -p ${STG_DIR}/${pkg_dir}
 
 # Copy the debian control file(s) and maintainer scripts.
 cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/* ${STG_DIR}/${pkg_dir}/
+chmod +x ${STG_DIR}/${pkg_dir}/DEBIAN/*
 
 # Insert current build number.
 sed -i -e "s/Version: x.y.z/Version: ${BUILD_NUMBER}/g" ${STG_DIR}/${pkg_dir}/DEBIAN/control

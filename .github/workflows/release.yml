@@ -15,11 +15,13 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Run Package.sh
-      run: |
-        chmod +x ./package.sh
-        chmod +x ./packaging/aznfs/DEBIAN/*
-        ./package.sh
       shell: bash
+      run: |
+        export BUILD_NUMBER="1.0.0"
+        export STG_DIR=$GITHUB_WORKSPACE
+        export SOURCE_DIR=$GITHUB_WORKSPACE
+        chmod +x $GITHUB_WORKSPACE/package.sh
+        $GITHUB_WORKSPACE/package.sh
     - name: Create Release
       id: create_release
       uses: actions/create_release@v1

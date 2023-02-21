@@ -5,5 +5,5 @@ Architecture: amd64
 Origin: Microsoft
 Maintainer: Azure Storage XNFSv3 IDC Team <xnfsv3devsidc@microsoft.com>
 Homepage: https://github.com/Azure/BlobNFS-mount/blob/main/README.md
-Description: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts.
+Description: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 Depends: conntrack, iptables, bind9-host, iproute2, util-linux, nfs-common, build-essential
