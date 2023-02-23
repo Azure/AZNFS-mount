@@ -1,10 +1,4 @@
 #!/bin/bash
 
 chattr -if /opt/microsoft/aznfs/mountmap
-
-rm -r /opt/microsoft/aznfs
-if [ $? -ne 0 ]; then
-	echo "Failed to clean [/opt/microsoft/aznfs]!"
-else
-	echo "Cleaned [/opt/microsoft/aznfs] directory."
-fi
+rm -rf /opt/microsoft/aznfs

@@ -3,15 +3,13 @@
 # Exit on error.
 set -e
 
-# Compile and get executable file of mount.aznfs.c which will be used via mount. 
-gcc /opt/microsoft/aznfs/mount.aznfs.c -o /sbin/mount.aznfs
-
-# Make these files executable.
-chmod +x /sbin/aznfswatchdog
-chmod +x /opt/microsoft/aznfs/mountscript.sh
-
+# Set appropriate permissions.
+chmod 0755 /opt/microsoft/aznfs/
+chmod 0755 /sbin/aznfswatchdog
+chmod 0755 /opt/microsoft/aznfs/mountscript.sh
+chmod 0644 /opt/microsoft/aznfs/common.sh
 # Set suid bit for mount.aznfs to allow mount for non-super user.
-chmod +s /sbin/mount.aznfs
+chmod 4755 /sbin/mount.aznfs
 
 # Start aznfswatchdog service.
 systemctl daemon-reload
