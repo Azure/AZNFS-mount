@@ -9,6 +9,7 @@ User=root
 
 ExecStart=/usr/sbin/aznfswatchdog
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
