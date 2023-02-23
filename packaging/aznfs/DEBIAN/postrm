@@ -1,0 +1,4 @@
+#!/bin/bash
+
+chattr -if /opt/microsoft/aznfs/mountmap
+rm -rf /opt/microsoft/aznfs

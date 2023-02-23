@@ -1,0 +1,9 @@
+Package: aznfs
+Version: x.y.z
+Priority: required
+Architecture: amd64
+Origin: Microsoft
+Maintainer: Azure Storage XNFSv3 IDC Team <xnfsv3devsidc@microsoft.com>
+Homepage: https://github.com/Azure/BlobNFS-mount/blob/main/README.md
+Description: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
+Depends: conntrack, iptables, bind9-host, iproute2, util-linux, nfs-common
