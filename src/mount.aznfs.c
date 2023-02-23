@@ -4,26 +4,18 @@
 #include <unistd.h>
 #include <sys/types.h>
 
+#define MOUNTSCRIPT "/opt/microsoft/aznfs/mountscript.sh"
+
 int main(int argc, char *argv[])
 {
-    if (setreuid(0,0) != 0)
+    if (setreuid(0, 0) != 0)
     {
-        perror("setreuid failed!");
-    }
-
-    char arguments[2000];
-    strcpy(arguments, "/opt/microsoft/aznfs/mountscript.sh ");
-    
-    for (int i = 1; i < argc; i++)
-    {
-        strcat(arguments, argv[i]);
-        if (i != argc-1)
-        {
-            strcat(arguments, " ");
-        }
+        perror("setreuid");
+        return 1;
     }
 
     // Run "/opt/microsoft/aznfs/mountscript.sh" which will do original mount.
-    system(arguments);
-    return 0;
+    execv(MOUNTSCRIPT, argv);
+    perror("execv");
+    return 1;
 }

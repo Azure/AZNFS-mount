@@ -441,8 +441,10 @@ if ! add_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
 fi
 
 # Do the actual mount.
-mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point"
-if [ $? -ne 0 ]; then
+mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
+mount_status=$?
+pecho "$mount_output"
+if [ $mount_status -ne 0 ]; then
     eecho "Mount failed!"
 
     # Clear the DNAT rule and the conntrack entry to stop current active connections too.
