@@ -1,0 +1,246 @@
+#!/bin/bash 
+
+#
+# How often does the watchdog look for unmounts and/or IP address changes for
+# Blob endpoints. 
+#
+MONITOR_INTERVAL_SECS=5
+IP_CHANGE_DETECTION_FREQUENCY=60
+next_ip_change_detection_epoch=0
+
+# Load common aznfs helpers.
+. /opt/microsoft/aznfs/common.sh
+
+if ! chattr -f +i $MOUNTMAP; then
+    wecho "chattr does not work for ${MOUNTMAP}!"
+fi
+
+#
+# Watchdog for monitoring unmounts and more importantly change in blob endpoint
+# addresses possibly as a result of migration.
+#
+while :; do
+    sleep $MONITOR_INTERVAL_SECS
+
+    #
+    # TODO: Add a function reconcile_mountmap() and call it from here. This
+    #       should reconstruct the MOUNTMAP file from findmnt and output of
+    #       iptables. This will be added in subsequent revisions.
+    #
+
+    findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
+
+    #
+    # For no matching mounts also, findmnt exits with a failure return, so check
+    # for both exit status and non-empty error o/p.
+    #
+    if [ $? -ne 0 -a -n "$findmnt" ]; then
+        eecho "findmnt failed!"
+        eecho "${findmnt}."
+        # This usually indicates some non-transient issue, bail out.
+        exit 1
+    fi
+
+    do_ip_change_detection=false
+    epoch_now=$(date +%s)
+    if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
+        do_ip_change_detection=true
+        next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)        
+    fi
+
+    #
+    # Go over all lines in $MOUNTMAP and check them for two things:
+    # 1. Is that entry still mounted, if not remove the entry.
+    # 2. Has the Blob endpoint address changed from what is stored?
+    #    If yes, update DNAT rule to point to the new address.
+    #
+    # Sample line in $MOUNTMAP.
+    # account.blob.preprod.core.windows.net:/testaccount/testcontainer 10.100.100.100 52.230.170.200
+    #
+    # where the format is
+    # <blobendpoint>:/account/container LOCAL_IP blobendpoint_ip
+    # 
+    IFS=$'\n' lines=$(cat $MOUNTMAP) 
+
+    for line in $lines; do
+        if [ -z "$line" ]; then
+            continue
+        fi
+
+        l_share=$(echo "$line" | awk '{print $1}')
+        l_host=$(echo "$l_share" | cut -d: -f1)
+        l_dir=$(echo "$l_share" | cut -d: -f2)
+        l_ip=$(echo "$line" | awk '{print $2}')
+        l_nfsip=$(echo "$line" | awk '{print $3}')
+        l_pid=$(echo "$line" | awk '{print $4}')
+
+        if [ -z "$l_host" -o -z "$l_dir" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
+            wecho "[FATAL] Deleting invalid line in $MOUNTMAP: [$line]!"
+            ensure_mountmap_not_exist "$line"
+            continue
+        fi
+
+        # Since we added it to the MOUNTMAP file, it cannot be invalid.
+        if ! is_private_ip "$l_ip"; then
+            wecho "[FATAL] local ip ($l_ip) is invalid!"
+            ensure_mountmap_not_exist "$line"
+            continue
+        fi
+
+        # Since we added it to the MOUNTMAP file, it cannot be invalid.
+        if ! is_valid_ipv4_address "$l_nfsip"; then
+            wecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
+            ensure_mountmap_not_exist "$line"
+            continue
+        fi
+
+        #
+        # If mount.aznfs program is killed in a state where IPtable entry is
+        # added, entry with PID is added, mount has happened but the final 
+        # entry is not added, aznfswatchdog should fix it by removing the entry
+        # with PID and by adding original entry.
+        #
+        fixup_mountmap=false
+
+        #
+        # This entry was added by get_free_local_ip() call in mount.aznfs to
+        # to ensure two parallel mount requests do not get same local ip. Skip
+        # this entry if PID is active.
+        #
+        if [ -n "$l_pid" ]; then
+            #
+            # If the line was deleted by the mount.aznfs after we read it from
+            # MOUNTMAP and till we reached this point, ignore this line.
+            #
+            if ! egrep -q "^${line}$" $MOUNTMAP; then
+                continue
+            fi
+
+            if ! ps -p $l_pid > /dev/null; then
+                wecho "[FATAL] PID ($l_pid) is not active!"
+                ensure_mountmap_not_exist "$line"
+                fixup_mountmap=true
+            else
+                continue
+            fi
+        fi
+
+        #
+        # Local share name. Note that we mount the local IP and not the actual
+        # Blob endpoint IP and map local IP to actual Blob endpoint IP using
+        # DNAT rule.
+        #
+        m_share="$l_ip:$l_dir"
+
+        #
+        # Delete entry from MOUNTMAP if share is unmounted.
+        # TODO: What if user unmounts and mounts before MONITOR_INTERVAL_SECS secs?
+        #
+        if ! echo "$findmnt" | grep " nfs $m_share " > /dev/null; then
+            # delete the line from MOUNTMAP file.
+            pecho "Deleting unmounted share from ${MOUNTMAP} [$line]."
+
+            delete_iptable_entry "$l_ip" "$l_nfsip"
+
+            #
+            # Ignore the status of delete_iptable_entry and fallthrough to
+            # delete the mountmap entry. The iptable entry will be leaked but
+            # not deleting mountmap entry might cause this situation to occur 
+            # again and again and flood the logs.
+            #
+            
+            ensure_mountmap_not_exist "$line"
+            continue
+        else 
+            if $fixup_mountmap; then
+                if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $l_nfsip"; then
+
+                    #
+                    # Since we do not have the entry in MOUNTMAP to track the
+                    # mount, safe to unmount it. It is better to unmount it now
+                    # than leaving it around which can render it unusable at
+                    # an arbitrary point in future when the account is
+                    # migrated. 
+                    #
+                    # Note: User may already be using the mount and we will
+                    #       unmount under him.
+                    #
+                    unmount_and_delete_iptable_entry "$l_ip" "$l_dir" "$l_nfsip"
+                fi
+            fi
+        fi
+
+        #
+        # We do IP change detection less frequently than unmount detection
+        # since it will cause DNS calls on network.
+        #
+        if ! $do_ip_change_detection; then
+            continue
+        fi
+
+        #
+        # Check if blob endpoint IP address changed.
+        # This is the migration check.
+        #
+        new_ip=$(resolve_ipv4 "$l_host")
+
+        # If we fail to resolve the host name, try next time.
+        if [ $? -ne 0 ]; then
+            eecho "resolve_ipv4($l_host) failed!"
+            continue
+        fi
+
+        #
+        # If the IP changed for the Blob endpoint, we need to update the DNAT rule.
+        # This will take care of migration/failover causing the Blob endpoint IP to change.
+        #
+        # TODO: Make this less frequent than the unmount check.
+        #
+        # echo "$l_host: new_ip=$new_ip, l_nfsip=$l_nfsip"
+        #
+        if [ "$new_ip" != "$l_nfsip" ]; then
+            pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
+
+            # Delete old DNAT rule and the conntrack entry to stop current active connections too.
+            delete_iptable_entry "$l_ip" "$l_nfsip"
+
+            #
+            # Ignore the status of delete_iptable_entry and fallthrough to
+            # delete the mountmap entry. The iptable entry will be leaked but
+            # not deleting mountmap entry might cause this situation to occur 
+            # again and again and flood the logs.
+            #
+
+            # Add DNAT rule for forwarding local ip traffic to the new blob endpoint IP address.
+            if add_iptable_entry "$l_ip" "$new_ip"; then
+                
+                #
+                # Add new entry in MOUNTMAP.
+                # We add the new entry before deleting the old one so that already 
+                # used local_ip is not used by any other new aznfs mount.
+                # 
+                if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $new_ip"; then
+                    eecho "This can likely be due to some unexpected manipulation of the ${MOUNTMAP} file."
+                    eecho "Aznfswatchdog service exiting, will not monitor Azure NFS shares for change in endpoint IP."
+                    eecho "Please contact Microsoft support."
+                    exit 0
+                fi
+
+                # Delete the entry from MOUNTMAP.
+                if ! ensure_mountmap_not_exist "$line"; then
+                    eecho "This can likely be due to some unexpected manipulation of the ${MOUNTMAP} file."
+                    eecho "Aznfswatchdog service exiting, will not monitor Azure NFS shares for change in endpoint IP."
+                    eecho "Please contact Microsoft support."
+
+                    #
+                    # Bail out in this case because if we keep checking for this
+                    # entry, it will flood the logs and iptables. 
+                    #
+                    exit 0
+                fi
+            else
+                eecho "Will reattempt the operation in next iteration."
+            fi
+        fi 
+    done 
+done
