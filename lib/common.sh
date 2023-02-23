@@ -272,7 +272,9 @@ delete_iptable_entry()
 
         # Ignore status of conntrack because entry may not exist (timed out).
         output=$(conntrack -D conntrack -p tcp -d "$1" -r "$2" 2>&1)
-        # vecho "$output"
+        if [ $? -ne 0 ]; then
+            vecho "$output"
+        fi
     else
         wecho "DNAT rule [$1 -> $2] does not exist."
     fi
@@ -288,8 +290,6 @@ unmount_and_delete_iptable_entry()
     local l_nfsip=$3
 
     pecho "Unmounting [${l_ip}:${l_dir}]."
-
-    # Unmount the share mounted above as we are failing the mount.
     if umount -lf "${l_ip}:${l_dir}"; then
         # Clear the DNAT rule.
         if ! delete_iptable_entry "$l_ip" "$l_nfsip"; then
