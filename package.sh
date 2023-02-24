@@ -36,4 +36,4 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${pkg_dir}${system_di
 cd $STG_DIR
 
 # Create the package.
-dpkg-deb --build $pkg_dir
+dpkg-deb --root-owner-group --build $pkg_dir

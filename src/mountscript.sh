@@ -443,7 +443,11 @@ fi
 # Do the actual mount.
 mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
 mount_status=$?
-pecho "$mount_output"
+
+if [ -n "$mount_output" ]; then 
+    pecho "$mount_output"
+fi
+
 if [ $mount_status -ne 0 ]; then
     eecho "Mount failed!"
 
