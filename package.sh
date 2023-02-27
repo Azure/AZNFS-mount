@@ -22,13 +22,22 @@ sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${pkg_dir}/
 # Copy other static package file(s).
 mkdir -p ${STG_DIR}/${pkg_dir}/sbin
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/${pkg_dir}/sbin/
+cp -avf ${SOURCE_DIR}/src/mount.aznfs ${STG_DIR}/${pkg_dir}/sbin/
 
-# Compile mount.aznfs.c and put the executable into ${STG_DIR}/${pkg_dir}/sbin.
-gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
+# Create the binary of aznfswatchdog to distribute.
+shc -f ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
+rm -r ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
+mv -vf ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog.x ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
+rm -r ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog.x.c
+
+# Create the binary of mount.aznfs to distribute with SETUID enabled.
+shc -S -f ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
+rm -r ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
+mv -vf ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs.x ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
+rm -r ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs.x.c
 
 mkdir -p ${STG_DIR}/${pkg_dir}${opt_dir}
 cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/${pkg_dir}${opt_dir}/
 
 mkdir -p ${STG_DIR}/${pkg_dir}${system_dir}
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${pkg_dir}${system_dir}
