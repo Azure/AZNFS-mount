@@ -6,8 +6,7 @@ set -e
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /sbin/aznfswatchdog
-chmod 0755 /opt/microsoft/aznfs/mountscript.sh
-chmod 0644 /opt/microsoft/aznfs/common.sh
+
 # Set suid bit for mount.aznfs to allow mount for non-super user.
 chmod 4755 /sbin/mount.aznfs
 
