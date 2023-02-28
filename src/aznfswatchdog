@@ -123,8 +123,9 @@ while :; do
             # first time since the mount.aznfs could still be running. Iterate
             # through the loop again from the start to avoid any race condition.
             #
-            if [ ! -v is_pid_entry_checked[$l_pid] ]; then
-                is_pid_entry_checked[$l_pid]='1'
+            epoch_now=$(date +%s)
+            if [ ! -v is_pid_entry_checked[$l_pid] -o is_pid_entry_checked[$l_pid] -le $(expr $epoch_now - 300) ]; then
+                is_pid_entry_checked[$l_pid]=$epoch_now
                 break
             fi
 
@@ -256,5 +257,6 @@ while :; do
                 eecho "Will reattempt the operation in next iteration."
             fi
         fi 
-    done 
+    done
+
 done
