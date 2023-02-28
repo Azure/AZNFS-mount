@@ -9,6 +9,9 @@ pkg_dir="${pkg_name}_${RELEASE_NUMBER}_amd64"
 opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
 
+# Install prerequisite packages.
+sudo apt-get -y install shc
+
 # Create the directory to hold the package control and data files.
 mkdir -p ${STG_DIR}/${pkg_dir}
 
@@ -41,17 +44,17 @@ shc -f ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
 shc -S -f ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
 
 # Remove the bash scripts since those will not be distributed to client.
-rm -r ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
-rm -r ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
-rm -r ${STG_DIR}/${pkg_dir}${opt_dir}/common.sh
+rm -f ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
+rm -f ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
+rm -f ${STG_DIR}/${pkg_dir}${opt_dir}/common.sh
 
 # Rename the binary files to original file name.
 mv -vf ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog.x ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
 mv -vf ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs.x ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
 
 # Remove .x.c file.
-rm -r ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog.x.c
-rm -r ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs.x.c
+rm -f ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog.x.c
+rm -f ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs.x.c
 
 cd $STG_DIR
 
