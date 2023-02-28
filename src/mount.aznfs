@@ -3,7 +3,7 @@
 #
 # Load common aznfs helpers.
 # 
-. /opt/microsoft/aznfs/common.sh
+. ./opt/microsoft/aznfs/common.sh
 
 # 
 # Default order in which we try the network prefixes for a free local IP to use.
