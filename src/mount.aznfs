@@ -3,13 +3,13 @@
 #
 # Load common aznfs helpers.
 # 
-. /opt/microsoft/aznfs/common.sh
+. ./opt/microsoft/aznfs/common.sh
 
 # 
 # Default order in which we try the network prefixes for a free local IP to use.
 # This can be overriden using AZNFS_IP_PREFIXES environment variable. 
 # 
-DEFAULT_AZNFS_IP_PREFIXES="10.100 192.168 172.16"
+DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
 
 IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
 
@@ -118,6 +118,14 @@ is_link_ip()
 #
 is_pinging()
 {
+    #
+    # Unless env var AZFS_PING_LOCAL_IP_BEFORE_USE is set, pretend IP address
+    # is available.
+    #
+    if [ "$AZFS_PING_LOCAL_IP_BEFORE_USE" != "1" ]; then
+        return 0
+    fi
+
     local ip=$1
 
     # 3 secs timeout should be good.
