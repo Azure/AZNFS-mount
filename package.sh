@@ -40,8 +40,8 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${pkg_dir}${system_di
 cd ${STG_DIR}/${pkg_dir}
 
 # Create the binaries of aznfswatchdog and mount.aznfs to distribute.
-CC="gcc -static" shc -f ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
-CC="gcc -static" shc -S -f ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
+CC="gcc -static" shc -vf ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
+CC="gcc -static" shc -S -vf ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
 
 # Remove the bash scripts since those will not be distributed to client.
 rm -f ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
