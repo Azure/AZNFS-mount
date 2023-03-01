@@ -119,10 +119,10 @@ is_link_ip()
 is_pinging()
 {
     #
-    # Unless env var AZFS_PING_LOCAL_IP_BEFORE_USE is set, pretend IP address
+    # Unless env var AZNFS_PING_LOCAL_IP_BEFORE_USE is set, pretend IP address
     # is available.
     #
-    if [ "$AZFS_PING_LOCAL_IP_BEFORE_USE" != "1" ]; then
+    if [ "$AZNFS_PING_LOCAL_IP_BEFORE_USE" != "1" ]; then
         return 1
     fi
 
