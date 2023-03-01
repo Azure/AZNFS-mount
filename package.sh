@@ -9,9 +9,6 @@ pkg_dir="${pkg_name}_${RELEASE_NUMBER}_amd64"
 opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
 
-# Install prerequisite packages.
-sudo apt-get -y install shc
-
 # Create the directory to hold the package control and data files.
 mkdir -p ${STG_DIR}/${pkg_dir}
 
@@ -25,36 +22,16 @@ sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${pkg_dir}/
 # Copy other static package file(s).
 mkdir -p ${STG_DIR}/${pkg_dir}/sbin
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/${pkg_dir}/sbin/
-cp -avf ${SOURCE_DIR}/src/mount.aznfs ${STG_DIR}/${pkg_dir}/sbin/
+
+# Compile mount.aznfs.c and put the executable into ${STG_DIR}/${pkg_dir}/sbin.
+gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
 
 mkdir -p ${STG_DIR}/${pkg_dir}${opt_dir}
 cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/${pkg_dir}${opt_dir}/
+cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/${pkg_dir}${opt_dir}/
 
 mkdir -p ${STG_DIR}/${pkg_dir}${system_dir}
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${pkg_dir}${system_dir}
-
-#
-# Change path to ${STG_DIR}/${pkg_dir} so that aznfswatchdog and mount.aznfs
-# can correctly source common.sh while generating binaries.
-#
-cd ${STG_DIR}/${pkg_dir}
-
-# Create the binaries of aznfswatchdog and mount.aznfs to distribute.
-CC="gcc -static" shc -vf ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
-CC="gcc -static" shc -S -vf ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
-
-# Remove the bash scripts since those will not be distributed to client.
-rm -f ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
-rm -f ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
-rm -f ${STG_DIR}/${pkg_dir}${opt_dir}/common.sh
-
-# Rename the binary files to original file name.
-mv -vf ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog.x ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog
-mv -vf ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs.x ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs
-
-# Remove .x.c file.
-rm -f ${STG_DIR}/${pkg_dir}/sbin/aznfswatchdog.x.c
-rm -f ${STG_DIR}/${pkg_dir}/sbin/mount.aznfs.x.c
 
 cd $STG_DIR
 

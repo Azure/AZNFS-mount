@@ -9,7 +9,7 @@ IP_CHANGE_DETECTION_FREQUENCY=60
 next_ip_change_detection_epoch=0
 
 # Load common aznfs helpers.
-. ./opt/microsoft/aznfs/common.sh
+. /opt/microsoft/aznfs/common.sh
 
 declare -A is_pid_entry_checked
 
