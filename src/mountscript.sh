@@ -3,7 +3,7 @@
 #
 # Load common aznfs helpers.
 # 
-. ./opt/microsoft/aznfs/common.sh
+. /opt/microsoft/aznfs/common.sh
 
 # 
 # Default order in which we try the network prefixes for a free local IP to use.
@@ -123,7 +123,7 @@ is_pinging()
     # is available.
     #
     if [ "$AZFS_PING_LOCAL_IP_BEFORE_USE" != "1" ]; then
-        return 0
+        return 1
     fi
 
     local ip=$1
