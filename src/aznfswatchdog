@@ -32,19 +32,6 @@ while :; do
     #       iptables. This will be added in subsequent revisions.
     #
 
-    findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
-
-    #
-    # For no matching mounts also, findmnt exits with a failure return, so check
-    # for both exit status and non-empty error o/p.
-    #
-    if [ $? -ne 0 -a -n "$findmnt" ]; then
-        eecho "findmnt failed!"
-        eecho "${findmnt}."
-        # This usually indicates some non-transient issue, bail out.
-        exit 1
-    fi
-
     do_ip_change_detection=false
     epoch_now=$(date +%s)
     if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
@@ -64,7 +51,25 @@ while :; do
     # where the format is
     # <blobendpoint>:/account/container LOCAL_IP blobendpoint_ip
     # 
-    IFS=$'\n' lines=$(cat $MOUNTMAP) 
+    IFS=$'\n' lines=$(cat $MOUNTMAP)
+
+    #
+    # findmnt must be done after reading MOUNTMAP so that if we come accross a
+    # MOUNTMAP entry for which there is no corresponding mount, we know for
+    # sure that it has been unmounted.
+    #
+    findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
+
+    #
+    # For no matching mounts also, findmnt exits with a failure return, so check
+    # for both exit status and non-empty error o/p.
+    #
+    if [ $? -ne 0 -a -n "$findmnt" ]; then
+        eecho "findmnt failed!"
+        eecho "${findmnt}."
+        # This usually indicates some non-transient issue, bail out.
+        exit 1
+    fi
 
     for line in $lines; do
         if [ -z "$line" ]; then
