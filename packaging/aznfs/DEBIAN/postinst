@@ -5,7 +5,7 @@ set -e
 
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
-chmod 0755 /sbin/aznfswatchdog
+chmod 0755 /usr/sbin/aznfswatchdog
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
 
@@ -16,4 +16,3 @@ chmod 4755 /sbin/mount.aznfs
 systemctl daemon-reload
 systemctl enable aznfswatchdog
 systemctl start aznfswatchdog
-systemctl status aznfswatchdog
