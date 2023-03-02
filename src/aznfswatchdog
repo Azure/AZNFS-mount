@@ -11,6 +11,8 @@ next_ip_change_detection_epoch=0
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
+vecho "aznfswatchdog has started."
+
 declare -A is_pid_entry_checked
 
 if ! chattr -f +i $MOUNTMAP; then
