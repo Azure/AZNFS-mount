@@ -1,4 +1,6 @@
 #!/bin/bash
 
-chattr -if /opt/microsoft/aznfs/mountmap
-rm -rf /opt/microsoft/aznfs
+if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
+	chattr -if /opt/microsoft/aznfs/mountmap
+	rm -rf /opt/microsoft/aznfs
+fi
