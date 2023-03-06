@@ -8,22 +8,6 @@ apt=0
 zypper=0
 debian=0
 yum="yum"
-
-# For Ubuntu, system updates could sometimes occupy apt. We loop and wait until it's no longer busy
-verify_apt_not_busy() 
-{
-    for i in {1..30}
-    do
-        sudo lsof /var/lib/dpkg/lock-frontend
-        if [ $? -ne 0 ]; then
-            return
-        fi
-        echo "Another apt/dpkg process is updating system. Retrying up to 5 minutes...$(expr $i \* 30) seconds"
-        sleep 10
-    done
-    echo "file /var/lib/dpkg/lock-frontend is still busy after 5 minutes. Please make sure no other apt/dpkg updates is still running, and retry again."
-    exit 1
-}
            
 use_dnf_or_yum() 
 {
@@ -34,6 +18,12 @@ use_dnf_or_yum()
         echo "Using 'dnf' instead of 'yum'"
     fi
 }
+
+if [ $RELEASE_NUMBER == "x.y.z" ]; then
+    echo "This script is directly downloaded from the github source code."
+    echo "Please download the aznfs_install.sh from https://github.com/Azure/BlobNFS-mount/releases/latest"
+    echo "If the problem persists, contact Microsoft support."
+fi
 
 # Detect OS and Version
 __m=$(uname -m 2>/dev/null) || __m=unknown
@@ -53,8 +43,8 @@ case "${__m}:${__s}" in
             distro_version=$(grep VERSION_ID /etc/os-release | awk -F"=" '{ print $2 }' | tr -d '"')
         elif which lsb_release 2>/dev/null; then
             echo "Retrieving distro info from lsb_release command..."
-           distro=$(lsb_release -i | awk -F":" '{ print $2 }')
-           distro_version=$(lsb_release -r | awk -F":" '{ print $2 }')
+            distro=$(lsb_release -i | awk -F":" '{ print $2 }')
+            distro_version=$(lsb_release -r | awk -F":" '{ print $2 }')
         else
             echo "Unknown linux distro."
             exit 1
@@ -72,27 +62,23 @@ case "${distro}" in
         sudo -E ${yum} -y install wget
         ;;
 
-    *SUSE*)
+    *SLES*)
         zypper=1
         sudo -E zypper install -y wget
         ;;
 
-    *ebian*)
-        apt=1
-        debian=1
-        sudo -E apt update
-        sudo -E apt install -y wget
-        sudo -E apt install -y software-properties-common
-        ;;
-
     *buntu*)
         apt=1
-        verify_apt_not_busy
         sudo -E apt update
         sudo -E apt install -y wget
         ;;
 
     *ocky*)
+        use_dnf_or_yum
+        sudo -E ${yum} -y install wget
+        ;;
+
+    *Redhat*)
         use_dnf_or_yum
         sudo -E ${yum} -y install wget
         ;;
@@ -118,7 +104,7 @@ else
 fi
 
 install_exit_code=$?
-if [ $? -ne 0 ]; then
+if [ install_exit_code -ne 0 ]; then
     echo "[FATAL] Error installing aznfs (exit code: $install_exit_code). See '$install_cmd' command logs for more information."
 fi
 
