@@ -131,7 +131,7 @@ while :; do
             # through the loop again from the start to avoid any race condition.
             #
             epoch_now=$(date +%s)
-            if [ ! -v is_pid_entry_checked[$l_pid] -o is_pid_entry_checked[$l_pid] -le $(expr $epoch_now - 300) ]; then
+            if [ ! -v ${is_pid_entry_checked[$l_pid]} -o ${is_pid_entry_checked[$l_pid]} -le $(expr $epoch_now - 300) ]; then
                 is_pid_entry_checked[$l_pid]=$epoch_now
                 break
             fi
