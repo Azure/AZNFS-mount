@@ -1,14 +1,23 @@
-# Project
+# AZNFS Mount Helper
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+> Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts. 
 
-As the maintainer of this project, please make a few updates:
+## Install Instructions
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+- Download the aznfs_install.sh from https://github.com/Azure/BlobNFS-mount/releases/latest.
+- Run aznfs_install.sh in your linux machine. This will install aznfs package by correctly identifying the distro.
+
+## Usage Instructions
+
+- Once the package is installed use below command to mount your nfs share: 
+	sudo mount -t aznfs -o vers=3,proto=tcp account.blob.core.windows.net:/account/container /mountpoint
+- With this, you can have multiple connection for the same share with NFSv3 for increased throughput.
+- Do not try to access the same file from multiple connection. 
+- Logs generated from this package are in /opt/microsoft/aznfs/aznfs.log
+
+## Limitations
+
+- Lazy unmount doesn't work as expected.
 
 ## Contributing
 
