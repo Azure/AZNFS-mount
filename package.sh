@@ -16,8 +16,9 @@ mkdir -p ${STG_DIR}/${pkg_dir}
 cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/* ${STG_DIR}/${pkg_dir}/
 chmod +x ${STG_DIR}/${pkg_dir}/DEBIAN/*
 
-# Insert current build number.
+# Insert current release number.
 sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${pkg_dir}/DEBIAN/control
+sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
 
 # Copy other static package file(s).
 mkdir -p ${STG_DIR}/${pkg_dir}/usr/sbin
