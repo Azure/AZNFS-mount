@@ -208,6 +208,7 @@ while :; do
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then
+            echo "$new_ip"
             eecho "resolve_ipv4($l_host) failed!"
             continue
         fi

@@ -27,15 +27,14 @@ PID=""
 # Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
 #
 is_valid_blob_fqdn() 
-{ 
-    # XXX Are there other valid blob endpoint fqdns? 
-    [[ $1 =~ ^([a-z0-9]{3,24}).blob(.preprod)?.core.windows.net$ ]] 
+{
+    [[ $1 =~ ^([a-z0-9]{3,24}).blob(.preprod)?.core.windows.net$ ]]
 }
 
 # 
 # Get blob endpoint from account.blob.core.windows.net:/account/container. 
 # 
-get_host_from_share() 
+get_host_from_share()
 {
     local hostshare="$1"
     local host=$(echo $hostshare | cut -d: -f1)
@@ -185,7 +184,7 @@ search_free_local_ip_with_prefix()
     num_octets=$(octets_in_ipv4_prefix $ip_prefix)
 
     if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
-        eecho "Invalid IPv4 prefix: ${ip_prefix}."
+        eecho "Invalid IPv4 prefix: ${ip_prefix}"
         eecho "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
         eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
         return 1
@@ -383,6 +382,7 @@ fi
 
 nfs_host=$(get_host_from_share "$1")
 if [ $? -ne 0 ]; then
+    echo "$nfs_host"
     exit 1
 fi
 
@@ -394,12 +394,14 @@ fi
 
 nfs_ip=$(resolve_ipv4 "$nfs_host")
 if [ $? -ne 0 ]; then
+    echo "$nfs_ip"
     eecho "Cannot resolve IP address for ${nfs_host}!"
     exit 1
 fi
 
 nfs_dir=$(get_dir_from_share "$1")
 if [ $? -ne 0 ]; then
+    echo "$nfs_dir"
     exit 1
 fi
 
