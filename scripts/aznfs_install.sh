@@ -23,6 +23,7 @@ if [ $RELEASE_NUMBER == "x.y.z" ]; then
     echo "This script is directly downloaded from the github source code."
     echo "Please download the aznfs_install.sh from https://github.com/Azure/BlobNFS-mount/releases/latest"
     echo "If the problem persists, contact Microsoft support."
+    exit 1
 fi
 
 # Detect OS and Version
