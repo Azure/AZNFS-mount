@@ -248,10 +248,9 @@ search_free_local_ip_with_prefix()
                 continue
             fi
 
-            is_present_in_iptables=$(iptables -w 60 -t nat -L | grep "^${local_ip}$" | wc -l)
+            is_present_in_iptables=$(iptables-save -t nat | grep "^${local_ip}$" | wc -l)
             if [ $is_present_in_iptables -ne 0 ]; then
-                # Avoid excessive logs. 
-                # vecho "$local_ip is already present in iptables!"
+                vecho "$local_ip is already present in iptables!"
                 continue
             fi
 

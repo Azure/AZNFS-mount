@@ -177,7 +177,11 @@ while :; do
             
             #
             # Verify that iptable entry should be present for corresponding 
-            # MOUNTMAP entry if the share is not unmounted. 
+            # MOUNTMAP entry if the share is not unmounted.
+            #
+            # Note: This is extra protection in case user flushes the iptable
+            #       entries or removes it by mistake. This should not be
+            #       required normally.
             #
             verify_iptable_entry "$l_ip" "l_nfsip"
 
