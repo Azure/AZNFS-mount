@@ -173,7 +173,18 @@ while :; do
             
             ensure_mountmap_not_exist "$line"
             continue
-        else 
+        else
+            
+            #
+            # Verify that iptable entry should be present for corresponding 
+            # MOUNTMAP entry if the share is not unmounted.
+            #
+            # Note: This is extra protection in case user flushes the iptable
+            #       entries or removes it by mistake. This should not be
+            #       required normally.
+            #
+            verify_iptable_entry "$l_ip" "l_nfsip"
+
             if $fixup_mountmap; then
                 if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $l_nfsip"; then
 
@@ -208,6 +219,7 @@ while :; do
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then
+            echo "$new_ip"
             eecho "resolve_ipv4($l_host) failed!"
             continue
         fi

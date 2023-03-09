@@ -281,6 +281,23 @@ delete_iptable_entry()
 }
 
 #
+# Verify if the mountmap entry is present but corresponding DNAT rule does not
+# exist. Add it to avoid IOps failure.
+#
+verify_iptable_entry()
+{
+    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
+    if [ $? -ne 0 ]; then
+        wecho "DNAT rule [$1 -> $2] does not exist, adding it."
+        iptables -w 60 -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
+        if [ $? -ne 0 ]; then
+            eecho "Failed to add DNAT rule [$1 -> $2]!"
+            return 1
+        fi
+    fi
+}
+
+#
 # Must be called only when $l_ip:$l_dir is mounted.
 #
 unmount_and_delete_iptable_entry()
