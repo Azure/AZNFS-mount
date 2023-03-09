@@ -173,7 +173,14 @@ while :; do
             
             ensure_mountmap_not_exist "$line"
             continue
-        else 
+        else
+            
+            #
+            # Verify that iptable entry should be present for corresponding 
+            # MOUNTMAP entry if the share is not unmounted. 
+            #
+            verify_iptable_entry "$l_ip" "l_nfsip"
+
             if $fixup_mountmap; then
                 if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $l_nfsip"; then
 

@@ -246,7 +246,14 @@ search_free_local_ip_with_prefix()
                 # Avoid excessive logs. 
                 # vecho "$local_ip is in use by aznfs!"
                 continue
-            fi 
+            fi
+
+            is_present_in_iptables=$(iptables -w 60 -t nat -L | grep "^${local_ip}$" | wc -l)
+            if [ $is_present_in_iptables -ne 0 ]; then
+                # Avoid excessive logs. 
+                # vecho "$local_ip is already present in iptables!"
+                continue
+            fi
 
             # 
             # Try pinging the address to be sure it is not in use in the 
