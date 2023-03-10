@@ -105,7 +105,7 @@ else
 fi
 
 install_exit_code=$?
-if [ install_exit_code -ne 0 ]; then
+if [ $install_exit_code -ne 0 ]; then
     echo "[FATAL] Error installing aznfs (exit code: $install_exit_code). See '$install_cmd' command logs for more information."
 fi
 
