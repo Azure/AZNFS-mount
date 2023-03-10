@@ -188,7 +188,7 @@ while :; do
             #       entries or removes it by mistake. This should not be
             #       required normally.
             #
-            verify_iptable_entry "$l_ip" "l_nfsip"
+            verify_iptable_entry "$l_ip" "$l_nfsip"
 
             if $fixup_mountmap; then
                 if ! ensure_mountmap_exist "$l_host:$l_dir $l_ip $l_nfsip"; then
