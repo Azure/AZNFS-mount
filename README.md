@@ -2,13 +2,13 @@
 
 > Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts.
 
-This script is required to support migration for NFSv3 enabled accounts. User has to install aznfs package and mount the NFSv3 
-share using **-t aznfs** flag. This package will run a background job called **aznfswatchdog** to detect change in endpoint IP
-address for the mounted share. If there will be any change in endpoint IP, this package will update the DNAT rules in the client 
-machine to avoid any IOps failure for the mounted share.
+This script is required to support migration for NFSv3 enabled accounts. User has to install AZNFS package and mount
+the NFSv3 share using `-t aznfs` flag. This package will run a background job called **aznfswatchdog** to detect change
+in endpoint IP address for the mounted share. If there will be any change in endpoint IP, AZNFS will update the DNAT
+rules in the client machine to run IOps smoothly for the mounted share.
 
-This package picks a free private IP which is not in use by user's machine and mount the NFSv3 share using that IP and create a DNAT rule
-to route the traffic from the chosen private IP to original endpoint IP.
+This package picks a free private IP which is not in use by user's machine and mount the NFSv3 share using that IP and
+create a DNAT rule to route the traffic from the chosen private IP to original endpoint IP.
 
 **Supported Distros are Ubuntu/RedHat/Rocky/SUSE/Centos.**
 
@@ -16,7 +16,8 @@ to route the traffic from the chosen private IP to original endpoint IP.
 ## Install Instructions
 
 - Download the latest **aznfs_install.sh** from https://github.com/Azure/BlobNFS-mount/releases/latest.
-- Make **aznfs_install.sh** execuatable and run it in linux machine. This will install aznfs package by correctly identifying the distro.
+- Make **aznfs_install.sh** execuatable and run it in linux machine. This will install aznfs package by correctly
+  identifying the distro.
 - Follow the belwo code to download and run the script.
 	```
 	wget https://github.com/Azure/BlobNFS-mount/releases/download/<RELEASE_NUMBER>/aznfs_install.sh
@@ -49,7 +50,7 @@ to route the traffic from the chosen private IP to original endpoint IP.
 
 ## TroubleShoot
 
-- Check the status of aznfswatchdog service using `systemctl status aznfswatchdog`. If the service is not active, start 
+- Check the status of aznfswatchdog service using `systemctl status aznfswatchdog`. If the service is not active, start
   it using `systemctl start aznfswatchdog`.
 - Enable verbose logs to console by setting `AZNFS_VERBOSE` env variable with `export AZNFS_VERBOSE=0`.
 - Provide the IP prefix in the range which is not in use by the machine by setting `AZNFS_IP_PREFIXES` env variable.
