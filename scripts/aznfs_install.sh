@@ -5,14 +5,12 @@
 # --------------------------------------------------------------------------------------------
 
 RELEASE_NUMBER=x.y.z
-distro_id=
-distro_release=
-distro_release_major=
 apt_update_done=false
-install_cmd=
 yum="yum"
 apt=0
 zypper=0
+distro_id=
+install_cmd=
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -117,6 +115,11 @@ canonicalize_distro_id()
         distro_lower="sles"
     fi
 
+    # Use rhel for RedHatEnterprise
+    if [ "$distro_lower" == "redhatenterprise" ]; then
+        distro_lower="rhel"
+    fi
+
     echo "$distro_lower"
 }
 
@@ -130,27 +133,9 @@ ensure_pkg()
     local pkg="$1"
     local distro="$distro_id"
 
-    #
-    # If distro not detected yet, try to make a fair guess, just for the
-    # purpose of package installation.
-    #
-    if [ -z "$distro" ]; then
-        if which zypper 2>/dev/null; then
-            distro="sles"
-        elif which apt 2>/dev/null; then
-            distro="ubuntu"
-        elif which yum 2>/dev/null; then
-            distro="centos"
-        else
-            echo
-            eecho "[FATAL] Could not detect/guess distro!"
-            exit 1
-        fi
-    fi
-
     if [ "$distro" == "ubuntu" ]; then
         if ! $apt_update_done; then
-            sudo apt update
+            sudo apt -y update
             if [ $? -ne 0 ]; then
                 echo
                 eecho "\"apt update\" failed"
@@ -192,6 +177,24 @@ ensure_lsb_release()
         exit 1
     fi
 
+    #
+    # If distro not detected yet, try to make a fair guess, just for the
+    # purpose of package installation.
+    #
+    if [ -z "$distro_id" ]; then
+        if which zypper > /dev/null 2>&1; then
+            distro_id="sles"
+        elif which apt > /dev/null 2>&1; then
+            distro_id="ubuntu"
+        elif which yum > /dev/null 2>&1; then
+            distro_id="centos"
+        else
+            echo
+            eecho "[FATAL] Could not detect/guess distro!"
+            exit 1
+        fi
+    fi
+
     ensure_pkg "lsb-release"
 }
 
@@ -209,8 +212,8 @@ __m=$(uname -m 2>/dev/null) || __m=unknown
 __s=$(uname -s 2>/dev/null) || __s=unknown
 
 #
-# Try to detect the distro in a resilient manner and set distro_id and
-# distro_release global variables.
+# Try to detect the distro in a resilient manner and set distro_id
+# global variables.
 #
 case "${__m}:${__s}" in
     "x86_64:Linux")
@@ -218,23 +221,18 @@ case "${__m}:${__s}" in
         if [ -f /etc/centos-release ]; then
             pecho "Retrieving distro info from /etc/centos-release..."
             distro_id="centos"
-            distro_release=$(awk -F' ' '{ print $4 }' /etc/centos-release)
-            distro_release_major=$(echo $distro_release | awk -F. '{print $1}')
-            return
-        fi
-
-        if [ -f /etc/os-release ]; then
-            pecho "Retrieving distro_id info from /etc/os-release..."
+        elif [ -f /etc/os-release ]; then
+            pecho "Retrieving distro info from /etc/os-release..."
             distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
             distro_id=$(canonicalize_distro_id $distro_id)
+        else
+            # We need the exact release for downloading the correct kernel for centos.
+            pecho "Retrieving distro info from lsb_release command..."
+            ensure_lsb_release
+            distro_id=$(lsb_release -i | awk -F":" '{ print $2 }')
+            distro_id=$(canonicalize_distro_id $distro_id)
         fi
-
-        # We need the exact release for downloading the correct kernel for centos.
-        pecho "Retrieving distro_release info from lsb_release command..."
-        ensure_lsb_release
-        distro_release=$(lsb_release -r | cut -d: -f2)
-        distro_release_major=$(echo $distro_release | awk -F. '{print $1}')
-        ;;
+            ;;
     *)
         eecho "[FATAL] Unsupported platform: ${__m}:${__s}."
         exit 1
@@ -261,4 +259,4 @@ if [ $install_error -ne 0 ]; then
     eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
 fi
 
-secho "Latest version of aznfs is installed."
+secho "Latest version of AZNFS is installed."
