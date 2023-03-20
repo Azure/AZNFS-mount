@@ -37,7 +37,8 @@ jobs:
         name: Release ${{ github.event.inputs.versionName }}
         tag_name: ${{ github.event.inputs.versionName }}
         files: |
-          ${{ github.workspace}}/aznfs_${{ github.event.inputs.versionName }}_amd64.deb
+          ${{ github.workspace}}/deb/aznfs_${{ github.event.inputs.versionName }}_amd64.deb
+          ${{ github.workspace}}/rpm/RPMS/aznfs_${{ github.event.inputs.versionName }}_amd64.rpm
           ${{ github.workspace}}/scripts/aznfs_install.sh
         body: |
           New Release ${{ github.event.inputs.versionName }}
