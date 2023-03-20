@@ -2,12 +2,20 @@
 
 > Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts.
 
-Azure Blob NFS is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability in case of infrequent-but-likely events like hardware failures, hardware decommissioning, etc, the endpoint IP of the Azure Blob NFS endpoint may change. This change in IP is mostly transparent to applications because the DNS records are updated such that the Azure Blob NFS FQDN now resolves to this new IP. This works fine for new mounts as they will automatically connect to the new IP, but this change in IP is not handled by Linux NFS client for already mounted shares, as it only resolves the IP at the time of mount and any change in the server IP after mount will cause it to indefinitely attempt reconnect to the old IP. Also NFSv3 protocol doesn't provide a way for server to convey such change in IP to the clients. This means that this change in IP has to be detected by a userspace process and conveyed to the kernel through some supported interface. Using a mount helper is a supported way in Linux to do "something extra" during a mount, hence this AZNFS mount helper is needed so that Linux NFS clients can reliably access Azure Blob NFS shares even when their IP changes.
+Azure Blob NFS is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability 
+in case of infrequent-but-likely events like hardware failures, hardware decommissioning, etc, the endpoint IP of the Azure Blob 
+NFS endpoint may change. This change in IP is mostly transparent to applications because the DNS records are updated such that the
+Azure Blob NFS FQDN now resolves to this new IP. This works fine for new mounts as they will automatically connect to the new IP,
+but this change in IP is not handled by Linux NFS client for already mounted shares, as it only resolves the IP at the time of mount
+and any change in the server IP after mount will cause it to indefinitely attempt reconnect to the old IP. Also NFSv3 protocol doesn't 
+provide a way for server to convey such change in IP to the clients. This means that this change in IP has to be detected by a userspace
+process and conveyed to the kernel through some supported interface. Using a mount helper is a supported way in Linux to do "something 
+extra" during a mount, hence this AZNFS mount helper is needed so that Linux NFS clients can reliably access Azure Blob NFS shares even 
+when their IP changes.
 
-This script is required to support migration for NFSv3 enabled storage accounts. User has to install AZNFS package and
-mount the NFSv3 share using `-t aznfs` flag. This package will run a background job called **aznfswatchdog** to detect
-change in endpoint IP address for the mounted shares. If there will be any change in endpoint IP, AZNFS will update the
-DNAT rules in the client machine to run IOps smoothly for the mounted shares.
+User has to install AZNFS package and mount the NFSv3 share using `-t aznfs` flag. This package will run a background job called 
+**aznfswatchdog** to detect change in endpoint IP address for the mounted shares. If there will be any change in endpoint IP, 
+AZNFS will update the DNAT rules in the client machine to run IOps smoothly for the mounted shares.
 
 This package picks a free private IP which is not in use by user's machine and mount the NFSv3 share using that IP and
 create a DNAT rule to route the traffic from the chosen private IP to original endpoint IP.
