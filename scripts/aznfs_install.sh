@@ -115,11 +115,6 @@ canonicalize_distro_id()
         distro_lower="sles"
     fi
 
-    # Use rhel for RedHatEnterprise
-    if [ "$distro_lower" == "redhatenterprise" ]; then
-        distro_lower="rhel"
-    fi
-
     echo "$distro_lower"
 }
 
@@ -161,46 +156,9 @@ ensure_pkg()
     fi
 }
 
-#
-# Once this function return successfully, lsb_release would be installed.
-#
-ensure_lsb_release()
-{
-    lsb_release=$(which lsb_release 2>/dev/null)
-    if [ $? -eq 0 ]; then
-        if [ -x "$lsb_release" ]; then
-            return
-        fi
-
-        echo
-        eecho "[FATAL] $lsb_release is not executable!"
-        exit 1
-    fi
-
-    #
-    # If distro not detected yet, try to make a fair guess, just for the
-    # purpose of package installation.
-    #
-    if [ -z "$distro_id" ]; then
-        if which zypper > /dev/null 2>&1; then
-            distro_id="sles"
-        elif which apt > /dev/null 2>&1; then
-            distro_id="ubuntu"
-        elif which yum > /dev/null 2>&1; then
-            distro_id="centos"
-        else
-            echo
-            eecho "[FATAL] Could not detect/guess distro!"
-            exit 1
-        fi
-    fi
-
-    ensure_pkg "lsb-release"
-}
-
 if [ $RELEASE_NUMBER == "x.y.z" ]; then
     eecho "This script is directly downloaded from the github source code."
-    eecho "Please download the aznfs_install.sh from https://github.com/Azure/BlobNFS-mount/releases/latest"
+    eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/BlobNFS-mount/releases/latest'"
     eecho "If the problem persists, contact Microsoft support."
     exit 1
 fi
@@ -217,7 +175,6 @@ __s=$(uname -s 2>/dev/null) || __s=unknown
 #
 case "${__m}:${__s}" in
     "x86_64:Linux")
-
         if [ -f /etc/centos-release ]; then
             pecho "Retrieving distro info from /etc/centos-release..."
             distro_id="centos"
@@ -226,13 +183,11 @@ case "${__m}:${__s}" in
             distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
             distro_id=$(canonicalize_distro_id $distro_id)
         else
-            # We need the exact release for downloading the correct kernel for centos.
-            pecho "Retrieving distro info from lsb_release command..."
-            ensure_lsb_release
-            distro_id=$(lsb_release -i | awk -F":" '{ print $2 }')
-            distro_id=$(canonicalize_distro_id $distro_id)
+            eecho "[FATAL] Unknown linux distro.'/etc/os-release' is not present."
+            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/BlobNFS-mount/releases/latest'"
+            pecho "If the problem persists, contact Microsoft support."
         fi
-            ;;
+        ;;
     *)
         eecho "[FATAL] Unsupported platform: ${__m}:${__s}."
         exit 1
