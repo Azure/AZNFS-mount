@@ -46,13 +46,6 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=3,proto=tcp <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-- Mount the same _/account/continer_ to multiple mountpoints which will create multiple connections from the 
-  same machine. This improves the performance since user has multiple connecitons to run IOps.
-- User can set `AZNFS_IP_PREFIXES` env variable to set IP prefix in range which is not in use by the machine. User can 
-  set IP prefix with either 2 or 3 octets. `f.e. 10.100 10.100.100 172.16 172.16.100 192.168 192.168.100`
-  ```
-  export AZNFS_IP_PREFIXES="172.16.105"
-  ```
 - Logs generated from AZNFS will be in `/opt/microsoft/aznfs/aznfs.log`.
 
 ## Implementation Details
@@ -67,10 +60,15 @@ mount. A free local IP address is picked from the following range of private IP 
   ```
 
 It will try its best to pick an IP address which is not in use but in case the free IP selection clashes with any 
-of client machines IP addresses, the AZNFS_IP_PREFIXES environment variable can be used to override the default IP range.
+of client machines IP addresses, the `AZNFS_IP_PREFIXES` environment variable can be used to override the default IP range.
+IP prefixes with either 2 or 3 octets can be set `f.e. 10.100 10.100.100 172.16 172.16.100 192.168 192.168.100`.
+  ```
+  export AZNFS_IP_PREFIXES="172.16.105"
+  ```
 
-It starts a systemd service named **aznfswatchdog** which monitors the change in IP address for all the mounted Azure Blob 
-NFS shares. If it detects a change in endpoint IP, it will update  
+It starts a systemd service named **aznfswatchdog** which monitors the change in IP address for all the mounted Azure 
+Blob NFS shares. If it detects a change in endpoint IP, aznfswatchdog will update the iptables DNAT rule and NFS 
+traffic will be forwarded to new endpoint IP.
 
 ## Limitations
 
