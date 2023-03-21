@@ -130,29 +130,37 @@ ensure_pkg()
 
     if [ "$distro" == "ubuntu" ]; then
         if ! $apt_update_done; then
-            sudo apt -y update
+            apt -y update
             if [ $? -ne 0 ]; then
                 echo
                 eecho "\"apt update\" failed"
                 eecho "Please make sure \"apt update\" runs successfully and then try again!"
-                exit 1
                 echo
+                exit 1
             fi
             # Need to run apt update only once.
             apt_update_done=true
         fi
         apt=1
-        sudo apt install -y $pkg
+        apt install -y $pkg
     elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" ]; then
         # lsb_release package is called redhat-lsb-core in redhat/centos.
         if [ "$pkg" == "lsb-release" ]; then
             pkg="redhat-lsb-core"
         fi
         use_dnf_or_yum
-        sudo $yum install -y $pkg
+        $yum install -y $pkg
     elif [ "$distro" == "sles" ]; then
         zypper=1
-        sudo zypper install -y $pkg
+        zypper install -y $pkg
+    fi
+}
+
+verify_super_user()
+{
+    if [ $(id -u) -ne 0 ]; then
+        eecho "Run this script as root!"
+        exit 1
     fi
 }
 
@@ -162,6 +170,11 @@ if [ $RELEASE_NUMBER == "x.y.z" ]; then
     eecho "If the problem persists, contact Microsoft support."
     exit 1
 fi
+
+#
+# Only super user can install aznfs.
+#
+verify_super_user
 
 #
 # Detect OS and Version.
@@ -199,9 +212,9 @@ ensure_pkg "wget"
 if [ $apt -eq 1 ]; then
     install_cmd="apt"
     wget https://github.com/Azure/BlobNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_${RELEASE_NUMBER}_amd64.deb -P /tmp
-    sudo apt install /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
+    apt install -y /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
     install_error=$?
-    rm /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
+    rm -f /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
 elif [ $zypper -eq 1 ]; then
     install_cmd="zypper"
     # Does not support SUSE for now.
@@ -214,4 +227,4 @@ if [ $install_error -ne 0 ]; then
     eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
 fi
 
-secho "Latest version of AZNFS is installed."
+secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed."
