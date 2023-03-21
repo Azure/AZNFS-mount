@@ -1,11 +1,15 @@
 Name: aznfs
 Version: x.y.z
+Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/BlobNFS-mount/blob/main/README.md
 Source0: https://github.com/Azure/BlobNFS-mount/archive/refs/tags/%{Version}.tar.gz
 Requires: conntrack, iptables, bind9-host, iproute2, util-linux, nfs-common
 BuildArch: amd64
+
+%description
+Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 
 %files
 %{_sbindir}/aznfswatchdog
