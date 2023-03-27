@@ -164,7 +164,7 @@ verify_super_user()
     fi
 }
 
-if [ $RELEASE_NUMBER == "x.y.z" ]; then
+if [ "$RELEASE_NUMBER" == "x.y.z" ]; then
     eecho "This script is directly downloaded from the github source code."
     eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/BlobNFS-mount/releases/latest'"
     eecho "If the problem persists, contact Microsoft support."
