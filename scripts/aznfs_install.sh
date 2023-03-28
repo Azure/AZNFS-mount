@@ -166,7 +166,7 @@ verify_super_user()
 
 if [ "$RELEASE_NUMBER" == "x.y.z" ]; then
     eecho "This script is directly downloaded from the github source code."
-    eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/BlobNFS-mount/releases/latest'"
+    eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/BlobNFS-mount/releases/latest/download/aznfs_install.sh'"
     eecho "If the problem persists, contact Microsoft support."
     exit 1
 fi
@@ -196,7 +196,7 @@ case "${__m}:${__s}" in
             distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
             distro_id=$(canonicalize_distro_id $distro_id)
         else
-            eecho "[FATAL] Unknown linux distro.'/etc/os-release' is not present."
+            eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
             pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/BlobNFS-mount/releases/latest'"
             pecho "If the problem persists, contact Microsoft support."
         fi
@@ -211,20 +211,34 @@ ensure_pkg "wget"
 
 if [ $apt -eq 1 ]; then
     install_cmd="apt"
+    current_version=$(apt-cache show aznfs 2>/dev/null | grep "Version: " | awk '{print $2}')
+    if [ -n "$current_version" ]; then
+        read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [y/n] " result
+        echo
+        if [ "$result" != "y" -a "$result" != "Y" ]; then
+            eecho "Installation aborted!"
+            exit 1
+        fi
+    fi
     wget https://github.com/Azure/BlobNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_${RELEASE_NUMBER}_amd64.deb -P /tmp
     apt install -y /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
     install_error=$?
     rm -f /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
 elif [ $zypper -eq 1 ]; then
     install_cmd="zypper"
+    eecho "[FATAL] This installer currently does not support $distro_id!"
+    exit 1
     # Does not support SUSE for now.
 else
     install_cmd="yum"
+    eecho "[FATAL] This installer currently does not support $distro_id!"
+    exit 1
     # Does not support CentOS for now.
 fi
 
 if [ $install_error -ne 0 ]; then
     eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
+    exit 1
 fi
 
 secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed."
