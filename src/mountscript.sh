@@ -196,9 +196,46 @@ search_free_local_ip_with_prefix()
     fi
     
     local local_ip=""
+    local do_get_free_local_ip_optimization=false
 
     _3rdoctet=100
     ip_prefix=$initial_ip_prefix
+
+    #
+    # Optimize the process to get free local IP by starting the loop to choose
+    # 3rd and 4th octet from the number which was used last and still exist in
+    # MOUNTMAP instead of starting it from 100.
+    #
+    if [ ! -s $MOUNTMAP ]; then
+        last_used_ip=$(tail -1 $MOUNTMAP | awk '{print $2}')
+        
+        last_used_1st_octet=$(echo "$last_used_ip" | cut -d "." -f1)
+        last_used_2nd_octet=$(echo "$last_used_ip" | cut -d "." -f2)
+        last_used_3rd_octet=$(echo "$last_used_ip" | cut -d "." -f3)
+        last_used_4th_octet=$(echo "$last_used_ip" | cut -d "." -f4)
+        
+        if [ $num_octets -eq 2 ]; then
+            last_used_ip_prefix="${last_used_1st_octet}.${last_used_2nd_octet}"
+            if [ "$last_used_ip_prefix" == "$initial_ip_prefix" ]; then
+                if [ "$last_used_3rd_octet" == "254" && "$last_used_4th_octet" == "254" ]; then
+                    return 0
+                fi
+
+                _3rdoctet=$(expr ${last_used_3rd_octet})
+                do_get_free_local_ip_optimization=true
+            fi
+        else
+            last_used_ip_prefix="${last_used_1st_octet}.${last_used_2nd_octet}.${last_used_3rd_octet}"
+            if [ "$last_used_ip_prefix" == "$initial_ip_prefix" ]; then
+                if [ "$last_used_4th_octet" == "254" ]; then
+                    return 0
+                fi
+
+                do_get_free_local_ip_optimization=true
+            fi
+        fi
+    fi
+
     while true; do
         if [ $num_octets -eq 2 ]; then
             # Start from 100 onwards to make aznfs local addresses more identifiable. 
@@ -229,7 +266,14 @@ search_free_local_ip_with_prefix()
             fi
         fi
 
-        for ((_4thoctet=100; _4thoctet<255; _4thoctet++)); do 
+        if [ $do_get_free_local_ip_optimization ]; then
+            _4thoctet=$(expr ${last_used_4th_octet} + 1)
+            do_get_free_local_ip_optimization=false
+        else
+            _4thoctet=100
+        fi
+
+        for ((; _4thoctet<255; _4thoctet++)); do 
             local_ip="${ip_prefix}.$_4thoctet" 
 
             if is_host_ip $local_ip; then 
@@ -318,7 +362,7 @@ search_free_local_ip_with_prefix()
 # 
 # Get a local IP that is free to use. Set global variable LOCAL_IP if found.
 # 
-get_free_local_ip() 
+get_free_local_ip()
 {
     for ip_prefix in $IP_PREFIXES; do
         vecho "Trying IP prefix ${ip_prefix}."
