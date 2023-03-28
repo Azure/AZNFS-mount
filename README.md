@@ -63,8 +63,9 @@ It will try its best to pick an IP address which is not in use but in case the f
 of client machines IP addresses, the `AZNFS_IP_PREFIXES` environment variable can be used to override the default IP range.
 IP prefixes with either 2 or 3 octets can be set `f.e. 10.100 10.100.100 172.16 172.16.100 192.168 192.168.100`.
   ```
-  export AZNFS_IP_PREFIXES="172.16.105"
+  export AZNFS_IP_PREFIXES="172.16 10.161"
   ```
+  This will pick the IP addresses in the range `172.16.100.100 - 172.16.254.254` and `10.161.100.100 - 10.161.254.254`.
 
 It starts a systemd service named **aznfswatchdog** which monitors the change in IP address for all the mounted Azure 
 Blob NFS shares. If it detects a change in endpoint IP, aznfswatchdog will update the iptables DNAT rule and NFS 
@@ -72,15 +73,15 @@ traffic will be forwarded to new endpoint IP.
 
 ## Limitations
 
-- Lazy unmount doesn't work as expected.
-- Do not try to access/edit same file from multiple connection. This will not increase the overall throughput.
+- Lazy unmount doesn't work as expected. This is because the AZNFS mount helper deletes the DNAT rule as soon as the mount goes away.
+- Writing to the same file from different AZNFS mounts may result in reduced performance. Reading the same file from from different AZNFS mounts on the other hand does not have this limitation. 
 
 
 ## TroubleShoot
 
 - Check the status of aznfswatchdog service using `systemctl status aznfswatchdog`. If the service is not active, start
   it using `systemctl start aznfswatchdog`.
-- Enable verbose logs to console by setting `AZNFS_VERBOSE` env variable with `export AZNFS_VERBOSE=0`.
+- Enable verbose logs to console by setting `AZNFS_VERBOSE` env variable with `export AZNFS_VERBOSE=1`.
 - Provide the IP prefix in the range which is not in use by the machine by setting `AZNFS_IP_PREFIXES` env variable.
 - If the problem is with assigning local private IP, set `AZNFS_PING_LOCAL_IP_BEFORE_USE` env variable to 1 using
   `export AZNFS_PING_LOCAL_IP_BEFORE_USE=1`.
