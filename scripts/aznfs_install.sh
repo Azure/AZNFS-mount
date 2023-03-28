@@ -5,108 +5,240 @@
 # --------------------------------------------------------------------------------------------
 
 RELEASE_NUMBER=x.y.z
+apt_update_done=false
+yum="yum"
 apt=0
 zypper=0
-debian=0
-yum="yum"
-           
+distro_id=
+install_cmd=
+
+RED="\e[2;31m"
+GREEN="\e[2;32m"
+YELLOW="\e[2;33m"
+NORMAL="\e[0m"
+
+#
+# Core logging function.
+#
+_log()
+{
+    echoarg=""
+
+    # We only support -n argument to echo.
+    if [ "$1" == "-n" ]; then
+        echoarg="-n"
+        shift
+    fi
+
+    color=$1
+    msg=$2
+
+    echo $echoarg -e "${color}${msg}${NORMAL}"
+}
+
+#
+# Plain echo.
+#
+pecho()
+{
+    echoarg=""
+    color=$NORMAL
+    if [ "$1" == "-n" ]; then
+        echoarg="-n"
+        shift
+    fi
+    _log $echoarg $color "${*}"
+}
+
+#
+# Success echo.
+#
+secho()
+{
+    echoarg=""
+    color=$GREEN
+    if [ "$1" == "-n" ]; then
+        echoarg="-n"
+        shift
+    fi
+    _log $echoarg $color "${*}"
+}
+
+#
+# Warning echo.
+#
+wecho()
+{
+    echoarg=""
+    color=$YELLOW
+    if [ "$1" == "-n" ]; then
+        echoarg="-n"
+        shift
+    fi
+    _log $echoarg $color "${*}"
+}
+
+#
+# Error echo.
+#
+eecho()
+{
+    echoarg=""
+    color=$RED
+    if [ "$1" == "-n" ]; then
+        echoarg="-n"
+        shift
+    fi
+    _log $echoarg $color "${*}"
+}
+
 use_dnf_or_yum() 
 {
     yum="yum"
     if command -v dnf &> /dev/null; then
         yum="dnf"
-        localinstall=0
-        echo "Using 'dnf' instead of 'yum'"
+        pecho "Using 'dnf' instead of 'yum'"
     fi
 }
 
-if [ $RELEASE_NUMBER == "x.y.z" ]; then
-    echo "This script is directly downloaded from the github source code."
-    echo "Please download the aznfs_install.sh from https://github.com/Azure/BlobNFS-mount/releases/latest"
-    echo "If the problem persists, contact Microsoft support."
+#
+# This returns distro id in a canonical form, that rest of the code understands.
+# We only use lowercase single word names for distro names:
+# ubuntu, centos, redhat, sles.
+#
+canonicalize_distro_id()
+{
+    local distro_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+    # Use sles for SUSE/SLES.
+    if [ "$distro_lower" == "suse" ]; then
+        distro_lower="sles"
+    fi
+
+    echo "$distro_lower"
+}
+
+#
+# Install the package appropriately as per the current distro.
+# If distro_id is already detected it uses that else it tries to guess
+# the distro.
+#
+ensure_pkg()
+{
+    local pkg="$1"
+    local distro="$distro_id"
+
+    if [ "$distro" == "ubuntu" ]; then
+        if ! $apt_update_done; then
+            apt -y update
+            if [ $? -ne 0 ]; then
+                echo
+                eecho "\"apt update\" failed"
+                eecho "Please make sure \"apt update\" runs successfully and then try again!"
+                echo
+                exit 1
+            fi
+            # Need to run apt update only once.
+            apt_update_done=true
+        fi
+        apt=1
+        apt install -y $pkg
+    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" ]; then
+        # lsb_release package is called redhat-lsb-core in redhat/centos.
+        if [ "$pkg" == "lsb-release" ]; then
+            pkg="redhat-lsb-core"
+        fi
+        use_dnf_or_yum
+        $yum install -y $pkg
+    elif [ "$distro" == "sles" ]; then
+        zypper=1
+        zypper install -y $pkg
+    fi
+}
+
+verify_super_user()
+{
+    if [ $(id -u) -ne 0 ]; then
+        eecho "Run this script as root!"
+        exit 1
+    fi
+}
+
+if [ "$RELEASE_NUMBER" == "x.y.z" ]; then
+    eecho "This script is directly downloaded from the github source code."
+    eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/BlobNFS-mount/releases/latest/download/aznfs_install.sh'"
+    eecho "If the problem persists, contact Microsoft support."
+    exit 1
 fi
 
-# Detect OS and Version
+#
+# Only super user can install aznfs.
+#
+verify_super_user
+
+#
+# Detect OS and Version.
+#
 __m=$(uname -m 2>/dev/null) || __m=unknown
 __s=$(uname -s 2>/dev/null) || __s=unknown
 
-distro=
-distro_version=
+#
+# Try to detect the distro in a resilient manner and set distro_id
+# global variables.
+#
 case "${__m}:${__s}" in
     "x86_64:Linux")
         if [ -f /etc/centos-release ]; then
-            echo "Retrieving distro info from /etc/centos-release..."
-            distro=$(awk -F" " '{ print $1 }' /etc/centos-release)
-            distro_version=$(awk -F" " '{ print $4 }' /etc/centos-release)
+            pecho "Retrieving distro info from /etc/centos-release..."
+            distro_id="centos"
         elif [ -f /etc/os-release ]; then
-            echo "Retrieving distro info from /etc/os-release..."
-            distro=$(grep ^NAME /etc/os-release | awk -F"=" '{ print $2 }' | tr -d '"')
-            distro_version=$(grep VERSION_ID /etc/os-release | awk -F"=" '{ print $2 }' | tr -d '"')
-        elif which lsb_release 2>/dev/null; then
-            echo "Retrieving distro info from lsb_release command..."
-            distro=$(lsb_release -i | awk -F":" '{ print $2 }')
-            distro_version=$(lsb_release -r | awk -F":" '{ print $2 }')
+            pecho "Retrieving distro info from /etc/os-release..."
+            distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+            distro_id=$(canonicalize_distro_id $distro_id)
         else
-            echo "Unknown linux distro."
-            exit 1
+            eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
+            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/BlobNFS-mount/releases/latest'"
+            pecho "If the problem persists, contact Microsoft support."
         fi
         ;;
     *)
-        echo "Unsupported platform: ${__m}:${__s}."
+        eecho "[FATAL] Unsupported platform: ${__m}:${__s}."
         exit 1
         ;;
 esac
 
-case "${distro}" in
-    *entOS*)
-        use_dnf_or_yum
-        sudo -E ${yum} -y install wget
-        ;;
+ensure_pkg "wget"
 
-    *SLES*)
-        zypper=1
-        sudo -E zypper install -y wget
-        ;;
-
-    *buntu*)
-        apt=1
-        sudo -E apt update
-        sudo -E apt install -y wget
-        ;;
-
-    *ocky*)
-        use_dnf_or_yum
-        sudo -E ${yum} -y install wget
-        ;;
-
-    *Redhat*)
-        use_dnf_or_yum
-        sudo -E ${yum} -y install wget
-        ;;
-
-    *)
-        echo "[FATAL] Unsupported Linux distribution: ${distro}:${distro_version}."
-        exit 1
-        ;;
-esac
-
-install_cmd=
 if [ $apt -eq 1 ]; then
     install_cmd="apt"
+    current_version=$(apt-cache show aznfs 2>/dev/null | grep "Version: " | awk '{print $2}')
+    if [ -n "$current_version" ]; then
+        read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [y/n] " result
+        echo
+        if [ "$result" != "y" -a "$result" != "Y" ]; then
+            eecho "Installation aborted!"
+            exit 1
+        fi
+    fi
     wget https://github.com/Azure/BlobNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_${RELEASE_NUMBER}_amd64.deb -P /tmp
-    sudo apt install /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
-    rm /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
+    apt install -y /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
+    install_error=$?
+    rm -f /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
 elif [ $zypper -eq 1 ]; then
     install_cmd="zypper"
+    eecho "[FATAL] This installer currently does not support $distro_id!"
+    exit 1
     # Does not support SUSE for now.
 else
     install_cmd="yum"
+    eecho "[FATAL] This installer currently does not support $distro_id!"
+    exit 1
     # Does not support CentOS for now.
 fi
 
-install_exit_code=$?
-if [ install_exit_code -ne 0 ]; then
-    echo "[FATAL] Error installing aznfs (exit code: $install_exit_code). See '$install_cmd' command logs for more information."
+if [ $install_error -ne 0 ]; then
+    eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
+    exit 1
 fi
 
-echo "Latest version of aznfs is installed."
+secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed."
