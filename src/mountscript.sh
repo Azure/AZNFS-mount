@@ -206,7 +206,7 @@ search_free_local_ip_with_prefix()
     # 3rd and 4th octet from the number which was used last and still exist in
     # MOUNTMAP instead of starting it from 100.
     #
-    if [ ! -s $MOUNTMAP ]; then
+    if [ -s $MOUNTMAP ]; then
         last_used_ip=$(tail -1 $MOUNTMAP | awk '{print $2}')
         
         last_used_1st_octet=$(echo "$last_used_ip" | cut -d "." -f1)
@@ -217,7 +217,7 @@ search_free_local_ip_with_prefix()
         if [ $num_octets -eq 2 ]; then
             last_used_ip_prefix="${last_used_1st_octet}.${last_used_2nd_octet}"
             if [ "$last_used_ip_prefix" == "$initial_ip_prefix" ]; then
-                if [ "$last_used_3rd_octet" == "254" && "$last_used_4th_octet" == "254" ]; then
+                if [ "$last_used_3rd_octet" == "254" -a "$last_used_4th_octet" == "254" ]; then
                     return 0
                 fi
 
