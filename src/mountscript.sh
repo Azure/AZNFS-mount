@@ -212,9 +212,9 @@ search_free_local_ip_with_prefix()
     # 3rd and 4th octet from the number which was used last and still exist in
     # MOUNTMAP instead of starting it from 100.
     #
-    if [ $OPTIMIZE_GET_FREE_LOCAL_IP -a -z $used_local_ips_with_same_prefix ]; then
+    if [ ! -z "$used_local_ips_with_same_prefix" -a $OPTIMIZE_GET_FREE_LOCAL_IP = true ]; then
         
-        last_used_ip=$(echo "$used_local_ips_with_same_prefix##*$'\n'")
+        last_used_ip=$(echo "${used_local_ips_with_same_prefix##*$'\n'}")
         
         last_used_1st_octet=$(echo "$last_used_ip" | cut -d "." -f1)
         last_used_2nd_octet=$(echo "$last_used_ip" | cut -d "." -f2)
@@ -267,7 +267,7 @@ search_free_local_ip_with_prefix()
             fi
         fi
 
-        if [ $optimize_get_free_local_ip ]; then
+        if $optimize_get_free_local_ip; then
             _4thoctet=$(expr ${last_used_4th_octet} + 1)
             optimize_get_free_local_ip=false
         else
@@ -277,8 +277,8 @@ search_free_local_ip_with_prefix()
         for ((; _4thoctet<255; _4thoctet++)); do 
             local_ip="${ip_prefix}.$_4thoctet" 
 
-            is_ip_used_by_aznfs=$(echo $used_local_ips_with_same_prefix | grep "^${local_ip}$")
-            if [ -z $is_ip_used_by_aznfs ]; then
+            is_ip_used_by_aznfs=$(echo "$used_local_ips_with_same_prefix" | grep "^${local_ip}$")
+            if [ ! -z $is_ip_used_by_aznfs ]; then
                 # Avoid excessive logs. 
                 # vecho "$local_ip is in use by aznfs!"
                 continue
