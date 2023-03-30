@@ -29,6 +29,10 @@ LOCAL_IP=""
 PID=""
 
 #
+# Choose the local IP based on last used IP in MOUNTMAP if this flag is enabled.
+#
+OPTIMIZE_GET_FREE_LOCAL_IP=true
+#
 # Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
 #
 is_valid_blob_fqdn() 
@@ -196,7 +200,9 @@ search_free_local_ip_with_prefix()
     fi
     
     local local_ip=""
-    local do_get_free_local_ip_optimization=false
+    local optimize_get_free_local_ip=false
+    IFS=$'\n' 
+    local used_local_ips_with_same_prefix=$(cat $MOUNTMAP | awk '{print $2}' | grep "^$initial_ip_prefix" | sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n)
 
     _3rdoctet=100
     ip_prefix=$initial_ip_prefix
@@ -206,8 +212,9 @@ search_free_local_ip_with_prefix()
     # 3rd and 4th octet from the number which was used last and still exist in
     # MOUNTMAP instead of starting it from 100.
     #
-    if [ -s $MOUNTMAP ]; then
-        last_used_ip=$(tail -1 $MOUNTMAP | awk '{print $2}')
+    if [ $OPTIMIZE_GET_FREE_LOCAL_IP -a -z $used_local_ips_with_same_prefix ]; then
+        
+        last_used_ip=$(echo "$used_local_ips_with_same_prefix##*$'\n'")
         
         last_used_1st_octet=$(echo "$last_used_ip" | cut -d "." -f1)
         last_used_2nd_octet=$(echo "$last_used_ip" | cut -d "." -f2)
@@ -215,24 +222,18 @@ search_free_local_ip_with_prefix()
         last_used_4th_octet=$(echo "$last_used_ip" | cut -d "." -f4)
         
         if [ $num_octets -eq 2 ]; then
-            last_used_ip_prefix="${last_used_1st_octet}.${last_used_2nd_octet}"
-            if [ "$last_used_ip_prefix" == "$initial_ip_prefix" ]; then
-                if [ "$last_used_3rd_octet" == "254" -a "$last_used_4th_octet" == "254" ]; then
-                    return 0
-                fi
-
-                _3rdoctet=$(expr ${last_used_3rd_octet})
-                do_get_free_local_ip_optimization=true
+            if [ "$last_used_3rd_octet" == "254" -a "$last_used_4th_octet" == "254" ]; then
+                return 1
             fi
+
+            _3rdoctet=$(expr ${last_used_3rd_octet})
+            optimize_get_free_local_ip=true
         else
-            last_used_ip_prefix="${last_used_1st_octet}.${last_used_2nd_octet}.${last_used_3rd_octet}"
-            if [ "$last_used_ip_prefix" == "$initial_ip_prefix" ]; then
-                if [ "$last_used_4th_octet" == "254" ]; then
-                    return 0
-                fi
-
-                do_get_free_local_ip_optimization=true
+            if [ "$last_used_4th_octet" == "254" ]; then
+                return 1
             fi
+
+            optimize_get_free_local_ip=true
         fi
     fi
 
@@ -266,15 +267,22 @@ search_free_local_ip_with_prefix()
             fi
         fi
 
-        if [ $do_get_free_local_ip_optimization ]; then
+        if [ $optimize_get_free_local_ip ]; then
             _4thoctet=$(expr ${last_used_4th_octet} + 1)
-            do_get_free_local_ip_optimization=false
+            optimize_get_free_local_ip=false
         else
             _4thoctet=100
         fi
 
         for ((; _4thoctet<255; _4thoctet++)); do 
             local_ip="${ip_prefix}.$_4thoctet" 
+
+            is_ip_used_by_aznfs=$(echo $used_local_ips_with_same_prefix | grep "^${local_ip}$")
+            if [ -z $is_ip_used_by_aznfs ]; then
+                # Avoid excessive logs. 
+                # vecho "$local_ip is in use by aznfs!"
+                continue
+            fi
 
             if is_host_ip $local_ip; then 
                 vecho "Skipping host address ${local_ip}!"
@@ -288,12 +296,6 @@ search_free_local_ip_with_prefix()
 
             if [ "$nfs_ip" == "$local_ip" ]; then
                 vecho "Skipping private endpoint IP ${nfs_ip}!"
-                continue
-            fi
-
-            if egrep " \<$local_ip\> " "$MOUNTMAP" >/dev/null; then
-                # Avoid excessive logs. 
-                # vecho "$local_ip is in use by aznfs!"
                 continue
             fi
 
@@ -364,6 +366,18 @@ search_free_local_ip_with_prefix()
 # 
 get_free_local_ip()
 {
+    for ip_prefix in $IP_PREFIXES; do
+        vecho "Trying IP prefix ${ip_prefix}."
+        if search_free_local_ip_with_prefix "$ip_prefix"; then
+            return 0
+        fi
+    done
+
+    #
+    # If the above loop is not able to find a free local IP using optimized way,
+    # do a linear search to get the free local IP.
+    #
+    OPTIMIZE_GET_FREE_LOCAL_IP=false
     for ip_prefix in $IP_PREFIXES; do
         vecho "Trying IP prefix ${ip_prefix}."
         if search_free_local_ip_with_prefix "$ip_prefix"; then
