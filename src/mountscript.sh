@@ -32,6 +32,7 @@ PID=""
 # Choose the local IP based on last used IP in MOUNTMAP if this flag is enabled.
 #
 OPTIMIZE_GET_FREE_LOCAL_IP=true
+
 #
 # Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
 #
@@ -201,8 +202,8 @@ search_free_local_ip_with_prefix()
     
     local local_ip=""
     local optimize_get_free_local_ip=false
-    IFS=$'\n' 
-    local used_local_ips_with_same_prefix=$(cat $MOUNTMAP | awk '{print $2}' | grep "^$initial_ip_prefix" | sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n)
+    local used_local_ips_with_same_prefix=$(cat $MOUNTMAP | awk '{print $2}' | grep "^${initial_ip_prefix}\." | sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n)
+    local iptable_entries=$(iptables-save -t nat)
 
     _3rdoctet=100
     ip_prefix=$initial_ip_prefix
@@ -212,9 +213,9 @@ search_free_local_ip_with_prefix()
     # 3rd and 4th octet from the number which was used last and still exist in
     # MOUNTMAP instead of starting it from 100.
     #
-    if [ ! -z "$used_local_ips_with_same_prefix" -a $OPTIMIZE_GET_FREE_LOCAL_IP = true ]; then
+    if [ $OPTIMIZE_GET_FREE_LOCAL_IP == true -a -n "$used_local_ips_with_same_prefix" ]; then
         
-        last_used_ip=$(echo "${used_local_ips_with_same_prefix##*$'\n'}")
+        last_used_ip=$(echo "$used_local_ips_with_same_prefix" | tail -n1)
         
         last_used_1st_octet=$(echo "$last_used_ip" | cut -d "." -f1)
         last_used_2nd_octet=$(echo "$last_used_ip" | cut -d "." -f2)
@@ -226,7 +227,7 @@ search_free_local_ip_with_prefix()
                 return 1
             fi
 
-            _3rdoctet=$(expr ${last_used_3rd_octet})
+            _3rdoctet=$last_used_3rd_octet
             optimize_get_free_local_ip=true
         else
             if [ "$last_used_4th_octet" == "254" ]; then
@@ -278,7 +279,7 @@ search_free_local_ip_with_prefix()
             local_ip="${ip_prefix}.$_4thoctet" 
 
             is_ip_used_by_aznfs=$(echo "$used_local_ips_with_same_prefix" | grep "^${local_ip}$")
-            if [ ! -z $is_ip_used_by_aznfs ]; then
+            if [ -n "$is_ip_used_by_aznfs" ]; then
                 # Avoid excessive logs. 
                 # vecho "$local_ip is in use by aznfs!"
                 continue
@@ -286,12 +287,12 @@ search_free_local_ip_with_prefix()
 
             if is_host_ip $local_ip; then 
                 vecho "Skipping host address ${local_ip}!"
-                continue 
-            fi 
+                continue
+            fi
 
-            if is_link_ip $local_ip; then 
+            if is_link_ip $local_ip; then
                 vecho "Skipping link network ${local_ip}!"
-                continue 
+                continue
             fi
 
             if [ "$nfs_ip" == "$local_ip" ]; then
@@ -299,19 +300,19 @@ search_free_local_ip_with_prefix()
                 continue
             fi
 
-            is_present_in_iptables=$(iptables-save -t nat | grep "^${local_ip}$" | wc -l)
+            is_present_in_iptables=$(echo "$iptable_entries" | grep "^${local_ip}$" | wc -l)
             if [ $is_present_in_iptables -ne 0 ]; then
                 vecho "$local_ip is already present in iptables!"
                 continue
             fi
 
-            # 
-            # Try pinging the address to be sure it is not in use in the 
-            # client network. 
+            #
+            # Try pinging the address to be sure it is not in use in the
+            # client network.
             #
             # Note: If the address exists but not responding to ICMP ping then
-            #       we will incorrectly treat it as non-exixtent.  
-            # 
+            #       we will incorrectly treat it as non-exixtent.
+            #
             if is_pinging $local_ip; then
                 vecho "Skipping $local_ip as it appears to be in use on the network!"
                 continue
@@ -377,6 +378,7 @@ get_free_local_ip()
     # If the above loop is not able to find a free local IP using optimized way,
     # do a linear search to get the free local IP.
     #
+    vecho "Falling back to linear search for free ip!"             
     OPTIMIZE_GET_FREE_LOCAL_IP=false
     for ip_prefix in $IP_PREFIXES; do
         vecho "Trying IP prefix ${ip_prefix}."
@@ -425,7 +427,8 @@ parse_arguments()
 #
 ensure_aznfswatchdog()
 {
-    if ! systemctl is-active --quiet aznfswatchdog; then
+    pidof -x aznfswatchdog > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
         eecho "aznfswatchdog service not running!"
         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
         pecho "If the problem persists, contact Microsoft support."
