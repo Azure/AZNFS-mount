@@ -38,7 +38,7 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 #
 is_valid_blob_fqdn() 
 {
-    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]{1}[0-9]{1})?.blob(.preprod)?.core.windows.net$ ]]
+    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]{2})?.blob(.preprod)?.core.windows.net$ ]]
 }
 
 #
