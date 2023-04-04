@@ -166,7 +166,7 @@ verify_super_user()
 
 if [ "$RELEASE_NUMBER" == "x.y.z" ]; then
     eecho "This script is directly downloaded from the github source code."
-    eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/BlobNFS-mount/releases/latest/download/aznfs_install.sh'"
+    eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh'"
     eecho "If the problem persists, contact Microsoft support."
     exit 1
 fi
@@ -197,7 +197,7 @@ case "${__m}:${__s}" in
             distro_id=$(canonicalize_distro_id $distro_id)
         else
             eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
-            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/BlobNFS-mount/releases/latest'"
+            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest'"
             pecho "If the problem persists, contact Microsoft support."
         fi
         ;;
@@ -220,7 +220,7 @@ if [ $apt -eq 1 ]; then
             exit 1
         fi
     fi
-    wget https://github.com/Azure/BlobNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_${RELEASE_NUMBER}_amd64.deb -P /tmp
+    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_${RELEASE_NUMBER}_amd64.deb -P /tmp
     apt install -y /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
     install_error=$?
     rm -f /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
