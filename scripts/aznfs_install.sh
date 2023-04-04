@@ -213,7 +213,7 @@ if [ $apt -eq 1 ]; then
     install_cmd="apt"
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "Version: " | awk '{print $2}')
     if [ -n "$current_version" ]; then
-        read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [y/n] " result
+        read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [y/n] " result < /dev/tty
         echo
         if [ "$result" != "y" -a "$result" != "Y" ]; then
             eecho "Installation aborted!"
