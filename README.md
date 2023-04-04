@@ -35,7 +35,7 @@ AZNFS is supported on following Linux distros:
 
 - Run the following command to download and install **AZNFS**:
 	```
-	wget -O - -q https://github.com/Azure/BlobNFS-mount/releases/latest/download/aznfs_install.sh | sh
+	wget -O - -q https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh | bash
 	```
  	It will install the aznfs mount helper program and the aznfswatchdog service.
 
