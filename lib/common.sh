@@ -152,7 +152,7 @@ resolve_ipv4()
     local hname="$1"
 
     # Resolve hostname to IPv4 address.
-    host_op=$(host -4 -t A "$hname" | sort)
+    host_op=$(host -4 -t A "$hname" | sort | shuf --random-source=/etc/machine-id)
     if [ $? -ne 0 ]; then
         eecho "Bad Blob FQDN: $hname"
         return 1
@@ -174,16 +174,14 @@ resolve_ipv4()
     local ipv4_addr_all=$(echo "$host_op" | grep " has address " | awk '{print $4}')
     local ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
     
-    if [ $cnt_ip -ne 1 ]
-        for((i=0;i<$cnt_ip;i++))
+    if [ $cnt_ip -ne 1 ]; then
+        for((i=1;i<=$cnt_ip;i++))
         {
-            ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
-            ping -4 -W3 -c1 $ipv4_addr > /dev/null
+            ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
+            nc -w 3 -z $ipv4_addr 2048
             if [ $? -ne 0 ]; then
                 break
             fi
-
-            ipv4_addr_all=$(echo "$ipv4_addr_all" | tail -n +$(expr $cnt_ip -1 -$i))
         }
     fi
     
