@@ -152,24 +152,40 @@ resolve_ipv4()
     local hname="$1"
 
     # Resolve hostname to IPv4 address.
-    host_op=$(host -4 -t A "$hname" | sort) 
+    host_op=$(host -4 -t A "$hname" | sort)
     if [ $? -ne 0 ]; then
-        eecho "Bad Blob FQDN: $hname" 
-        return 1 
-    fi 
-
-    # 
-    # For ZRS accounts, we will get 3 IP addresses whose order keeps changing.
-    # We sort the output of host so that we always look at the same address.
-    # 
-    local cnt_ip=$(echo "$host_op" | grep " has address " | awk '{print $4}' | head -n1 | wc -l) 
-
-    if [ $cnt_ip -ne 1 ]; then 
-        eecho "host returned $cnt_ip address(es) for ${hname}, expected 1!" 
-        return 1 
+        eecho "Bad Blob FQDN: $hname"
+        return 1
     fi
 
-    local ipv4_addr=$(echo "$host_op" | grep " has address " | head -n1 | awk '{print $4}') 
+    #
+    # For ZRS accounts, we will get 3 IP addresses whose order keeps changing.
+    # We sort the output of host so that we always look at the same address. In
+    # case a zone is down, the first IP could be unreachable therefore we only
+    # choose the IP which is reachable 
+    #
+    local cnt_ip=$(echo "$host_op" | grep " has address " | awk '{print $4}' | wc -l)
+
+    if [ $cnt_ip -eq 0 ]; then
+        eecho "host returned $cnt_ip address(es) for ${hname}, expected 1 or more!"
+        return 1
+    fi
+
+    local ipv4_addr_all=$(echo "$host_op" | grep " has address " | awk '{print $4}')
+    local ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
+    
+    if [ $cnt_ip -ne 1 ]
+        for((i=0;i<$cnt_ip;i++))
+        {
+            ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
+            ping -4 -W3 -c1 $ipv4_addr > /dev/null
+            if [ $? -ne 0 ]; then
+                break
+            fi
+
+            ipv4_addr_all=$(echo "$ipv4_addr_all" | tail -n +$(expr $cnt_ip -1 -$i))
+        }
+    fi
     
     if ! is_valid_ipv4_address "$ipv4_addr"; then 
         eecho "[FATAL] host returned bad IPv4 address $ipv4_addr for hostname ${hname}!" 
