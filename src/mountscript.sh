@@ -525,7 +525,8 @@ fi
 # AZNFS uses fixed port 2048 for mount and nfs.
 # Avoid portmapp calls by default.
 if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
-       MOUNT_OPTIONS="$MOUNT_OPTIONS,port=2048,mountport=2048"
+       AZNFS_PORT="${AZNFS_PORT:-2048}"
+       MOUNT_OPTIONS="$MOUNT_OPTIONS,port=$AZNFS_PORT,mountport=$AZNFS_PORT"
 fi
 
 # Do the actual mount.
