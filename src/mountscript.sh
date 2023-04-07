@@ -522,6 +522,12 @@ if ! add_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
     exit 1
 fi
 
+# AZNFS uses fixed port 2048 for mount and nfs.
+# Avoid portmapp calls by default.
+if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
+       MOUNT_OPTIONS="$MOUNT_OPTIONS,port=2048,mountport=2048"
+fi
+
 # Do the actual mount.
 mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
 mount_status=$?
