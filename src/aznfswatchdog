@@ -151,6 +151,7 @@ while :; do
         if ! echo "$findmnt" | grep " nfs ${l_ip}:" >/dev/null; then
             if $do_unmount_gc; then
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAP} [$line]."
+                # Delete IFF mountmap is not changed since we read it above.
                 ensure_mountmap_not_exist "$line" "$mtime_mountmap"
                 continue
             fi
