@@ -148,7 +148,7 @@ while :; do
         # As long as we have at least one mount using the MOUNTMAP entry, we leave
         # it around.
         #
-        if ! echo "$findmnt" | grep -q " nfs ${l_ip}:"; then
+        if ! echo "$findmnt" | grep " nfs ${l_ip}:" >/dev/null; then
             if $do_unmount_gc; then
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAP} [$line]."
                 ensure_mountmap_not_exist "$line" "$mtime_mountmap"
