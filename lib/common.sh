@@ -133,13 +133,13 @@ resolve_ipv4()
     local hname="$1"
 
     # Some retries for resilience.
-    for((i=0;i<3;i++)) {
+    for((i=0;i<=5;i++)) {
         # Resolve hostname to IPv4 address.
-        host_op=$(host -4 -t A "$hname")
+        host_op=$(host -4 -t A "$hname" 2>&1)
         if [ $? -ne 0 ]; then
-            eecho "Failed to resolve ${hname}!"
+            eecho "Failed to resolve ${hname}: $host_op!"
             # Exhausted retries?
-            if [ $i -eq 3 ]; then
+            if [ $i -eq 5 ]; then
                 return 1
             fi
             # Mostly some transient issue, retry after some sleep.
@@ -163,7 +163,7 @@ resolve_ipv4()
         if [ $cnt_ip -eq 0 ]; then
             eecho "host returned 0 address for ${hname}, expected one or more! [$host_op]"
             # Exhausted retries?
-            if [ $i -eq 3 ]; then
+            if [ $i -eq 5 ]; then
                 return 1
             fi
             # Mostly some transient issue, retry after some sleep.
