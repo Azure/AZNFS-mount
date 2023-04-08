@@ -487,3 +487,10 @@ ulimitfd=$(ulimit -n 2>/dev/null)
 if [ -n "$ulimitfd" -a $ulimitfd -lt 131072 ]; then
     ulimit -n 131072
 fi
+
+#
+# In case there are inherited fds, close other than 0,1,2.
+#
+for fd in $(ls /proc/$$/fd/); do
+    [ $fd -gt 2 ] && exec {fd}<&-
+done
