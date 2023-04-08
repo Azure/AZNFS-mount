@@ -133,19 +133,20 @@ is_ip_port_reachable()
 resolve_ipv4()
 {
     local hname="$1"
+    local RETRIES=3
 
     # Some retries for resilience.
-    for((i=0;i<=5;i++)) {
+    for((i=0;i<=$RETRIES;i++)) {
         # Resolve hostname to IPv4 address.
         host_op=$(host -4 -t A "$hname" 2>&1)
         if [ $? -ne 0 ]; then
             vecho "Failed to resolve ${hname}: $host_op!"
             # Exhausted retries?
-            if [ $i -eq 5 ]; then
+            if [ $i -eq $RETRIES ]; then
                 return 1
             fi
             # Mostly some transient issue, retry after some sleep.
-            sleep 5
+            sleep 1
             continue
         fi
 
@@ -163,11 +164,11 @@ resolve_ipv4()
         if [ $cnt_ip -eq 0 ]; then
             vecho "host returned 0 address for ${hname}, expected one or more! [$host_op]"
             # Exhausted retries?
-            if [ $i -eq 5 ]; then
+            if [ $i -eq $RETRIES ]; then
                 return 1
             fi
             # Mostly some transient issue, retry after some sleep.
-            sleep 5
+            sleep 1
             continue
         fi
 
@@ -479,4 +480,9 @@ if [ ! -f $MOUNTMAP ]; then
         exit 1
     fi
     chattr -f +i $MOUNTMAP
+fi
+
+ulimitfd=$(ulimit -n 2>/dev/null)
+if [ -n "$ulimitfd" -a $ulimitfd -lt 131072 ]; then
+    ulimit -n 131072
 fi
