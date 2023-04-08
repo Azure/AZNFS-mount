@@ -127,9 +127,11 @@ is_ip_port_reachable()
 # Blob fqdn to IPv4 adddress.
 # Caller must make sure that it is called only for hostname and not IP address.
 #
+# Note: Since caller captures its o/p this should not log anything other than
+#       the IP address, in case of success return.
+#
 resolve_ipv4()
 {
-    vecho "Inside resolve_ipv4"
     local hname="$1"
 
     # Some retries for resilience.
@@ -137,7 +139,7 @@ resolve_ipv4()
         # Resolve hostname to IPv4 address.
         host_op=$(host -4 -t A "$hname" 2>&1)
         if [ $? -ne 0 ]; then
-            eecho "Failed to resolve ${hname}: $host_op!"
+            vecho "Failed to resolve ${hname}: $host_op!"
             # Exhausted retries?
             if [ $i -eq 5 ]; then
                 return 1
@@ -147,7 +149,6 @@ resolve_ipv4()
             continue
         fi
 
-        vecho "After host"
         #
         # For ZRS accounts, we will get 3 IP addresses whose order keeps changing.
         # We sort the output of host so that we always look at the same address,
@@ -158,10 +159,9 @@ resolve_ipv4()
                         sort | shuf --random-source=/etc/machine-id)
 
         cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
-        vecho "After cnt_ip"
 
         if [ $cnt_ip -eq 0 ]; then
-            eecho "host returned 0 address for ${hname}, expected one or more! [$host_op]"
+            vecho "host returned 0 address for ${hname}, expected one or more! [$host_op]"
             # Exhausted retries?
             if [ $i -eq 5 ]; then
                 return 1
@@ -176,7 +176,6 @@ resolve_ipv4()
 
     # Use first address from the above curated list.
     ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
-    vecho "After ipv4_addr"
 
     # For ZRS we need to use the first reachable IP.
     if [ $cnt_ip -ne 1 ]; then
@@ -193,7 +192,6 @@ resolve_ipv4()
         return 1
     fi
 
-    vecho "After is_valid_ipv4_address"
     echo $ipv4_addr
     return 0
 }
