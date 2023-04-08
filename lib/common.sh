@@ -285,30 +285,31 @@ ensure_mountmap_exist()
 #
 ensure_mountmap_not_exist()
 {
-    #
-    # If user wants to delete the entry only if MOUNTMAP has not changed since
-    # he looked up, honour that.
-    #
-    local ifmatch="$2"
-    if [ -n "$ifmatch" ]; then
-        local mtime=$(stat -c%Y $MOUNTMAP)
-        if [ "$mtime" != "$ifmatch" ]; then
-            eecho "[$1] Refusing to remove from ${MOUNTMAP} as $mtime != $ifmatch!"
-            return 1
-        fi
-    fi
-
-    # Delete iptable rule corresponding to the outgoing MOUNTMAP entry.
-    IFS=" " read l_host l_ip l_nfsip <<< "$1"
-    if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
-        if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
-            eecho "[$1] Refusing to remove from ${MOUNTMAP} as iptable entry could not be deleted!"
-            return 1
-        fi
-    fi
-
     (
         flock -e 999
+
+        #
+        # If user wants to delete the entry only if MOUNTMAP has not changed since
+        # he looked up, honour that.
+        #
+        local ifmatch="$2"
+        if [ -n "$ifmatch" ]; then
+            local mtime=$(stat -c%Y $MOUNTMAP)
+            if [ "$mtime" != "$ifmatch" ]; then
+                eecho "[$1] Refusing to remove from ${MOUNTMAP} as $mtime != $ifmatch!"
+                return 1
+            fi
+        fi
+
+        # Delete iptable rule corresponding to the outgoing MOUNTMAP entry.
+        IFS=" " read l_host l_ip l_nfsip <<< "$1"
+        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
+            if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
+                eecho "[$1] Refusing to remove from ${MOUNTMAP} as iptable entry could not be deleted!"
+                return 1
+            fi
+        fi
+
         chattr -f -i $MOUNTMAP
         sed -i "\%^${1}$%d" $MOUNTMAP
         if [ $? -ne 0 ]; then
