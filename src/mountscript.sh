@@ -488,7 +488,6 @@ if [ $? -ne 0 ]; then
     eecho "Cannot resolve IP address for ${nfs_host}!"
     exit 1
 fi
-vecho "Resolved $nfs_host -> $nfs_ip"
 
 nfs_dir=$(get_dir_from_share "$1")
 if [ $? -ne 0 ]; then
