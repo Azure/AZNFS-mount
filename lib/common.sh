@@ -8,6 +8,7 @@
 APPNAME="aznfs"
 OPTDIR="/opt/microsoft/${APPNAME}"
 LOGFILE="${OPTDIR}/${APPNAME}.log"
+RANDBYTES="${OPTDIR}/randbytes"
 
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
@@ -157,7 +158,7 @@ resolve_ipv4()
         # zones.
         #
         ipv4_addr_all=$(echo "$host_op" | grep " has address " | awk '{print $4}' |\
-                        sort | shuf --random-source=/etc/machine-id)
+                        sort | shuf --random-source=$RANDBYTES)
 
         cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
 
