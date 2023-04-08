@@ -7,16 +7,18 @@
 
 #
 # Load common aznfs helpers.
-# 
+#
 . /opt/microsoft/aznfs/common.sh
 
-# 
+#
 # Default order in which we try the network prefixes for a free local IP to use.
-# This can be overriden using AZNFS_IP_PREFIXES environment variable. 
-# 
+# This can be overriden using AZNFS_IP_PREFIXES environment variable.
+#
 DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
-
 IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
+
+# Default aznfs port.
+AZNFS_PORT="${AZNFS_PORT:-2048}"
 
 #
 # Local IP that is free to use.
@@ -36,19 +38,18 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 #
 # Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
 #
-is_valid_blob_fqdn() 
+is_valid_blob_fqdn()
 {
     [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]{2})?.blob(.preprod)?.core.windows.net$ ]]
 }
 
 #
-# Get blob endpoint from account.blob.core.windows.net:/account/container. 
+# Get blob endpoint from account.blob.core.windows.net:/account/container.
 #
 get_host_from_share()
 {
     local hostshare="$1"
-    local host=$(echo $hostshare | cut -d: -f1)
-    local share=$(echo $hostshare | cut -d: -f2)
+    IFS=: read host share <<< "$hostshare"
 
     if [ -z "$host" -o -z "$share" ]; then
         eecho "Bad share name: ${hostshare}."
@@ -59,16 +60,14 @@ get_host_from_share()
     echo "$host"
 }
 
-# 
+#
 # Get /account/container from account.blob.core.windows.net:/account/container.
-# 
-get_dir_from_share() 
-{ 
+#
+get_dir_from_share()
+{
     local hostshare="$1"
-    local share=$(echo $hostshare | cut -d: -f2)
-    local account=$(echo $share | cut -d/ -f2)
-    local container=$(echo $share | cut -d/ -f3)
-    local extra=$(echo $share | cut -d/ -f4)
+    IFS=: read _ share <<< "$hostshare"
+    IFS=/ read _ account container extra <<< "$share"
 
     if [ -z "$account" -o -z "$container" -o -n "$extra" ]; then
         eecho "Bad share name: ${hostshare}."
@@ -77,37 +76,37 @@ get_dir_from_share()
     fi
 
     echo "$share"
-} 
+}
 
 #
-# Is the given address one of the host addresses? 
-# 
-is_host_ip() 
-{ 
+# Is the given address one of the host addresses?
+#
+is_host_ip()
+{
     #
-    # Do not make this local as status gathering does not work well when 
-    # collecting command o/p to local variables. 
+    # Do not make this local as status gathering does not work well when
+    # collecting command o/p to local variables.
     #
-    route=$(ip -4 route get fibmatch $1 2>/dev/null) 
-    if [ $? -ne 0 ]; then 
-        return 1 
-    fi 
+    route=$(ip -4 route get fibmatch $1 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
 
     if ! echo "$route" | grep -q "scope host"; then
-        return 1 
-    fi 
+        return 1
+    fi
 
-    return 0 
-} 
+    return 0
+}
 
-# 
-# Is the given address one of the addresses directly reachable from the host? 
-# 
-is_link_ip() 
-{ 
+#
+# Is the given address one of the addresses directly reachable from the host?
+#
+is_link_ip()
+{
     #
-    # Do not make this local as status gathering does not work well when 
-    # collecting command o/p to local variables. 
+    # Do not make this local as status gathering does not work well when
+    # collecting command o/p to local variables.
     #
     route=$(ip -4 route get fibmatch $1 2>/dev/null)
     if [ $? -ne 0 ]; then
@@ -138,13 +137,13 @@ is_pinging()
     local ip=$1
 
     # 3 secs timeout should be good.
-    ping -4 -W3 -c1 $ip > /dev/null
+    ping -4 -W3 -c1 $ip > /dev/null 2>&1
 }
 
 #
-# Returns number of octets in an IPv4 prefix. 
+# Returns number of octets in an IPv4 prefix.
 # If IP prefix is not valid or is not a private IP address prefix, it returns 0.
-# 
+#
 # f.e. For 10 it will return 1, for 10.10 it will return 2, for 10.10.10 it will
 # return 3 and for 10.10.10.10, it will return 4.
 #
@@ -155,7 +154,7 @@ octets_in_ipv4_prefix()
     local octetdot="${octet}\."
 
     if ! is_valid_ipv4_prefix $ip; then
-        echo 0 
+        echo 0
         return
     fi
 
@@ -164,27 +163,27 @@ octets_in_ipv4_prefix()
     # 172.16.0.0/12, or 192.168.0.0/16), i.e., will the user provided prefix
     # result in a private IP address.
     #
-    [[ $ip =~ ^10(\.${octet})*$ ]] || 
-    [[ $ip =~ ^172\.(1[6-9]|2[0-9]|3[0-1])(\.${octet})*$ ]] || 
+    [[ $ip =~ ^10(\.${octet})*$ ]] ||
+    [[ $ip =~ ^172\.(1[6-9]|2[0-9]|3[0-1])(\.${octet})*$ ]] ||
     [[ $ip =~ ^192\.168(\.${octet})*$ ]]
-    
+
     if [ $? -ne 0 ]; then
         echo 0
         return
     fi
-    
-    # 4 octets. 
+
+    # 4 octets.
     [[ $ip =~ ^(${octetdot}){3}${octet}$ ]] && echo 4 && return;
-    
+
     # 3 octets
     [[ $ip =~ ^(${octetdot}){2}${octet}$ ]] && echo 3 && return;
-    
+
     # 2 octets.
     [[ $ip =~ ^(${octetdot}){1}${octet}$ ]] && echo 2 && return;
-    
+
     # 1 octet.
     [[ $ip =~ ^${octet}$ ]] && echo 1 && return;
-    
+
     echo 0
 }
 
@@ -199,7 +198,7 @@ search_free_local_ip_with_prefix()
         eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
         return 1
     fi
-    
+
     local local_ip=""
     local optimize_get_free_local_ip=false
     local used_local_ips_with_same_prefix=$(cat $MOUNTMAP | awk '{print $2}' | grep "^${initial_ip_prefix}\." | sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n)
@@ -214,14 +213,11 @@ search_free_local_ip_with_prefix()
     # MOUNTMAP instead of starting it from 100.
     #
     if [ $OPTIMIZE_GET_FREE_LOCAL_IP == true -a -n "$used_local_ips_with_same_prefix" ]; then
-        
+
         last_used_ip=$(echo "$used_local_ips_with_same_prefix" | tail -n1)
-        
-        last_used_1st_octet=$(echo "$last_used_ip" | cut -d "." -f1)
-        last_used_2nd_octet=$(echo "$last_used_ip" | cut -d "." -f2)
-        last_used_3rd_octet=$(echo "$last_used_ip" | cut -d "." -f3)
-        last_used_4th_octet=$(echo "$last_used_ip" | cut -d "." -f4)
-        
+
+        IFS="." read _ _ last_used_3rd_octet last_used_4th_octet <<< "$last_used_ip"
+
         if [ $num_octets -eq 2 ]; then
             if [ "$last_used_3rd_octet" == "254" -a "$last_used_4th_octet" == "254" ]; then
                 return 1
@@ -240,25 +236,20 @@ search_free_local_ip_with_prefix()
 
     while true; do
         if [ $num_octets -eq 2 ]; then
-            # Start from 100 onwards to make aznfs local addresses more identifiable. 
+            # Start from 100 onwards to make aznfs local addresses more identifiable.
 
-            for ((; _3rdoctet<255; _3rdoctet++)); do 
-                ip_prefix="${ip_prefix}.$_3rdoctet" 
+            for ((; _3rdoctet<255; _3rdoctet++)); do
+                ip_prefix="${ip_prefix}.$_3rdoctet"
 
-                if is_host_ip $ip_prefix; then
-                    vecho "Skipping host address ${ip_prefix}!"
-                    continue 
-                fi 
-
-                if is_link_ip $ip_prefix; then 
+                if is_link_ip $ip_prefix; then
                     vecho "Skipping link network ${ip_prefix}!"
-                    continue 
+                    continue
                 fi
 
-                break 
+                break
             done
 
-            if [ $_3rdoctet -eq 255 ]; then 
+            if [ $_3rdoctet -eq 255 ]; then
                 #
                 # If the IP prefix had 2 octets and we exhausted all possible
                 # values of the 3rd and 4th octet, then we have failed the
@@ -275,17 +266,17 @@ search_free_local_ip_with_prefix()
             _4thoctet=100
         fi
 
-        for ((; _4thoctet<255; _4thoctet++)); do 
-            local_ip="${ip_prefix}.$_4thoctet" 
+        for ((; _4thoctet<255; _4thoctet++)); do
+            local_ip="${ip_prefix}.$_4thoctet"
 
             is_ip_used_by_aznfs=$(echo "$used_local_ips_with_same_prefix" | grep "^${local_ip}$")
             if [ -n "$is_ip_used_by_aznfs" ]; then
-                # Avoid excessive logs. 
+                # Avoid excessive logs.
                 # vecho "$local_ip is in use by aznfs!"
                 continue
             fi
 
-            if is_host_ip $local_ip; then 
+            if is_host_ip $local_ip; then
                 vecho "Skipping host address ${local_ip}!"
                 continue
             fi
@@ -322,7 +313,7 @@ search_free_local_ip_with_prefix()
             break
         done
 
-        if [ $_4thoctet -eq 255 ]; then 
+        if [ $_4thoctet -eq 255 ]; then
             if [ $num_octets -eq 2 ]; then
                 let _3rdoctet++
                 ip_prefix=$initial_ip_prefix
@@ -330,7 +321,7 @@ search_free_local_ip_with_prefix()
             else
                 #
                 # If the IP prefix had 3 octets and we exhausted all possible
-                # values of the 4th octet, then we have failed the search for 
+                # values of the 4th octet, then we have failed the search for
                 # free local IP within the given prefix.
                 #
                 return 1
@@ -338,33 +329,25 @@ search_free_local_ip_with_prefix()
         fi
 
         #
-        # Add this entry to MOUNTMAP with PID suffix. This is to avoid assigning
-        # same local ip to parallel mount requests. This entry will be deleted
-        # from MOUNTMAP and original entry will be added just after mount.
-        #
-        PID=$$
-        local mountmap_entry="$nfs_host:$nfs_dir $local_ip $nfs_ip $PID"
-        chattr -f -i $MOUNTMAP
-        echo "$mountmap_entry" >> $MOUNTMAP
-        if [ $? -ne 0 ]; then
-            chattr -f +i $MOUNTMAP
-            eecho "[$mountmap_entry] failed to reserve!"
-            return 1
-        fi
-        chattr -f +i $MOUNTMAP
-
         # Happy path!
+        #
+        # Add this entry to MOUNTMAP while we have the MOUNTMAP lock.
+        # This is to avoid assigning same local ip to parallel mount requests
+        # for different endpoints.
+        # ensure_mountmap_exist will also create a matching iptable DNAT rule.
+        #
         LOCAL_IP=$local_ip
-        return 0
+        ensure_mountmap_exist_nolock "$nfs_host $LOCAL_IP $nfs_ip"
 
+        return 0
     done
 
     # We will never reach here.
 }
 
-# 
+#
 # Get a local IP that is free to use. Set global variable LOCAL_IP if found.
-# 
+#
 get_free_local_ip()
 {
     for ip_prefix in $IP_PREFIXES; do
@@ -378,7 +361,7 @@ get_free_local_ip()
     # If the above loop is not able to find a free local IP using optimized way,
     # do a linear search to get the free local IP.
     #
-    vecho "Falling back to linear search for free ip!"             
+    vecho "Falling back to linear search for free ip!"
     OPTIMIZE_GET_FREE_LOCAL_IP=false
     for ip_prefix in $IP_PREFIXES; do
         vecho "Trying IP prefix ${ip_prefix}."
@@ -392,15 +375,52 @@ get_free_local_ip()
 }
 
 #
+# For the given AZNFS endpoint FQDN return a local IP that should proxy it.
+# If there is at least one mount to the same FQDN it MUST return the local IP
+# used for that, else assign a new free local IP.
+#
+get_local_ip_for_fqdn()
+{
+        local fqdn=$1
+        local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAP)
+        # One local ip per fqdn, so return existing one if already present.
+        IFS=" " read _ local_ip _ <<< "$mountmap_entry"
+
+        if [ -n "$local_ip" ]; then
+            LOCAL_IP=$local_ip
+
+            #
+            # Ask aznfswatchdog to stay away while we are using this proxy IP.
+            # This is similar to holding a timed lease, we can safely use this
+            # proxy IP w/o worrying about aznfswatchdog deleting it for 5 minutes.
+            #
+            touch_mountmap
+
+            #
+            # This is not really needed since iptable entry must also be present,
+            # but it's always better to ensure MOUNTMAP and iptable entries are
+            # in sync.
+            #
+            ensure_iptable_entry $local_ip $nfs_ip
+            return 0
+        fi
+
+        #
+        # First mount of an account on this client.
+        #
+        get_free_local_ip
+}
+
+#
 # Parse mount options from the mount command executed by the user.
 #
 parse_arguments()
 {
-    # Skip share and mountdir. 
+    # Skip share and mountdir.
     shift
     shift
     local next_arg_is_mount_options=false
-    
+
     OPTIONS=
     MOUNT_OPTIONS=
 
@@ -423,8 +443,6 @@ parse_arguments()
 # Ensure aznfswatchdog service is running, if not bail out with an appropriate
 # error.
 #
-# TODO: Make sure this works on all supported distros.  
-#
 ensure_aznfswatchdog()
 {
     pidof -x aznfswatchdog > /dev/null 2>&1
@@ -440,9 +458,11 @@ ensure_aznfswatchdog()
 vecho "Got arguments: [$*]"
 
 # Check if aznfswatchdog service is running.
+vecho "Before ensure_aznfswatchdog"
 if ! ensure_aznfswatchdog; then
     exit 1
 fi
+vecho "After ensure_aznfswatchdog"
 
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAP" ]; then
@@ -464,12 +484,14 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
     exit 1
 fi
 
+vecho "Resolving $nfs_host"
 nfs_ip=$(resolve_ipv4 "$nfs_host")
 if [ $? -ne 0 ]; then
     echo "$nfs_ip"
     eecho "Cannot resolve IP address for ${nfs_host}!"
     exit 1
 fi
+vecho "Resolved $nfs_host -> $nfs_ip"
 
 nfs_dir=$(get_dir_from_share "$1")
 if [ $? -ne 0 ]; then
@@ -479,23 +501,32 @@ fi
 
 if [ -z "$nfs_dir" ]; then
     eecho "Bad share name: ${1}!"
-    eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'!" 
-    exit 1 
-fi 
+    eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'!"
+    exit 1
+fi
 
 mount_point="$2"
 
 OPTIONS=
 MOUNT_OPTIONS=
 
+vecho "Before parse_arguments"
 parse_arguments $*
- 
+vecho "After parse_arguments"
+
+vecho "Before get_local_ip_for_fqdn"
+#
+# Get proxy IP to use for this mount.
+# It'll ensure an appropriate entry is added to MOUNTMAP if not already added,
+# and an appropriate iptable DNAT rule is added.
+#
 exec {fd}<$MOUNTMAP
 flock -e $fd
-get_free_local_ip
+get_local_ip_for_fqdn $nfs_host
 ret=$?
 flock -u $fd
 exec {fd}<&-
+vecho "After get_local_ip_for_fqdn"
 
 if [ $ret -ne 0 ]; then
     if [ -z "$AZNFS_IP_PREFIXES" ]; then
@@ -510,66 +541,36 @@ fi
 
 vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
 
-# Add DNAT rule for forwarding LOCAL_IP traffic to the actual blob endpoint IP address.
-if ! add_iptable_entry "$LOCAL_IP" "$nfs_ip"; then
-    # Do not log anything here since we have already logged in add_iptable_entry.
-
-    # Remove the entry with PID for this mount added in get_free_local_ip() above. 
-    ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
-
-    # Fail the mount for the user since adding iptable entry failed.
-    eecho "Mount Failed!"
-    exit 1
+#
+# AZNFS uses fixed port 2048 for mount and nfs.
+# Avoid portmap calls by default.
+#
+if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
+    matchstr="\<port\>="
+    if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        MOUNT_OPTIONS="$MOUNT_OPTIONS,port=$AZNFS_PORT"
+    fi
+    matchstr="\<mountport\>="
+    if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        MOUNT_OPTIONS="$MOUNT_OPTIONS,mountport=$AZNFS_PORT"
+    fi
 fi
 
 # Do the actual mount.
 mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
 mount_status=$?
 
-if [ -n "$mount_output" ]; then 
+if [ -n "$mount_output" ]; then
     pecho "$mount_output"
 fi
 
 if [ $mount_status -ne 0 ]; then
     eecho "Mount failed!"
-
-    # Clear the DNAT rule and the conntrack entry to stop current active connections too.
-    delete_iptable_entry "$LOCAL_IP" "$nfs_ip"
-
     #
-    # Ignore the status of delete_iptable_entry and fallthrough to delete the
-    # mountmap entry. The iptable entry will be leaked but not deleting
-    # mountmap entry might cause this situation to occur again and again and
-    # flood the logs.
+    # Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
+    # will do it if it's unused (this mount was the one to create it).
     #
-
-    # Remove the entry with PID for this mount added in get_free_local_ip() above. 
-    ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
-
     exit 1
 fi
 
-#
-# Add new entry in MOUNTMAP before removing the placeholder entry to prevent
-# any other thread from using this local IP.
-#
-if ! ensure_mountmap_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip"; then
-    # Remove the entry with PID for this mount added in get_free_local_ip() above. 
-    ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
-
-    eecho "Mount failed!"
-
-    # Unmount the share mounted above as we are failing the mount.
-    unmount_and_delete_iptable_entry "$LOCAL_IP" "$nfs_dir" "$nfs_ip"
-
-    exit 1
-fi
-
-#
-# Remove the entry with PID for this mount after adding the original entry.
-# We do not fail if this fails as aznfswatchdog will be able to correctly
-# remove this entry with PID.
-#
-ensure_mountmap_not_exist "$nfs_host:$nfs_dir $LOCAL_IP $nfs_ip $PID"
-
-exit 0
+vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
