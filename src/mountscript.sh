@@ -458,11 +458,9 @@ ensure_aznfswatchdog()
 vecho "Got arguments: [$*]"
 
 # Check if aznfswatchdog service is running.
-vecho "Before ensure_aznfswatchdog"
 if ! ensure_aznfswatchdog; then
     exit 1
 fi
-vecho "After ensure_aznfswatchdog"
 
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAP" ]; then
@@ -484,7 +482,6 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
     exit 1
 fi
 
-vecho "Resolving $nfs_host"
 nfs_ip=$(resolve_ipv4 "$nfs_host")
 if [ $? -ne 0 ]; then
     echo "$nfs_ip"
@@ -510,11 +507,8 @@ mount_point="$2"
 OPTIONS=
 MOUNT_OPTIONS=
 
-vecho "Before parse_arguments"
 parse_arguments $*
-vecho "After parse_arguments"
 
-vecho "Before get_local_ip_for_fqdn"
 #
 # Get proxy IP to use for this mount.
 # It'll ensure an appropriate entry is added to MOUNTMAP if not already added,
@@ -526,7 +520,6 @@ get_local_ip_for_fqdn $nfs_host
 ret=$?
 flock -u $fd
 exec {fd}<&-
-vecho "After get_local_ip_for_fqdn"
 
 if [ $ret -ne 0 ]; then
     if [ -z "$AZNFS_IP_PREFIXES" ]; then
