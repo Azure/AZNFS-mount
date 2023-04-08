@@ -29,7 +29,7 @@ vecho "Starting aznfswatchdog..."
 
 # Dump NAT table once on startup in case we have reported conflicts.
 vecho "NAT table:\n$(iptables-save -t nat)"
-connntrack -L > /dev/null
+conntrack -L > /dev/null
 
 # connntrack timewait timeout higher than the TCP timewait timeout value isn't very valuable.
 connntrack_timeo_timew=$(cat /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait 2>/dev/null)
