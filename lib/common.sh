@@ -249,7 +249,7 @@ touch_mountmap()
 #
 ensure_mountmap_exist_nolock()
 {
-    IFS=" " read l_host l_ip l_nfsip l_pid <<< "$1"
+    IFS=" " read l_host l_ip l_nfsip <<< "$1"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
         eecho "[$1] failed to add to ${MOUNTMAP}!"
         return 1
