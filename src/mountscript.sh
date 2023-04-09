@@ -535,6 +535,16 @@ MOUNT_OPTIONS=
 parse_arguments $*
 
 #
+# Check azure nconnect flag.
+#
+if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
+    if ! check_nconnect; then
+        eecho "Mount failed!"
+        exit 1
+    fi
+fi
+
+#
 # Get proxy IP to use for this mount.
 # It'll ensure an appropriate entry is added to MOUNTMAP if not already added,
 # and an appropriate iptable DNAT rule is added.
@@ -558,16 +568,6 @@ if [ $ret -ne 0 ]; then
 fi
 
 vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
-
-#
-# Check azure nconnect flag.
-#
-if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
-    if ! check_nconnect; then
-        eecho "Mount failed!"
-        exit 1
-    fi
-fi
 
 #
 # AZNFS uses fixed port 2048 for mount and nfs.
