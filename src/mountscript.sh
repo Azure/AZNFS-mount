@@ -17,8 +17,11 @@
 DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
 IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
 
-# Default aznfs port.
+# Aznfs port, defaults to 2048.
 AZNFS_PORT="${AZNFS_PORT:-2048}"
+
+# Default to checking azure nconnect support.
+AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
 
 #
 # Local IP that is free to use.
@@ -41,6 +44,31 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 is_valid_blob_fqdn()
 {
     [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]{2})?.blob(.preprod)?.core.windows.net$ ]]
+}
+
+#
+# Check if nconnect mount option can be used. If not bail out failing the mount,
+# else if NFS client supports Azure nconnect but it's not enabled, enable it.
+#
+check_nconnect()
+{
+    matchstr="\<nconnect\>=([0-9]+)"
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        if [ ${BASH_REMATCH[1]} -gt 1 ]; then
+            modprobe sunrpc
+            if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
+                eecho "nconnect option needs NFS client with Azure nconnect support!"
+                return 1
+            fi
+
+            # Supported, enable if not enabled.
+            enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
+            if ! [[ "$enabled" =~ [yY] ]]; then
+                pecho "Azure nconnect not enabled, enabling!"
+                echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
+            fi
+        fi
+    fi
 }
 
 #
@@ -236,8 +264,6 @@ search_free_local_ip_with_prefix()
 
     while true; do
         if [ $num_octets -eq 2 ]; then
-            # Start from 100 onwards to make aznfs local addresses more identifiable.
-
             for ((; _3rdoctet<255; _3rdoctet++)); do
                 ip_prefix="${ip_prefix}.$_3rdoctet"
 
@@ -532,6 +558,16 @@ if [ $ret -ne 0 ]; then
 fi
 
 vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
+
+#
+# Check azure nconnect flag.
+#
+if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
+    if ! check_nconnect; then
+        eecho "Mount failed!"
+        exit 1
+    fi
+fi
 
 #
 # AZNFS uses fixed port 2048 for mount and nfs.
