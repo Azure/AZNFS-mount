@@ -23,6 +23,9 @@ AZNFS_PORT="${AZNFS_PORT:-2048}"
 # Default to checking azure nconnect support.
 AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
 
+# Default to fixing mount options passed in to help the users.
+AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
+
 #
 # Local IP that is free to use.
 #
@@ -43,7 +46,7 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 #
 is_valid_blob_fqdn()
 {
-    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]{2})?.blob(.preprod)?.core.windows.net$ ]]
+    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?.blob(.preprod)?.core.windows.net$ ]]
 }
 
 #
@@ -54,7 +57,8 @@ check_nconnect()
 {
     matchstr="\<nconnect\>=([0-9]+)"
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        if [ ${BASH_REMATCH[1]} -gt 1 ]; then
+        value="${BASH_REMATCH[1]}"
+        if [ $value -gt 1 ]; then
             modprobe sunrpc
             if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
                 eecho "nconnect option needs NFS client with Azure nconnect support!"
@@ -69,6 +73,73 @@ check_nconnect()
             fi
         fi
     fi
+}
+
+#
+# Help fix the mount options passed in by user.
+#
+fix_mount_options()
+{
+    matchstr="\<sec\>=([^,]+)"
+    if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        MOUNT_OPTIONS="$MOUNT_OPTIONS,sec=sys"
+    else
+        value="${BASH_REMATCH[1]}"
+        if [ "$value" != "sys" ]; then
+            pecho "Unsupported mount option sec=$value, fixing to sec=sys!"
+            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<sec\>=$value/sec=sys/g")
+        fi
+    fi
+
+    matchstr="\<nolock\>"
+    if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        pecho "Adding nolock mount option!"
+        MOUNT_OPTIONS="$MOUNT_OPTIONS,nolock"
+    fi
+
+    matchstr="\<proto\>=([^,]+)"
+    if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        pecho "Adding proto=tcp mount option!"
+        MOUNT_OPTIONS="$MOUNT_OPTIONS,proto=tcp"
+    else
+        value="${BASH_REMATCH[1]}"
+        if [ "$value" != "tcp" ]; then
+            pecho "Unsupported mount option proto=$value, fixing to proto=tcp!"
+            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<proto\>=$value/proto=tcp/g")
+        fi
+    fi
+
+    matchstr="\<vers\>=([0-9]+)"
+    if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        pecho "Adding vers=3 mount option!"
+        MOUNT_OPTIONS="$MOUNT_OPTIONS,vers=3"
+    else
+        value="${BASH_REMATCH[1]}"
+        if [ "$value" != "3" ]; then
+            pecho "Unsupported mount option vers=$value, fixing to vers=3!"
+            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<vers\>=$value/vers=3/g")
+        fi
+    fi
+
+    matchstr="\<rsize\>=([0-9]+)"
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        value="${BASH_REMATCH[1]}"
+        if [ $value -ne 1048576 ]; then
+            pecho "Suboptimal rsize=$value mount option, setting rsize=1048576!"
+            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<rsize\>=$value/rsize=1048576/g")
+        fi
+    fi
+
+    matchstr="\<wsize\>=([0-9]+)"
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        value="${BASH_REMATCH[1]}"
+        if [ $value -ne 1048576 ]; then
+            pecho "Suboptimal wsize=$value mount option, setting wsize=1048576!"
+            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<wsize\>=$value/wsize=1048576/g")
+        fi
+    fi
+
+    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
 }
 
 #
@@ -542,6 +613,13 @@ if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
         eecho "Mount failed!"
         exit 1
     fi
+fi
+
+#
+# Fix MOUNT_OPTIONS if needed.
+#
+if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
+    fix_mount_options
 fi
 
 #
