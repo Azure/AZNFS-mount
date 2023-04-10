@@ -183,9 +183,18 @@ while :; do
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then
-            echo "$new_ip"
-            eecho "resolve_ipv4($l_host) failed!"
-            next_ip_change_detection_epoch=$(date +%s)
+            #
+            # If account is deleted then we need to delete the MOUNTMAP entry along
+            # with the proxy iptable entry created for that account.
+            # Note that we don't delete if the MOUNTMAP was changed recently since
+            # the account may have been re-created after the dns lookup failure.
+            #
+            if [ "$new_ip" == "NXDOMAIN" ]; then
+                pecho "Account corresponding to $l_host seems to have been deleted!"
+                ensure_mountmap_not_exist "$line" "$mtime_mountmap"
+            else
+                eecho "resolve_ipv4($l_host) failed: $new_ip"
+            fi
             continue
         fi
 

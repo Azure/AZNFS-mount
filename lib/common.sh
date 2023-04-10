@@ -141,6 +141,15 @@ resolve_ipv4()
         # Resolve hostname to IPv4 address.
         host_op=$(host -4 -t A "$hname" 2>&1)
         if [ $? -ne 0 ]; then
+            #
+            # Special case of failure to indicate that the fqdn doesn't exist.
+            # We convey it to our caller using the special o/p "NXDOMAIN".
+            #
+            if [[ "$host_op" =~ .*NXDOMAIN.* ]]; then
+                echo "NXDOMAIN"
+                return 1
+            fi
+
             vecho "Failed to resolve ${hname}: $host_op!"
             # Exhausted retries?
             if [ $i -eq $RETRIES ]; then
