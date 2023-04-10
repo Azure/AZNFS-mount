@@ -17,6 +17,21 @@ chmod 0644 /opt/microsoft/aznfs/common.sh
 # Set suid bit for mount.aznfs to allow mount for non-super user.
 chmod 4755 /sbin/mount.aznfs
 
+# Create a random byte source for deterministic shuffling of IP addresses.
+set +e
+dd if=/dev/urandom of=/opt/microsoft/aznfs/randbytes bs=256 count=1
+if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
+	uuidgen > /opt/microsoft/aznfs/randbytes
+fi
+if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
+	date | md5sum | awk '{print $1}' > /opt/microsoft/aznfs/randbytes
+fi
+if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
+	date > /opt/microsoft/aznfs/randbytes
+fi
+chattr +i /opt/microsoft/aznfs/randbytes
+set -e
+
 # Start aznfswatchdog service.
 systemctl daemon-reload
 systemctl enable aznfswatchdog
