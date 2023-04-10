@@ -272,7 +272,7 @@ ensure_mountmap_exist_nolock()
             chattr -f +i $MOUNTMAP
             eecho "[$1] failed to add to ${MOUNTMAP}!"
             # Could not add MOUNTMAP entry, delete the DNAT rule added above.
-            delete_iptable_entry $l_ip $l_nfsip
+            ensure_iptable_entry_not_exist $l_ip $l_nfsip
             return 1
         fi
         chattr -f +i $MOUNTMAP
@@ -373,47 +373,6 @@ update_mountmap_entry()
         return 1
     fi
     chattr -f +i $MOUNTMAP
-}
-
-#
-# Check if the desired DNAT rule already exist. If not, add new DNAT rule.
-#
-add_iptable_entry()
-{
-    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
-    if [ $? -ne 0 ]; then
-        iptables -w 60 -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
-        if [ $? -ne 0 ]; then
-            eecho "Failed to add DNAT rule [$1 -> $2]!"
-            return 1
-        fi
-    else
-        wecho "DNAT rule [$1 -> $2] already exists."
-    fi
-}
-
-#
-# Delete entry from iptables if the share is unmounted or the IP for blob FQDN
-# is resolving into new IP. Also remove the entry from conntrack.
-#
-delete_iptable_entry()
-{
-    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
-    if [ $? -eq 0 ]; then
-        iptables -w 60 -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
-        if [ $? -ne 0 ]; then
-            eecho "Failed to delete DNAT rule [$1 -> $2]!"
-            return 1
-        fi
-
-        # Ignore status of conntrack because entry may not exist (timed out).
-        output=$(conntrack -D conntrack -p tcp -d "$1" -r "$2" 2>&1)
-        if [ $? -ne 0 ]; then
-            vecho "$output"
-        fi
-    else
-        wecho "DNAT rule [$1 -> $2] does not exist."
-    fi
 }
 
 #
