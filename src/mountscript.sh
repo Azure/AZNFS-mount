@@ -23,7 +23,7 @@ AZNFS_PORT="${AZNFS_PORT:-2048}"
 # Default to checking azure nconnect support.
 AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
 
-# Default to fixing mount options passed in to help the users.
+# Default to fixing mount options passed in to help the user.
 AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 
 #
@@ -660,6 +660,7 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         MOUNT_OPTIONS="$MOUNT_OPTIONS,mountport=$AZNFS_PORT"
     fi
+    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
 fi
 
 # Do the actual mount.
