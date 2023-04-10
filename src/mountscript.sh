@@ -368,8 +368,7 @@ search_free_local_ip_with_prefix()
 
             is_ip_used_by_aznfs=$(echo "$used_local_ips_with_same_prefix" | grep "^${local_ip}$")
             if [ -n "$is_ip_used_by_aznfs" ]; then
-                # Avoid excessive logs.
-                # vecho "$local_ip is in use by aznfs!"
+                vecho "$local_ip is in use by aznfs!"
                 continue
             fi
 
@@ -623,7 +622,7 @@ if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
 fi
 
 #
-# Get proxy IP to use for this mount.
+# Get proxy IP to use for this nfs_ip.
 # It'll ensure an appropriate entry is added to MOUNTMAP if not already added,
 # and an appropriate iptable DNAT rule is added.
 #
