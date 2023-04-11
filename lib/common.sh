@@ -338,6 +338,9 @@ ensure_mountmap_not_exist()
             echo "$out" > $MOUNTMAP
             ret=$?
             out=
+            if [ $ret -ne 0 ]; then
+                eecho "*** [FATAL] MOUNTMAP in inconsistent state, contact Microsoft support ***"
+            fi
         fi
 
         if [ $ret -ne 0 ]; then
@@ -405,6 +408,9 @@ update_mountmap_entry()
             echo "$out" > $MOUNTMAP
             ret=$?
             out=
+            if [ $ret -ne 0 ]; then
+                eecho "*** [FATAL] MOUNTMAP in inconsistent state, contact Microsoft support ***"
+            fi
         fi
 
         if [ $ret -ne 0 ]; then
