@@ -14,7 +14,6 @@ RANDBYTES="${OPTDIR}/randbytes"
 # This stores the map of local IP and share name and external blob endpoint IP.
 #
 MOUNTMAP="${OPTDIR}/mountmap"
-MOUNTMAP_LKG="${OPTDIR}/mountmap.lkg"
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -331,15 +330,15 @@ ensure_mountmap_not_exist()
         ret=$?
         if [ $ret -eq 0 ]; then
             #
-            # We make a copy of the MOUNTMAP before writing to it so that we have
-            # a way to revert back in case the echo fails and the MOUNTMAP is truncated.
+            # If this echo fails then MOUNTMAP could be truncated. In that case we need
+            # to reconcile it from the mount info and iptable info. That needs to be done
+            # out-of-band.
             #
-            cp -f $MOUNTMAP $MOUNTMAP_LKG
             echo "$out" > $MOUNTMAP
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAP in inconsistent state, contact Microsoft support ***"
+                eecho "*** [FATAL] MOUNTMAP may be in inconsistent state, contact Microsoft support ***"
             fi
         fi
 
@@ -401,15 +400,15 @@ update_mountmap_entry()
         ret=$?
         if [ $ret -eq 0 ]; then
             #
-            # We make a copy of the MOUNTMAP before writing to it so that we have
-            # a way to revert back in case the echo fails and the MOUNTMAP is truncated.
+            # If this echo fails then MOUNTMAP could be truncated. In that case we need
+            # to reconcile it from the mount info and iptable info. That needs to be done
+            # out-of-band.
             #
-            cp -f $MOUNTMAP $MOUNTMAP_LKG
             echo "$out" > $MOUNTMAP
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAP in inconsistent state, contact Microsoft support ***"
+                eecho "*** [FATAL] MOUNTMAP may be in inconsistent state, contact Microsoft support ***"
             fi
         fi
 
