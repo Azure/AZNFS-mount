@@ -330,6 +330,8 @@ ensure_mountmap_not_exist()
             return 1
         fi
         chattr -f +i $MOUNTMAP
+        # Return the mtime after our mods.
+        echo $(stat -c%Y $MOUNTMAP)
     ) 999<$MOUNTMAP
 }
 
