@@ -322,15 +322,20 @@ ensure_mountmap_not_exist()
 
         chattr -f -i $MOUNTMAP
         out=$(sed "\%^${1}$%d" $MOUNTMAP)
-        if [ $? -ne 0 ]; then
+        ret=$?
+        if [ $ret -eq 0 ]; then
+            echo "$out" > $MOUNTMAP
+            ret=$?
+            out=
+        fi
+
+        if [ $ret -ne 0 ]; then
             chattr -f +i $MOUNTMAP
             eecho "[$1] failed to remove from ${MOUNTMAP}!"
             # Reinstate DNAT rule deleted above.
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
         fi
-        echo "$out" > $MOUNTMAP
-        out=
         chattr -f +i $MOUNTMAP
 
         # Return the mtime after our mods.
@@ -374,7 +379,14 @@ update_mountmap_entry()
 
         chattr -f -i $MOUNTMAP
         out=$(sed "s%^${old}$%${new}%g" $MOUNTMAP)
-        if [ $? -ne 0 ]; then
+        ret=$?
+        if [ $ret -eq 0 ]; then
+            echo "$out" > $MOUNTMAP
+            ret=$?
+            out=
+        fi
+
+        if [ $ret -ne 0 ]; then
             chattr -f +i $MOUNTMAP
             eecho "[$old -> $new] failed to update ${MOUNTMAP}!"
             # Roll back.
@@ -382,8 +394,6 @@ update_mountmap_entry()
             ensure_iptable_entry $l_ip $l_nfsip_old
             return 1
         fi
-        echo "$out" > $MOUNTMAP
-        out=
         chattr -f +i $MOUNTMAP
     ) 999<$MOUNTMAP
 }
