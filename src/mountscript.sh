@@ -583,6 +583,7 @@ fi
 
 nfs_host=$(get_host_from_share "$1")
 if [ $? -ne 0 ]; then
+    echo "$nfs_host"
     exit 1
 fi
 
@@ -594,12 +595,14 @@ fi
 
 nfs_ip=$(resolve_ipv4 "$nfs_host")
 if [ $? -ne 0 ]; then
+    echo "$nfs_ip"
     eecho "Cannot resolve IP address for ${nfs_host}!"
     exit 1
 fi
 
 nfs_dir=$(get_dir_from_share "$1")
 if [ $? -ne 0 ]; then
+    echo "$nfs_dir"
     exit 1
 fi
 
