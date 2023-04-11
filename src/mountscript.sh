@@ -27,6 +27,14 @@ AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
 AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 
 #
+# Use noresvport mount option to allow using non-reserve ports by client.
+# This allows much higher number of local ports to be used by NFS client and
+# hence may alleviate some issues due to running out of very small resv port range.
+# Default this to 1 as Blob NFS doesn't require clients to use reserve ports.
+#
+AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-1}"
+
+#
 # Local IP that is free to use.
 #
 LOCAL_IP=""
@@ -136,6 +144,13 @@ fix_mount_options()
         if [ $value -ne 1048576 ]; then
             pecho "Suboptimal wsize=$value mount option, setting wsize=1048576!"
             MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<wsize\>=$value/wsize=1048576/g")
+        fi
+    fi
+
+    if [ "$AZNFS_USE_NORESVPORT" == "1" ]; then
+        matchstr="\<resvport\>|\<noresvport\>"
+        if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+            MOUNT_OPTIONS="$MOUNT_OPTIONS,noresvport"
         fi
     fi
 

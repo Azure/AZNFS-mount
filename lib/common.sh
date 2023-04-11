@@ -330,6 +330,8 @@ ensure_mountmap_not_exist()
             return 1
         fi
         chattr -f +i $MOUNTMAP
+        # Return the mtime after our mods.
+        echo $(stat -c%Y $MOUNTMAP)
     ) 999<$MOUNTMAP
 }
 
@@ -343,6 +345,8 @@ update_mountmap_entry()
 {
     local old=$1
     local new=$2
+
+    vecho "Updating mountmap entry [$old -> $new]"
 
     IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
     if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then

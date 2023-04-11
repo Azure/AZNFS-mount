@@ -20,6 +20,9 @@ IP_CHANGE_DETECTION_FREQUENCY=60
 #
 MOUNTMAP_INACTIVITY_SECS=300
 
+# TIMEWAIT timeout to be used for conntrack entries.
+AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
+
 next_ip_change_detection_epoch=0
 
 # Load common aznfs helpers.
@@ -33,9 +36,9 @@ conntrack -L > /dev/null
 
 # conntrack timewait timeout higher than the TCP timewait timeout value isn't very valuable.
 conntrack_timeo_timew=$(cat /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait 2>/dev/null)
-if [ $? -eq 0 -a $conntrack_timeo_timew -gt 65 ]; then
-        vecho "Changing /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait [$conntrack_timeo_timew -> 65]"
-        echo 65 > /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait
+if [ $? -eq 0 -a $conntrack_timeo_timew -gt $AZNFS_TIMEWAIT_TIMEOUT ]; then
+        vecho "Changing /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait [$conntrack_timeo_timew -> $AZNFS_TIMEWAIT_TIMEOUT]"
+        echo $AZNFS_TIMEWAIT_TIMEOUT > /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait
 fi
 
 if ! chattr -f +i $MOUNTMAP; then
@@ -68,6 +71,10 @@ while :; do
     #
     # where the format is
     # blobendpoint_fqdn proxy_ip blobendpoint_ip
+    #
+    # We store the mtime of MOUNTMAP while inside the lock so that if any mount helper process
+    # updates it after this we will skip modification for sake of safety. We will come to it
+    # in the next iteration when it's safer.
     #
     exec {fd}<$MOUNTMAP
     flock -e $fd
@@ -125,21 +132,24 @@ while :; do
 
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAP: [$line]!"
-            ensure_mountmap_not_exist "$line"
+            l_mtime=$(ensure_mountmap_not_exist "$line")
+            [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         fi
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid.
         if ! is_private_ip "$l_ip"; then
             wecho "[FATAL] local ip ($l_ip) is invalid!"
-            ensure_mountmap_not_exist "$line"
+            l_mtime=$(ensure_mountmap_not_exist "$line")
+            [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         fi
 
         # Since we added it to the MOUNTMAP file, it cannot be invalid.
         if ! is_valid_ipv4_address "$l_nfsip"; then
             wecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
-            ensure_mountmap_not_exist "$line"
+            l_mtime=$(ensure_mountmap_not_exist "$line")
+            [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         fi
 
@@ -151,8 +161,18 @@ while :; do
         if ! echo "$findmnt" | grep " nfs ${l_ip}:" >/dev/null; then
             if $do_unmount_gc; then
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAP} [$line]."
+
                 # Delete IFF mountmap is not changed since we read it above.
-                ensure_mountmap_not_exist "$line" "$mtime_mountmap"
+                l_mtime=$(ensure_mountmap_not_exist "$line" "$mtime_mountmap")
+
+                #
+                # Update ifmatch time in case of successful updation of MOUNTMAP,
+                # so that we can distinguish between MOUNTMAP mtime changing because
+                # of our action or some mount helper changing it. In the former case
+                # it's safe to update the MOUNTMAP, so update mtime_mountmap to the
+                # mtime after this update.
+                #
+                [ $? -eq 0 ] && mtime_mountmap=$l_mtime
                 continue
             fi
         else
@@ -190,8 +210,10 @@ while :; do
             # the account may have been re-created after the dns lookup failure.
             #
             if [ "$new_ip" == "NXDOMAIN" ]; then
-                pecho "Account corresponding to $l_host seems to have been deleted!"
-                ensure_mountmap_not_exist "$line" "$mtime_mountmap"
+                pecho "Account corresponding to $l_host seems to have been deleted, deleting from ${MOUNTMAP} [$line]!"
+
+                l_mtime=$(ensure_mountmap_not_exist "$line" "$mtime_mountmap")
+                [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             else
                 eecho "resolve_ipv4($l_host) failed: $new_ip"
             fi
