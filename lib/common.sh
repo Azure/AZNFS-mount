@@ -321,7 +321,7 @@ ensure_mountmap_not_exist()
         fi
 
         chattr -f -i $MOUNTMAP
-        sed -i "\%^${1}$%d" $MOUNTMAP
+        out=$(sed "\%^${1}$%d" $MOUNTMAP)
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAP
             eecho "[$1] failed to remove from ${MOUNTMAP}!"
@@ -329,7 +329,10 @@ ensure_mountmap_not_exist()
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
         fi
+        echo "$out" > $MOUNTMAP
+        out=
         chattr -f +i $MOUNTMAP
+
         # Return the mtime after our mods.
         echo $(stat -c%Y $MOUNTMAP)
     ) 999<$MOUNTMAP
@@ -348,35 +351,41 @@ update_mountmap_entry()
 
     vecho "Updating mountmap entry [$old -> $new]"
 
-    IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
-    if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
-        if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
-            eecho "[$old] Refusing to remove from ${MOUNTMAP} as old iptable entry could not be deleted!"
-            return 1
-        fi
-    fi
+    (
+        flock -e 999
 
-    IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
-    if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
-        if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
-            eecho "[$new] Refusing to remove from ${MOUNTMAP} as new iptable entry could not be added!"
+        IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
+        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
+            if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
+                eecho "[$old] Refusing to remove from ${MOUNTMAP} as old iptable entry could not be deleted!"
+                return 1
+            fi
+        fi
+
+        IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
+        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
+            if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
+                eecho "[$new] Refusing to remove from ${MOUNTMAP} as new iptable entry could not be added!"
+                # Roll back.
+                ensure_iptable_entry $l_ip $l_nfsip_old
+                return 1
+            fi
+        fi
+
+        chattr -f -i $MOUNTMAP
+        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAP)
+        if [ $? -ne 0 ]; then
+            chattr -f +i $MOUNTMAP
+            eecho "[$old -> $new] failed to update ${MOUNTMAP}!"
             # Roll back.
+            ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
             ensure_iptable_entry $l_ip $l_nfsip_old
             return 1
         fi
-    fi
-
-    chattr -f -i $MOUNTMAP
-    sed -i "s%^${old}$%${new}%g" $MOUNTMAP
-    if [ $? -ne 0 ]; then
+        echo "$out" > $MOUNTMAP
+        out=
         chattr -f +i $MOUNTMAP
-        eecho "[$old -> $new] failed to update ${MOUNTMAP}!"
-        # Roll back.
-        ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
-        ensure_iptable_entry $l_ip $l_nfsip_old
-        return 1
-    fi
-    chattr -f +i $MOUNTMAP
+    ) 999<$MOUNTMAP
 }
 
 #
