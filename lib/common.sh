@@ -346,6 +346,8 @@ update_mountmap_entry()
     local old=$1
     local new=$2
 
+    vecho "Updating mountmap entry [$old -> $new]"
+
     IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
     if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
         if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
