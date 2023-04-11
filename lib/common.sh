@@ -14,6 +14,7 @@ RANDBYTES="${OPTDIR}/randbytes"
 # This stores the map of local IP and share name and external blob endpoint IP.
 #
 MOUNTMAP="${OPTDIR}/mountmap"
+MOUNTMAP_LKG="${OPTDIR}/mountmap.lkg"
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -321,9 +322,19 @@ ensure_mountmap_not_exist()
         fi
 
         chattr -f -i $MOUNTMAP
+        #
+        # We do this thing instead of inplace update by sed as that has a
+        # very bad side-effect of creating a new MOUNTMAP file. This breaks
+        # any locking that we dependent on the old file.
+        #
         out=$(sed "\%^${1}$%d" $MOUNTMAP)
         ret=$?
         if [ $ret -eq 0 ]; then
+            #
+            # We make a copy of the MOUNTMAP before writing to it so that we have
+            # a way to revert back in case the echo fails and the MOUNTMAP is truncated.
+            #
+            cp -f $MOUNTMAP $MOUNTMAP_LKG
             echo "$out" > $MOUNTMAP
             ret=$?
             out=
@@ -378,9 +389,19 @@ update_mountmap_entry()
         fi
 
         chattr -f -i $MOUNTMAP
+        #
+        # We do this thing instead of inplace update by sed as that has a
+        # very bad side-effect of creating a new MOUNTMAP file. This breaks
+        # any locking that we dependent on the old file.
+        #
         out=$(sed "s%^${old}$%${new}%g" $MOUNTMAP)
         ret=$?
         if [ $ret -eq 0 ]; then
+            #
+            # We make a copy of the MOUNTMAP before writing to it so that we have
+            # a way to revert back in case the echo fails and the MOUNTMAP is truncated.
+            #
+            cp -f $MOUNTMAP $MOUNTMAP_LKG
             echo "$out" > $MOUNTMAP
             ret=$?
             out=
