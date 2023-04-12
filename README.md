@@ -35,18 +35,18 @@ AZNFS is supported on following Linux distros:
 ## Install Instructions
 
 - Run the following command to download and install **AZNFS**:
-        ```
-        wget -O - -q https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh | bash
-        ```
-        It will install the aznfs mount helper program and the aznfswatchdog service.
+	```
+	wget -O - -q https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh | bash
+	```
+	It will install the aznfs mount helper program and the aznfswatchdog service.
 
 
 ## Usage Instructions
 
 - Mount the Azure Blob NFS share using following command:
-        ```
-        sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
-        ```
+	```
+	sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
+	```
 - Logs generated from AZNFS will be in `/opt/microsoft/aznfs/aznfs.log`.
 
 ## Implementation Details
