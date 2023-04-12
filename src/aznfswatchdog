@@ -20,6 +20,12 @@ IP_CHANGE_DETECTION_FREQUENCY=60
 #
 MOUNTMAP_INACTIVITY_SECS=300
 
+#
+# Don't perform mountmap and iptables rule cleanup for unmounted filesystems.
+# This can be set if you want lazy umount to work.
+#
+AZNFS_SKIP_UNMOUNT_CLEANUP="${AZNFS_SKIP_UNMOUNT_CLEANUP:-0}"
+
 # TIMEWAIT timeout to be used for conntrack entries.
 AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 
@@ -95,8 +101,10 @@ while :; do
     # entry while some aznfs mount is ongoing.
     #
     do_unmount_gc=false
-    if [ $epoch_now -ge $(expr $mtime_mountmap + $MOUNTMAP_INACTIVITY_SECS) ]; then
-        do_unmount_gc=true
+    if [ "$AZNFS_SKIP_UNMOUNT_CLEANUP" == "0" ]; then
+        if [ $epoch_now -ge $(expr $mtime_mountmap + $MOUNTMAP_INACTIVITY_SECS) ]; then
+            do_unmount_gc=true
+        fi
     fi
 
     #
