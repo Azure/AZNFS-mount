@@ -22,18 +22,10 @@ NORMAL="\e[0m"
 #
 _log()
 {
-    echoarg=""
-
-    # We only support -n argument to echo.
-    if [ "$1" == "-n" ]; then
-        echoarg="-n"
-        shift
-    fi
-
     color=$1
     msg=$2
 
-    echo $echoarg -e "${color}${msg}${NORMAL}"
+    echo -e "${color}${msg}${NORMAL}"
 }
 
 #
@@ -41,13 +33,8 @@ _log()
 #
 pecho()
 {
-    echoarg=""
     color=$NORMAL
-    if [ "$1" == "-n" ]; then
-        echoarg="-n"
-        shift
-    fi
-    _log $echoarg $color "${*}"
+    _log $color "${*}"
 }
 
 #
@@ -55,13 +42,8 @@ pecho()
 #
 secho()
 {
-    echoarg=""
     color=$GREEN
-    if [ "$1" == "-n" ]; then
-        echoarg="-n"
-        shift
-    fi
-    _log $echoarg $color "${*}"
+    _log $color "${*}"
 }
 
 #
@@ -69,13 +51,8 @@ secho()
 #
 wecho()
 {
-    echoarg=""
     color=$YELLOW
-    if [ "$1" == "-n" ]; then
-        echoarg="-n"
-        shift
-    fi
-    _log $echoarg $color "${*}"
+    _log $color "${*}"
 }
 
 #
@@ -83,13 +60,8 @@ wecho()
 #
 eecho()
 {
-    echoarg=""
     color=$RED
-    if [ "$1" == "-n" ]; then
-        echoarg="-n"
-        shift
-    fi
-    _log $echoarg $color "${*}"
+    _log $color "${*}"
 }
 
 use_dnf_or_yum() 
