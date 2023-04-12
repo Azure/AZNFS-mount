@@ -2,27 +2,28 @@
 
 > **Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts.**
 
-Azure Blob NFS is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability 
-in case of infrequent-but-likely events like hardware failures, hardware decommissioning, etc, the endpoint IP of the Azure Blob 
+Azure Blob NFS is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability
+in case of infrequent-but-likely events like hardware failures, hardware decommissioning, etc, the endpoint IP of the Azure Blob
 NFS endpoint may change. This change in IP is mostly transparent to applications because the DNS records are updated such that the
-Azure Blob NFS FQDN now resolves to this new IP. This works fine for new mounts as they will automatically connect to the new IP,
+Azure Blob NFS FQDN always resolves to the updated IP. This works fine for new mounts as they will automatically connect to the new IP,
 but this change in IP is not handled by Linux NFS client for already mounted shares, as it only resolves the IP at the time of mount
-and any change in the server IP after mount will cause it to indefinitely attempt reconnect to the old IP. Also NFSv3 protocol doesn't 
+and any change in the server IP after mount will cause it to indefinitely attempt reconnect to the old IP. Also NFSv3 protocol doesn't
 provide a way for server to convey such change in IP to the clients. This means that this change in IP has to be detected by a userspace
-process and conveyed to the kernel through some supported interface. Using a mount helper is a supported way in Linux to do "something 
-extra" during a mount, hence this AZNFS mount helper is needed so that Linux NFS clients can reliably access Azure Blob NFS shares even 
-when their IP changes.
+process and conveyed to the kernel through some supported interface. Using a mount helper is a supported way in Linux to do "something
+extra" during a mount, hence this AZNFS mount helper is needed so that Linux NFS clients can reliably access Azure Blob NFS shares even
+when their IP changes. Current version of this mount helper uses iptables DNAT functionality to map a stable proxy IP
+which is mounted by the NFS client to the correct Blob NFS endpoint IP. This may change in future versions.
 
-User has to install AZNFS package and mount the NFSv3 share using `-t aznfs` flag.  This package will run a background job called 
-**aznfswatchdog** to detect change in endpoint IP address for the mounted shares. If there will be any change in endpoint IP, 
-AZNFS will update the DNAT rules in the client machine to run IOps smoothly for the mounted shares.
+User has to install AZNFS package and mount the NFSv3 share using `-t aznfs` flag.  This package will run a background job called
+**aznfswatchdog** to detect change in endpoint IP address for the mounted shares. If there will be any change in endpoint IP,
+aznfswatchdog will update the DNAT rules appropriately.
 
 This package picks a free private IP which is not in use by user's machine and mount the NFSv3 share using that IP and
 create a DNAT rule to route the traffic from the chosen private IP to original endpoint IP.
 
 ## Supported Distros
 
-AZNFS is supported on following Linux distros: 
+AZNFS is supported on following Linux distros:
 
 - Ubuntu
 - RedHat
@@ -34,32 +35,32 @@ AZNFS is supported on following Linux distros:
 ## Install Instructions
 
 - Run the following command to download and install **AZNFS**:
-	```
-	wget -O - -q https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh | bash
-	```
- 	It will install the aznfs mount helper program and the aznfswatchdog service.
+        ```
+        wget -O - -q https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh | bash
+        ```
+        It will install the aznfs mount helper program and the aznfswatchdog service.
 
 
 ## Usage Instructions
 
-- Mount the Azure Blob NFS share using following command: 
-	```
-	sudo mount -t aznfs -o vers=3,proto=tcp <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
-	```
+- Mount the Azure Blob NFS share using following command:
+        ```
+        sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
+        ```
 - Logs generated from AZNFS will be in `/opt/microsoft/aznfs/aznfs.log`.
 
 ## Implementation Details
 
-This version of **AZNFS** mount helper uses iptables DNAT rules to forward NFS traffic directed to a local IP
-endpoint to actual Azure Blob NFS endpoint. It sets up a local IP endpoint which is used by the NFS client to 
-mount. A free local IP address is picked from the following range of private IP addresses in the given order: 
-  ``` 
+This version of **AZNFS** mount helper uses iptables DNAT rules to forward NFS traffic directed to a local proxy IP
+endpoint to actual Azure Blob NFS endpoint. It sets up a local IP endpoint which is used by the NFS client to
+mount. A free local IP address is picked from the following range of private IP addresses in the given order:
+  ```
   10.161.100.100 - 10.161.254.254
   192.168.100.100 - 192.168.254.254
   172.16.100.100 - 172.16.254.254
   ```
 
-It will try its best to pick an IP address which is not in use but in case the free IP selection clashes with any 
+It will try its best to pick an IP address which is not in use but in case the free IP selection clashes with any
 of client machines IP addresses, the `AZNFS_IP_PREFIXES` environment variable can be used to override the default IP range.
 IP prefixes with either 2 or 3 octets can be set `f.e. 10.100 10.100.100 172.16 172.16.100 192.168 192.168.100`.
   ```
@@ -67,14 +68,16 @@ IP prefixes with either 2 or 3 octets can be set `f.e. 10.100 10.100.100 172.16 
   ```
   This will pick the IP addresses in the range `172.16.100.100 - 172.16.254.254` and `10.161.100.100 - 10.161.254.254`.
 
-It starts a systemd service named **aznfswatchdog** which monitors the change in IP address for all the mounted Azure 
-Blob NFS shares. If it detects a change in endpoint IP, aznfswatchdog will update the iptables DNAT rule and NFS 
+It starts a systemd service named **aznfswatchdog** which monitors the change in IP address for all the mounted Azure
+Blob NFS shares. If it detects a change in endpoint IP, aznfswatchdog will update the iptables DNAT rule and NFS
 traffic will be forwarded to new endpoint IP.
 
 ## Limitations
 
-- Lazy unmount doesn't work as expected. This is because the AZNFS mount helper deletes the DNAT rule as soon as the mount goes away.
-- Writing to the same file from different AZNFS mounts may result in reduced performance. Reading the same file from from different AZNFS mounts on the other hand does not have this limitation. 
+- Lazy unmount doesn't work as expected. Lazy unmount allows a share to be unmounted even if it's in use by some application and the way it works is that kernel detaches the mounted filesystem from the file hierarchy and performs other cleanup lazily when the filesystem is not busy anymore. This means applications which have files opened on the filesystem can continue to access the files using the already opened fds but no new fds can be opened. Since aznfswatchdog deletes the DNAT rule as soon as it detects that a mountpoint is no longer present, applications accessing the files using the fds already opened will not work since NFS requests will not make it to the Blob NFS server.
+Unmount cleanup can be disabled by setting the env variable AZNFS_SKIP_UNMOUNT_CLEANUP to 1 and restarting the
+aznfswatchdog service.
+- Writing to the same file from different AZNFS mounts may result in reduced performance. This behaviour is not specific to the mount helper but a general behaviour of Blob NFS. Reading the same file from from different AZNFS mounts on the other hand does not have this limitation.
 
 
 ## TroubleShoot
@@ -85,7 +88,7 @@ traffic will be forwarded to new endpoint IP.
 - Provide the IP prefix in the range which is not in use by the machine by setting `AZNFS_IP_PREFIXES` env variable.
 - If the problem is with assigning local private IP, set `AZNFS_PING_LOCAL_IP_BEFORE_USE` env variable to 1 using
   `export AZNFS_PING_LOCAL_IP_BEFORE_USE=1`.
-- Check https://learn.microsoft.com/en-us/azure/storage/blobs/network-file-system-protocol-support-how-to for more 
+- Check https://learn.microsoft.com/en-us/azure/storage/blobs/network-file-system-protocol-support-how-to for more
   information regarding NFSv3 mount.
 
 
@@ -106,8 +109,8 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 ## Trademarks
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft 
-trademarks or logos is subject to and must follow 
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
+trademarks or logos is subject to and must follow
 [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
