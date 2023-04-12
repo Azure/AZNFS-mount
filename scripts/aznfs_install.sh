@@ -25,7 +25,7 @@ _log()
     color=$1
     msg=$2
 
-    echo $echoarg -e "${color}${msg}${NORMAL}"
+    echo -e "${color}${msg}${NORMAL}"
 }
 
 #
@@ -34,7 +34,7 @@ _log()
 pecho()
 {
     color=$NORMAL
-    _log $echoarg $color "${*}"
+    _log $color "${*}"
 }
 
 #
@@ -43,7 +43,7 @@ pecho()
 secho()
 {
     color=$GREEN
-    _log $echoarg $color "${*}"
+    _log $color "${*}"
 }
 
 #
@@ -52,7 +52,7 @@ secho()
 wecho()
 {
     color=$YELLOW
-    _log $echoarg $color "${*}"
+    _log $color "${*}"
 }
 
 #
@@ -61,7 +61,7 @@ wecho()
 eecho()
 {
     color=$RED
-    _log $echoarg $color "${*}"
+    _log $color "${*}"
 }
 
 use_dnf_or_yum() 
