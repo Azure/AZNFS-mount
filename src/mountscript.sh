@@ -30,9 +30,11 @@ AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 # Use noresvport mount option to allow using non-reserve ports by client.
 # This allows much higher number of local ports to be used by NFS client and
 # hence may alleviate some issues due to running out of very small resv port range.
-# Default this to 1 as Blob NFS doesn't require clients to use reserve ports.
+# Blob NFS doesn't require clients to use reserve ports so we can use non-reserve
+# port with Blob NFS but Linux NFS client doesn't reuse source port while reconnecting
+# if noresvport option is used. This does not work will with the DRC cache.
 #
-AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-1}"
+AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
 
 #
 # Local IP that is free to use.
