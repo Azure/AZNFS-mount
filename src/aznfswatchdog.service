@@ -11,6 +11,7 @@ After=
 
 [Service]
 User=root
+Environment="AZNFS_SKIP_UNMOUNT_CLEANUP=0"
 
 ExecStart=/usr/sbin/aznfswatchdog
 Restart=always
