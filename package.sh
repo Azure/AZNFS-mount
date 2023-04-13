@@ -15,7 +15,6 @@ opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
 rpmbuild_dir="/root/rpmbuild"
 rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
-rpm_source_dir="${rpmbuild_dir}/SOURCE"
 
 # Insert releaes number to aznfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
@@ -74,7 +73,7 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/rpm/tmp${rpm_buildroo
 tar -cvzf ${pkg_dir}.tar.gz -C ${STG_DIR}/rpm/tmp root
 
 # Insert current release number.
-sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/rpm/${pkg_dir}/SPECS/aznfs.spec
+sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec
 
 # Create the rpm package.
-rpmbuild --define "_topdir ${STG_DIR}/rpm${rpmbuild_dir}" -v -bb ${SOURCE_DIR}/RPM/aznfs.spec
+rpmbuild --define "_topdir ${STG_DIR}/rpm${rpmbuild_dir}" -v -bb ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec
