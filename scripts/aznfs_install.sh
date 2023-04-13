@@ -203,9 +203,10 @@ elif [ $zypper -eq 1 ]; then
     # Does not support SUSE for now.
 else
     install_cmd="yum"
-    eecho "[FATAL] This installer currently does not support $distro_id!"
-    exit 1
-    # Does not support CentOS for now.
+    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs-${RELEASE_NUMBER}-1.x86_64.rpm -P /tmp
+    yum install -y /tmp/aznfs-${RELEASE_NUMBER}-1.x86_64.rpm
+    install_error=$?
+    rm -f /tmp/aznfs-${RELEASE_NUMBER}-1.x86_64.rpm
 fi
 
 if [ $install_error -ne 0 ]; then

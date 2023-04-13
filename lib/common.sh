@@ -5,6 +5,8 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
+export PATH=$PATH:/sbin
+
 APPNAME="aznfs"
 OPTDIR="/opt/microsoft/${APPNAME}"
 LOGFILE="${OPTDIR}/${APPNAME}.log"
