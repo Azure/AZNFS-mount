@@ -75,7 +75,7 @@ traffic will be forwarded to new endpoint IP.
 ## Limitations
 
 - Lazy unmount doesn't work as expected. Lazy unmount allows a share to be unmounted even if it's in use by some application and the way it works is that kernel detaches the mounted filesystem from the file hierarchy and performs other cleanup lazily when the filesystem is not busy anymore. This means applications which have files opened on the filesystem can continue to access the files using the already opened fds but no new fds can be opened. Since aznfswatchdog deletes the DNAT rule as soon as it detects that a mountpoint is no longer present, applications accessing the files using the fds already opened will not work since NFS requests will not make it to the Blob NFS server.
-Unmount cleanup can be disabled by setting the env variable AZNFS_SKIP_UNMOUNT_CLEANUP to 1 and restarting the
+Unmount cleanup can be disabled by setting the env variable `AZNFS_SKIP_UNMOUNT_CLEANUP` to 1 and restarting the
 aznfswatchdog service.
 - Writing to the same file from different AZNFS mounts may result in reduced performance. This behaviour is not specific to the mount helper but a general behaviour of Blob NFS. Reading the same file from from different AZNFS mounts on the other hand does not have this limitation.
 
