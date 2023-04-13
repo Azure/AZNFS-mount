@@ -178,7 +178,7 @@ ensure_account_count()
     #
     local num=$(grep -c " ${nfs_ip}$" $MOUNTMAP)
     if [ $num -ge $MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT ]; then
-        eecho "Mounts to target IP $nfs_ip ($nfs_host) at limit ($MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT)!"
+        eecho "Mounts to target IP $nfs_ip ($nfs_host) already at max limit ($MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT)!"
         eecho "Mount failed!"
         exit 1
     fi
