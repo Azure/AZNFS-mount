@@ -37,6 +37,14 @@ AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
 
 #
+# Maximum number of accounts that can be mounted from the same tenant/cluster.
+# Any number of containers on these many accounts can be mounted.
+# With ~350 reserved ports and 16 connections per mount (with nconnect=16) leaving
+# some room, 20 is a reasonable limit.
+#
+MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT=20
+
+#
 # Local IP that is free to use.
 #
 LOCAL_IP=""
@@ -157,6 +165,31 @@ fix_mount_options()
     fi
 
     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
+}
+
+#
+# Make sure mounting this new share won't exceed the "max accounts mountable per tenant"
+# limit.
+#
+ensure_account_count()
+{
+    #
+    # nfs_ip MUST be set before calling this function.
+    #
+    local num=$(grep -c " ${nfs_ip}$" $MOUNTMAP)
+    if [ $num -ge $MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT ]; then
+        #
+        # If this is not a new account it will reuse the existing entry and not
+        # cause a new entry to be added to MOUNTMAP, in that case allow the mount.
+        #
+        if grep -q "^${nfs_host} " $MOUNTMAP; then
+            return 0
+        fi
+
+        eecho "Mounts to target IP $nfs_ip ($nfs_host) already at max limit ($MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT)!"
+        eecho "Mount failed!"
+        exit 1
+    fi
 }
 
 #
@@ -404,7 +437,7 @@ search_free_local_ip_with_prefix()
                 continue
             fi
 
-            is_present_in_iptables=$(echo "$iptable_entries" | grep "^${local_ip}$" | wc -l)
+            is_present_in_iptables=$(echo "$iptable_entries" | grep -c "^${local_ip}$")
             if [ $is_present_in_iptables -ne 0 ]; then
                 vecho "$local_ip is already present in iptables!"
                 continue
@@ -613,6 +646,11 @@ if [ -z "$nfs_dir" ]; then
     eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'!"
     exit 1
 fi
+
+#
+# See if we can allow this account to be mounted w/o exceeding the limit.
+#
+ensure_account_count
 
 mount_point="$2"
 
