@@ -38,7 +38,7 @@ jobs:
         tag_name: ${{ github.event.inputs.versionName }}
         files: |
           ${{ github.workspace}}/deb/aznfs_${{ github.event.inputs.versionName }}_amd64.deb
-          ${{ github.workspace}}/rpm/RPMS/aznfs_${{ github.event.inputs.versionName }}_amd64.rpm
+          ${{ github.workspace}}/rpm/root/rpmbuild/RPMS/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace}}/scripts/aznfs_install.sh
         body: |
           New Release ${{ github.event.inputs.versionName }}
