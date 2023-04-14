@@ -644,11 +644,6 @@ if [ -z "$nfs_dir" ]; then
     exit 1
 fi
 
-#
-# See if we can allow this account to be mounted w/o exceeding the limit.
-#
-ensure_account_count
-
 mount_point="$2"
 
 OPTIONS=
