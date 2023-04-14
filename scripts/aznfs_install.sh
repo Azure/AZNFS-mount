@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------------------------
 
 RELEASE_NUMBER=x.y.z
+AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
 apt_update_done=false
 yum="yum"
 apt=0
@@ -192,21 +193,22 @@ if [ $apt -eq 1 ]; then
             exit 1
         fi
     fi
-    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_${RELEASE_NUMBER}_amd64.deb -P /tmp
-    apt install -y /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
+    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}_amd64.deb -P /tmp
+    apt install -y /tmp/${AZNFS_RELEASE}_amd64.deb
     install_error=$?
-    rm -f /tmp/aznfs_${RELEASE_NUMBER}_amd64.deb
+    rm -f /tmp/${AZNFS_RELEASE}_amd64.deb
 elif [ $zypper -eq 1 ]; then
     install_cmd="zypper"
-    eecho "[FATAL] This installer currently does not support $distro_id!"
-    exit 1
-    # Does not support SUSE for now.
+    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
+    zypper install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
+    install_error=$?
+    rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 else
     install_cmd="yum"
-    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs-${RELEASE_NUMBER}-1.x86_64.rpm -P /tmp
-    yum install -y /tmp/aznfs-${RELEASE_NUMBER}-1.x86_64.rpm
+    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
+    yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
     install_error=$?
-    rm -f /tmp/aznfs-${RELEASE_NUMBER}-1.x86_64.rpm
+    rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 fi
 
 if [ $install_error -ne 0 ]; then

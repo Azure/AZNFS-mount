@@ -10,7 +10,7 @@ set -e
 
 #STG_DIR, RELEASE_NUMBER and SOURCE_DIR will be taken as env var.
 pkg_name="aznfs"
-pkg_dir="${pkg_name}_${RELEASE_NUMBER}_amd64"
+pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
 rpm_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
 opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
