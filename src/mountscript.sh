@@ -185,6 +185,8 @@ check_account_count()
             return 1
         fi
     fi
+
+    return 0
 }
 
 #
