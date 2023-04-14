@@ -142,7 +142,7 @@ resolve_ipv4()
         host_op=$(host -4 -t A "$hname" 2>&1)
         if [ $? -ne 0 ]; then
             #
-            # Special case of failure to indicate that the fqdn doesn't exist.
+            # Special case of failure to indicate that the fqdn does not exist.
             # We convey it to our caller using the special o/p "NXDOMAIN".
             #
             if [[ "$host_op" =~ .*NXDOMAIN.* ]]; then

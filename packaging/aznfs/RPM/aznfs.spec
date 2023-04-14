@@ -4,7 +4,6 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Source0: https://github.com/Azure/BlobNFS-mount/archive/refs/tags/%{Version}.tar.gz
 Requires: conntrack, iptables, bind-utils, iproute, util-linux, nfs-utils, netcat
 
 %description
@@ -12,11 +11,10 @@ Mount helper program for correctly handling endpoint IP address changes for Azur
 
 %prep
 mkdir -p ${STG_DIR}/rpm/root/rpmbuild/SOURCES/
-cp -avf ${STG_DIR}/aznfs-${RELEASE_NUMBER}-1.x86_64.tar.gz ${STG_DIR}/rpm/root/rpmbuild/SOURCES/
-tar -xzvf ${STG_DIR}/rpm/root/rpmbuild/SOURCES/aznfs-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${STG_DIR}/rpm/
+tar -xzvf ${STG_DIR}/aznfs-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${STG_DIR}/rpm/
 
 %files
-%{_sbindir}/aznfswatchdog
+/usr/sbin/aznfswatchdog
 /sbin/mount.aznfs
 /opt/microsoft/aznfs/common.sh
 /opt/microsoft/aznfs/mountscript.sh
@@ -67,14 +65,14 @@ systemctl start aznfswatchdog
 
 %preun
 # In case of purge/remove.
-if [ $1 == 0 ];then
+if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
-	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | wc -l)
+	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts -ne 0 ]; then
 		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!"
-		read -n 1 -p "Are you sure you want to continue? [y/n] " result
+		read -n 1 -p "Are you sure you want to continue? [Y/n] " result
 		echo
-		if [ "$result" != "y" -a "$result" != "Y" ]; then
+		if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
 			exit 1
 		fi
 	fi
@@ -87,7 +85,8 @@ fi
 
 %postun
 # In case of purge/remove.
-if [ $1 == 0 ];then
-   chattr -if /opt/microsoft/aznfs/mountmap
+if [ $1 == 0 ]; then
+   chattr -i -f /opt/microsoft/aznfs/mountmap
+   chattr -i -f /opt/microsoft/aznfs/randbytes
 	rm -rf /opt/microsoft/aznfs
 fi

@@ -17,10 +17,12 @@ system_dir="/lib/systemd/system"
 rpmbuild_dir="/root/rpmbuild"
 rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 
-# Insert releaes number to aznfs_install.sh
+# Insert release number to aznfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
 
-#Genrate .deb package.
+#########################
+# Generate .deb package #
+#########################
 
 # Create the directory to hold the package control and data files for deb package.
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
@@ -50,7 +52,9 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${syste
 # Create the deb package.
 dpkg-deb --root-owner-group --build $STG_DIR/deb/$pkg_dir
 
-#Generate .rpm package.
+#########################
+# Generate .rpm package #
+#########################
 
 # Create the directory to hold the package spec and data files for RPM package.
 mkdir -p ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}

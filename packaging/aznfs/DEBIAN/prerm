@@ -10,12 +10,12 @@ set -e
 
 if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	# Verify if any existing mounts are there, warn the user about this.
-	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | wc -l)
+	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts -ne 0 ]; then
 		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!"
-		read -n 1 -p "Are you sure you want to continue? [y/n] " result
+		read -n 1 -p "Are you sure you want to continue? [Y/n] " result
 		echo
-		if [ "$result" != "y" -a "$result" != "Y" ]; then
+		if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
 			exit 1
 		fi
 	fi
