@@ -109,7 +109,7 @@ is_valid_ipv4_address()
 #
 is_valid_ipv4_prefix()
 {
-    ip -4 route get fibmatch $1 > /dev/null 2>&1
+    ip -4 route get $1 > /dev/null 2>&1
 }
 
 #
@@ -477,6 +477,9 @@ verify_iptable_entry()
         fi
     fi
 }
+
+# On some distros mount program doesn't pass correct PATH variable.
+export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 mkdir -p $OPTDIR
 if [ $? -ne 0 ]; then
