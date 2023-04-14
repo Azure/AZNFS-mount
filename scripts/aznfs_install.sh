@@ -186,6 +186,10 @@ if [ $apt -eq 1 ]; then
     install_cmd="apt"
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     if [ -n "$current_version" ]; then
+        if [ "$current_version" == "$RELEASE_NUMBER" ]; then
+            secho "AZNFS version $current_version is already installed."
+            exit 0
+        fi
         read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
         echo
         if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
@@ -193,12 +197,27 @@ if [ $apt -eq 1 ]; then
             exit 1
         fi
     fi
+
     wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}_amd64.deb -P /tmp
     apt install -y /tmp/${AZNFS_RELEASE}_amd64.deb
     install_error=$?
     rm -f /tmp/${AZNFS_RELEASE}_amd64.deb
 elif [ $zypper -eq 1 ]; then
     install_cmd="zypper"
+    current_version=$(zypper info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    if [ -n "$current_version" ]; then
+        if [ "$current_version" == "$RELEASE_NUMBER" ]; then
+            secho "AZNFS version $current_version is already installed."
+            exit 0
+        fi
+        read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
+        echo
+        if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
+            eecho "Installation aborted!"
+            exit 1
+        fi
+    fi
+
     wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
     zypper install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
     install_error=$?
@@ -207,6 +226,10 @@ else
     install_cmd="yum"
     current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     if [ -n "$current_version" ]; then
+        if [ "$current_version" == "$RELEASE_NUMBER" ]; then
+            secho "AZNFS version $current_version is already installed."
+            exit 0
+        fi
         read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
         echo
         if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
@@ -214,6 +237,7 @@ else
             exit 1
         fi
     fi
+
     wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
     yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
     install_error=$?
