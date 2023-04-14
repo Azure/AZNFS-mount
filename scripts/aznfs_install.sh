@@ -187,8 +187,8 @@ if [ $apt -eq 1 ]; then
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     if [ -n "$current_version" ]; then
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
-            secho "AZNFS version $current_version is alreasy installed."
-            exit 1
+            secho "AZNFS version $current_version is already installed."
+            exit 0
         fi
         read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
         echo
@@ -207,8 +207,8 @@ elif [ $zypper -eq 1 ]; then
     current_version=$(zypper info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     if [ -n "$current_version" ]; then
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
-            secho "AZNFS version $current_version is alreasy installed."
-            exit 1
+            secho "AZNFS version $current_version is already installed."
+            exit 0
         fi
         read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
         echo
@@ -227,8 +227,8 @@ else
     current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     if [ -n "$current_version" ]; then
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
-            secho "AZNFS version $current_version is alreasy installed."
-            exit 1
+            secho "AZNFS version $current_version is already installed."
+            exit 0
         fi
         read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
         echo
