@@ -168,10 +168,9 @@ fix_mount_options()
 }
 
 #
-# Make sure mounting this new share won't exceed the "max accounts mountable per tenant"
-# limit.
+# Check if mounting this new share will exceed the "max accounts mountable per tenant" limit.
 #
-ensure_account_count()
+check_account_count()
 {
     #
     # nfs_ip MUST be set before calling this function.
@@ -182,13 +181,9 @@ ensure_account_count()
         # If this is not a new account it will reuse the existing entry and not
         # cause a new entry to be added to MOUNTMAP, in that case allow the mount.
         #
-        if grep -q "^${nfs_host} " $MOUNTMAP; then
-            return 0
+        if ! grep -q "^${nfs_host} " $MOUNTMAP; then
+            return 1
         fi
-
-        eecho "Mounts to target IP $nfs_ip ($nfs_host) already at max limit ($MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT)!"
-        eecho "Mount failed!"
-        exit 1
     fi
 }
 
@@ -683,10 +678,25 @@ fi
 #
 exec {fd}<$MOUNTMAP
 flock -e $fd
-get_local_ip_for_fqdn $nfs_host
-ret=$?
+#
+# With the lock held first check if adding a new mountmap entry for this account will
+# cause "accounts mounted on one client" to exceed the limit.
+#
+if check_account_count; then
+    get_local_ip_for_fqdn $nfs_host
+    ret=$?
+    account_limit_exceeded=0
+else
+    account_limit_exceeded=1
+fi
 flock -u $fd
 exec {fd}<&-
+
+if [ "$account_limit_exceeded" == "1" ]; then
+    eecho "Mounts to target IP $nfs_ip ($nfs_host) already at max limit ($MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT)!"
+    eecho "Mount failed!"
+    exit 1
+fi
 
 if [ $ret -ne 0 ]; then
     if [ -z "$AZNFS_IP_PREFIXES" ]; then
