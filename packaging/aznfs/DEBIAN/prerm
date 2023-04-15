@@ -16,7 +16,8 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 		read -n 1 -p "Are you sure you want to continue? [Y/n] " result
 		echo
 		if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
-			exit 1
+			echo "Removal aborted!"
+			exit 0
 		fi
 	fi
 fi
