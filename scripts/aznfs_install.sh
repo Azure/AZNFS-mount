@@ -184,8 +184,10 @@ ensure_pkg "wget"
 
 if [ $apt -eq 1 ]; then
     install_cmd="apt"
+    package_info=$(apt-cache show aznfs 2>/dev/null)
+    is_uninstalled=$(echo "$package_info" | grep "^Status" | grep "\<deinstall\>")
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
-    if [ -n "$current_version" ]; then
+    if [ -n "$current_version" -a -z "$is_uninstalled" ]; then
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
             secho "AZNFS version $current_version is already installed."
             exit 0
@@ -219,7 +221,7 @@ elif [ $zypper -eq 1 ]; then
     fi
 
     wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
-    zypper install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
+    zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
     install_error=$?
     rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 else
