@@ -15,9 +15,9 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!"
 		read -n 1 -p "Are you sure you want to continue? [y/N] " result
 		echo
-		if [ $result" != "y" -a "$result" != "Y" ]; then
+		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
-			exit 0
+			exit 1
 		fi
 	fi
 fi

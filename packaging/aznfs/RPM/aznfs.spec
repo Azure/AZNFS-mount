@@ -80,7 +80,7 @@ if [ $1 == 0 ]; then
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
-			exit 0
+			exit 1
 		fi
 	fi
 
