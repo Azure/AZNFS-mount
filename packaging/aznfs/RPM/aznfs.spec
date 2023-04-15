@@ -68,20 +68,17 @@ systemctl start aznfswatchdog
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
 	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	echo "Before if condition"
 	if [ $existing_mounts -ne 0 ]; then
-		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!"
-		echo "after first echo"
+		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
+		
 		# RPM install/uninstall in not interactive therefore use this workaround to take user input.
-		echo "Are you sure you want to continue? [Y/n] " > /dev/tty
-		echo "After second echo"
+		echo "Are you sure you want to continue? [y/N] " > /dev/tty
 		if exec < /dev/tty; then
-			echo "Inside second if"
 			read -n 1 result
 		fi
 		
 		echo
-		if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
+		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
 			exit 0
 		fi
