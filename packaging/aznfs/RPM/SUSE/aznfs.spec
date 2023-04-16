@@ -1,17 +1,17 @@
-Name: aznfs
+Name: aznfs_sles
 Version: x.y.z
 Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, nmap-ncat
+Requires: conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, netcat-openbsd
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 
 %prep
-mkdir -p ${STG_DIR}/rpm/root/rpmbuild/SOURCES/
-tar -xzvf ${STG_DIR}/aznfs-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${STG_DIR}/rpm/
+mkdir -p ${STG_DIR}/rpmSUSE/root/rpmbuild/SOURCES/
+tar -xzvf ${STG_DIR}/aznfs_sles-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${STG_DIR}/rpmSUSE/
 
 %files
 /usr/sbin/aznfswatchdog

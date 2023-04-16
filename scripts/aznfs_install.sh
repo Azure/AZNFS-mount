@@ -6,6 +6,7 @@
 
 RELEASE_NUMBER=x.y.z
 AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
+AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
 apt_update_done=false
 yum="yum"
 apt=0
@@ -220,10 +221,10 @@ elif [ $zypper -eq 1 ]; then
         fi
     fi
 
-    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
-    zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
+    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
+    zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
     install_error=$?
-    rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
+    rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
 else
     install_cmd="yum"
     current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
