@@ -207,7 +207,7 @@ if [ $apt -eq 1 ]; then
     rm -f /tmp/${AZNFS_RELEASE}_amd64.deb
 elif [ $zypper -eq 1 ]; then
     install_cmd="zypper"
-    current_version=$(zypper info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     if [ -n "$current_version" ]; then
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
             secho "AZNFS version $current_version is already installed."
