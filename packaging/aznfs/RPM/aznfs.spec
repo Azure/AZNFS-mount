@@ -1,17 +1,17 @@
-Name: aznfs
+Name: PACKAGE_NAME
 Version: x.y.z
 Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, nmap-ncat
+Requires: conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 
 %prep
-mkdir -p ${STG_DIR}/rpm/root/rpmbuild/SOURCES/
-tar -xzvf ${STG_DIR}/aznfs-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${STG_DIR}/rpm/
+mkdir -p ${STG_DIR}/RPM_DIR/root/rpmbuild/SOURCES/
+tar -xzvf ${STG_DIR}/PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${STG_DIR}/RPM_DIR/
 
 %files
 /usr/sbin/aznfswatchdog
@@ -68,14 +68,10 @@ systemctl start aznfswatchdog
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
 	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	if [ $existing_mounts -ne 0 ]; then
+	if [ $existing_mounts -ne 0 ]; then 
 		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
 		echo "Are you sure you want to continue? [y/N] " > /dev/tty
 		read -n 1 result < /dev/tty
-		
-		#read -e -n 1 -p "Are you sure you want to continue? [y/N] " < /dev/tty > /dev/tty
-		
-		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
 			exit 1
