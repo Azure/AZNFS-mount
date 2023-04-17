@@ -12,6 +12,7 @@ generate_rpm_package()
 {
 	rpm_dir=$1
 
+	# Overwrite rpm_pkg_dir in case of SUSE.
 	if [ "$rpm_dir" == "suse" ]; then
 		rpm_pkg_dir="${pkg_name}_sles-${RELEASE_NUMBER}-1.x86_64"
 	fi
