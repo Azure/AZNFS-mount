@@ -65,12 +65,15 @@ systemctl start aznfswatchdog
 
 %preun
 # In case of purge/remove.
+RED="\e[2;31m"
+NORMAL="\e[0m"
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
 	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts -ne 0 ]; then 
-		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
-		echo -n "Are you sure you want to continue? [y/N] " > /dev/tty
+		echo
+		echo "${RED} There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
+		echo -n "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
 		read -n 1 result < /dev/tty
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
