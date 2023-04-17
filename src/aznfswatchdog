@@ -47,7 +47,7 @@ reconcile_conntrack()
     local l_ip=$1
     local l_nfsip=$2
 
-    output=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip | grep " SYN_SENT ")
+    output=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip 2>/dev/null | grep " SYN_SENT ")
     if [ $? -eq 0 ]; then
         vecho "$output"
 
