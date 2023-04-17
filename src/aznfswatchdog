@@ -84,8 +84,8 @@ reconcile_conntrack()
     # For mounts with nconnect, there could be more than one conntrack entries to the same
     # proxy IP, but with different local ports. We must track them separately.
     #
-    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 111 2>/dev/null | grep " SYN_SENT ")
-    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 2048 2>/dev/null | grep " SYN_SENT ")
+    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 111 --state SYN_SENT 2>/dev/null)
+    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 2048 --state SYN_SENT 2>/dev/null)
     output="$output111"$'\n'"$output2048"
 
     if [ -n "$output" ]; then
