@@ -86,6 +86,9 @@ reconcile_conntrack()
     IFS=$'\n' output=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip 2>/dev/null | grep " SYN_SENT ")
     if [ -n "$output" ]; then
         for line in $output; do
+            # XXX Remove this log after running for few days.
+            vecho "$line"
+
             matchstr=".* SYN_SENT src=.* dst=$l_ip sport=([0-9]+).*"
             if [[ "$line" =~ $matchstr ]]; then
                 l_port=${BASH_REMATCH[1]}
