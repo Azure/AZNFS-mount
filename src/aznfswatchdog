@@ -34,6 +34,44 @@ next_ip_change_detection_epoch=0
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
+#
+# Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
+# Used for finding if some entry is stuck in SYN_SENT state due to a bug in older
+# kernels. If we find an entry stuck for more than a certain time in SYN_SENT state
+# we delete the entry so that kernel looks up fresh NAT rules and creates a new entry.
+#
+declare -A cthash_synsent
+
+reconcile_conntrack()
+{
+    local l_ip=$1
+    local l_nfsip=$2
+
+    output=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip | grep " SYN_SENT ")
+    if [ $? -eq 0 ]; then
+        vecho "$output"
+
+        key="${l_ip}:${l_nfsip}"
+        let cthash_synsent[$key]++
+
+        #
+        # We are called every 5 secs, so this deletes an entry stuck in
+        # SYN_SENT for 25/30 secs.
+        #
+        if [ ${cthash_synsent[$key]} -ge 6 ]; then
+            cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip"
+            wecho "Deleting conntrack entry stuck in SYN_SENT state [$cmd]"
+
+            eval $cmd
+            if [ $? -ne 0 ]; then
+                eecho "Failed to delete conntrack entry [$cmd]!"
+            else
+                unset cthash_synsent[$key]
+            fi
+        fi
+    fi
+}
+
 vecho "Starting aznfswatchdog..."
 
 # Dump NAT table once on startup in case we have reported conflicts.
@@ -50,6 +88,8 @@ fi
 if ! chattr -f +i $MOUNTMAP; then
     wecho "chattr does not work for ${MOUNTMAP}!"
 fi
+
+
 
 #
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
@@ -192,7 +232,15 @@ while :; do
             #       entries or removes it by mistake. This should not be
             #       required normally.
             #
+            # We also reconcile conntrack entries stuck in some bad states which
+            # may hamper communication, f.e., in older kernels there's a bug due to
+            # which conntrack entry may get stuck in SYN_SENT state if client
+            # reuse the source port and keep retransmitting SYNs before the entry
+            # can timeout.
+            #
+            reconcile_conntrack "$l_ip" "$l_nfsip"
             verify_iptable_entry "$l_ip" "$l_nfsip"
+
         fi
 
         #
