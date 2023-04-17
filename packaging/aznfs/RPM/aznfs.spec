@@ -70,7 +70,7 @@ if [ $1 == 0 ]; then
 	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts -ne 0 ]; then 
 		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
-		echo "Are you sure you want to continue? [y/N] " > /dev/tty
+		echo -n "Are you sure you want to continue? [y/N] " > /dev/tty
 		read -n 1 result < /dev/tty
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
