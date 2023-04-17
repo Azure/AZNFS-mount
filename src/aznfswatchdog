@@ -41,35 +41,68 @@ next_ip_change_detection_epoch=0
 # we delete the entry so that kernel looks up fresh NAT rules and creates a new entry.
 #
 declare -A cthash_synsent
+declare -A cthash_synsent_now
+
+reconcile_conntrack_one()
+{
+    local l_ip=$1
+    local l_port=$2
+    local l_nfsip=$3
+
+    key="${l_ip}:${l_port}:${l_nfsip}"
+    let cthash_synsent[$key]++
+    let cthash_synsent_now[$key]++
+
+    #
+    # We are called every 5 secs, so this deletes an entry stuck in
+    # SYN_SENT for 25/30 secs.
+    #
+    if [ ${cthash_synsent[$key]} -ge 5 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_port"
+        wecho "Deleting conntrack entry stuck in SYN_SENT state [$cmd]"
+
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_synsent[$key]
+        fi
+    fi
+}
 
 reconcile_conntrack()
 {
     local l_ip=$1
     local l_nfsip=$2
 
-    output=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip 2>/dev/null | grep " SYN_SENT ")
-    if [ $? -eq 0 ]; then
-        vecho "$output"
+    # cthash_synsent_now holds only entries found in this call, so clear it before starting.
+    unset cthash_synsent_now
+    declare -A cthash_synsent_now
 
-        key="${l_ip}:${l_nfsip}"
-        let cthash_synsent[$key]++
-
-        #
-        # We are called every 5 secs, so this deletes an entry stuck in
-        # SYN_SENT for 25/30 secs.
-        #
-        if [ ${cthash_synsent[$key]} -ge 6 ]; then
-            cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip"
-            wecho "Deleting conntrack entry stuck in SYN_SENT state [$cmd]"
-
-            eval $cmd
-            if [ $? -ne 0 ]; then
-                eecho "Failed to delete conntrack entry [$cmd]!"
-            else
-                unset cthash_synsent[$key]
+    #
+    # For mounts with nconnect, there could be more than one conntrack entries to the same
+    # proxy IP, but with different local ports. We must track them separately.
+    #
+    IFS=$'\n' output=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip 2>/dev/null | grep " SYN_SENT ")
+    if [ -n "$output" ]; then
+        for line in $output; do
+            matchstr=".* SYN_SENT src=.* dst=$l_ip sport=([0-9]+).*"
+            if [[ "$line" =~ $matchstr ]]; then
+                l_port=${BASH_REMATCH[1]}
+                reconcile_conntrack_one $l_ip $l_port $l_nfsip
             fi
-        fi
+        done
     fi
+
+    #
+    # Any port that is not stuck now, means it's recovered since the last time and can be removed
+    # from the global cthash_synsent map.
+    #
+    for key in "${!cthash_synsent[@]}"; do
+        if [ ! -v cthash_synsent_now[$key] ]; then
+            unset cthash_synsent[$key]
+        fi
+    done
 }
 
 vecho "Starting aznfswatchdog..."
