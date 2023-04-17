@@ -434,7 +434,7 @@ search_free_local_ip_with_prefix()
                 continue
             fi
 
-            is_present_in_iptables=$(echo "$iptable_entries" | grep -c "^${local_ip}$")
+            is_present_in_iptables=$(echo "$iptable_entries" | grep -c "\<${local_ip}\>")
             if [ $is_present_in_iptables -ne 0 ]; then
                 vecho "$local_ip is already present in iptables!"
                 continue

@@ -6,6 +6,7 @@
 
 RELEASE_NUMBER=x.y.z
 AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
+AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
 apt_update_done=false
 yum="yum"
 apt=0
@@ -184,8 +185,10 @@ ensure_pkg "wget"
 
 if [ $apt -eq 1 ]; then
     install_cmd="apt"
+    package_info=$(apt-cache show aznfs 2>/dev/null)
+    is_uninstalled=$(echo "$package_info" | grep "^Status" | grep "\<deinstall\>")
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
-    if [ -n "$current_version" ]; then
+    if [ -n "$current_version" -a -z "$is_uninstalled" ]; then
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
             secho "AZNFS version $current_version is already installed."
             exit 0
@@ -204,7 +207,7 @@ if [ $apt -eq 1 ]; then
     rm -f /tmp/${AZNFS_RELEASE}_amd64.deb
 elif [ $zypper -eq 1 ]; then
     install_cmd="zypper"
-    current_version=$(zypper info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
     if [ -n "$current_version" ]; then
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
             secho "AZNFS version $current_version is already installed."
@@ -218,10 +221,10 @@ elif [ $zypper -eq 1 ]; then
         fi
     fi
 
-    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
-    zypper install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
+    wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
+    zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
     install_error=$?
-    rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
+    rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
 else
     install_cmd="yum"
     current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)

@@ -8,6 +8,56 @@
 # Exit on error.
 set -e
 
+generate_rpm_package()
+{
+	rpm_dir=$1
+
+	# Overwrite rpm_pkg_dir in case of SUSE.
+	if [ "$rpm_dir" == "suse" ]; then
+		rpm_pkg_dir="${pkg_name}_sles-${RELEASE_NUMBER}-1.x86_64"
+	fi
+
+	# Create the directory to hold the package spec and data files for RPM package.
+	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}
+
+	# Copy static package file(s).
+	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/usr/sbin
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/usr/sbin/
+
+	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin.
+	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin
+	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/mount.aznfs
+
+	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}
+	cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
+
+	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
+
+	# Create the archive for the package.
+	tar -cvzf ${rpm_pkg_dir}.tar.gz -C ${STG_DIR}/${rpm_dir}/tmp root
+
+	# Copy the SPEC file to change the placeholders depending upon the RPM distro.
+	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec ${STG_DIR}/${rpm_dir}/tmp/
+
+	# Insert current release number and RPM_DIR value.
+	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	sed -i -e "s/RPM_DIR/${rpm_dir}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	
+	# Replace the placeholders for various package names in aznfs.spec file. 
+	if [ "$rpm_dir" == "suse" ]; then
+		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_sles/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		sed -i -e "s/NETCAT_PACKAGE_NAME/netcat-openbsd/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	else
+		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		sed -i -e "s/NETCAT_PACKAGE_NAME/nmap-ncat/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	fi
+
+	# Create the rpm package.
+	rpmbuild --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+}
+
 #STG_DIR, RELEASE_NUMBER and SOURCE_DIR will be taken as env var.
 pkg_name="aznfs"
 pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
@@ -56,29 +106,5 @@ dpkg-deb --root-owner-group --build $STG_DIR/deb/$pkg_dir
 # Generate .rpm package #
 #########################
 
-# Create the directory to hold the package spec and data files for RPM package.
-mkdir -p ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}
-
-# Copy other static package file(s).
-mkdir -p ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/usr/sbin
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/usr/sbin/
-
-# Compile mount.aznfs.c and put the executable into ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin.
-mkdir -p ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin
-gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/mount.aznfs
-
-mkdir -p ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}
-cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
-
-mkdir -p ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/rpm/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
-
-# Create the archive for the package.
-tar -cvzf ${rpm_pkg_dir}.tar.gz -C ${STG_DIR}/rpm/tmp root
-
-# Insert current release number.
-sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec
-
-# Create the rpm package.
-rpmbuild --define "_topdir ${STG_DIR}/rpm${rpmbuild_dir}" -v -bb ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec
+generate_rpm_package rpm
+generate_rpm_package suse
