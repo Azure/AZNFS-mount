@@ -69,7 +69,7 @@ if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
 	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts -ne 0 ]; then
-		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" #> /dev/tty
+		echo "There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
 		
 		# RPM install/uninstall in not interactive therefore use this workaround to take user input.
 		#echo "Are you sure you want to continue? [y/N] " > /dev/tty
@@ -77,7 +77,8 @@ if [ $1 == 0 ]; then
 		#	read -n 1 result
 		#fi
 		
-		read -n 1 -p "Are you sure you want to continue? [y/N] " < /dev/tty > /dev/tty
+		read -e -n 1 -p "Are you sure you want to continue? [y/N] " < /dev/tty > /dev/tty
+		
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
