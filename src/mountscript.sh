@@ -588,8 +588,7 @@ parse_arguments()
 #
 ensure_aznfswatchdog()
 {
-    pidof -x aznfswatchdog > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
+    if ! systemctl is-active --quiet aznfswatchdog; then
         eecho "aznfswatchdog service not running!"
         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
         pecho "If the problem persists, contact Microsoft support."
