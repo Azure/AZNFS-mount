@@ -78,7 +78,8 @@ if [ $1 == 0 ]; then
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
-			exit 1
+			export SKIP_POSTUN_FOR_AZNFS=1
+			exit 0
 		fi
 	fi
 
@@ -91,6 +92,11 @@ fi
 %postun
 # In case of purge/remove.
 if [ $1 == 0 ]; then
+   if [ $SKIP_POSTUN_FOR_AZNFS == 1 ]; then
+   	unset SKIP_POSTUN_FOR_AZNFS
+   	exit 0
+   fi
+   
    chattr -i -f /opt/microsoft/aznfs/mountmap
    chattr -i -f /opt/microsoft/aznfs/randbytes
 	rm -rf /opt/microsoft/aznfs

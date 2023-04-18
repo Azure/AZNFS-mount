@@ -20,7 +20,8 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
-			exit 1
+			export SKIP_POSTRM_FOR_AZNFS=1
+			exit 0
 		fi
 	fi
 fi

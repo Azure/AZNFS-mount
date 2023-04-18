@@ -6,6 +6,11 @@
 # --------------------------------------------------------------------------------------------
 
 if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
+	if [ $SKIP_POSTRM_FOR_AZNFS -eq 1 ]; then
+		unset SKIP_POSTRM_FOR_AZNFS
+		exit 0
+	fi
+
 	chattr -f -i /opt/microsoft/aznfs/mountmap
 	chattr -f -i /opt/microsoft/aznfs/randbytes
 	rm -rf /opt/microsoft/aznfs
