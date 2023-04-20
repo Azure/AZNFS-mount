@@ -21,6 +21,13 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /opt/microsoft/aznfs/mountscript.sh
 /lib/systemd/system/aznfswatchdog.service
 
+%pretrans
+if [ $1 == 0 ]; then
+	echo "Values is 0"
+else
+	echo "Value is not 0"
+fi
+
 %pre
 init="$(ps -q 1 -o comm=)"
 if [ "$init" != "systemd" ]; then
