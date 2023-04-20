@@ -5,6 +5,7 @@ Summary: Mount helper program for correctly handling endpoint IP address changes
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
 Requires: conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
+Requires(preun): conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
 Requires(postun): conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
 
 %description
@@ -21,27 +22,22 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /opt/microsoft/aznfs/mountscript.sh
 /lib/systemd/system/aznfswatchdog.service
 
+%preuntrans
+echo "**************************************************************"
+echo "$1"
+echo "**************************************************************"
+
+%postuntrans
+echo "**************************************************************"
+echo "$1"
+echo "**************************************************************"
+
 %pretrans
 echo "**************************************************************"
 echo "$1"
 echo "**************************************************************"
-if [ $1 == 0 ]; then
-	echo "Values is 0"
-else
-	echo "Value is not 0"
-fi
 
 %posttrans
-echo "**************************************************************"
-echo "$1"
-echo "**************************************************************"
-
-%triggerun
-echo "**************************************************************"
-echo "$1"
-echo "**************************************************************"
-
-%triggerpostun
 echo "**************************************************************"
 echo "$1"
 echo "**************************************************************"
