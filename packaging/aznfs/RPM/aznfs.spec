@@ -22,11 +22,19 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /lib/systemd/system/aznfswatchdog.service
 
 %pretrans
+echo "**************************************************************"
+echo "$1"
+echo "**************************************************************"
 if [ $1 == 0 ]; then
 	echo "Values is 0"
 else
 	echo "Value is not 0"
 fi
+
+%posttrans
+echo "**************************************************************"
+echo "$1"
+echo "**************************************************************"
 
 %pre
 init="$(ps -q 1 -o comm=)"
