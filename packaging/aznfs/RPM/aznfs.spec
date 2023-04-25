@@ -5,8 +5,6 @@ Summary: Mount helper program for correctly handling endpoint IP address changes
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
 Requires: conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
-Requires(preun): conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
-Requires(postun): conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
@@ -21,26 +19,6 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /opt/microsoft/aznfs/common.sh
 /opt/microsoft/aznfs/mountscript.sh
 /lib/systemd/system/aznfswatchdog.service
-
-%pretrans
-echo "**************************************************************"
-echo "$1"
-echo "**************************************************************"
-
-%posttrans
-echo "**************************************************************"
-echo "$1"
-echo "**************************************************************"
-
-%preuntrans
-echo "**************************************************************"
-echo "$1"
-echo "**************************************************************"
-
-%postuntrans
-echo "**************************************************************"
-echo "$1"
-echo "**************************************************************"
 
 %pre
 init="$(ps -q 1 -o comm=)"
@@ -117,13 +95,3 @@ if [ $1 == 0 ]; then
    chattr -i -f /opt/microsoft/aznfs/randbytes
 	rm -rf /opt/microsoft/aznfs
 fi
-
-%preuntrans
-echo "**************************************************************"
-echo "$1"
-echo "**************************************************************"
-
-%postuntrans
-echo "**************************************************************"
-echo "$1"
-echo "**************************************************************"
