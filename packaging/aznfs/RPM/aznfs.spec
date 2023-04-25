@@ -35,6 +35,9 @@ if [ $1 == 2 ]; then
 fi
 
 %post
+RED="\e[2;31m"
+NORMAL="\e[0m"
+
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
@@ -63,6 +66,11 @@ systemctl daemon-reload
 systemctl enable aznfswatchdog
 systemctl start aznfswatchdog
 
+echo -e "${RED}******************************************************"
+echo -e "Do not uninstall AZNFS in case of existing mounts present." 
+echo -e "It may lead to broken AZNFS package with removed dependencies."
+echo -e "******************************************************${NORMAL}"
+
 %preun
 # In case of purge/remove.
 RED="\e[2;31m"
@@ -78,6 +86,9 @@ if [ $1 == 0 ]; then
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
+			echo -e "${RED} Dependencies may have uninstalled required for ANZFS package."
+			echo -e "Please check the required dependencies removed as part of this removal process and install it manually."
+			echo -e "Please contact Microsoft Support if not able to resolve required dependencies.${NORMAL}"
 			exit 1
 		fi
 	fi
