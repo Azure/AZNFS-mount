@@ -92,8 +92,9 @@ if [ $1 == 0 ]; then
 			echo
 			echo "*******************************************************************"
 			echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
-			echo "To fix this you may re-install the latest aznfs package, o/w existing"
 			echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
+			echo "To fix this, run the below command to install dependencies:"
+			echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME"
 			echo "*******************************************************************"
 			echo
 			exit 1
