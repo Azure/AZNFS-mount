@@ -35,9 +35,6 @@ if [ $1 == 2 ]; then
 fi
 
 %post
-RED="\e[2;31m"
-NORMAL="\e[0m"
-
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
