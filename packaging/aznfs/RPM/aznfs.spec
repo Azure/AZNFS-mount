@@ -66,10 +66,13 @@ systemctl daemon-reload
 systemctl enable aznfswatchdog
 systemctl start aznfswatchdog
 
-echo -e "${RED}******************************************************"
-echo -e "Do not uninstall AZNFS in case of existing mounts present." 
-echo -e "It may lead to broken AZNFS package with removed dependencies."
-echo -e "******************************************************${NORMAL}"
+echo
+echo "*******************************************************************"
+echo "Do not uninstall AZNFS while you have active aznfs mounts!"
+echo "Doing so may lead to broken AZNFS package with unmet dependencies."
+echo "If you want to uninstall AZNFS make sure you unmount all aznfs mounts."
+echo "********************************************************************"
+echo
 
 %preun
 # In case of purge/remove.
@@ -86,9 +89,13 @@ if [ $1 == 0 ]; then
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
-			echo -e "${RED} Dependencies may have uninstalled required for ANZFS package."
-			echo -e "Please check the required dependencies removed as part of this removal process and install it manually."
-			echo -e "Please contact Microsoft Support if not able to resolve required dependencies.${NORMAL}"
+			echo
+			echo "*******************************************************************"
+			echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
+			echo "To fix this you may re-install the latest aznfs package, o/w existing"
+			echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
+			echo "*******************************************************************"
+			echo
 			exit 1
 		fi
 	fi
