@@ -29,7 +29,7 @@ AZNFS is supported on following Linux distros:
 - Centos7, Centos8
 - RedHat7, RedHat8, RedHat9
 - Rocky8, Rocky9
-- SUSE15
+- SUSE (SLES 15)
 
 
 ## Install Instructions
