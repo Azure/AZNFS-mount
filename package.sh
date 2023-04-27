@@ -8,6 +8,33 @@
 # Exit on error.
 set -e
 
+postin_message()
+{
+	cat << 'END_HEREDOC'
+	echo
+	echo "*******************************************************************"
+	echo "Do not uninstall AZNFS while you have active aznfs mounts!"
+	echo "Doing so may lead to broken AZNFS package with unmet dependencies."
+	echo "If you want to uninstall AZNFS make sure you unmount all aznfs mounts."
+	echo "********************************************************************"
+	echo
+	END_HEREDOC
+}
+
+preun_message()
+{
+	cat << 'END_HEREDOC'
+	echo
+	echo "*******************************************************************"
+	echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
+	echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
+	echo "To fix this, run the below command to install dependencies:"
+	echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME"
+	echo "*******************************************************************"
+	echo
+	END_HEREDOC
+}
+
 generate_rpm_package()
 {
 	rpm_dir=$1
@@ -49,9 +76,10 @@ generate_rpm_package()
 	if [ "$rpm_dir" == "suse" ]; then
 		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_sles/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/NETCAT_PACKAGE_NAME/netcat-openbsd/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		sed -i -e "s/INSTALL_CMD/zypper/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	else
 		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		sed -i -e "s/POSTIN_MESSAGE/$(postin_message)/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		sed -i -e "s/PREUN_MESSAGE/$(preun_message)/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/NETCAT_PACKAGE_NAME/nmap-ncat/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/INSTALL_CMD/yum/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	fi
