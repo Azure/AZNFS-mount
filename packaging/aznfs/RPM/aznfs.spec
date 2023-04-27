@@ -63,8 +63,14 @@ systemctl daemon-reload
 systemctl enable aznfswatchdog
 systemctl start aznfswatchdog
 
-if [ ! -f /etc/centos-release ]; then
-	POSTIN_MESSAGE
+if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
+	echo 	
+	echo "*******************************************************************"
+	echo "Do not uninstall AZNFS while you have active aznfs mounts!"
+	echo "Doing so may lead to broken AZNFS package with unmet dependencies."
+	echo "If you want to uninstall AZNFS make sure you unmount all aznfs mounts."
+	echo "********************************************************************"
+	echo
 fi
 
 %preun
@@ -82,8 +88,15 @@ if [ $1 == 0 ]; then
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
-			if [ ! -f /etc/centos-release ]; then
-				PREUN_MESSAGE
+			if [ "DISTRO" != "suse" -a ! -f /etc/centos-release]; then
+				echo
+				echo "*******************************************************************"
+				echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
+				echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
+				echo "To fix this, run the below command to install dependencies:"
+				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME"
+				echo "*******************************************************************"
+				echo
 			fi
 			exit 1
 		fi
