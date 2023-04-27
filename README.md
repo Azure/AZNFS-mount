@@ -25,9 +25,9 @@ create a DNAT rule to route the traffic from the chosen private IP to original e
 
 AZNFS is supported on following Linux distros:
 
-- Ubuntu
+- Ubuntu (18.04 LTS, 20.04 LTS, 22.04 LTS)
 - Centos7, Centos8
-- RedHat7, RedHat9
+- RedHat7, RedHat8, RedHat9
 - Rocky8, Rocky9
 - SUSE15
 
