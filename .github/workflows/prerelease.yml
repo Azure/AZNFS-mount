@@ -21,6 +21,14 @@ jobs:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }} (Test Release)
     runs-on: ubuntu-latest
     steps:
+    - name: Check Version Number
+      shell: bash
+      run: |
+        versionName=${{ github.event.inputs.versionName }}
+        if echo $versionName | grep -v -q "^0\."; then 
+            echo "Test Release version must be of the form 0.y.z" 
+            false
+        fi
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Run Package.sh
