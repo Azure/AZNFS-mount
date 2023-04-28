@@ -17,6 +17,9 @@ chmod 0644 /opt/microsoft/aznfs/common.sh
 # Set suid bit for mount.aznfs to allow mount for non-super user.
 chmod 4755 /sbin/mount.aznfs
 
+# Create log directory under /etc/stunnel to store stunnel logs
+mkdir /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
+
 # Create a random byte source for deterministic shuffling of IP addresses.
 set +e
 if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
