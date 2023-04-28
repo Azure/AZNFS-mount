@@ -1,0 +1,46 @@
+# --------------------------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See License.txt in the project root for license information.
+# --------------------------------------------------------------------------------------------
+
+#
+# Pre-Release workflow for Mount Helper Script.
+#
+
+name: Pre-Release to github for Mount Helper
+
+on:
+  workflow_dispatch:
+    inputs:
+      versionName:
+        description: 'Version Name'
+        required: true
+
+jobs:
+  package_mount_helper:
+    name: Package and Release Mount Helper (Pre-Release)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Run Package.sh
+      shell: bash
+      run: |
+        export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+        export STG_DIR=$GITHUB_WORKSPACE
+        export SOURCE_DIR=$GITHUB_WORKSPACE
+        chmod +x $GITHUB_WORKSPACE/package.sh
+        $GITHUB_WORKSPACE/package.sh
+    - name: Create Pre-Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Pre-Release ${{ github.event.inputs.versionName }}
+        prerelease: true
+        tag_name: ${{ github.event.inputs.versionName }}
+        files: |
+          ${{ github.workspace}}/deb/aznfs-${{ github.event.inputs.versionName }}-1_amd64.deb
+          ${{ github.workspace}}/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace}}/suse/root/rpmbuild/RPMS/x86_64/aznfs_sles-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace}}/scripts/aznfs_install.sh
+        body: |
+          New Pre-Release ${{ github.event.inputs.versionName }}
