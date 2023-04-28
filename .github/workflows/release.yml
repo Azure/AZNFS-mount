@@ -21,6 +21,14 @@ jobs:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
     runs-on: ubuntu-latest
     steps:
+    - name: Check Version Number
+      shell: bash
+      run: |
+        versionName=${{ github.event.inputs.versionName }}
+        if echo $versionName | grep -q "^0\."; then 
+            echo "Official Release version cannot be of the form 0.y.z" 
+            false
+        fi
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Run Package.sh
