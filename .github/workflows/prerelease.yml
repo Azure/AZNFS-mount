@@ -50,5 +50,6 @@ jobs:
           ${{ github.workspace}}/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace}}/suse/root/rpmbuild/RPMS/x86_64/aznfs_sles-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace}}/scripts/aznfs_install.sh
+          ${{ github.workspace}}/scripts/azfilenfs_install.sh
         body: |
           New Test Release ${{ github.event.inputs.versionName }}
