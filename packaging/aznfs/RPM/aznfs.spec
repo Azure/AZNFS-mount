@@ -88,7 +88,7 @@ if [ $1 == 0 ]; then
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
-			if [ "DISTRO" != "suse" -a ! -f /etc/centos-release]; then
+			if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
 				echo
 				echo "*******************************************************************"
 				echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
