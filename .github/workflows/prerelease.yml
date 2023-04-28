@@ -21,6 +21,10 @@ jobs:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }} (Test Release)
     runs-on: ubuntu-latest
     steps:
+    - name: Check version number
+      shell: bash
+      run: |
+        false
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Run Package.sh
