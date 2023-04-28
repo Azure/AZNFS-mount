@@ -7,7 +7,7 @@
 # Test Release workflow for Mount Helper Script.
 #
 
-name: Test Release to github for Mount Helper
+name: Create Test Release
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
         export SOURCE_DIR=$GITHUB_WORKSPACE
         chmod +x $GITHUB_WORKSPACE/package.sh
         $GITHUB_WORKSPACE/package.sh
-    - name: Create Pre-Release
+    - name: Create Test Release
       uses: softprops/action-gh-release@v1
       with:
         name: Test Release ${{ github.event.inputs.versionName }}

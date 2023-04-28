@@ -7,7 +7,7 @@
 # Release workflow for Mount Helper Script.
 #
 
-name: Release to github for Mount Helper
+name: Create Official Release
 
 on:
   workflow_dispatch:
