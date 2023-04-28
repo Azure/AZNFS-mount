@@ -70,8 +70,9 @@ system_dir="/lib/systemd/system"
 rpmbuild_dir="/root/rpmbuild"
 rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 
-# Insert release number to aznfs_install.sh
+# Insert release number to aznfs_install.sh and azfilenfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
+sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/azfilenfs_install.sh
 
 #########################
 # Generate .deb package #
