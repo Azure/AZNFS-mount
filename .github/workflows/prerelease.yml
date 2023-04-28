@@ -18,7 +18,7 @@ on:
 
 jobs:
   package_mount_helper:
-    name: Package and Release Mount Helper (Test Release)
+    name: Package and Release Mount Helper ${{ github.event.inputs.versionName }} (Test Release)
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
