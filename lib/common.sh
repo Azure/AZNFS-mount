@@ -429,7 +429,7 @@ update_mountmap_entry()
 #
 ensure_iptable_entry()
 {
-    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
+    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         iptables -w 60 -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
@@ -445,7 +445,7 @@ ensure_iptable_entry()
 #
 ensure_iptable_entry_not_exist()
 {
-    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
+    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         iptables -w 60 -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
@@ -467,7 +467,7 @@ ensure_iptable_entry_not_exist()
 #
 verify_iptable_entry()
 {
-    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" 2> /dev/null
+    iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         wecho "DNAT rule [$1 -> $2] does not exist, adding it."
         iptables -w 60 -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
