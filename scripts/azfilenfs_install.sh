@@ -140,7 +140,7 @@ verify_super_user()
 
 if [ "$RELEASE_NUMBER" == "x.y.z" ]; then
     eecho "This script is directly downloaded from the github source code."
-    eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh'"
+    eecho "Please download the azfilenfs_install.sh from 'https://github.com/Azure/AZNFS-mount/releases/latest/download/azfilenfs_install.sh'"
     eecho "If the problem persists, contact Microsoft support."
     exit 1
 fi
