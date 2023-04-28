@@ -72,6 +72,9 @@ chmod 4755 /sbin/mount.aznfs
 mkdir -p /opt/microsoft/aznfs/data
 chmod 0755 /opt/microsoft/aznfs/data
 
+# Create log directory under /etc/stunnel to store stunnel logs
+mkdir /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
+
 # Move the mountmap, aznfs.log and randbytes files to new path in case these files exists and package is being upgraded.
 if [ -f /opt/microsoft/aznfs/mountmap ]; then
         chattr -f -i /opt/microsoft/aznfs/mountmap
