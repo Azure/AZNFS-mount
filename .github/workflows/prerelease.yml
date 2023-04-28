@@ -4,10 +4,10 @@
 # --------------------------------------------------------------------------------------------
 
 #
-# Release workflow for Mount Helper Script.
+# Test Release workflow for Mount Helper Script.
 #
 
-name: Create Official Release
+name: Create Test Release
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ on:
 
 jobs:
   package_mount_helper:
-    name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
+    name: Package and Release Mount Helper ${{ github.event.inputs.versionName }} (Test Release)
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -31,10 +31,11 @@ jobs:
         export SOURCE_DIR=$GITHUB_WORKSPACE
         chmod +x $GITHUB_WORKSPACE/package.sh
         $GITHUB_WORKSPACE/package.sh
-    - name: Create Release
+    - name: Create Test Release
       uses: softprops/action-gh-release@v1
       with:
-        name: Release ${{ github.event.inputs.versionName }}
+        name: Test Release ${{ github.event.inputs.versionName }}
+        prerelease: true
         tag_name: ${{ github.event.inputs.versionName }}
         files: |
           ${{ github.workspace}}/deb/aznfs-${{ github.event.inputs.versionName }}-1_amd64.deb
@@ -42,4 +43,4 @@ jobs:
           ${{ github.workspace}}/suse/root/rpmbuild/RPMS/x86_64/aznfs_sles-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace}}/scripts/aznfs_install.sh
         body: |
-          New Release ${{ github.event.inputs.versionName }}
+          New Test Release ${{ github.event.inputs.versionName }}
