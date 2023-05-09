@@ -1,0 +1,21 @@
+# --------------------------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See License.txt in the project root for license information.
+# --------------------------------------------------------------------------------------------
+
+[Unit]
+Description= azfilenfs watchdog for NFSv4 mounts
+  
+Before=
+After=
+
+[Service]
+User=root
+Environment="AZNFS_SKIP_UNMOUNT_CLEANUP=0"
+
+ExecStart=/usr/sbin/azfilenfs-watchdog
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
