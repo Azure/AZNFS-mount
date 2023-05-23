@@ -639,6 +639,20 @@ ensure_aznfswatchdog()
     fi
 }
 
+#
+# Ensure azfilenfs-watchdog service is running, if not bail out with an appropriate
+# error.
+#
+ensure_azfilenfs-watchdog()
+{
+    if ! systemctl is-active --quiet azfilenfs-watchdog; then
+        eecho "azfilenfs-watchdog service not running!"
+        pecho "Start the azfilenfs-watchdog service using 'systemctl start azfilenfs-watchdog' and try again."
+        pecho "If the problem persists, contact Microsoft support."
+        return 1
+    fi
+}
+
 find_next_available_port_and_start_stunnel()
 {
         while true
@@ -838,6 +852,8 @@ tls_nfsv4_files_share_mount()
                         is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
                         if [ -z "$is_binding_error" ]; then
                                 eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+				chattr -i -f $stunnel_conf_file
+				rm $stunnel_conf_file
                                 exit 1
                         else
                                 find_next_available_port_and_start_stunnel "$stunnel_conf_file"
@@ -907,10 +923,12 @@ tls_nfsv4_files_share_mount()
 
         if [ -n "$mount_output" ]; then
                 pecho "$mount_output"
+		vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
         fi
 
         if [ $mount_status -ne 0 ]; then
                 eecho "Mount failed!"
+		exit 1
         fi
 }
 
@@ -932,9 +950,9 @@ if [ $? -ne 0 ]; then
 fi
 
 if [ $nfs_vers == "4.1" ]; then
-	AZ_PREFIX="file"
+    AZ_PREFIX="file"
 else
-	AZ_PREFIX="blob"
+    AZ_PREFIX="blob"
 fi
 
 nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
@@ -943,7 +961,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# TODO: Uncomment below code later. We don't have server side changes yet, so cannot test this mount helper script on storageaccount for v4. Hence, 'is_valid_blob_fqdn' will fail.
+# TODO: Uncomment below code later. We don't have server side changes yet, so cannot test this mount helper script on storageaccount/test tenants for v4. Hence, 'is_valid_blob_fqdn' will fail.
 <<comment
 if ! is_valid_blob_fqdn "$nfs_host" "$AZ_PREFIX"; then
     eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
@@ -965,45 +983,54 @@ if [ -z "$nfs_dir" ]; then
 fi
 
 if [ "$nfs_vers" == "4.1" ]; then
-        vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+    vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
-	# TODO: Remove this later as watchdog for nfsv4 will create this mountmap file.
-	if [ ! -f $AZ_FILES_MOUNTMAP ]; then
-		touch $AZ_FILES_MOUNTMAP
-		if [ $? -ne 0 ]; then
-			eecho "[FATAL] Not able to create '${AZ_FILES_MOUNTMAP}'!"
-			exit 1
-		fi
-		chattr -f +i $AZ_FILES_MOUNTMAP
+    # Check if azfilenfs-watchdog service is running.
+    if ! ensure_azfilenfs-watchdog; then
+        exit 1
+    fi
+
+    # AZ_FILES_MOUNTMAP file must have been created by azfilenfs-watchdog service.
+    if [ ! -f $AZ_FILES_MOUNTMAP ]; then
+        touch $AZ_FILES_MOUNTMAP
+	if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${AZ_FILES_MOUNTMAP}'!"
+	    exit 1
+	fi
+    fi
+
+    if ! chattr -f +i $AZ_FILES_MOUNTMAP; then
+        wecho "chattr does not work for ${AZ_FILES_MOUNTMAP}!"
+    fi
+
+    if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
+        vecho "notls option is enabled. Mount nfs share without TLS."
+
+        if [[ "$MOUNT_OPTIONS" == *"notls,"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//notls,/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
 	fi
 
-	if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
-                vecho "notls option is enabled. Mount nfs share without TLS."
+        # Do the actual mount.
+        mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
+        mount_status=$?
 
-                if [[ "$MOUNT_OPTIONS" == *"notls,"* ]]; then
-                        MOUNT_OPTIONS=${MOUNT_OPTIONS//notls,/}
-                else
-                        MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
-                fi
+        if [ -n "$mount_output" ]; then
+            pecho "$mount_output"
+	    vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
+	fi
 
-                # Do the actual mount.
-                mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
-                mount_status=$?
+        if [ $mount_status -ne 0 ]; then
+            eecho "Mount failed!"
+	    exit 1
+	fi
+    else
+	vecho "Mount nfs share with TLS."
+        tls_nfsv4_files_share_mount
+    fi
 
-                if [ -n "$mount_output" ]; then
-                        pecho "$mount_output"
-                fi
-
-                if [ $mount_status -ne 0 ]; then
-                        eecho "Mount failed!"
-                fi
-        else
-		vecho "Mount nfs share with TLS."
-                tls_nfsv4_files_share_mount
-        fi
-
-        echo "Done. Reached at the end!"
-        exit 0
+    exit 0
 fi
 
 #

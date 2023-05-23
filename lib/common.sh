@@ -15,6 +15,11 @@ RANDBYTES="${OPTDIR}/randbytes"
 #
 MOUNTMAP="${OPTDIR}/mountmap"
 
+#
+# This stores the map of hostname and stunnel conf, log, pid files paths.
+#
+AZ_FILES_MOUNTMAP="$OPTDIR/aznfs_files_mountmap"
+
 RED="\e[2;31m"
 GREEN="\e[2;32m"
 YELLOW="\e[2;33m"
