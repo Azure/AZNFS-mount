@@ -9,7 +9,6 @@
 # Load common aznfs helpers.
 #
 . /opt/microsoft/aznfs/common.sh
-AZ_FILES_MOUNTMAP="$OPTDIR/aznfs_files_mountmap"
 STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
 NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
@@ -655,67 +654,67 @@ ensure_azfilenfs-watchdog()
 
 find_next_available_port_and_start_stunnel()
 {
-        while true
-        do
-                # get the next available port
-                available_port=$(get_next_available_port)
-                if [ $? -ne 0 ]; then
-                        eecho "Failed to get the next available port for nfsv4 mount."
-                        return 1
-                fi
-                vecho "Next Available Port: '$available_port'"
+    while true
+    do
+        # get the next available port
+        available_port=$(get_next_available_port)
+        if [ $? -ne 0 ]; then
+            eecho "Failed to get the next available port for nfsv4 mount."
+            return 1
+        fi
+        vecho "Next Available Port: '$available_port'"
 
-                if [ -z "$available_port" ]; then
-                        eecho "Running out of ports. Nfsv4 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
-                        return 1
-                fi
+        if [ -z "$available_port" ]; then
+            eecho "Running out of ports. Nfsv4 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+            return 1
+        fi
 
-                used_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
-                vecho "used port: '$used_port'"
+        used_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+        vecho "used port: '$used_port'"
 
-                chattr -f -i $stunnel_conf_file
+        chattr -f -i $stunnel_conf_file
 
-                sed -i "s/$used_port/$available_port/" $stunnel_conf_file
-                if [ $? -ne 0 ]; then
-                        eecho "Failed to replace the port in $stunnel_conf_file."
-                        chattr -f +i $stunnel_conf_file
-                        return 1
-                fi
-                chattr -f +i $stunnel_conf_file
+        sed -i "s/$used_port/$available_port/" $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            eecho "Failed to replace the port in $stunnel_conf_file."
+            chattr -f +i $stunnel_conf_file
+            return 1
+        fi
+        chattr -f +i $stunnel_conf_file
 
-                new_used_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+        new_used_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
 
-                # start the stunnel process
-		stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
-                if [ -n "$stunnel_status" ]; then
-                        # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
-                        is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
-                        if [ -z "$is_binding_error" ]; then
-                                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
-                                return 1
-                        fi
-		else
-			vecho "Found new port '$new_used_port' and restarted stunnel."
-			break
-                fi
-        done
+        # start the stunnel process
+        stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
+        if [ -n "$stunnel_status" ]; then
+            # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
+            is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$new_used_port: Address already in use")
+            if [ -z "$is_binding_error" ]; then
+                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                return 1
+            fi
+        else
+	    vecho "Found new port '$new_used_port' and restarted stunnel."
+	    break
+        fi
+    done
 }
 
 get_next_available_port()
 {
-        for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
-        do
-                is_port_available=`netstat -tulpn | grep ":$port "`
-                if [ -z "$is_port_available" ]; then
-                        break
-                fi
-        done
-
-        if [ $port -le $NFSV4_PORT_RANGE_END ]; then
-                echo "$port"
-        else
-                echo ""
+    for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
+    do
+        is_port_available=`netstat -tulpn | grep ":$port "`
+        if [ -z "$is_port_available" ]; then
+            break
         fi
+    done
+
+    if [ $port -le $NFSV4_PORT_RANGE_END ]; then
+        echo "$port"
+    else
+        echo ""
+    fi
 }
 
 #
@@ -723,77 +722,84 @@ get_next_available_port()
 #
 add_stunnel_configuration()
 {
-        chattr -f -i $stunnel_conf_file
+    chattr -f -i $stunnel_conf_file
 
-	stunnel_CAFile="$STUNNELDIR/certs/serverCert.pem"
-        echo "CAFile = $stunnel_CAFile" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to add server certificate file path to $stunnel_conf_file!"
-                return 1
-        fi
-
-        echo "verify = 3" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to add verify option to $stunnel_conf_file!"
-                return 1
-        fi
-
-        echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to add debug option to $stunnel_conf_file!"
-                return 1
-        fi
-
-	stunnel_log_file="$STUNNELDIR/logs/stunnel_$nfs_host.log"
-        echo "output = $stunnel_log_file" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to add log file path to $stunnel_conf_file!"
-                return 1
-        fi
-
-        stunnel_pid_file="$STUNNELDIR/logs/stunnel_$nfs_host.pid"
-        echo "pid = $stunnel_pid_file" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to add pid file path to $stunnel_conf_file!"
-                return 1
-        fi
-
-        echo >> $stunnel_conf_file
-
-        echo "[$nfs_host]" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to add $nfs_host service/entry name to $stunnel_conf_file!"
-                return 1
-        fi
-
-        echo "client = yes" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to 'client = yes' to $stunnel_conf_file!"
-                return 1
-        fi
-
-	echo "accept = $LOCALHOST:$available_port" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to add 'accept' info to $stunnel_conf_file!"
-                return 1
-        fi
-
-        echo "connect = $nfs_host:$CONNECT_PORT" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-                chattr -f +i $stunnel_conf_file
-                eecho "Failed to add 'connect' info to $stunnel_conf_file!"
-                return 1
-        fi
-
+    stunnel_CAFile="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
+    echo "CAFile = $stunnel_CAFile" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
+        eecho "Failed to add CAFile path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "verifyChain = yes" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add verifyChain option to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add sslVersion option to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add debug option to $stunnel_conf_file!"
+        return 1
+    fi
+
+    stunnel_log_file="$STUNNELDIR/logs/stunnel_$nfs_host.log"
+    echo "output = $stunnel_log_file" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add log file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    stunnel_pid_file="$STUNNELDIR/logs/stunnel_$nfs_host.pid"
+    echo "pid = $stunnel_pid_file" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add pid file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo >> $stunnel_conf_file
+
+    echo "[$nfs_host]" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add $nfs_host service/entry name to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "client = yes" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to 'client = yes' to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "accept = $LOCALHOST:$available_port" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add 'accept' info to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "connect = $nfs_host:$CONNECT_PORT" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add 'connect' info to $stunnel_conf_file!"
+        return 1
+    fi
+
+    chattr -f +i $stunnel_conf_file
 }
 
 #
@@ -801,135 +807,143 @@ add_stunnel_configuration()
 #
 tls_nfsv4_files_share_mount()
 {
-        vecho "nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+    vecho "nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
-        # Note the available port
-        available_port=$(get_next_available_port)
+    # Note the available port
+    available_port=$(get_next_available_port)
+    if [ $? -ne 0 ]; then
+        eecho "Failed to get the available port for nfsv4 mount."
+        exit 1
+    fi
+
+    vecho "Available Port: $available_port"
+
+    if [ -z "$available_port" ]; then
+        eecho "Running out of ports. Nfsv4 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+        exit 1
+    fi
+
+    EntryExistinMountMap="true"
+    # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
+    stunnel_conf_file="$STUNNELDIR/stunnel_$nfs_host.conf"
+
+    if [ ! -f $stunnel_conf_file ]; then
+        EntryExistinMountMap="false"
+    fi
+
+    if [ "$EntryExistinMountMap" == "false" ]; then
+        touch $stunnel_conf_file
         if [ $? -ne 0 ]; then
-                eecho "Failed to get the available port for nfsv4 mount."
+            eecho "[FATAL] Not able to create '${stunnel_conf_file}'!"
+            exit 1
+        fi
+
+        chattr -f +i $stunnel_conf_file
+
+        stunnel_log_file=
+        stunnel_pid_file=
+
+        add_stunnel_configuration
+        add_stunnel_configuration_status=$?
+
+        if [ $add_stunnel_configuration_status -ne 0 ]; then
+            eecho "Failed to add stunnel configuration to $stunnel_conf_file!"
+	    chattr -i -f $stunnel_conf_file
+	    rm $stunnel_conf_file
+            exit 1
+        fi
+
+	# start the stunnel process
+	stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
+	if [ -n "$stunnel_status" ]; then
+	    # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
+            is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
+            if [ -z "$is_binding_error" ]; then
+                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+		chattr -i -f $stunnel_conf_file
+		rm $stunnel_conf_file
                 exit 1
-        fi
-
-        vecho "Available Port: $available_port"
-
-        if [ -z "$available_port" ]; then
-                eecho "Running out of ports. Nfsv4 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
-                exit 1
-        fi
-
-        EntryExistinMountMap="true"
-        # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
-        stunnel_conf_file="$STUNNELDIR/stunnel_$nfs_host.conf"
-
-	if [ ! -f $stunnel_conf_file ]; then
-                EntryExistinMountMap="false"
-        fi
-
-        if [ "$EntryExistinMountMap" == "false" ]; then
-                touch $stunnel_conf_file
-                if [ $? -ne 0 ]; then
-                        eecho "[FATAL] Not able to create '${stunnel_conf_file}'!"
-                        exit 1
-                fi
-
-                chattr -f +i $stunnel_conf_file
-
-                stunnel_log_file=
-                stunnel_pid_file=
-
-                add_stunnel_configuration
-                add_stunnel_configuration_status=$?
-
-                if [ $add_stunnel_configuration_status -ne 0 ]; then
-                        eecho "Failed to add stunnel configuration to $stunnel_conf_file!"
-                        exit 1
-                fi
-
-		# start the stunnel process
-		stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
-		if [ -n "$stunnel_status" ]; then
-			# TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
-                        is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
-                        if [ -z "$is_binding_error" ]; then
-                                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
-				chattr -i -f $stunnel_conf_file
-				rm $stunnel_conf_file
-                                exit 1
-                        else
-                                find_next_available_port_and_start_stunnel "$stunnel_conf_file"
-				is_stunnel_running=$?
-				if [ $is_stunnel_running -ne 0 ]; then
-					eecho "Failed to get the next available port and start stunnel."
-					exit 1
-				fi
-                        fi
-                fi
-
-                checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
-                if [ $? -ne 0 ]; then
-                        eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
-                        exit 1
-                fi
-
-                local mountmap_entry="$nfs_host;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash"
-                chattr -f -i $AZ_FILES_MOUNTMAP
-                echo "$mountmap_entry" >> $AZ_FILES_MOUNTMAP
-                if [ $? -ne 0 ]; then
-                        chattr -f +i $AZ_FILES_MOUNTMAP
-                        eecho "[$mountmap_entry] failed to add!"
-                        exit 1
-                fi
-                chattr -f +i $AZ_FILES_MOUNTMAP
-
-		else
-                # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount.
-
-                # Check if stunnel_pid_file exist for storageaccount
-		# TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
-                stunnel_pid_file=`cat $AZ_FILES_MOUNTMAP | grep "stunnel_$nfs_host.pid" | cut -d ";" -f4`
-                if [ ! -f $stunnel_pid_file ]; then
-                        eecho "[FATAL] '${stunnel_pid_file}' does not exist!"
-                        exit 1
-                fi
-
-                is_stunnel_running=$(netstat -anp | grep stunnel | grep `cat $stunnel_pid_file`)
-                if [ -z "$is_stunnel_running" ]; then
-                        vecho "stunnel is not running! Restarting the stunnel"
-
-			stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
-			if [ -n "$stunnel_status" ]; then
-				# TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
-				is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
-				if [ -z "$is_binding_error" ]; then
-					eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
-					exit 1
-				else
-					find_next_available_port_and_start_stunnel "$stunnel_conf_file"
-					is_stunnel_running=$?
-					if [ $is_stunnel_running -ne 0 ]; then
-						eecho "Failed to get the next available port and start stunnel."
-						exit 1
-					fi
-				fi
-			fi
+            else
+                find_next_available_port_and_start_stunnel "$stunnel_conf_file"
+		is_stunnel_running=$?
+		if [ $is_stunnel_running -ne 0 ]; then
+		    eecho "Failed to get the next available port and start stunnel."
+		    chattr -i -f $stunnel_conf_file
+		    rm $stunnel_conf_file
+		    exit 1
 		fi
+	    fi
+	fi
 
-                available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
-                vecho "Local Port to use: $available_port"
+        checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
+        if [ $? -ne 0 ]; then
+            eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
+	    chattr -i -f $stunnel_conf_file
+	    rm $stunnel_conf_file
+            exit 1
         fi
 
-	mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$available_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
-        mount_status=$?
+        local mountmap_entry="$nfs_host;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash"
+        chattr -f -i $AZ_FILES_MOUNTMAP
+        echo "$mountmap_entry" >> $AZ_FILES_MOUNTMAP
+        if [ $? -ne 0 ]; then
+            chattr -f +i $AZ_FILES_MOUNTMAP
+            eecho "[$mountmap_entry] failed to add!"
+	    chattr -i -f $stunnel_conf_file
+	    rm $stunnel_conf_file
+            exit 1
+        fi
+        chattr -f +i $AZ_FILES_MOUNTMAP
 
-        if [ -n "$mount_output" ]; then
-                pecho "$mount_output"
-		vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
+    else
+        # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount.
+
+        # Check if stunnel_pid_file exist for storageaccount
+        # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
+        stunnel_pid_file=`cat $AZ_FILES_MOUNTMAP | grep "stunnel_$nfs_host.pid" | cut -d ";" -f4`
+        if [ ! -f $stunnel_pid_file ]; then
+            eecho "[FATAL] '${stunnel_pid_file}' does not exist!"
+            exit 1
         fi
 
-        if [ $mount_status -ne 0 ]; then
-                eecho "Mount failed!"
-		exit 1
+        is_stunnel_running=$(netstat -anp | grep stunnel | grep `cat $stunnel_pid_file`)
+        if [ -z "$is_stunnel_running" ]; then
+            vecho "stunnel is not running! Restarting the stunnel"
+
+	    stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
+	    if [ -n "$stunnel_status" ]; then
+	        # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
+	        is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
+	        if [ -z "$is_binding_error" ]; then
+	            eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+		    exit 1
+	        else
+		    find_next_available_port_and_start_stunnel "$stunnel_conf_file"
+		    is_stunnel_running=$?
+		    if [ $is_stunnel_running -ne 0 ]; then
+		        eecho "Failed to get the next available port and start stunnel."
+		        exit 1
+		    fi
+	        fi
+	    fi
         fi
+
+        available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+        vecho "Local Port to use: $available_port"
+    fi
+
+    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$available_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
+    mount_status=$?
+
+    if [ -n "$mount_output" ]; then
+        pecho "$mount_output"
+	vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
+    fi
+
+    if [ $mount_status -ne 0 ]; then
+        eecho "Mount failed!"
+	exit 1
+    fi
 }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
