@@ -24,6 +24,7 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 			exit 1
 		fi
 	fi
+
 	existing_mounts_for_nfsv4FilesShares=$(cat /opt/microsoft/aznfs/data/aznfs_files_mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts_for_nfsv4FilesShares -ne 0 ]; then
 		echo

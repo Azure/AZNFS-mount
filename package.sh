@@ -23,6 +23,7 @@ generate_rpm_package()
 	# Copy static package file(s).
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/usr/sbin
 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/usr/sbin/
+	cp -avf ${SOURCE_DIR}/src/azfilenfs-watchdog ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/usr/sbin/
 
 	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin.
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin
@@ -35,6 +36,7 @@ generate_rpm_package()
 
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
+	cp -avf ${SOURCE_DIR}/src/azfilenfs-watchdog.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
 
 	# Create the archive for the package.
 	tar -cvzf ${rpm_pkg_dir}.tar.gz -C ${STG_DIR}/${rpm_dir}/tmp root
@@ -125,9 +127,8 @@ system_dir="/lib/systemd/system"
 rpmbuild_dir="/root/rpmbuild"
 rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 
-# Insert release number to aznfs_install.sh and azfilenfs_install.sh
+# Insert release number to aznfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
-sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/azfilenfs_install.sh
 
 #########################
 # Generate .deb package #
@@ -146,6 +147,7 @@ sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_d
 # Copy other static package file(s).
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+cp -avf ${SOURCE_DIR}/src/azfilenfs-watchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 
 # Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
@@ -158,6 +160,7 @@ cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_di
 
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
+cp -avf ${SOURCE_DIR}/src/azfilenfs-watchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
 
 # Create the deb package.
 dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
