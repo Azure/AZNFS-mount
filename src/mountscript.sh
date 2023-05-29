@@ -15,6 +15,7 @@ NFSV4_PORT_RANGE_END=21049
 CONNECT_PORT=12050
 LOCALHOST="127.0.0.1"
 DEBUG_LEVEL="info"
+AZFILENFS_WATCHDOG_INTERVAL_SECS=5
 
 #
 # Default order in which we try the network prefixes for a free local IP to use.
@@ -841,12 +842,22 @@ resolve_ipv4_with_preference_to_mountmap()
 #
 ensure_azfilenfs-watchdog()
 {
-    if ! systemctl is-active --quiet azfilenfs-watchdog; then
-        eecho "azfilenfs-watchdog service not running!"
-        pecho "Start the azfilenfs-watchdog service using 'systemctl start azfilenfs-watchdog' and try again."
-        pecho "If the problem persists, contact Microsoft support."
-        return 1
-    fi
+    watchdogRunningCounter=0
+    watchdogRunningLimit=5
+    while ! systemctl is-active --quiet azfilenfs-watchdog
+    do
+        if [ $watchdogRunningCounter -lt $watchdogRunningLimit ]; then
+	    # systemd restarts azfilenfs-watchdog after 5 secs.
+	    # So we will wait for 5 secs and recheck if azfilenfs-watchdog has restarted. 
+	    sleep $AZFILENFS_WATCHDOG_INTERVAL_SECS
+	    watchdogRunningCounter=$(( watchdogRunningCounter+1 ))
+        else
+            eecho "azfilenfs-watchdog service not running!"
+            pecho "Start the azfilenfs-watchdog service using 'systemctl start azfilenfs-watchdog' and try again."
+            pecho "If the problem persists, contact Microsoft support."
+            return 1
+        fi
+    done
 }
 
 find_next_available_port_and_start_stunnel()
