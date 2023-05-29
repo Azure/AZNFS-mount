@@ -11,6 +11,7 @@ set -e
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
+chmod 0755 /usr/sbin/azfilenfs-watchdog
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
 
@@ -18,7 +19,7 @@ chmod 0644 /opt/microsoft/aznfs/common.sh
 chmod 4755 /sbin/mount.aznfs
 
 # Create log directory under /etc/stunnel to store stunnel logs
-mkdir /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
+mkdir -p /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
 
 # Create a random byte source for deterministic shuffling of IP addresses.
 set +e
@@ -41,3 +42,7 @@ set -e
 systemctl daemon-reload
 systemctl enable aznfswatchdog
 systemctl start aznfswatchdog
+
+# Start azfilenfs-watchdog service.
+systemctl enable azfilenfs-watchdog
+systemctl start azfilenfs-watchdog

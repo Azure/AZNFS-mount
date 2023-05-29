@@ -24,6 +24,7 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 			exit 1
 		fi
 	fi
+
 	existing_mounts_for_nfsv4FilesShares=$(cat /opt/microsoft/aznfs/aznfs_files_mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts_for_nfsv4FilesShares -ne 0 ]; then
 		echo
@@ -42,3 +43,8 @@ fi
 systemctl stop aznfswatchdog
 systemctl disable aznfswatchdog
 echo "Stopped aznfswatchdog service."
+
+# Stop azfilenfs-watchdog service and clean it.
+systemctl stop azfilenfs-watchdog
+systemctl disable azfilenfs-watchdog
+echo "Stopped azfilenfs-watchdog service."
