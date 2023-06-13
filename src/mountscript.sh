@@ -1157,6 +1157,11 @@ tls_nfsv4_files_share_mount()
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
 
+# Check if aznfswatchdog service is running.
+if ! ensure_aznfswatchdog; then
+    exit 1
+fi
+
 mount_point="$2"
 
 OPTIONS=
@@ -1207,12 +1212,7 @@ fi
 if [ "$nfs_vers" == "4.1" ]; then
     vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
-    # Check if azfilenfs-watchdog service is running.
-    if ! ensure_azfilenfs-watchdog; then
-        exit 1
-    fi
-
-    # AZ_FILES_MOUNTMAP file must have been created by azfilenfs-watchdog service.
+    # AZ_FILES_MOUNTMAP file must have been created by aznfswatchdog service.
     if [ ! -f $AZ_FILES_MOUNTMAP ]; then
         touch $AZ_FILES_MOUNTMAP
 	if [ $? -ne 0 ]; then
@@ -1258,11 +1258,6 @@ fi
 #
 # NfsV3 logic for mount helper below
 #
-
-# Check if aznfswatchdog service is running.
-if ! ensure_aznfswatchdog; then
-    exit 1
-fi
 
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAP" ]; then
