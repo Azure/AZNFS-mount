@@ -11,7 +11,6 @@ set -e
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
-chmod 0755 /usr/sbin/azfilenfs-watchdog
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh

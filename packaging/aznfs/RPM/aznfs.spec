@@ -20,8 +20,6 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /opt/microsoft/aznfs/mountscript.sh
 /opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
-/usr/sbin/azfilenfs-watchdog
-/lib/systemd/system/azfilenfs-watchdog.service
 
 %pre
 init="$(ps -q 1 -o comm=)"
@@ -60,7 +58,6 @@ chmod 0755 /usr/sbin/aznfswatchdog
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
-chmod 0755 /usr/sbin/azfilenfs-watchdog
 
 # Set suid bit for mount.aznfs to allow mount for non-super user.
 chmod 4755 /sbin/mount.aznfs
