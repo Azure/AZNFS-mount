@@ -12,7 +12,7 @@
 STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
 NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
-CONNECT_PORT=12050
+CONNECT_PORT=2049
 LOCALHOST="127.0.0.1"
 DEBUG_LEVEL="info"
 AZFILENFS_WATCHDOG_INTERVAL_SECS=5
@@ -710,6 +710,19 @@ get_next_available_port()
     fi
 }
 
+
+install_CA_cert()
+{
+    wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O /usr/local/share/ca-certificates/DigiCert_Global_Root_G2.crt
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem !"
+        return 1
+    fi
+
+    update-ca-certificates
+}
+
+
 #
 # Add stunnel configuration in stunnel_<storageaccount>.conf file.
 #
@@ -718,6 +731,17 @@ add_stunnel_configuration()
     chattr -f -i $stunnel_conf_file
 
     stunnel_CAFile="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
+
+    if [ ! -f $stunnel_CAFile ]; then
+        vecho "CA root cert is missing for stunnel configuration. Installing DigiCert_Global_Root_G2 certificate."
+        install_CA_cert
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+            return 1
+        fi
+    fi
+
     echo "CAFile = $stunnel_CAFile" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
