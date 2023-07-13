@@ -103,7 +103,7 @@ mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
 
 # Create the deb package.
-dpkg-deb --root-owner-group --build $STG_DIR/deb/$pkg_dir
+dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 
 #########################
 # Generate .rpm package #
