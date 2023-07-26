@@ -50,7 +50,7 @@ if [ "$init" != "systemd" ]; then
 
 	echo "OK, systemd installed, but not booted, continuing installation!"
 	systemctl enable aznfswatchdog
-	systemctl disable getty@.service
+	systemctl disable getty@tty1.service
 else
 	echo "System is booted with systemd, continuing installation!"
 	systemctl daemon-reload
