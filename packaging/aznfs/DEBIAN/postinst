@@ -36,12 +36,21 @@ set -e
 
 # Start aznfswatchdog service.
 init="$(ps -q 1 -o comm=)"
+
 if [ "$init" == "systemd" ]; then
-	echo "System is booted with systemd, continuing installation!"
-	systemctl daemon-reload
-	systemctl enable aznfswatchdog
-	systemctl start aznfswatchdog
+    echo "System is booted with systemd, continuing installation!"
+    
+    # Reload systemd configuration to ensure any changes take effect.
+    systemctl daemon-reload
+    
+    # Enable the 'aznfswatchdog' service to start on boot.
+    systemctl enable aznfswatchdog
+    
+    # Start the 'aznfswatchdog' service.
+    systemctl start aznfswatchdog
 else
-	echo "OK, systemd installed, but not booted, continuing installation!"
-	systemctl enable aznfswatchdog
+    echo "OK, systemd installed, but not booted, continuing installation!"
+    
+    # Enable the 'aznfswatchdog' service to start on boot (not starting it since init is not systemd).
+    systemctl enable aznfswatchdog
 fi
