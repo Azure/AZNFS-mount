@@ -35,6 +35,13 @@ chattr +i /opt/microsoft/aznfs/randbytes
 set -e
 
 # Start aznfswatchdog service.
-systemctl daemon-reload
-systemctl enable aznfswatchdog
-systemctl start aznfswatchdog
+init="$(ps -q 1 -o comm=)"
+if [ "$init" == "systemd" ]; then
+	echo "System is booted with systemd, continuing installation!"
+	systemctl daemon-reload
+	systemctl enable aznfswatchdog
+	systemctl start aznfswatchdog
+else
+	echo "OK, systemd installed, but not booted, continuing installation!"
+	systemctl enable aznfswatchdog
+fi

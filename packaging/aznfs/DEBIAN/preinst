@@ -10,6 +10,17 @@ set -e
 
 init="$(ps -q 1 -o comm=)"
 if [ "$init" != "systemd" ]; then
-	echo "Cannot install this package on a non-systemd system!"
-	exit 1
+	#
+	# For containers we may have systemd installed but not booted yet.
+	# Allow installation as long as systemd is installed.
+	#
+	echo "init is not systemd, checking if systemd is installed!"
+	if [ ! -x /lib/systemd/systemd ]; then
+		echo "systemd is not installed!"
+		echo "Cannot install aznfs on a non-systemd system!"
+		exit 1
+	fi
+
+	echo "OK, systemd installed, but not booted, continuing installation!"
 fi
+
