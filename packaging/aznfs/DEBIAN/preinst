@@ -13,4 +13,3 @@ if [ "$init" != "systemd" ]; then
 	echo "Cannot install this package on a non-systemd system!"
 	exit 1
 fi
-
