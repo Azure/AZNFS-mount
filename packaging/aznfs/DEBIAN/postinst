@@ -34,23 +34,23 @@ fi
 chattr +i /opt/microsoft/aznfs/randbytes
 set -e
 
-# Start aznfswatchdog service.
-init="$(ps -q 1 -o comm=)"
-
+#
+# If we are not booted with systemd that most likely means we are in a
+# container that's being created. Avoid doing any changes that need
+# systemd to be running, just enable the aznfswatchdog service so that
+# it gets started when the container is booted with systemd.
+#
 if [ "$init" == "systemd" ]; then
-    echo "System is booted with systemd, continuing installation!"
-    
-    # Reload systemd configuration to ensure any changes take effect.
-    systemctl daemon-reload
-    
-    # Enable the 'aznfswatchdog' service to start on boot.
+	# Reload systemd configuration to ensure any changes take effect.
+	systemctl daemon-reload
+
+	# Enable the 'aznfswatchdog' service to start on boot.
     systemctl enable aznfswatchdog
     
     # Start the 'aznfswatchdog' service.
     systemctl start aznfswatchdog
 else
-    echo "OK, systemd installed, but not booted, continuing installation!"
-    
-    # Enable the 'aznfswatchdog' service to start on boot (not starting it since init is not systemd).
-    systemctl enable aznfswatchdog
+	# Enable the 'aznfswatchdog' service to start on boot (not starting it since init is not systemd).
+	systemctl enable aznfswatchdog
+	echo "aznfswatchdog enabled but not started, will start when system is booted with systemd init!"    
 fi
