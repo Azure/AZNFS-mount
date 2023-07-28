@@ -586,28 +586,28 @@ parse_arguments()
 # Ensure aznfswatchdog service is running, if not bail out with an appropriate
 # error.
 #
-ensure_aznfswatchdog()
-{
-    if ! systemctl is-active --quiet aznfswatchdog; then
-        eecho "aznfswatchdog service not running!"
-        pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
-        pecho "If the problem persists, contact Microsoft support."
-        return 1
-    fi
-}
+# ensure_aznfswatchdog()
+# {
+#     if ! systemctl is-active --quiet aznfswatchdog; then
+#         eecho "aznfswatchdog service not running!"
+#         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
+#         pecho "If the problem persists, contact Microsoft support."
+#         return 1
+#     fi
+# }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
 
 # Check if aznfswatchdog service is running.
-if ! ensure_aznfswatchdog; then
-    exit 1
-fi
+# if ! ensure_aznfswatchdog; then
+#     exit 1
+# fi
 
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAP" ]; then
     eecho "[FATAL] ${MOUNTMAP} not found!"
-    pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
+    # pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
     pecho "If the problem persists, contact Microsoft support."
     exit 1
 fi

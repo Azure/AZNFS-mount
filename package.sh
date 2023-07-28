@@ -111,3 +111,25 @@ dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 
 generate_rpm_package rpm
 generate_rpm_package suse
+
+
+#######################
+
+# Generating Tarball #
+
+#######################
+
+# Create the directory to hold the package contents.
+mkdir -p ${STG_DIR}/tarball/${pkg_name}-${RELEASE_NUMBER}
+
+# Copy the required files to the package directory.
+cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/tarball/${pkg_name}-${RELEASE_NUMBER}/
+cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/tarball/${pkg_name}-${RELEASE_NUMBER}/
+cp -avf ${SOURCE_DIR}/src/mount.aznfs.c ${STG_DIR}/tarball/${pkg_name}-${RELEASE_NUMBER}/
+cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/tarball/${pkg_name}-${RELEASE_NUMBER}/
+
+# Compile mount.aznfs.c and put the executable into the package directory.
+gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/tarball/${pkg_name}-${RELEASE_NUMBER}/mount.aznfs
+
+# Create the tar.gz package.
+tar -czvf ${STG_DIR}/${pkg_name}-${RELEASE_NUMBER}.tar.gz -C ${STG_DIR}/tarball ${pkg_name}-${RELEASE_NUMBER}
