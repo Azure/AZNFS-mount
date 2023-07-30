@@ -119,7 +119,6 @@ generate_rpm_package suse
 
 # Create the directory to hold the package contents.
 mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}
-chmod +x ${STG_DIR}/tarball/${tar_pkg_dir}/*
 
 # Copy other static package file(s).
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/tarball/${tar_pkg_dir}/
