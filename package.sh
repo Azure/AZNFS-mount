@@ -121,15 +121,24 @@ generate_rpm_package suse
 mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}
 
 # Copy other static package file(s).
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/tarball/${tar_pkg_dir}/
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
+cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
 
 # Compile mount.aznfs.c and put the executable into ${STG_DIR}/tarball/${tar_pkg_dir}/
-gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/tarball/${tar_pkg_dir}/mount.aznfs
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}/sbin
+gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
 
 # Copy the required files to the package directory.
 mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}
 cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
 
+# Set appropriate permissions.
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin/aznfswatchdog
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/mountscript.sh
+chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
+
 # Create the tar.gz package.
-tar -czvf ${STG_DIR}/tarball/${tar_pkg_dir}.tar.gz -C ${STG_DIR}/tarball ${tar_pkg_dir}
+tar -czvf ${STG_DIR}/tarball/${tar_pkg_dir}.tar.gz -C ${STG_DIR}/tarball/${tar_pkg_dir} .
