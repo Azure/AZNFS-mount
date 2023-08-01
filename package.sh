@@ -141,4 +141,5 @@ chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
 chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
 
 # Create the tar.gz package.
-tar -czvf ${STG_DIR}/tarball/${tar_pkg_dir}.tar.gz -C ${STG_DIR}/tarball/${tar_pkg_dir} *
+cd ${STG_DIR}/tarball/${tar_pkg_dir}
+tar -czvf ${STG_DIR}/tarball/${tar_pkg_dir}.tar.gz *
