@@ -36,19 +36,19 @@ next_ip_change_detection_epoch=0
 
 
 # Create /opt/microsoft/aznfs/randbytes if not already created.
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-        dd if=/dev/urandom of=/opt/microsoft/aznfs/randbytes bs=256 count=1
+if [ ! -s $RANDBYTES ]; then
+        dd if=/dev/urandom of=$RANDBYTES bs=256 count=1
 fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-        uuidgen > /opt/microsoft/aznfs/randbytes
+if [ ! -s $RANDBYTES ]; then
+        uuidgen > $RANDBYTES
 fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-        date | md5sum | awk '{print $1}' > /opt/microsoft/aznfs/randbytes
+if [ ! -s $RANDBYTES ]; then
+        date | md5sum | awk '{print $1}' > $RANDBYTES
 fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-        date > /opt/microsoft/aznfs/randbytes
+if [ ! -s $RANDBYTES ]; then
+        date > $RANDBYTES
 fi
-chattr +i /opt/microsoft/aznfs/randbytes
+chattr +i $RANDBYTES
 
 #
 # Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.

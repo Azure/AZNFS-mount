@@ -7,13 +7,14 @@
 
 APPNAME="aznfs"
 OPTDIR="/opt/microsoft/${APPNAME}"
-LOGFILE="${OPTDIR}/${APPNAME}.log"
-RANDBYTES="${OPTDIR}/randbytes"
+OPTDIRDATA="/opt/microsoft/${APPNAME}/data"
+LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
+RANDBYTES="${OPTDIRDATA}/randbytes"
 
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
 #
-MOUNTMAP="${OPTDIR}/mountmap"
+MOUNTMAP="${OPTDIRDATA}/mountmap"
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -486,6 +487,13 @@ if [ $? -ne 0 ]; then
     eecho "[FATAL] Not able to create '${OPTDIR}'!"
     exit 1
 fi
+
+mkdir -p $OPTDIRDATA
+if [ $? -ne 0 ]; then
+    eecho "[FATAL] Not able to create '${OPTDIRDATA}'!"
+    exit 1
+fi
+chmod 0755 $OPTDIRDATA
 
 if [ ! -f $LOGFILE ]; then
     touch $LOGFILE
