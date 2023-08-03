@@ -7,7 +7,7 @@
 
 APPNAME="aznfs"
 OPTDIR="/opt/microsoft/${APPNAME}"
-OPTDIRDATA="/opt/microsoft/${APPNAME}/data"
+OPTDIRDATA="${OPTDIR}/data"
 LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 RANDBYTES="${OPTDIRDATA}/randbytes"
 
