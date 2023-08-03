@@ -113,9 +113,9 @@ dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 generate_rpm_package rpm
 generate_rpm_package suse
 
-#######################
+######################
 # Generating Tarball #
-#######################
+######################
 
 # Create the directory to hold the package contents.
 mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}

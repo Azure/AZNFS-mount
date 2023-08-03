@@ -484,7 +484,7 @@ export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 
 if [ ! -d $OPTDIRDATA ]; then
-    eecho "[FATAL] '${OPTDIRDATA}' is not present, cannot continue."
+    eecho "[FATAL] '${OPTDIRDATA}' is not present, cannot continue!"
     exit 1
 fi
 
