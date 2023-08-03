@@ -588,8 +588,8 @@ parse_arguments()
 #
 ensure_aznfswatchdog()
 {
-    pid=$(pidof -x /usr/sbin/aznfswatchdog)
-    if [ ! $pid -ge 0 ]; then
+    pidof -x aznfswatchdog > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
         eecho "aznfswatchdog service not running, please make sure it's running and try again!"
         pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' if not doing the mount inside a container."
         pecho "If the problem persists, contact Microsoft support."

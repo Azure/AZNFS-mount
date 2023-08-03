@@ -138,7 +138,7 @@ chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
 chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin/aznfswatchdog
 chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/mountscript.sh
 chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
-chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
+chmod 4755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
 
 # Create the tar.gz package.
 cd ${STG_DIR}/tarball/${tar_pkg_dir}
