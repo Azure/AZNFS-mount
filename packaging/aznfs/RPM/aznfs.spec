@@ -44,19 +44,9 @@ chmod 0644 /opt/microsoft/aznfs/common.sh
 # Set suid bit for mount.aznfs to allow mount for non-super user.
 chmod 4755 /sbin/mount.aznfs
 
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	dd if=/dev/urandom of=/opt/microsoft/aznfs/randbytes bs=256 count=1
-fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	uuidgen > /opt/microsoft/aznfs/randbytes
-fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	date | md5sum | awk '{print $1}' > /opt/microsoft/aznfs/randbytes
-fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	date > /opt/microsoft/aznfs/randbytes
-fi
-chattr +i /opt/microsoft/aznfs/randbytes
+# Create data directory for holding mountmap and log file. 
+mkdir -p /opt/microsoft/aznfs/data
+chmod 0755 /opt/microsoft/aznfs/data
 
 # Start aznfswatchdog service.
 systemctl daemon-reload

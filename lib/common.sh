@@ -482,18 +482,11 @@ verify_iptable_entry()
 # On some distros mount program doesn't pass correct PATH variable.
 export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-mkdir -p $OPTDIR
-if [ $? -ne 0 ]; then
-    eecho "[FATAL] Not able to create '${OPTDIR}'!"
-    exit 1
-fi
 
-mkdir -p $OPTDIRDATA
-if [ $? -ne 0 ]; then
-    eecho "[FATAL] Not able to create '${OPTDIRDATA}'!"
+if [ ! -d $OPTDIRDATA ]; then
+    eecho "[FATAL] '${OPTDIRDATA}' is not present, cannot continue."
     exit 1
 fi
-chmod 0755 $OPTDIRDATA
 
 if [ ! -f $LOGFILE ]; then
     touch $LOGFILE
