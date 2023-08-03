@@ -35,7 +35,7 @@ next_ip_change_detection_epoch=0
 . /opt/microsoft/aznfs/common.sh
 
 
-# Create /opt/microsoft/aznfs/randbytes if not already created.
+# Create /opt/microsoft/aznfs/data/randbytes if not already created.
 if [ ! -s $RANDBYTES ]; then
         dd if=/dev/urandom of=$RANDBYTES bs=256 count=1
 fi

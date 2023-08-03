@@ -64,7 +64,7 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 #
 is_valid_blob_fqdn()
 {
-    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?.blob(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
+    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?(.privatelink)?.blob(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
 }
 
 #
@@ -590,8 +590,8 @@ ensure_aznfswatchdog()
 {
     pid=$(pidof -x /usr/sbin/aznfswatchdog)
     if [ ! $pid -ge 0 ]; then
-        eecho "aznfswatchdog service not running!"
-        pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
+        eecho "aznfswatchdog service not running, please make sure it's running and try again!"
+        pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' if not doing the mount inside a container."
         pecho "If the problem persists, contact Microsoft support."
         return 1
     fi
@@ -608,7 +608,8 @@ fi
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAP" ]; then
     eecho "[FATAL] ${MOUNTMAP} not found!"
-    # pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
+    pecho "Try restarting the aznfswatchdog service and then retry the mount command."
+    pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' if not doing the mount inside a container."
     pecho "If the problem persists, contact Microsoft support."
     exit 1
 fi
