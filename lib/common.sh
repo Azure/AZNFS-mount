@@ -92,6 +92,15 @@ vecho()
 }
 
 #
+# Check if system is booted with systemd as init.
+#
+systemd_is_init()
+{
+    init="$(ps -q 1 -o comm=)"
+    [ "$init" == "systemd" ]
+}
+
+#
 # Check if the given string is a valid IPv4 address.
 #
 is_valid_ipv4_address()
