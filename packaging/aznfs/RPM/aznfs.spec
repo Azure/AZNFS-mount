@@ -48,6 +48,26 @@ chmod 4755 /sbin/mount.aznfs
 mkdir -p /opt/microsoft/aznfs/data
 chmod 0755 /opt/microsoft/aznfs/data
 
+# In case of upgrade.
+if [ $1 == 2 ]; then
+	# Move the mountmap, aznfs.log and randbytes files to new path in case these files exists and package is being upgraded.
+	if [ -f /opt/microsoft/aznfs/mountmap ]; then
+	        chattr -f -i /opt/microsoft/aznfs/mountmap
+	        mv -vf /opt/microsoft/aznfs/mountmap /opt/microsoft/aznfs/data/
+	        chattr -f +i /opt/microsoft/aznfs/data/mountmap
+	fi
+
+	if [ -f /opt/microsoft/aznfs/aznfs.log ]; then
+	        mv -vf /opt/microsoft/aznfs/aznfs.log /opt/microsoft/aznfs/data/
+	fi
+
+	if [ -f /opt/microsoft/aznfs/randbytes ]; then
+	        chattr -f -i /opt/microsoft/aznfs/randbytes
+	        mv -vf /opt/microsoft/aznfs/randbytes /opt/microsoft/aznfs/data/
+	        chattr -f +i /opt/microsoft/aznfs/data/randbytes
+	fi
+fi
+
 # Start aznfswatchdog service.
 systemctl daemon-reload
 systemctl enable aznfswatchdog
@@ -69,7 +89,7 @@ RED="\e[2;31m"
 NORMAL="\e[0m"
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
-	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
+	existing_mounts=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts -ne 0 ]; then 
 		echo
 		echo -e "${RED}There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
@@ -101,7 +121,7 @@ fi
 %postun
 # In case of purge/remove.
 if [ $1 == 0 ]; then
-   chattr -i -f /opt/microsoft/aznfs/mountmap
-   chattr -i -f /opt/microsoft/aznfs/randbytes
+   chattr -i -f /opt/microsoft/aznfs/data/mountmap
+   chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	rm -rf /opt/microsoft/aznfs
 fi

@@ -48,7 +48,7 @@ fi
 if [ ! -s $RANDBYTES ]; then
         date > $RANDBYTES
 fi
-chattr +i $RANDBYTES
+chattr -f +i $RANDBYTES
 
 #
 # Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
