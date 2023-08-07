@@ -121,7 +121,7 @@ fi
 %postun
 # In case of purge/remove.
 if [ $1 == 0 ]; then
-   chattr -i -f /opt/microsoft/aznfs/data/mountmap
-   chattr -i -f /opt/microsoft/aznfs/data/randbytes
+	chattr -i -f /opt/microsoft/aznfs/data/mountmap
+	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	rm -rf /opt/microsoft/aznfs
 fi
