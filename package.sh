@@ -65,7 +65,7 @@ generate_rpm_package()
 pkg_name="aznfs"
 pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
 rpm_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
-tar_pkg_dir="${pkg_name}-${RELEASE_NUMBER}"
+tar_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
 opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
 rpmbuild_dir="/root/rpmbuild"
