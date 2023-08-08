@@ -4,7 +4,7 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
@@ -44,19 +44,29 @@ chmod 0644 /opt/microsoft/aznfs/common.sh
 # Set suid bit for mount.aznfs to allow mount for non-super user.
 chmod 4755 /sbin/mount.aznfs
 
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	dd if=/dev/urandom of=/opt/microsoft/aznfs/randbytes bs=256 count=1
+# Create data directory for holding mountmap and log file. 
+mkdir -p /opt/microsoft/aznfs/data
+chmod 0755 /opt/microsoft/aznfs/data
+
+# In case of upgrade.
+if [ $1 == 2 ]; then
+	# Move the mountmap, aznfs.log and randbytes files to new path in case these files exists and package is being upgraded.
+	if [ -f /opt/microsoft/aznfs/mountmap ]; then
+	        chattr -f -i /opt/microsoft/aznfs/mountmap
+	        mv -vf /opt/microsoft/aznfs/mountmap /opt/microsoft/aznfs/data/
+	        chattr -f +i /opt/microsoft/aznfs/data/mountmap
+	fi
+
+	if [ -f /opt/microsoft/aznfs/aznfs.log ]; then
+	        mv -vf /opt/microsoft/aznfs/aznfs.log /opt/microsoft/aznfs/data/
+	fi
+
+	if [ -f /opt/microsoft/aznfs/randbytes ]; then
+	        chattr -f -i /opt/microsoft/aznfs/randbytes
+	        mv -vf /opt/microsoft/aznfs/randbytes /opt/microsoft/aznfs/data/
+	        chattr -f +i /opt/microsoft/aznfs/data/randbytes
+	fi
 fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	uuidgen > /opt/microsoft/aznfs/randbytes
-fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	date | md5sum | awk '{print $1}' > /opt/microsoft/aznfs/randbytes
-fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	date > /opt/microsoft/aznfs/randbytes
-fi
-chattr +i /opt/microsoft/aznfs/randbytes
 
 # Start aznfswatchdog service.
 systemctl daemon-reload
@@ -79,7 +89,7 @@ RED="\e[2;31m"
 NORMAL="\e[0m"
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
-	existing_mounts=$(cat /opt/microsoft/aznfs/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
+	existing_mounts=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts -ne 0 ]; then 
 		echo
 		echo -e "${RED}There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
@@ -111,7 +121,7 @@ fi
 %postun
 # In case of purge/remove.
 if [ $1 == 0 ]; then
-   chattr -i -f /opt/microsoft/aznfs/mountmap
-   chattr -i -f /opt/microsoft/aznfs/randbytes
+	chattr -i -f /opt/microsoft/aznfs/data/mountmap
+	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	rm -rf /opt/microsoft/aznfs
 fi

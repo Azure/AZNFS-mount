@@ -64,7 +64,7 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 #
 is_valid_blob_fqdn()
 {
-    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?.blob(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
+    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?(.privatelink)?.blob(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
 }
 
 #
@@ -588,9 +588,15 @@ parse_arguments()
 #
 ensure_aznfswatchdog()
 {
-    if ! systemctl is-active --quiet aznfswatchdog; then
-        eecho "aznfswatchdog service not running!"
-        pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
+    pidof -x aznfswatchdog > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        if systemd_is_init; then
+            eecho "aznfswatchdog service not running!"
+            pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
+        else
+            eecho "aznfswatchdog service not running, please make sure it's running and try again!"
+        fi
+        
         pecho "If the problem persists, contact Microsoft support."
         return 1
     fi
@@ -607,7 +613,13 @@ fi
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAP" ]; then
     eecho "[FATAL] ${MOUNTMAP} not found!"
-    pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
+    
+    if systemd_is_init; then
+        pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
+    else
+        eecho "aznfswatchdog service not running, please make sure it's running and try again!"
+    fi
+    
     pecho "If the problem persists, contact Microsoft support."
     exit 1
 fi

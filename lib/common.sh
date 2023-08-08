@@ -7,13 +7,14 @@
 
 APPNAME="aznfs"
 OPTDIR="/opt/microsoft/${APPNAME}"
-LOGFILE="${OPTDIR}/${APPNAME}.log"
-RANDBYTES="${OPTDIR}/randbytes"
+OPTDIRDATA="${OPTDIR}/data"
+LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
+RANDBYTES="${OPTDIRDATA}/randbytes"
 
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
 #
-MOUNTMAP="${OPTDIR}/mountmap"
+MOUNTMAP="${OPTDIRDATA}/mountmap"
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -88,6 +89,15 @@ vecho()
     fi
 
     _log $color "${*}"
+}
+
+#
+# Check if system is booted with systemd as init.
+#
+systemd_is_init()
+{
+    init="$(ps -q 1 -o comm=)"
+    [ "$init" == "systemd" ]
 }
 
 #
@@ -481,9 +491,9 @@ verify_iptable_entry()
 # On some distros mount program doesn't pass correct PATH variable.
 export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-mkdir -p $OPTDIR
-if [ $? -ne 0 ]; then
-    eecho "[FATAL] Not able to create '${OPTDIR}'!"
+
+if [ ! -d $OPTDIRDATA ]; then
+    eecho "[FATAL] '${OPTDIRDATA}' is not present, cannot continue!"
     exit 1
 fi
 

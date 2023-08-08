@@ -49,10 +49,15 @@ generate_rpm_package()
 	if [ "$rpm_dir" == "suse" ]; then
 		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_sles/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/NETCAT_PACKAGE_NAME/netcat-openbsd/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		# For SLES, sysvinit-tools provides pidof.
+		sed -i -e "s/PROCPS_PACKAGE_NAME/sysvinit-tools/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/DISTRO/suse/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	else
 		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/NETCAT_PACKAGE_NAME/nmap-ncat/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		# In new versions of Centos/RedHat/Rocky, procps-ng provides pidof. For older versions, it is provided by sysvinit-tools but since it is not
+		# present in new versions, only install procps-ng which exists in all versions.
+		sed -i -e "s/PROCPS_PACKAGE_NAME/procps-ng/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/DISTRO/rpm/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/INSTALL_CMD/yum/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	fi
@@ -65,6 +70,7 @@ generate_rpm_package()
 pkg_name="aznfs"
 pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
 rpm_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
+tar_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
 opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
 rpmbuild_dir="/root/rpmbuild"
@@ -111,3 +117,34 @@ dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 
 generate_rpm_package rpm
 generate_rpm_package suse
+
+######################
+# Generating Tarball #
+######################
+
+# Create the directory to hold the package contents.
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}
+
+# Copy other static package file(s).
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
+cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
+
+# Compile mount.aznfs.c and put the executable into ${STG_DIR}/tarball/${tar_pkg_dir}/
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}/sbin
+gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
+
+# Copy the required files to the package directory.
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}
+cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
+cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
+
+# Set appropriate permissions.
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin/aznfswatchdog
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/mountscript.sh
+chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
+chmod 4755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
+
+# Create the tar.gz package.
+cd ${STG_DIR}/tarball/${tar_pkg_dir}
+tar -czvf ${STG_DIR}/tarball/${tar_pkg_dir}.tar.gz *

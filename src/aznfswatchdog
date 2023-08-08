@@ -34,6 +34,22 @@ next_ip_change_detection_epoch=0
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
+
+# Create /opt/microsoft/aznfs/data/randbytes if not already created.
+if [ ! -s $RANDBYTES ]; then
+        dd if=/dev/urandom of=$RANDBYTES bs=256 count=1
+fi
+if [ ! -s $RANDBYTES ]; then
+        uuidgen > $RANDBYTES
+fi
+if [ ! -s $RANDBYTES ]; then
+        date | md5sum | awk '{print $1}' > $RANDBYTES
+fi
+if [ ! -s $RANDBYTES ]; then
+        date > $RANDBYTES
+fi
+chattr -f +i $RANDBYTES
+
 #
 # Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
 # Used for finding if some entry is stuck in SYN_SENT state due to a bug in older

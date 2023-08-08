@@ -17,22 +17,26 @@ chmod 0644 /opt/microsoft/aznfs/common.sh
 # Set suid bit for mount.aznfs to allow mount for non-super user.
 chmod 4755 /sbin/mount.aznfs
 
-# Create a random byte source for deterministic shuffling of IP addresses.
-set +e
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	dd if=/dev/urandom of=/opt/microsoft/aznfs/randbytes bs=256 count=1
+# Create data directory for holding mountmap and log file. 
+mkdir -p /opt/microsoft/aznfs/data
+chmod 0755 /opt/microsoft/aznfs/data
+
+# Move the mountmap, aznfs.log and randbytes files to new path in case these files exists and package is being upgraded.
+if [ -f /opt/microsoft/aznfs/mountmap ]; then
+        chattr -f -i /opt/microsoft/aznfs/mountmap
+        mv -vf /opt/microsoft/aznfs/mountmap /opt/microsoft/aznfs/data/
+        chattr -f +i /opt/microsoft/aznfs/data/mountmap
 fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	uuidgen > /opt/microsoft/aznfs/randbytes
+
+if [ -f /opt/microsoft/aznfs/aznfs.log ]; then
+        mv -vf /opt/microsoft/aznfs/aznfs.log /opt/microsoft/aznfs/data/
 fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	date | md5sum | awk '{print $1}' > /opt/microsoft/aznfs/randbytes
+
+if [ -f /opt/microsoft/aznfs/randbytes ]; then
+        chattr -f -i /opt/microsoft/aznfs/randbytes
+        mv -vf /opt/microsoft/aznfs/randbytes /opt/microsoft/aznfs/data/
+        chattr -f +i /opt/microsoft/aznfs/data/randbytes
 fi
-if [ ! -s /opt/microsoft/aznfs/randbytes ]; then
-	date > /opt/microsoft/aznfs/randbytes
-fi
-chattr +i /opt/microsoft/aznfs/randbytes
-set -e
 
 # Start aznfswatchdog service.
 systemctl daemon-reload
