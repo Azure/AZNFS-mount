@@ -71,6 +71,7 @@ pkg_name="aznfs"
 pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
 rpm_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
 tar_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
+tar_pkg_dir_arm64="${pkg_name}-${RELEASE_NUMBER}-1.arm64"
 opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
 rpmbuild_dir="/root/rpmbuild"
@@ -118,9 +119,9 @@ dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 generate_rpm_package rpm
 generate_rpm_package suse
 
-######################
-# Generating Tarball #
-######################
+################################
+# Generating Tarball for amd64 #
+################################
 
 # Create the directory to hold the package contents.
 mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}
@@ -148,3 +149,34 @@ chmod 4755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
 # Create the tar.gz package.
 cd ${STG_DIR}/tarball/${tar_pkg_dir}
 tar -czvf ${STG_DIR}/tarball/${tar_pkg_dir}.tar.gz *
+
+################################
+# Generating Tarball for arm64 #
+################################
+
+# Create the directory to hold the package contents.
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir_arm64}
+
+# Copy other static package file(s).
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir_arm64}/usr/sbin
+cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/tarball/${tar_pkg_dir_arm64}/usr/sbin
+
+# Compile mount.aznfs.c for arm64 and put the executable into ${STG_DIR}/tarball/${tar_pkg_dir_arm64}/
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir_arm64}/sbin
+aarch64-linux-gnu-gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/tarball/${tar_pkg_dir_arm64}/sbin/mount.aznfs
+
+# Copy the required files to the package directory.
+mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir_arm64}${opt_dir}
+cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/tarball/${tar_pkg_dir_arm64}${opt_dir}/
+cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir_arm64}${opt_dir}/
+
+# Set appropriate permissions.
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir_arm64}${opt_dir}/
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir_arm64}/usr/sbin/aznfswatchdog
+chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir_arm64}${opt_dir}/mountscript.sh
+chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir_arm64}${opt_dir}/common.sh
+chmod 4755 ${STG_DIR}/tarball/${tar_pkg_dir_arm64}/sbin/mount.aznfs
+
+# Create the tar.gz package.
+cd ${STG_DIR}/tarball/${tar_pkg_dir_arm64}
+tar -czvf ${STG_DIR}/tarball/${tar_pkg_dir_arm64}.tar.gz *
