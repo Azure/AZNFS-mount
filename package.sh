@@ -75,7 +75,7 @@ generate_tarball_package() {
         tar_pkg_dir=$tar_pkg_dir_amd64
         compiler="gcc"
     elif [ "$arch" == "arm64" ]; then
-        tar_pkg_dir="tar_pkg_dir_arm64"
+        tar_pkg_dir=$tar_pkg_dir_arm64
         compiler="aarch64-linux-gnu-gcc"
     else
         echo "Unsupported architecture: $arch"
