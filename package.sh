@@ -93,7 +93,7 @@ generate_tarball_package() {
     mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}/sbin
     $compiler -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
 
- 	# Copy the required files to the package directory.
+    # Copy the required files to the package directory.
     mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}
     cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
     cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
