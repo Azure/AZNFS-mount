@@ -72,14 +72,14 @@ generate_tarball_package() {
     local compiler
 
     if [ "$arch" == "amd64" ]; then
-        tar_pkg_dir=$tar_pkg_dir_amd64
+        tar_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
         compiler="gcc"
     elif [ "$arch" == "arm64" ]; then
-        tar_pkg_dir=$tar_pkg_dir_arm64
+        tar_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.arm64"
         compiler="aarch64-linux-gnu-gcc"
     else
         echo "Unsupported architecture: $arch"
-        exit 1
+        return 1
     fi
 
     # Create the directory to hold the package contents.
@@ -114,8 +114,6 @@ generate_tarball_package() {
 pkg_name="aznfs"
 pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
 rpm_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
-tar_pkg_dir_amd64="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
-tar_pkg_dir_arm64="${pkg_name}-${RELEASE_NUMBER}-1.arm64"
 opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
 rpmbuild_dir="/root/rpmbuild"
