@@ -23,6 +23,11 @@ NORMAL="\e[0m"
 
 HOSTNAME=$(hostname)
 
+#
+# For controlled warnings if Blob fqdn to IPv4 adddress present in etc/hosts
+#
+WARN_COUNTER=0
+
 _log()
 {
     color=$1
@@ -145,6 +150,16 @@ resolve_ipv4()
 {
     local hname="$1"
     local RETRIES=3
+
+    # Warn if the desired entry is present in /etc/hosts
+    if grep -q "$hname" /etc/hosts; then
+        ((WARN_COUNTER++))
+        if ((WARN_COUNTER % 2 == 1)); then
+            wecho "[WARNING] Detected hard-coded resolution entry for "$hname" in /etc/hosts."
+            wecho "[Action Required]: To avoid conflicts and to ensure correctly handling endpoint IP address changes by AZNFS,
+                    remove the entry for "$hname" in /etc/hosts."
+        fi
+    fi
 
     # Some retries for resilience.
     for((i=0;i<=$RETRIES;i++)) {
