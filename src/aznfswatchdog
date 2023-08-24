@@ -31,6 +31,11 @@ AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 
 next_ip_change_detection_epoch=0
 
+#
+# For controlled warnings if Blob fqdn to IPv4 address added in etc/hosts after mount
+#
+WARN_COUNTER=0
+
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
@@ -306,6 +311,16 @@ while :; do
         #
         if ! $do_ip_change_detection; then
             continue
+        fi
+
+        # Warn if the desired resolution entry is added in /etc/hosts after mount is success
+        if grep -q "$hname" /etc/hosts; then
+            ((WARN_COUNTER++))
+            if ((WARN_COUNTER % 2 == 1)); then
+                wecho "[WARNING] Detected hard-coded resolution entry for "$hname" in /etc/hosts."
+                wecho "[Action Required]: To avoid conflicts and to ensure correctly handling endpoint IP address changes by AZNFS,
+                        remove the entry for "$hname" in /etc/hosts."
+            fi
         fi
 
         #
