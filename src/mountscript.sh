@@ -636,6 +636,14 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
     exit 1
 fi
 
+# fail if the desired entry is present in /etc/hosts
+if grep -q "$nfs_host" /etc/hosts; then
+    eecho "Detected static resolution entry for "$nfs_host" in /etc/hosts."
+    eecho "[Action Required]: To avoid conflicts and to ensure correctly handling endpoint IP address changes by AZNFS,
+            remove the entry for "$nfs_host" in /etc/hosts."
+    exit 1
+fi
+
 nfs_ip=$(resolve_ipv4 "$nfs_host")
 if [ $? -ne 0 ]; then
     echo "$nfs_ip"
