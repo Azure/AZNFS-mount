@@ -640,18 +640,12 @@ fi
 # fail if the desired entry is present in /etc/hosts
 # Read each line from /etc/hosts
 #
-while IFS= read -r line; do
-    # Check if the line is not commented
-    if ! [[ "$line" =~ ^[[:space:]]*# ]]; then
-        # Check if corresponding entry for nfs_host is present
-        if echo "$line" | grep -q "$nfs_host"; then
-            eecho "Mount failed!"
-            eecho "Detected entry for $nfs_host in /etc/hosts."
-            eecho "[Action Required]: Remove or comment out the entry for $nfs_host in /etc/hosts for MOUNT to work."
-            exit 1
-        fi
-    fi
-done < /etc/hosts
+if is_present_in_etc_hosts "$nfs_host"; then
+    eecho "Mount failed!"
+    eecho "Detected entry for $nfs_host in /etc/hosts."
+    eecho "[Action Required]: Remove or comment out the entry for $nfs_host in /etc/hosts for MOUNT to work."
+    exit 1
+fi
 
 nfs_ip=$(resolve_ipv4 "$nfs_host")
 if [ $? -ne 0 ]; then

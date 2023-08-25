@@ -31,12 +31,6 @@ AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 
 next_ip_change_detection_epoch=0
 
-#
-# For controlled warnings if Blob fqdn to IPv4 address added in etc/hosts after mount
-#
-WARN_COUNTER=0
-WARNING_GENERATED=false
-
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
@@ -316,27 +310,10 @@ while :; do
 
         #
         # Warn if the desired resolution entry is added in /etc/hosts after mount is success
-        # Read each line from /etc/hosts
         #
-        while IFS= read -r line; do
-            # Check if the line is not commented
-            if ! [[ "$line" =~ ^[[:space:]]*# ]]; then
-                # Check if corresponding entry for nfs_host is present
-                if echo "$line" | grep -q "$l_host"; then
-                    ((WARN_COUNTER++))
-                    if ((WARN_COUNTER % 2 == 1)); then
-                        WARNING_GENERATED=true
-                        wecho "[WARNING] Detected static resolution entry for "$l_host" in /etc/hosts."
-                        wecho "[Action Required]: Remove the entry for "$l_host" in /etc/hosts to ensure correctly handling endpoint IP address changes by AZNFS"
-                        break
-                    fi
-                fi
-            fi
-        done < /etc/hosts
-
-        # Reset the WARN_COUNTER if no warnings were generated
-        if ! $WARNING_GENERATED; then
-            WARN_COUNTER=0
+        if is_present_in_etc_hosts "$l_host"; then
+            wecho "[WARNING] Detected static resolution entry for "$l_host" in /etc/hosts."
+            wecho "[Action Required]: Remove the entry for "$l_host" in /etc/hosts to ensure correctly handling endpoint IP address changes by AZNFS"
         fi
 
         #
