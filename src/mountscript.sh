@@ -636,13 +636,22 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
     exit 1
 fi
 
+#
 # fail if the desired entry is present in /etc/hosts
-if grep -q "$nfs_host" /etc/hosts; then
-    eecho "Detected static resolution entry for "$nfs_host" in /etc/hosts."
-    eecho "[Action Required]: To avoid conflicts and to ensure correctly handling endpoint IP address changes by AZNFS,
-            remove the entry for "$nfs_host" in /etc/hosts."
-    exit 1
-fi
+# Read each line from /etc/hosts
+#
+while IFS= read -r line; do
+    # Check if the line is not commented
+    if ! [[ "$line" =~ ^[[:space:]]*# ]]; then
+        # Check if corresponding entry for nfs_host is present
+        if echo "$line" | grep -q "$nfs_host"; then
+            eecho "Mount failed!"
+            eecho "Detected entry for $nfs_host in /etc/hosts."
+            eecho "[Action Required]: Remove or comment out the entry for $nfs_host in /etc/hosts for MOUNT to work."
+            exit 1
+        fi
+    fi
+done < /etc/hosts
 
 nfs_ip=$(resolve_ipv4 "$nfs_host")
 if [ $? -ne 0 ]; then
