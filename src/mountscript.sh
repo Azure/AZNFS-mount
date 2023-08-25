@@ -637,8 +637,7 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
 fi
 
 #
-# fail if the desired entry is present in /etc/hosts
-# Read each line from /etc/hosts
+# Fail mount before resolution if the hostname entry is present in /etc/hosts
 #
 if is_present_in_etc_hosts "$nfs_host"; then
     eecho "Mount failed!"
