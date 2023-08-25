@@ -145,12 +145,12 @@ is_present_in_etc_hosts() {
         if ! [[ "$line" =~ ^[[:space:]]*# ]]; then
             # Check if corresponding entry for hostname is present
             if echo "$line" | grep -q "$hostname"; then
-                return 1
+                return 0
             fi
         fi
     done < /etc/hosts
 
-    return 0
+    return 1
 }
 
 #
