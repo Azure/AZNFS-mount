@@ -636,20 +636,21 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
     exit 1
 fi
 
-#
-# Fail mount before resolution if the hostname entry is present in /etc/hosts
-#
-if is_present_in_etc_hosts "$nfs_host"; then
-    eecho "Mount failed!"
-    eecho "Detected entry for $nfs_host in /etc/hosts."
-    eecho "[Action Required]: Remove or comment out the entry for $nfs_host in /etc/hosts for MOUNT to work."
+# Resolve the IP address for the NFS host
+nfs_ip=$(resolve_ipv4 "$nfs_host")
+if [ $? -ne 0 ]; then
+    eecho "Cannot resolve IP address for ${nfs_host}!"
     exit 1
 fi
 
-nfs_ip=$(resolve_ipv4 "$nfs_host")
-if [ $? -ne 0 ]; then
-    echo "$nfs_ip"
-    eecho "Cannot resolve IP address for ${nfs_host}!"
+#
+# Check if the IP-FQDN pair is present in /etc/hosts
+# Fail mount if the hostname entry is present in /etc/hosts
+# 
+if is_present_in_etc_hosts "$nfs_ip" "$nfs_host"; then
+    eecho "Mount failed!"
+    eecho "Detected entry $nfs_ip $nfs_host in /etc/hosts."
+    eecho "[Action Required]: Remove or comment out the entry $nfs_ip $nfs_host in /etc/hosts for MOUNT to work."
     exit 1
 fi
 

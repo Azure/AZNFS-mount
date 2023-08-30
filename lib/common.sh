@@ -138,13 +138,14 @@ is_ip_port_reachable()
 # Check if the desired entry is present in /etc/hosts
 #
 is_present_in_etc_hosts() {
-    local hostname="$1"
+    local ip="$1"
+    local hostname="$2"
 
-    while IFS= read -r line; do
+    while IFS= read -r entry; do
         # Check if the line is not commented
-        if ! [[ "$line" =~ ^[[:space:]]*# ]]; then
-            # Check if corresponding entry for hostname is present
-            if echo "$line" | grep -q "$hostname"; then
+        if ! [[ "$entry" =~ ^[[:space:]]*# ]]; then
+            # Check if corresponding entry for IP and hostname is present
+            if echo "$entry" | grep -qE "^[[:space:]]*$ip[[:space:]]*$hostname"; then
                 return 0
             fi
         fi
