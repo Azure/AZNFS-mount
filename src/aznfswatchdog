@@ -129,6 +129,13 @@ reconcile_conntrack()
     done
 }
 
+# Detect and log distro and bash version
+linux_distro=$(lsb_release -d | cut -f 2)
+vecho "Linux distribution: $linux_distro"
+ 
+bash_version=$(bash --version | head -n 1)
+vecho "Bash version: $bash_version"
+
 vecho "Starting aznfswatchdog..."
 
 # Dump NAT table once on startup in case we have reported conflicts.
