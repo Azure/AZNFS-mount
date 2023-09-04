@@ -137,7 +137,7 @@ conntrack -L > /dev/null
 
 # conntrack timewait timeout higher than the TCP timewait timeout value isn't very valuable.
 conntrack_timeo_timew=$(cat /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait 2>/dev/null)
-if [ $? -eq 0 ] && [ "$conntrack_timeo_timew" -gt "$AZNFS_TIMEWAIT_TIMEOUT" ]; then
+if [ $? -eq 0 ] && [ $conntrack_timeo_timew -gt $AZNFS_TIMEWAIT_TIMEOUT ]; then
         vecho "Changing /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait [$conntrack_timeo_timew -> $AZNFS_TIMEWAIT_TIMEOUT]"
         echo $AZNFS_TIMEWAIT_TIMEOUT > /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait
 fi
