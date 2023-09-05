@@ -233,7 +233,7 @@ resolve_ipv4()
     # Check if the IP-FQDN pair is present in /etc/hosts
     # 
     if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
-        wecho "[WARNING] Detected entry $ipv4_addr $hname in /etc/hosts."
+        wecho "[WARNING] Detected entry $ipv4_addr $hname in /etc/hosts." 1>/dev/null
         if [ "$fail_on_etc_hosts" == "true" ]; then
             return 1  # Fail if specified
         fi
