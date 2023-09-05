@@ -312,7 +312,7 @@ while :; do
         # Check if blob endpoint IP address changed.
         # This is the migration check.
         #
-        new_ip=$(resolve_ipv4 "$l_host")
+        new_ip=$(resolve_ipv4 "$l_host" "false")
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then
@@ -331,14 +331,6 @@ while :; do
                 eecho "resolve_ipv4($l_host) failed: $new_ip"
             fi
             continue
-        fi
-
-        #
-        # Warn if the desired resolution entry is added in /etc/hosts after mount is success
-        #
-        if is_present_in_etc_hosts "$new_ip" "$l_host"; then
-            wecho "[WARNING] Detected static resolution entry for "$l_host" in /etc/hosts."
-            wecho "[Action Required]: Remove the entry for "$l_host" in /etc/hosts to ensure correctly handling endpoint IP address changes by AZNFS"
         fi
 
         #

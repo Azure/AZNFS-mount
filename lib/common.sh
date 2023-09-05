@@ -141,15 +141,10 @@ is_present_in_etc_hosts() {
     local ip="$1"
     local hostname="$2"
 
-    while IFS= read -r entry; do
-        # Check if the line is not commented
-        if ! [[ "$entry" =~ ^[[:space:]]*# ]]; then
-            # Check if corresponding entry for IP and hostname is present
-            if echo "$entry" | grep -qE "^[[:space:]]*$ip[[:space:]]*$hostname"; then
-                return 0
-            fi
-        fi
-    done < /etc/hosts
+    # search for the entry in /etc/hosts
+    if grep -qE "^[[:space:]]*$ip[[:space:]]+[^#]*\<$hostname\>" /etc/hosts; then
+        return 0
+    fi
 
     return 1
 }
@@ -164,6 +159,7 @@ is_present_in_etc_hosts() {
 resolve_ipv4()
 {
     local hname="$1"
+    local fail_on_etc_hosts="$2"
     local RETRIES=3
 
     # Some retries for resilience.
@@ -231,6 +227,16 @@ resolve_ipv4()
     if ! is_valid_ipv4_address "$ipv4_addr"; then
         eecho "[FATAL] host returned bad IPv4 address $ipv4_addr for hostname ${hname}!"
         return 1
+    fi
+
+    #
+    # Check if the IP-FQDN pair is present in /etc/hosts
+    # 
+    if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
+        wecho "[WARNING] Detected entry $ipv4_addr $hname in /etc/hosts."
+        if [ "$fail_on_etc_hosts" == "true" ]; then
+            return 1  # Fail if specified
+        fi
     fi
 
     echo $ipv4_addr
