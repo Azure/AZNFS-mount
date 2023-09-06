@@ -129,6 +129,8 @@ reconcile_conntrack()
     done
 }
 
+vecho "Starting aznfswatchdog..."
+
 # Detect and log distro and bash version
 if [ -f /etc/centos-release ]; then
     linux_distro=$(cat /etc/centos-release)
@@ -141,8 +143,6 @@ fi
 bash_version=$(bash --version | head -n 1)
 vecho "Linux distribution: $linux_distro"
 vecho "Bash version: $bash_version"
-
-vecho "Starting aznfswatchdog..."
 
 # Dump NAT table once on startup in case we have reported conflicts.
 vecho "NAT table:\n$(iptables-save -t nat)"
