@@ -130,7 +130,9 @@ reconcile_conntrack()
 }
 
 # Detect and log distro and bash version
-if [ -r /etc/os-release ]; then
+if [ -f /etc/centos-release ]; then
+    linux_distro=$(cat /etc/centos-release)
+elif [ -f /etc/os-release ]; then
     linux_distro=$(grep "^PRETTY_NAME=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
 else
     linux_distro="Unknown"
