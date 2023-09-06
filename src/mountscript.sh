@@ -640,8 +640,8 @@ fi
 nfs_ip=$(resolve_ipv4 "$nfs_host" "true")
 if [ $? -ne 0 ]; then
     echo "$nfs_ip"
-    eecho "Mount failed!"
     eecho "Cannot resolve IP address for ${nfs_host}!"
+    eecho "Mount failed!"
     exit 1
 fi
 

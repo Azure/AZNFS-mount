@@ -135,7 +135,7 @@ is_ip_port_reachable()
 }
 
 #
-# Check if the desired entry is present in /etc/hosts
+# Verify if FQDN is resolved into ipv4_addr by /etc/hosts entry.
 #
 is_present_in_etc_hosts() {
     local ip="$1"
@@ -159,7 +159,7 @@ is_present_in_etc_hosts() {
 resolve_ipv4()
 {
     local hname="$1"
-    local fail_on_etc_hosts="$2"
+    local fail_if_present_in_etc_hosts="$2"
     local RETRIES=3
 
     # Some retries for resilience.
@@ -233,11 +233,14 @@ resolve_ipv4()
     # Check if the IP-FQDN pair is present in /etc/hosts
     # 
     if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
-        if [ "$fail_on_etc_hosts" == "true" ]; then
+        if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
             eecho "[ERROR] Detected entry $ipv4_addr $hname in /etc/hosts."
+            eecho "$hname is resolving into $ipv4_addr from /etc/hosts."
+            eecho "[Action Required]: Remove the entry for "$hname" in /etc/hosts to ensure proper handling of endpoint IP address changes by AZNFS."
             return 1
         else
             wecho "[WARNING] Detected entry $ipv4_addr $hname in /etc/hosts." 1>/dev/null
+            wecho "[Action Required]: Remove the entry for "$hname" in /etc/hosts to ensure proper handling of endpoint IP address changes by AZNFS." 1>/dev/null
         fi
     fi
 
