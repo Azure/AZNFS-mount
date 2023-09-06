@@ -142,7 +142,7 @@ is_present_in_etc_hosts() {
     local hostname="$2"
 
     # search for the entry in /etc/hosts
-    if grep -E "^[[:space:]]*$ip[[:space:]]+[^#]*\<$hostname\>" /etc/hosts; then
+    if grep -qE "^[[:space:]]*$ip[[:space:]]+[^#]*\<$hostname\>" /etc/hosts; then
         return 0
     fi
 
