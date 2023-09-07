@@ -141,7 +141,7 @@ is_present_in_etc_hosts() {
     local ip="$1"
     local hostname="$2"
 
-    # search for the entry in /etc/hosts
+    # Search for the entry in /etc/hosts
     if grep -qE "^[[:space:]]*$ip[[:space:]]+[^#]*\<$hostname\>" /etc/hosts; then
         return 0
     fi
@@ -234,13 +234,13 @@ resolve_ipv4()
     # 
     if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
         if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
-            eecho "[ERROR] Detected entry $ipv4_addr $hname in /etc/hosts."
+            eecho "[FATAL] Detected entry $ipv4_addr $hname in /etc/hosts."
             eecho "$hname is resolving into $ipv4_addr from /etc/hosts."
-            eecho "[Action Required]: Remove the entry for "$hname" in /etc/hosts to ensure proper handling of endpoint IP address changes by AZNFS."
+            eecho "Remove the entry for "$hname" in /etc/hosts to ensure proper handling of endpoint IP address changes by AZNFS."
             return 1
         else
-            wecho "[WARNING] Detected entry $ipv4_addr $hname in /etc/hosts." 1>/dev/null
-            wecho "[Action Required]: Remove the entry for "$hname" in /etc/hosts to ensure proper handling of endpoint IP address changes by AZNFS." 1>/dev/null
+            wecho "[FATAL] Detected entry $ipv4_addr $hname in /etc/hosts." 1>/dev/null
+            wecho "Remove the entry for "$hname" in /etc/hosts to ensure proper handling of endpoint IP address changes by AZNFS." 1>/dev/null
         fi
     fi
 
