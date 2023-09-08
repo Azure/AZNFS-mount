@@ -636,10 +636,12 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
     exit 1
 fi
 
-nfs_ip=$(resolve_ipv4 "$nfs_host")
+# Resolve the IP address for the NFS host
+nfs_ip=$(resolve_ipv4 "$nfs_host" "true")
 if [ $? -ne 0 ]; then
     echo "$nfs_ip"
     eecho "Cannot resolve IP address for ${nfs_host}!"
+    eecho "Mount failed!"
     exit 1
 fi
 

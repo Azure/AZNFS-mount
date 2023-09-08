@@ -325,7 +325,7 @@ while :; do
         # Check if blob endpoint IP address changed.
         # This is the migration check.
         #
-        new_ip=$(resolve_ipv4 "$l_host")
+        new_ip=$(resolve_ipv4 "$l_host" "false")
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then

@@ -135,6 +135,18 @@ is_ip_port_reachable()
 }
 
 #
+# Verify if FQDN is resolved into IPv4 address by /etc/hosts entry.
+#
+is_present_in_etc_hosts() 
+{
+    local ip="$1"
+    local hostname="$2"
+
+    # Search for the entry in /etc/hosts
+    grep -qE "^[[:space:]]*$ip[[:space:]]+[^#]*\<$hostname\>" /etc/hosts
+}
+
+#
 # Blob fqdn to IPv4 adddress.
 # Caller must make sure that it is called only for hostname and not IP address.
 #
@@ -144,6 +156,7 @@ is_ip_port_reachable()
 resolve_ipv4()
 {
     local hname="$1"
+    local fail_if_present_in_etc_hosts="$2"
     local RETRIES=3
 
     # Some retries for resilience.
@@ -211,6 +224,22 @@ resolve_ipv4()
     if ! is_valid_ipv4_address "$ipv4_addr"; then
         eecho "[FATAL] host returned bad IPv4 address $ipv4_addr for hostname ${hname}!"
         return 1
+    fi
+
+    #
+    # Check if the IP-FQDN pair is present in /etc/hosts
+    # 
+    if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
+        if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
+            eecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!"
+            eecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes"
+            eecho "Please remove the entry for $hname from /etc/hosts"
+            return 1
+        else
+            wecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!" 1>/dev/null
+            wecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes" 1>/dev/null
+            wecho "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
+        fi
     fi
 
     echo $ipv4_addr
