@@ -135,18 +135,15 @@ is_ip_port_reachable()
 }
 
 #
-# Verify if FQDN is resolved into ipv4_addr by /etc/hosts entry.
+# Verify if FQDN is resolved into IPv4 address by /etc/hosts entry.
 #
-is_present_in_etc_hosts() {
+is_present_in_etc_hosts() 
+{
     local ip="$1"
     local hostname="$2"
 
     # Search for the entry in /etc/hosts
-    if grep -qE "^[[:space:]]*$ip[[:space:]]+[^#]*\<$hostname\>" /etc/hosts; then
-        return 0
-    fi
-
-    return 1
+    grep -qE "^[[:space:]]*$ip[[:space:]]+[^#]*\<$hostname\>" /etc/hosts
 }
 
 #
@@ -234,13 +231,14 @@ resolve_ipv4()
     # 
     if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
         if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
-            eecho "[FATAL] Detected entry $ipv4_addr $hname in /etc/hosts."
-            eecho "$hname is resolving into $ipv4_addr from /etc/hosts."
-            eecho "Remove the entry for "$hname" in /etc/hosts to ensure proper handling of endpoint IP address changes by AZNFS."
+            eecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!"
+            eecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes"
+            eecho "Please remove the entry for $hname from /etc/hosts"
             return 1
         else
-            wecho "[FATAL] Detected entry $ipv4_addr $hname in /etc/hosts." 1>/dev/null
-            wecho "Remove the entry for "$hname" in /etc/hosts to ensure proper handling of endpoint IP address changes by AZNFS." 1>/dev/null
+            wecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!" 1>/dev/null
+            wecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes" 1>/dev/null
+            wecho "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
         fi
     fi
 
