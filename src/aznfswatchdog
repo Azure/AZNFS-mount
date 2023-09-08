@@ -133,7 +133,7 @@ vecho "Starting aznfswatchdog..."
 
 # Detect and log distro and bash version
 if [ -f /etc/centos-release ]; then
-    linux_distro=$(cat /etc/centos-release)
+    linux_distro=$(cat /etc/centos-release 2>&1)
 elif [ -f /etc/os-release ]; then
     linux_distro=$(grep "^PRETTY_NAME=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
 else
@@ -150,7 +150,7 @@ conntrack -L > /dev/null
 
 # conntrack timewait timeout higher than the TCP timewait timeout value isn't very valuable.
 conntrack_timeo_timew=$(cat /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait 2>/dev/null)
-if [ $? -eq 0 ] && [ $conntrack_timeo_timew -gt $AZNFS_TIMEWAIT_TIMEOUT ]; then
+if [ $? -eq 0 ] && [ -n "$conntrack_timeo_timew" -a $conntrack_timeo_timew -gt $AZNFS_TIMEWAIT_TIMEOUT ];
         vecho "Changing /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait [$conntrack_timeo_timew -> $AZNFS_TIMEWAIT_TIMEOUT]"
         echo $AZNFS_TIMEWAIT_TIMEOUT > /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait
 fi
