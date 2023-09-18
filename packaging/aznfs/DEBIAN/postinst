@@ -40,5 +40,5 @@ fi
 
 # Start aznfswatchdog service.
 systemctl daemon-reload
-systemctl enable aznfswatchdog
-systemctl start aznfswatchdog
+# systemctl enable aznfswatchdog
+systemctl restart aznfswatchdog
