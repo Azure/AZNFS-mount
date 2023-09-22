@@ -38,7 +38,14 @@ if [ -f /opt/microsoft/aznfs/randbytes ]; then
         chattr -f +i /opt/microsoft/aznfs/data/randbytes
 fi
 
-# Start aznfswatchdog service.
-systemctl daemon-reload
-systemctl enable aznfswatchdog
-systemctl start aznfswatchdog
+
+# In case of upgrade.
+if [ "$1" == 'upgrade' ]; then
+        systemctl daemon-reload
+	systemctl restart aznfswatchdog
+else
+        # Start aznfswatchdog service.
+        systemctl daemon-reload
+        systemctl enable aznfswatchdog
+        systemctl start aznfswatchdog
+fi

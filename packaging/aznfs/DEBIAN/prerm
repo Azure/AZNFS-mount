@@ -26,7 +26,10 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	fi
 fi
 
-# Stop aznfswatchdog service and clean it.
-systemctl stop aznfswatchdog
-systemctl disable aznfswatchdog
-echo "Stopped aznfswatchdog service."
+
+if [ "$1" != 'upgrade' ]; then
+	# Stop aznfswatchdog service and clean it.
+	systemctl stop aznfswatchdog
+	systemctl disable aznfswatchdog
+	echo "Stopped aznfswatchdog service."
+fi
