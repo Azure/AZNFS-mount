@@ -18,6 +18,7 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /sbin/mount.aznfs
 /opt/microsoft/aznfs/common.sh
 /opt/microsoft/aznfs/mountscript.sh
+/opt/microsoft/aznfs/update.sh
 /lib/systemd/system/aznfswatchdog.service
 
 %pre
@@ -27,18 +28,12 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-# In case of upgrade.
-if [ $1 == 2 ]; then
-	systemctl stop aznfswatchdog
-	systemctl disable aznfswatchdog
-	echo "Stopped aznfswatchdog service."
-fi
-
 %post
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
+chmod 0755 /opt/microsoft/aznfs/update.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
 
 # Set suid bit for mount.aznfs to allow mount for non-super user.
@@ -68,10 +63,17 @@ if [ $1 == 2 ]; then
 	fi
 fi
 
-# Start aznfswatchdog service.
-systemctl daemon-reload
-systemctl enable aznfswatchdog
-systemctl start aznfswatchdog
+# In case of upgrade.
+if [ $1 == 2 ]; then
+    systemctl daemon-reload
+	systemctl restart aznfswatchdog
+else
+	# Start aznfswatchdog service.
+	systemctl daemon-reload
+	systemctl enable aznfswatchdog
+	systemctl start aznfswatchdog
+fi
+
 
 if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
 	echo 	
@@ -112,10 +114,14 @@ if [ $1 == 0 ]; then
 		fi
 	fi
 
-	# Stop aznfswatchdog in case of removing the package.
-	systemctl stop aznfswatchdog
-	systemctl disable aznfswatchdog
-	echo "Stopped aznfswatchdog service."
+	# In case of upgrade don't stop watchdog
+	if [ $1 != 2 ]; then
+		# Stop aznfswatchdog service and clean it.
+		systemctl stop aznfswatchdog
+		systemctl disable aznfswatchdog
+		echo "Stopped aznfswatchdog service."
+	fi
+
 fi
 
 %postun

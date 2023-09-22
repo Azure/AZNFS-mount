@@ -8,6 +8,8 @@ REPO_OWNER="Azure"
 REPO_NAME="AZNFS-mount"
 user_wants_update=false
 
+export DEBIAN_FRONTEND=noninteractive
+
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
@@ -120,7 +122,7 @@ check_and_perform_update_if_set()
     fi
 }
 
-
+vecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 # Check if the user has set the environment variable to true
 if [ $AUTO_UPDATE_AZNFS ]; then
     user_wants_update=true

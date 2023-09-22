@@ -162,6 +162,13 @@ if ! chattr -f +i $MOUNTMAP; then
 fi
 
 
+# Add logic for duration when to convert check_for_latest_update from false to true.
+check_for_latest_update=true
+
+if [ $check_for_latest_update ]; then
+    ./opt/microsoft/aznfs/update.sh
+fi
+
 
 #
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
@@ -170,12 +177,12 @@ fi
 while :; do
     sleep $MONITOR_INTERVAL_SECS
 
-    # Add logic for duration when to convert check_for_latest_update from false to true.
-    check_for_latest_update=true
+    # # Add logic for duration when to convert check_for_latest_update from false to true.
+    # check_for_latest_update=true
 
-    if [ $check_for_latest_update ]; then
-        ./opt/microsoft/aznfs/update.sh
-    fi
+    # if [ $check_for_latest_update ]; then
+    #     ./opt/microsoft/aznfs/update.sh
+    # fi
 
 
     #
