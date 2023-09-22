@@ -31,6 +31,8 @@ AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 
 next_ip_change_detection_epoch=0
 
+export AUTO_UPDATE_AZNFS=false
+
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
@@ -167,6 +169,14 @@ fi
 #
 while :; do
     sleep $MONITOR_INTERVAL_SECS
+
+    # Add logic for duration when to convert check_for_latest_update from false to true.
+    check_for_latest_update=true
+
+    if [ $check_for_latest_update ]; then
+        ./opt/microsoft/aznfs/update.sh
+    fi
+
 
     #
     # TODO: Add a function reconcile_mountmap() and call it from here. This
