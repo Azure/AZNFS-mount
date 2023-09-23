@@ -4,6 +4,7 @@ yum="yum"
 apt=1
 zypper=0
 install_cmd=
+distro_id=
 REPO_OWNER="Azure"
 REPO_NAME="AZNFS-mount"
 user_wants_update=false
@@ -14,20 +15,65 @@ export DEBIAN_FRONTEND=noninteractive
 . /opt/microsoft/aznfs/common.sh
 
 
-# Custom version comparison function
-compare_versions() 
+use_dnf_or_yum() 
 {
-    local version1=$1
-    local version2=$2
-
-    # code for comparing the versions: 3 cases. v1>v2, v1=v2, v1<v2, testrelease edge case ?
-    # echo "1" for if latest release > current release
-
-    # echo "0" # Versions are equal
-    echo "1"
+    yum="yum"
+    if command -v dnf &> /dev/null; then
+        yum="dnf"
+        pecho "Using 'dnf' instead of 'yum'"
+    fi
 }
 
+#
+# Install the package appropriately as per the current distro.
+# If distro_id is already detected it uses that else it tries to guess
+# the distro.
+#
+ensure_pkg()
+{
+    local pkg="$1"
+    local distro="$distro_id"
 
+    if [ "$distro" == "ubuntu" ]; then
+        apt=1
+        apt install -y $pkg
+    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" ]; then
+        # lsb_release package is called redhat-lsb-core in redhat/centos.
+        if [ "$pkg" == "lsb-release" ]; then
+            pkg="redhat-lsb-core"
+        fi
+        use_dnf_or_yum
+        $yum install -y $pkg
+    elif [ "$distro" == "sles" ]; then
+        zypper=1
+        zypper install -y $pkg
+    fi
+}
+
+# Custom version comparison function
+compare_versions()
+{
+    local current_version=$1
+    local latest_version=$2
+
+    # Split version strings into arrays
+    IFS='.' read -ra v1_parts <<< "$current_version"
+    IFS='.' read -ra v2_parts <<< "$latest_version"
+
+    # Compare each component of the version
+    for ((i = 0; i < ${#v1_parts[@]}; i++)); do
+        if [ "${v1_parts[i]}" -lt "${v2_parts[i]}" ]; then
+            echo "1" # current_version < latest_version
+            return
+        elif [ "${v1_parts[i]}" -gt "${v2_parts[i]}" ]; then
+            echo "-1" # current version > latest_version
+            return
+        fi
+    done
+
+    # If all components are equal, the versions are equal
+    echo "0"
+}
 
 check_and_perform_update_if_set() 
 {
@@ -121,6 +167,39 @@ check_and_perform_update_if_set()
         fi
     fi
 }
+
+#
+# Detect OS and Version.
+#
+__m=$(uname -m 2>/dev/null) || __m=unknown
+__s=$(uname -s 2>/dev/null) || __s=unknown
+
+#
+# Try to detect the distro in a resilient manner and set distro_id
+# global variables.
+#
+case "${__m}:${__s}" in
+    "x86_64:Linux")
+        if [ -f /etc/centos-release ]; then
+            pecho "Retrieving distro info from /etc/centos-release..."
+            distro_id="centos"
+        elif [ -f /etc/os-release ]; then
+            pecho "Retrieving distro info from /etc/os-release..."
+            distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+            distro_id=$(canonicalize_distro_id $distro_id)
+        else
+            eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
+            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest'"
+            pecho "If the problem persists, contact Microsoft support."
+        fi
+        ;;
+    *)
+        eecho "[FATAL] Unsupported platform: ${__m}:${__s}."
+        exit 1
+        ;;
+esac
+
+ensure_pkg "wget"
 
 vecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 # Check if the user has set the environment variable to true
