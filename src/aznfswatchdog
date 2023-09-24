@@ -165,6 +165,7 @@ fi
 # Add logic for duration when to convert check_for_latest_update from false to true.
 check_for_latest_update=true
 
+vecho "Inside watchdog AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 if [ $check_for_latest_update ]; then
     ./opt/microsoft/aznfs/update.sh
 fi

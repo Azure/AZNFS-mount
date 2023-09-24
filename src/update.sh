@@ -100,9 +100,11 @@ check_and_perform_update_if_set()
                 AZNFS_RELEASE="aznfs-${LATEST_RELEASE}-1"
 
                 # Check if user_wants_update is true before performing the update
-                if [ $user_wants_update ]; then
+                if [ "$user_wants_update" = "true" ]; then
+                    vecho "user_wants_update=true, so updating the version"
                     # Download the latest release and install it
                     wget "https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
+                    vecho "DOWNLOAD SUCCESSFUL"
                     apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
                     install_error=$?
 
@@ -125,7 +127,7 @@ check_and_perform_update_if_set()
                 AZNFS_RELEASE_SUSE="aznfs_sles-${LATEST_RELEASE}-1"
 
                 # Check if user_wants_update is true before performing the update
-                if [ $user_wants_update ]; then
+                if [ "$user_wants_update" = true ]; then
                     # Download the latest release and install it
                     wget https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
                     zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
@@ -150,7 +152,7 @@ check_and_perform_update_if_set()
                 AZNFS_RELEASE="aznfs-${LATEST_RELEASE}-1"
 
                 # Check if user_wants_update is true before performing the update
-                if [ $user_wants_update ]; then
+                if [ "$user_wants_update" = "true" ]; then
                     # Download the latest release and install it
                     wget https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
                     yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
@@ -203,7 +205,8 @@ ensure_pkg "wget"
 
 vecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 # Check if the user has set the environment variable to true
-if [ $AUTO_UPDATE_AZNFS ]; then
+if [ "$AUTO_UPDATE_AZNFS" = "true"  ]; then
+    vecho "updating user_wants_update=true"
     user_wants_update=true
 fi
 
