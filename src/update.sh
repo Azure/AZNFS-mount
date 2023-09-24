@@ -14,6 +14,17 @@ export DEBIAN_FRONTEND=noninteractive
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
+canonicalize_distro_id()
+{
+    local distro_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+    # Use sles for SUSE/SLES.
+    if [ "$distro_lower" == "suse" ]; then
+        distro_lower="sles"
+    fi
+
+    echo "$distro_lower"
+}
 
 use_dnf_or_yum() 
 {
