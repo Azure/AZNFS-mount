@@ -14,6 +14,9 @@ MONITOR_INTERVAL_SECS=5
 # How often do we check for change in FQDN->IP?
 IP_CHANGE_DETECTION_FREQUENCY=60
 
+# How often do we check for updates of AZNFS.
+UPDATE_DETECTION_FREQUENCY=60
+
 #
 # Remove unmounted entries only if MOUNTMAP has not been changed till MONITOR_INTERVAL_SECS seconds.
 # Don't set it below 3 minutes.
@@ -30,6 +33,8 @@ AZNFS_SKIP_UNMOUNT_CLEANUP="${AZNFS_SKIP_UNMOUNT_CLEANUP:-0}"
 AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 
 next_ip_change_detection_epoch=0
+
+next_update_detection_epoch=0
 
 export AUTO_UPDATE_AZNFS=false
 
@@ -178,12 +183,6 @@ fi
 while :; do
     sleep $MONITOR_INTERVAL_SECS
 
-    # # Add logic for duration when to convert check_for_latest_update from false to true.
-    # check_for_latest_update=true
-
-    # if [ $check_for_latest_update ]; then
-    #     ./opt/microsoft/aznfs/update.sh
-    # fi
 
 
     #
@@ -193,6 +192,18 @@ while :; do
     #
 
     epoch_now=$(date +%s)
+
+    # To check if any AZNFS updates available.
+    # check_for_latest_update=false
+    # if [ $epoch_now -ge $next_update_detection_epoch ]; then
+    #     check_for_latest_update=true
+    #     next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
+    # fi
+
+    # if $check_for_latest_update; then
+    #     ./opt/microsoft/aznfs/update.sh
+    # fi
+
 
     #
     # Go over all lines in $MOUNTMAP and check them for two things:
