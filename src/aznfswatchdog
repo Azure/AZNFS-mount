@@ -167,14 +167,6 @@ if ! chattr -f +i $MOUNTMAP; then
 fi
 
 
-# Add logic for duration when to convert check_for_latest_update from false to true.
-check_for_latest_update=true
-
-vecho "Inside watchdog AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
-if [ $check_for_latest_update ]; then
-    ./opt/microsoft/aznfs/update.sh
-fi
-
 
 #
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
@@ -194,15 +186,15 @@ while :; do
     epoch_now=$(date +%s)
 
     # To check if any AZNFS updates available.
-    # check_for_latest_update=false
-    # if [ $epoch_now -ge $next_update_detection_epoch ]; then
-    #     check_for_latest_update=true
-    #     next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
-    # fi
+    check_for_latest_update=false
+    if [ $epoch_now -ge $next_update_detection_epoch ]; then
+        check_for_latest_update=true
+        next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
+    fi
 
-    # if $check_for_latest_update; then
-    #     ./opt/microsoft/aznfs/update.sh
-    # fi
+    if $check_for_latest_update; then
+        ./opt/microsoft/aznfs/update.sh
+    fi
 
 
     #
