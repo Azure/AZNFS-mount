@@ -1,7 +1,7 @@
 #!/bin/bash
 
 yum="yum"
-apt=1
+apt=0
 zypper=0
 install_cmd=
 distro_id=
@@ -9,6 +9,10 @@ REPO_OWNER="Azure"
 REPO_NAME="AZNFS-mount"
 user_wants_update=false
 
+# Define the path to the configuration file
+CONFIG_FILE="/opt/microsoft/aznfs/config.txt"
+
+AUTO_UPDATE_AZNFS=false
 export DEBIAN_FRONTEND=noninteractive
 
 # Load common aznfs helpers.
@@ -24,6 +28,19 @@ canonicalize_distro_id()
     fi
 
     echo "$distro_lower"
+}
+
+# Function to canonicalize boolean values
+canonicalize_boolean() 
+{
+    local value=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    
+    if [ "$value" == "true" ] || [ "$value" == "false" ]; then
+        echo "$value"
+    else
+        # If set anything other than boolean values, set false.
+        echo "false"
+    fi
 }
 
 use_dnf_or_yum() 
@@ -213,6 +230,17 @@ case "${__m}:${__s}" in
 esac
 
 ensure_pkg "wget"
+
+if [ -f "$CONFIG_FILE" ]; then
+    # Read the value of AUTO_UPDATE_AZNFS from the configuration file
+    AUTO_UPDATE_AZNFS=$(grep "^AUTO_UPDATE_AZNFS=" "$CONFIG_FILE" | cut -d '=' -f2)
+    
+    # Canonicalize and validate the value
+    AUTO_UPDATE_AZNFS=$(canonicalize_boolean "$AUTO_UPDATE_AZNFS")
+else
+    # If the configuration file doesn't exist, set a default value
+    AUTO_UPDATE_AZNFS="false"
+fi
 
 vecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 # Check if the user has set the environment variable to true

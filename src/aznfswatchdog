@@ -36,8 +36,6 @@ next_ip_change_detection_epoch=0
 
 next_update_detection_epoch=0
 
-export AUTO_UPDATE_AZNFS=false
-
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
@@ -167,6 +165,12 @@ if ! chattr -f +i $MOUNTMAP; then
 fi
 
 
+check_for_latest_update=true
+
+if $check_for_latest_update; then
+    ./opt/microsoft/aznfs/update.sh
+fi
+
 
 #
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
@@ -186,15 +190,15 @@ while :; do
     epoch_now=$(date +%s)
 
     # To check if any AZNFS updates available.
-    check_for_latest_update=false
-    if [ $epoch_now -ge $next_update_detection_epoch ]; then
-        check_for_latest_update=true
-        next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
-    fi
+    # check_for_latest_update=false
+    # if [ $epoch_now -ge $next_update_detection_epoch ]; then
+    #     check_for_latest_update=true
+    #     next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
+    # fi
 
-    if $check_for_latest_update; then
-        ./opt/microsoft/aznfs/update.sh
-    fi
+    # if $check_for_latest_update; then
+    #     ./opt/microsoft/aznfs/update.sh
+    # fi
 
 
     #
