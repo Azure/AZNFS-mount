@@ -5,8 +5,6 @@ apt=0
 zypper=0
 install_cmd=
 distro_id=
-REPO_OWNER="Azure"
-REPO_NAME="AZNFS-mount"
 user_wants_update=false
 
 # Define the path to the configuration file
@@ -112,8 +110,7 @@ check_and_perform_update_if_set()
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
 
     # Use curl to make the API request and extract the latest release version
-    # LATEST_RELEASE=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    LATEST_RELEASE="0.1.144"
+    LATEST_RELEASE=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
 
     # Print the latest release version
     vecho "Latest release version: $LATEST_RELEASE"
@@ -159,6 +156,7 @@ check_and_perform_update_if_set()
                 if [ "$user_wants_update" = true ]; then
                     # Download the latest release and install it
                     wget https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
+                    vecho "DOWNLOAD SUCCESSFUL"
                     zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
                     install_error=$?
 
@@ -184,6 +182,7 @@ check_and_perform_update_if_set()
                 if [ "$user_wants_update" = "true" ]; then
                     # Download the latest release and install it
                     wget https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
+                    vecho "DOWNLOAD SUCCESSFUL"
                     yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
                     install_error=$?
 

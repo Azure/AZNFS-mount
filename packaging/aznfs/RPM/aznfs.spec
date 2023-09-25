@@ -63,6 +63,18 @@ if [ $1 == 2 ]; then
 	fi
 fi
 
+# Check if the config file exists; if not, create it.
+#if [ ! -f /opt/microsoft/aznfs/config.txt ]; then
+#        # Create the config.txt file and set default AUTO_UPDATE_AZNFS=false inside it.
+#        echo "AUTO_UPDATE_AZNFS=false" > /opt/microsoft/aznfs/config.txt
+#
+#        # Set the permissions for the config file.
+#        chmod 0644 /opt/microsoft/aznfs/config.txt
+#
+#        # Make the config file immutable.
+#        chattr +i /opt/microsoft/aznfs/config.txt
+#fi
+
 # In case of upgrade.
 if [ $1 == 2 ]; then
     systemctl daemon-reload
@@ -129,5 +141,6 @@ fi
 if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
+#	chattr -i -f /opt/microsoft/aznfs/config.txt
 	rm -rf /opt/microsoft/aznfs
 fi
