@@ -47,9 +47,8 @@ if [ ! -f /opt/microsoft/aznfs/config.txt ]; then
 
         # Set the permissions for the config file.
         chmod 0644 /opt/microsoft/aznfs/config.txt
-
-        # Make the config file immutable.
-        chattr +i /opt/microsoft/aznfs/config.txt
+else
+        chattr -f -i /opt/microsoft/aznfs/config.txt
 fi
 
 # In case of upgrade.

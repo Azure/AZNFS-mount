@@ -70,9 +70,6 @@ fi
 #
 #        # Set the permissions for the config file.
 #        chmod 0644 /opt/microsoft/aznfs/config.txt
-#
-#        # Make the config file immutable.
-#        chattr +i /opt/microsoft/aznfs/config.txt
 #fi
 
 # In case of upgrade.
@@ -141,6 +138,5 @@ fi
 if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
-#	chattr -i -f /opt/microsoft/aznfs/config.txt
 	rm -rf /opt/microsoft/aznfs
 fi
