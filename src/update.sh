@@ -111,7 +111,7 @@ check_and_perform_update_if_set()
 
     # Use curl to make the API request and extract the latest release version
     # LATEST_RELEASE=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    LATEST_RELEASE="0.1.147"
+    LATEST_RELEASE="0.1.148"
 
     # Print the latest release version
     vecho "Latest release version: $LATEST_RELEASE"
