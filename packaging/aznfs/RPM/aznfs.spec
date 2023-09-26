@@ -63,15 +63,21 @@ if [ $1 == 2 ]; then
 	fi
 fi
 
+
+systemctl daemon-reload
+systemctl enable aznfswatchdog
+systemctl restart aznfswatchdog
+
 # In case of upgrade.
-if [ $1 == 2 ]; then
-	systemctl daemon-reload
-else
-	# Start aznfswatchdog service.
-	systemctl daemon-reload
-	systemctl enable aznfswatchdog
-	systemctl start aznfswatchdog
-fi
+#if [ $1 == 2 ]; then
+#	systemctl daemon-reload
+#	systemctl restart aznfswatchdog
+#else
+#	# Start aznfswatchdog service.
+#	systemctl daemon-reload
+#	systemctl enable aznfswatchdog
+#	systemctl start aznfswatchdog
+#fi
 
 
 if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
@@ -125,9 +131,4 @@ if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	rm -rf /opt/microsoft/aznfs
-fi
-
-if [ $1 == 1 ]; then
-	systemctl daemon-reload
-	systemctl restart aznfswatchdog
 fi
