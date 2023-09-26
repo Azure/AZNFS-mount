@@ -31,7 +31,7 @@ generate_rpm_package()
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}
 	cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
-	cp -avf ${SOURCE_DIR}/src/update.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
+    cp -avf ${SOURCE_DIR}/src/update.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
@@ -98,13 +98,13 @@ generate_tarball_package() {
     mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}
     cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
     cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
-	cp -avf ${SOURCE_DIR}/src/update.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
+    cp -avf ${SOURCE_DIR}/src/update.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
 
     # Set appropriate permissions.
     chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
     chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin/aznfswatchdog
     chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/mountscript.sh
-	chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/update.sh
+    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/update.sh
     chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
     chmod 4755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
 

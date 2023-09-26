@@ -110,8 +110,7 @@ check_and_perform_update_if_set()
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
 
     # Use curl to make the API request and extract the latest release version
-    # LATEST_RELEASE=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    LATEST_RELEASE="0.1.170"
+    LATEST_RELEASE=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
 
     # Print the latest release version
     vecho "Latest release version: $LATEST_RELEASE"
@@ -128,7 +127,6 @@ check_and_perform_update_if_set()
 
                 # Check if user_wants_update is true before performing the update
                 if [ "$user_wants_update" = "true" ]; then
-                    vecho "user_wants_update=true, so updating the version"
                     # Download the latest release and install it
                     wget "https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
                     
@@ -269,7 +267,6 @@ fi
 vecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 # Check if the user has set the environment variable to true
 if [ "$AUTO_UPDATE_AZNFS" = "true"  ]; then
-    vecho "updating user_wants_update=true"
     user_wants_update=true
 fi
 
