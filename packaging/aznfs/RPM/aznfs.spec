@@ -65,6 +65,7 @@ fi
 
 # In case of upgrade.
 if [ $1 == 2 ]; then
+	systemctl daemon-reload
 else
 	# Start aznfswatchdog service.
 	systemctl daemon-reload
