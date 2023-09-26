@@ -65,8 +65,6 @@ fi
 
 # In case of upgrade.
 if [ $1 == 2 ]; then
-    systemctl daemon-reload
-	systemctl restart aznfswatchdog
 else
 	# Start aznfswatchdog service.
 	systemctl daemon-reload
@@ -118,7 +116,6 @@ if [ $1 == 0 ]; then
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
 	echo "Stopped aznfswatchdog service."
-
 fi
 
 %postun
