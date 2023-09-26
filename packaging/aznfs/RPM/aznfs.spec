@@ -63,17 +63,10 @@ if [ $1 == 2 ]; then
 	fi
 fi
 
-
-# In case of upgrade.
-if [ $1 == 2 ]; then
-	systemctl daemon-reload
-	systemctl restart aznfswatchdog
-else
-	# Start aznfswatchdog service.
-	systemctl daemon-reload
-	systemctl enable aznfswatchdog
-	systemctl start aznfswatchdog
-fi
+# Start aznfswatchdog service.
+systemctl daemon-reload
+systemctl enable aznfswatchdog
+systemctl start aznfswatchdog
 
 
 if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then

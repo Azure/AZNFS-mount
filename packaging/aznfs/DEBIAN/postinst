@@ -57,11 +57,13 @@ echo "[LOG] BEFORE RESTARTING WATCHDOG IN POSTINST SCRIPT"
 
 # In case of upgrade.
 if [ "$1" == 'upgrade' ]; then
+        echo "[LOG] INSIDE IF STATEMENT OF POSTINST"
         systemctl daemon-reload
 	echo "[LOG] AFTER DAEMON-RELOAD AND BEFORE RESTARTING WATCHDOG IN POSTINST SCRIPT"
         systemctl restart aznfswatchdog
 else
         # Start aznfswatchdog service.
+        echo "[LOG] INSIDE ELSE STATEMENT OF POSTINST"
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
