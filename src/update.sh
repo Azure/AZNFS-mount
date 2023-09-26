@@ -216,7 +216,7 @@ check_and_perform_update_if_set()
         fi
     fi
 
-    if [ -n "$install_error" ] && [ "$install_error" -ne 0 ];
+    if [ -n "$install_error" ] && [ "$install_error" -ne 0 ]; then
     eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
     exit 1
     fi
