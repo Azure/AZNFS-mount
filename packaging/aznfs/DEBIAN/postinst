@@ -63,7 +63,7 @@ if [ ! -f /tmp/update_in_progress_from_watchdog.flag ]; then
         systemctl enable aznfswatchdog
         echo "[LOG] AFTER ENABLE AZNFSWATCHDOG"
 
-        systemctl restart aznfswatchdog
+        systemctl start aznfswatchdog
 
         echo "[LOG] ENDED POSTINST SCRIPT AND AFTER RESTART WATCHDOG"
 else

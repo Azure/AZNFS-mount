@@ -63,10 +63,25 @@ if [ $1 == 2 ]; then
 	fi
 fi
 
-# Start aznfswatchdog service.
-systemctl daemon-reload
-systemctl enable aznfswatchdog
-systemctl start aznfswatchdog
+echo "[LOG] BEFORE RESTARTING WATCHDOG IN POST SCRIPT"
+
+# Check if the flag file does not exist
+if [ ! -f /tmp/update_in_progress_from_watchdog.flag ]; then
+        systemctl daemon-reload
+        echo "[LOG] AFTER DAEMON-RELOAD OF POSTINST"
+
+        systemctl enable aznfswatchdog
+        echo "[LOG] AFTER ENABLE AZNFSWATCHDOG"
+
+        systemctl start aznfswatchdog
+
+        echo "[LOG] ENDED POSTINST SCRIPT AND AFTER RESTART WATCHDOG"
+else
+        echo "[LOG] Update is in progress. Skipping aznfswatchdog restart from script."
+
+        # Clean up the update in progress flag file
+        rm -f /tmp/update_in_progress_from_watchdog.flag
+fi
 
 
 if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then

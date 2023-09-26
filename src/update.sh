@@ -111,7 +111,7 @@ check_and_perform_update_if_set()
 
     # Use curl to make the API request and extract the latest release version
     # LATEST_RELEASE=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    LATEST_RELEASE="0.1.166"
+    LATEST_RELEASE="0.1.168"
 
     # Print the latest release version
     vecho "Latest release version: $LATEST_RELEASE"
@@ -132,7 +132,6 @@ check_and_perform_update_if_set()
                     # Download the latest release and install it
                     wget "https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
                     vecho "DOWNLOAD SUCCESSFUL"
-                    
                     
                     # Create a flag file to indicate that an update is in progress
                     touch /tmp/update_in_progress_from_watchdog.flag
@@ -166,11 +165,18 @@ check_and_perform_update_if_set()
                     # Download the latest release and install it
                     wget https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
                     vecho "DOWNLOAD SUCCESSFUL"
+
+                    # Create a flag file to indicate that an update is in progress
+                    touch /tmp/update_in_progress_from_watchdog.flag
+
                     zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
                     install_error=$?
 
                     # Clean up downloaded package file
                     rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
+
+                    systemctl daemon-reload
+                    systemctl restart aznfswatchdog
                 else
                     vecho "Version $LATEST_RELEASE of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
                 fi
@@ -192,14 +198,18 @@ check_and_perform_update_if_set()
                     # Download the latest release and install it
                     wget https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
                     vecho "DOWNLOAD SUCCESSFUL"
+                    
+                    # Create a flag file to indicate that an update is in progress
+                    touch /tmp/update_in_progress_from_watchdog.flag
+
                     yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
                     install_error=$?
-                    
-                    systemctl daemon-reload
-                    systemctl restart aznfswatchdog
+
                     # Clean up downloaded package file
                     rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 
+                    systemctl daemon-reload
+                    systemctl restart aznfswatchdog
                 else
                     vecho "Version $LATEST_RELEASE of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
                 fi
@@ -208,11 +218,6 @@ check_and_perform_update_if_set()
             fi
         fi
     fi
-
-    if [ $install_error -ne 0 ]; then
-    eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
-    exit 1
-fi
 }
 
 #
