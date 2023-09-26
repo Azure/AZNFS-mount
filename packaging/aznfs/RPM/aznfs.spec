@@ -64,9 +64,9 @@ if [ $1 == 2 ]; then
 fi
 
 
-
 # In case of upgrade.
 if [ $1 == 2 ]; then
+	systemctl status aznfswatchdog
 	systemctl daemon-reload
 	systemctl restart aznfswatchdog
 else
