@@ -74,7 +74,7 @@ if [ ! -f /opt/microsoft/aznfs/config.txt ]; then
 
         # Set the permissions for the config file.
         chmod 0644 /opt/microsoft/aznfs/config.txt
-		chattr -f -i /opt/microsoft/aznfs/config.txt
+        chattr -f -i /opt/microsoft/aznfs/config.txt
 fi
 
 # Check if the flag file does not exist
