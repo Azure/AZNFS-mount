@@ -111,7 +111,7 @@ check_and_perform_update_if_set()
 
     # Use curl to make the API request and extract the latest release version
     # LATEST_RELEASE=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    LATEST_RELEASE="0.1.164"
+    LATEST_RELEASE="0.1.166"
 
     # Print the latest release version
     vecho "Latest release version: $LATEST_RELEASE"
@@ -132,13 +132,19 @@ check_and_perform_update_if_set()
                     # Download the latest release and install it
                     wget "https://github.com/Azure/AZNFS-mount/releases/download/${LATEST_RELEASE}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
                     vecho "DOWNLOAD SUCCESSFUL"
+                    
+                    
+                    # Create a flag file to indicate that an update is in progress
+                    touch /tmp/update_in_progress_from_watchdog.flag
+
                     apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
                     install_error=$?
 
-                    systemctl restart aznfswatchdog
-
                     # Clean up downloaded package file
                     rm -f "/tmp/${AZNFS_RELEASE}_amd64.deb"
+
+                    systemctl daemon-reload
+                    systemctl restart aznfswatchdog
                 else
                     vecho "Version $LATEST_RELEASE of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
                 fi

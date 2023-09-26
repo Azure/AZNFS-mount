@@ -55,13 +55,21 @@ fi
 
 echo "[LOG] BEFORE RESTARTING WATCHDOG IN POSTINST SCRIPT"
 
-# Start aznfswatchdog service.
-systemctl daemon-reload
-echo "[LOG] AFTER DAEMON-RELOAD OF POSTINST"
+# Check if the flag file does not exist
+if [ ! -f /tmp/update_in_progress_from_watchdog.flag ]; then
+        systemctl daemon-reload
+        echo "[LOG] AFTER DAEMON-RELOAD OF POSTINST"
 
-systemctl enable aznfswatchdog
-echo "[LOG] AFTER ENABLE AZNFSWATCHDOG"
+        systemctl enable aznfswatchdog
+        echo "[LOG] AFTER ENABLE AZNFSWATCHDOG"
 
-systemctl restart aznfswatchdog
+        systemctl restart aznfswatchdog
 
-echo "[LOG] ENDED POSTINST SCRIPT AND AFTER RESTART WATCHDOG"
+        echo "[LOG] ENDED POSTINST SCRIPT AND AFTER RESTART WATCHDOG"
+else
+        echo "[LOG] Update is in progress. Skipping aznfswatchdog restart from script."
+
+        # Clean up the update in progress flag file
+        rm -f /tmp/update_in_progress_from_watchdog.flag
+fi
+
