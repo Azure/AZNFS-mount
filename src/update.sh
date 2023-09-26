@@ -111,7 +111,7 @@ check_and_perform_update_if_set()
 
     # Use curl to make the API request and extract the latest release version
     # LATEST_RELEASE=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    LATEST_RELEASE="0.1.150"
+    LATEST_RELEASE="0.1.152"
 
     # Print the latest release version
     vecho "Latest release version: $LATEST_RELEASE"
@@ -190,8 +190,6 @@ check_and_perform_update_if_set()
                     # Clean up downloaded package file
                     rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 
-                    systemctl daemon-reload
-                    systemctl restart aznfswatchdog
                 else
                     vecho "Version $LATEST_RELEASE of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
                 fi

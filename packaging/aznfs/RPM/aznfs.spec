@@ -126,3 +126,8 @@ if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	rm -rf /opt/microsoft/aznfs
 fi
+
+if [ $1 == 1 ]; then
+	systemctl daemon-reload
+	systemctl restart aznfswatchdog
+fi
