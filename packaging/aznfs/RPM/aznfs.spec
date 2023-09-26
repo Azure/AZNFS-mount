@@ -28,6 +28,10 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
+if [ $1 == 2 ] && [ -f /opt/microsoft/aznfs/config.txt ]; then
+    chattr -f +i /opt/microsoft/aznfs/config.txt
+fi
+
 %post
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
@@ -70,8 +74,14 @@ if [ ! -f /opt/microsoft/aznfs/config.txt ]; then
 
         # Set the permissions for the config file.
         chmod 0644 /opt/microsoft/aznfs/config.txt
+fi
+
+if [ $1 == 1 ]; then
+	# In case of fresh install
+	chattr -f -i /opt/microsoft/aznfs/config.txt
 else
-        chattr -f -i /opt/microsoft/aznfs/config.txt
+	# In case of upgrade if file was deleted and added back
+	chattr -f +i /opt/microsoft/aznfs/config.txt
 fi
 
 # Check if the flag file does not exist
@@ -136,6 +146,8 @@ if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	rm -rf /opt/microsoft/aznfs
-elif [ $1 == 1 ]; then
-    chattr -f +i /opt/microsoft/aznfs/config.txt
+fi
+
+if [ $1 == 1 ]; then
+	chattr -i -f /opt/microsoft/aznfs/config.txt
 fi
