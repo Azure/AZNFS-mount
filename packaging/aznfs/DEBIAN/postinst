@@ -8,8 +8,6 @@
 # Exit on error.
 set -e
 
-echo "[LOG] STARTED POSTINST SCRIPT"
-
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
@@ -53,22 +51,12 @@ else
         chattr -f -i /opt/microsoft/aznfs/config.txt
 fi
 
-echo "[LOG] BEFORE RESTARTING WATCHDOG IN POSTINST SCRIPT"
-
 # Check if the flag file does not exist
 if [ ! -f /tmp/update_in_progress_from_watchdog.flag ]; then
         systemctl daemon-reload
-        echo "[LOG] AFTER DAEMON-RELOAD OF POSTINST"
-
         systemctl enable aznfswatchdog
-        echo "[LOG] AFTER ENABLE AZNFSWATCHDOG"
-
         systemctl start aznfswatchdog
-
-        echo "[LOG] ENDED POSTINST SCRIPT AND AFTER RESTART WATCHDOG"
 else
-        echo "[LOG] Update is in progress. Skipping aznfswatchdog restart from script."
-
         # Clean up the update in progress flag file
         rm -f /tmp/update_in_progress_from_watchdog.flag
 fi

@@ -5,9 +5,6 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-echo "[LOG] STARTED POSTRM SCRIPT"
-
-
 if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
     chattr -f -i /opt/microsoft/aznfs/data/mountmap
     chattr -f -i /opt/microsoft/aznfs/data/randbytes
@@ -15,5 +12,3 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 elif [ "$1" == 'upgrade' ]; then
     chattr -f +i /opt/microsoft/aznfs/config.txt
 fi
-
-echo "[LOG] ENDED POSTRM SCRIPT"
