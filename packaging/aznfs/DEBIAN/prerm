@@ -10,6 +10,8 @@ set -e
 RED="\e[2;31m"
 NORMAL="\e[0m"
 
+echo "[LOG] STARTED PRERM SCRIPT"
+
 if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	# Verify if any existing mounts are there, warn the user about this.
 	existing_mounts=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
@@ -33,3 +35,5 @@ if [ "$1" != 'upgrade' ]; then
 	systemctl disable aznfswatchdog
 	echo "Stopped aznfswatchdog service."
 fi
+
+echo "[LOG] ENDED PRERM SCRIPT"

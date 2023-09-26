@@ -8,6 +8,8 @@
 # Exit on error.
 set -e
 
+echo "[LOG] STARTED POSTINST SCRIPT"
+
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
@@ -51,13 +53,19 @@ else
         chattr -f -i /opt/microsoft/aznfs/config.txt
 fi
 
+echo "[LOG] BEFORE RESTARTING WATCHDOG IN POSTINST SCRIPT"
+
 # In case of upgrade.
 if [ "$1" == 'upgrade' ]; then
         systemctl daemon-reload
-	systemctl restart aznfswatchdog
+	echo "[LOG] AFTER DAEMON-RELOAD AND BEFORE RESTARTING WATCHDOG IN POSTINST SCRIPT"
+        systemctl restart aznfswatchdog
 else
         # Start aznfswatchdog service.
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
 fi
+
+
+echo "[LOG] ENDED POSTINST SCRIPT AND AFTER RESTART WATCHDOG"

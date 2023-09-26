@@ -8,8 +8,12 @@
 # Exit on error.
 set -e
 
+echo "[LOG] STARTED PREINST SCRIPT"
+
 init="$(ps -q 1 -o comm=)"
 if [ "$init" != "systemd" ]; then
 	echo "Cannot install this package on a non-systemd system!"
 	exit 1
 fi
+
+echo "[LOG] ENDED PREINST SCRIPT"
