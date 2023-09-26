@@ -60,7 +60,7 @@ systemctl daemon-reload
 echo "[LOG] AFTER DAEMON-RELOAD OF POSTINST"
 
 systemctl enable aznfswatchdog
-echo "[LOG] AFTER ENABLE AZNFSWATCHDOG
+echo "[LOG] AFTER ENABLE AZNFSWATCHDOG"
 
 systemctl restart aznfswatchdog
 
