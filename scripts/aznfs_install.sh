@@ -200,7 +200,7 @@ check_config_file()
     pecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
     
     # Check if the user has set the environment variable to true
-    if [ "$AUTO_UPDATE_AZNFS" = "true"  ]; then
+    if [ "$AUTO_UPDATE_AZNFS" = "true" ]; then
         user_wants_update=true
     fi
 }
