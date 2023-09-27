@@ -83,6 +83,31 @@ use_dnf_or_yum()
     fi
 }
 
+# Custom version comparison function
+compare_versions()
+{
+    local current_version=$1
+    local latest_version=$2
+
+    # Split version strings into arrays
+    IFS='.' read -ra v1_parts <<< "$current_version"
+    IFS='.' read -ra v2_parts <<< "$latest_version"
+
+    # Compare each component of the version
+    for ((i = 0; i < ${#v1_parts[@]}; i++)); do
+        if [ "${v1_parts[i]}" -lt "${v2_parts[i]}" ]; then
+            echo "1" # current_version < latest_version
+            return
+        elif [ "${v1_parts[i]}" -gt "${v2_parts[i]}" ]; then
+            echo "-1" # current version > latest_version
+            return
+        fi
+    done
+
+    # If all components are equal, the versions are equal
+    echo "0"
+}
+
 #
 # This returns distro id in a canonical form, that rest of the code understands.
 # We only use lowercase single word names for distro names:
