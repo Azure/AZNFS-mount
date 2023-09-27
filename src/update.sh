@@ -8,7 +8,7 @@ distro_id=
 user_wants_update=false
 
 # Define the path to the configuration file
-CONFIG_FILE="/opt/microsoft/aznfs/config.txt"
+CONFIG_FILE="/opt/microsoft/aznfs/config"
 
 AUTO_UPDATE_AZNFS=false
 export DEBIAN_FRONTEND=noninteractive

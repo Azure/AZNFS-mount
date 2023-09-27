@@ -28,8 +28,8 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-if [ $1 == 2 ] && [ -f /opt/microsoft/aznfs/config.txt ]; then
-    chattr -f +i /opt/microsoft/aznfs/config.txt
+if [ $1 == 2 ] && [ -f /opt/microsoft/aznfs/data/config ]; then
+    chattr -f +i /opt/microsoft/aznfs/data/config
 fi
 
 %post
@@ -68,13 +68,13 @@ if [ $1 == 2 ]; then
 fi
 
 # Check if the config file exists; if not, create it.
-if [ ! -f /opt/microsoft/aznfs/config.txt ]; then
-        # Create the config.txt file and set default AUTO_UPDATE_AZNFS=false inside it.
-        echo "AUTO_UPDATE_AZNFS=false" > /opt/microsoft/aznfs/config.txt
+if [ ! -f /opt/microsoft/aznfs/data/config ]; then
+        # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
+        echo "AUTO_UPDATE_AZNFS=false" > /opt/microsoft/aznfs/data/config
 
         # Set the permissions for the config file.
-        chmod 0644 /opt/microsoft/aznfs/config.txt
-        chattr -f -i /opt/microsoft/aznfs/config.txt
+        chmod 0644 /opt/microsoft/aznfs/data/config
+        chattr -f -i /opt/microsoft/aznfs/data/config
 fi
 
 # Check if the flag file does not exist
@@ -142,5 +142,5 @@ if [ $1 == 0 ]; then
 fi
 
 if [ $1 == 1 ]; then
-	chattr -i -f /opt/microsoft/aznfs/config.txt
+	chattr -i -f /opt/microsoft/aznfs/data/config
 fi
