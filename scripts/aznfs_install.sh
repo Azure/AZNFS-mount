@@ -124,7 +124,7 @@ ensure_pkg()
     local distro="$distro_id"
 
     if [ "$distro" == "ubuntu" ]; then
-        if ! $apt_update_done; then
+        if [ ! $apt_update_done ] && [ "$SERVICE_NAME" != "watchdog"]; then
             apt -y update
             if [ $? -ne 0 ]; then
                 echo
