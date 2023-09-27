@@ -187,8 +187,6 @@ check_config_file()
 if [ $# -gt 0 ] && [ "$1" == "watchdog" ]; then
     SERVICE_NAME="$1"
     pecho "Service Name: $SERVICE_NAME"
-else
-    exit 1
 fi
 
 if [ "$RELEASE_NUMBER" == "x.y.z" ] && [ "$SERVICE_NAME" != "watchdog" ]; then
