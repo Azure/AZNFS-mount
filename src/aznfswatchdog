@@ -168,7 +168,7 @@ fi
 check_for_latest_update=true
 
 if $check_for_latest_update; then
-    ./opt/microsoft/aznfs/update.sh
+    ./opt/microsoft/aznfs/aznfs_install.sh
 fi
 
 
@@ -198,7 +198,7 @@ while :; do
     # fi
 
     # if $check_for_latest_update; then
-    #     ./opt/microsoft/aznfs/update.sh
+    #     ./opt/microsoft/aznfs/aznfs_install.sh
     # fi
 
 
