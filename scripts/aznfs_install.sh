@@ -20,7 +20,7 @@ distro_id=
 install_cmd=
 
 # Define the path to the configuration file
-CONFIG_FILE="/opt/microsoft/aznfs/config.txt"
+CONFIG_FILE="/opt/microsoft/aznfs/data/config"
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -149,7 +149,7 @@ ensure_pkg()
     local distro="$distro_id"
 
     if [ "$distro" == "ubuntu" ]; then
-        if [ ! $apt_update_done ] && [ "$SERVICE_NAME" != "watchdog" ]; then
+        if ! $apt_update_done; then
             apt -y update
             if [ $? -ne 0 ]; then
                 echo
@@ -265,7 +265,7 @@ if [ "$SERVICE_NAME" == "watchdog" ]; then
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     # RELEASE_NUMBER=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.176"
+    RELEASE_NUMBER="0.1.178"
     pecho "Latest release version: $RELEASE_NUMBER"
 fi
 
@@ -289,10 +289,10 @@ if [ $apt -eq 1 ]; then
                     # Create a flag file to indicate that an update is in progress
                     touch /tmp/update_in_progress_from_watchdog.flag
                 else
-                    vecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
+                    pecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
                 fi
             else
-                vecho "AZNFS version $current_version is up-to-date or newer."
+                pecho "AZNFS version $current_version is up-to-date or newer."
             fi
             
         elif [ "$SERVICE_NAME" == "cmdline" ]; then
@@ -310,18 +310,18 @@ if [ $apt -eq 1 ]; then
                 exit 1
             fi
         fi
+    fi
         
-        # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
-        if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
-            wget "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
-            apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
-            install_error=$?
-            rm -f "/tmp/${AZNFS_RELEASE}_amd64.deb"
+    # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
+    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
+        wget "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
+        apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
+        install_error=$?
+        rm -f "/tmp/${AZNFS_RELEASE}_amd64.deb"
 
-            if [ "$SERVICE_NAME" == "watchdog" ]; then
-                systemctl daemon-reload
-                systemctl restart aznfswatchdog
-            fi
+        if [ "$SERVICE_NAME" == "watchdog" ]; then
+            systemctl daemon-reload
+            systemctl restart aznfswatchdog
         fi
     fi
 
@@ -342,10 +342,10 @@ elif [ $zypper -eq 1 ]; then
                     # Create a flag file to indicate that an update is in progress
                     touch /tmp/update_in_progress_from_watchdog.flag
                 else
-                    vecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
+                    pecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
                 fi
             else
-                vecho "AZNFS version $current_version is up-to-date or newer."
+                pecho "AZNFS version $current_version is up-to-date or newer."
             fi
             
         elif [ "$SERVICE_NAME" == "cmdline" ]; then
@@ -354,27 +354,27 @@ elif [ $zypper -eq 1 ]; then
                 secho "AZNFS version $current_version is already installed."
                 exit 0
             fi
-        read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
-        echo
-        if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
-            eecho "Installation aborted!"
-            exit 1
-        fi
-
-        # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
-        if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
-            wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
-            zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
-            install_error=$?
-            rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
-
-            if [ "$SERVICE_NAME" == "watchdog" ]; then
-                systemctl daemon-reload
-                systemctl restart aznfswatchdog
+            read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
+            echo
+            if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
+                eecho "Installation aborted!"
+                exit 1
             fi
         fi
     fi
 
+    # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
+    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
+        wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
+        zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
+        install_error=$?
+        rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
+
+        if [ "$SERVICE_NAME" == "watchdog" ]; then
+            systemctl daemon-reload
+            systemctl restart aznfswatchdog
+        fi
+    fi
 
 else
     install_cmd="yum"
@@ -393,10 +393,10 @@ else
                     # Create a flag file to indicate that an update is in progress
                     touch /tmp/update_in_progress_from_watchdog.flag
                 else
-                    vecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
+                    pecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
                 fi
             else
-                vecho "AZNFS version $current_version is up-to-date or newer."
+                pecho "AZNFS version $current_version is up-to-date or newer."
             fi
             
         elif [ "$SERVICE_NAME" == "cmdline" ]; then
@@ -412,24 +412,25 @@ else
                 exit 1
             fi
         fi
-        # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
-        if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
-            wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
-            yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
-            install_error=$?
-            rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
+    fi
+    # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
+    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
+        wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
+        yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
+        install_error=$?
+        rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 
-            if [ "$SERVICE_NAME" == "watchdog" ]; then
-                systemctl daemon-reload
-                systemctl restart aznfswatchdog
-            fi
+        if [ "$SERVICE_NAME" == "watchdog" ]; then
+            systemctl daemon-reload
+            systemctl restart aznfswatchdog
         fi
     fi
 fi
 
-if [ $install_error -ne 0 ]; then
+if [ -n "$install_error" ] && [ "$install_error" -ne 0 ]; then
     eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
     exit 1
 fi
 
+# TODO: write appropriate condition for this log.
 secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed."
