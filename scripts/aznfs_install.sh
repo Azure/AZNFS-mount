@@ -205,8 +205,6 @@ check_config_file()
     fi
 }
 
-#NOTE: 1) Set apt_update_done = true by default if not want to run in upgrade, else in case of watchdog - run, but don't fail badly and exit.
-#      2) Mandatory for upgrading if super user? idts. It's script and It's run by root user. Does it inherit these props?
 
 # Check if an argument is provided and equals "watchdog"
 if [ $# -gt 0 ] && [ "$1" == "watchdog" ]; then
