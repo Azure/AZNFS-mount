@@ -265,7 +265,7 @@ if [ "$SERVICE_NAME" == "watchdog" ]; then
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     # RELEASE_NUMBER=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.182"
+    RELEASE_NUMBER="0.1.184"
     pecho "Latest release version: $RELEASE_NUMBER"
 fi
 

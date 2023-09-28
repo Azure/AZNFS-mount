@@ -26,7 +26,7 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	fi
 fi
 
-if [ "$1" != 'upgrade' ]; then
+if [ ! -f /tmp/update_in_progress_from_watchdog.flag ]; then
 	# Stop aznfswatchdog service and clean it.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
