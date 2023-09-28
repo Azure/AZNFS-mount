@@ -432,5 +432,6 @@ if [ -n "$install_error" ] && [ "$install_error" -ne 0 ]; then
     exit 1
 fi
 
-# TODO: write appropriate condition for this log.
-secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed."
+if [ "$SERVICE_NAME" == "cmdline" ]; then
+    secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed."
+fi
