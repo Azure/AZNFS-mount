@@ -32,6 +32,12 @@ if [ $1 == 2 ] && [ -f /opt/microsoft/aznfs/data/config ]; then
     chattr -f +i /opt/microsoft/aznfs/data/config
 fi
 
+if [ $1 == 2 ] && [ ! -f /tmp/update_in_progress_from_watchdog.flag ]; then
+		systemctl stop aznfswatchdog
+		systemctl disable aznfswatchdog
+		echo "Stopped aznfswatchdog service."
+fi
+
 %post
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
