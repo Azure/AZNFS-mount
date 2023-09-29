@@ -9,7 +9,7 @@ REPO_OWNER="Azure"
 REPO_NAME="AZNFS-mount"
 AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
 AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
-SERVICE_NAME="cmdline"
+SERVICE_NAME="manual-update"
 AUTO_UPDATE_AZNFS=false
 user_wants_update=false
 apt_update_done=false
@@ -206,13 +206,13 @@ check_config_file()
 }
 
 
-# Check if an argument is provided and equals "watchdog"
-if [ $# -gt 0 ] && [ "$1" == "watchdog" ]; then
+# Check if an argument is provided and equals "auto-update"
+if [ $# -gt 0 ] && [ "$1" == "auto-update" ]; then
     SERVICE_NAME="$1"
     pecho "Service Name: $SERVICE_NAME"
 fi
 
-if [ "$RELEASE_NUMBER" == "x.y.z" ] && [ "$SERVICE_NAME" != "watchdog" ]; then
+if [ "$RELEASE_NUMBER" == "x.y.z" ] && [ "$SERVICE_NAME" != "auto-update" ]; then
     eecho "This script is directly downloaded from the github source code."
     eecho "Please download the aznfs_install.sh from 'https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh'"
     eecho "If the problem persists, contact Microsoft support."
@@ -257,13 +257,13 @@ esac
 
 ensure_pkg "wget"
 
-if [ "$SERVICE_NAME" == "watchdog" ]; then
+if [ "$SERVICE_NAME" == "auto-update" ]; then
     check_config_file
 
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     # RELEASE_NUMBER=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.178"
+    RELEASE_NUMBER="0.1.187"
     pecho "Latest release version: $RELEASE_NUMBER"
 fi
 
@@ -274,8 +274,8 @@ if [ $apt -eq 1 ]; then
     is_uninstalled=$(echo "$package_info" | grep "^Status" | grep "\<deinstall\>")
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     if [ -n "$current_version" -a -z "$is_uninstalled" ]; then
-        # Check if the service name is "watchdog"
-        if [ "$SERVICE_NAME" == "watchdog" ]; then
+        # Check if the service name is "auto-update"
+        if [ "$SERVICE_NAME" == "auto-update" ]; then
             # Compare the current version with the latest release
             result=$(compare_versions "$current_version" "$RELEASE_NUMBER")
             
@@ -293,7 +293,7 @@ if [ $apt -eq 1 ]; then
                 pecho "AZNFS version $current_version is up-to-date or newer."
             fi
             
-        elif [ "$SERVICE_NAME" == "cmdline" ]; then
+        elif [ "$SERVICE_NAME" == "manual-update" ]; then
             # Check if the current version matches the desired release number
             if [ "$current_version" == "$RELEASE_NUMBER" ]; then
                 secho "AZNFS version $current_version is already installed."
@@ -310,14 +310,14 @@ if [ $apt -eq 1 ]; then
         fi
     fi
         
-    # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
-    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
+    # For watchdog, the flag file will always be present; otherwise, the service will be "manual-update"
+    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "manual-update" ]; then
         wget "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
         apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
         install_error=$?
         rm -f "/tmp/${AZNFS_RELEASE}_amd64.deb"
 
-        if [ "$SERVICE_NAME" == "watchdog" ]; then
+        if [ "$SERVICE_NAME" == "auto-update" ]; then
             systemctl daemon-reload
             systemctl restart aznfswatchdog
         fi
@@ -328,7 +328,7 @@ elif [ $zypper -eq 1 ]; then
     current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
     if [ -n "$current_version" ]; then
         # Check if the service name is "watchdog"
-        if [ "$SERVICE_NAME" == "watchdog" ]; then
+        if [ "$SERVICE_NAME" == "auto-update" ]; then
             # Compare the current version with the latest release
             result=$(compare_versions "$current_version" "$RELEASE_NUMBER")
             
@@ -346,7 +346,7 @@ elif [ $zypper -eq 1 ]; then
                 pecho "AZNFS version $current_version is up-to-date or newer."
             fi
             
-        elif [ "$SERVICE_NAME" == "cmdline" ]; then
+        elif [ "$SERVICE_NAME" == "manual-update" ]; then
             # Check if the current version matches the desired release number
             if [ "$current_version" == "$RELEASE_NUMBER" ]; then
                 secho "AZNFS version $current_version is already installed."
@@ -361,14 +361,14 @@ elif [ $zypper -eq 1 ]; then
         fi
     fi
 
-    # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
-    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
+    # For watchdog, the flag file will always be present; otherwise, the service will be "manual-update"
+    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "manual-update" ]; then
         wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
         zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
         install_error=$?
         rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
 
-        if [ "$SERVICE_NAME" == "watchdog" ]; then
+        if [ "$SERVICE_NAME" == "auto-update" ]; then
             systemctl daemon-reload
             systemctl restart aznfswatchdog
         fi
@@ -379,7 +379,7 @@ else
     current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     if [ -n "$current_version" ]; then
         # Check if the service name is "watchdog"
-        if [ "$SERVICE_NAME" == "watchdog" ]; then
+        if [ "$SERVICE_NAME" == "auto-update" ]; then
             # Compare the current version with the latest release
             result=$(compare_versions "$current_version" "$RELEASE_NUMBER")
             
@@ -397,7 +397,7 @@ else
                 pecho "AZNFS version $current_version is up-to-date or newer."
             fi
             
-        elif [ "$SERVICE_NAME" == "cmdline" ]; then
+        elif [ "$SERVICE_NAME" == "manual-update" ]; then
             # Check if the current version matches the desired release number
             if [ "$current_version" == "$RELEASE_NUMBER" ]; then
                 secho "AZNFS version $current_version is already installed."
@@ -411,14 +411,14 @@ else
             fi
         fi
     fi
-    # For watchdog, the flag file will always be present; otherwise, the service will be cmdline
-    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "cmdline" ]; then
+    # For watchdog, the flag file will always be present; otherwise, the service will be "manual-update"
+    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "manual-update" ]; then
         wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
         yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
         install_error=$?
         rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 
-        if [ "$SERVICE_NAME" == "watchdog" ]; then
+        if [ "$SERVICE_NAME" == "auto-update" ]; then
             systemctl daemon-reload
             systemctl restart aznfswatchdog
         fi
@@ -430,6 +430,6 @@ if [ -n "$install_error" ] && [ "$install_error" -ne 0 ]; then
     exit 1
 fi
 
-if [ "$SERVICE_NAME" == "cmdline" ]; then
+if [ "$SERVICE_NAME" == "manual-update" ]; then
     secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed."
 fi
