@@ -168,7 +168,7 @@ fi
 check_for_latest_update=true
 
 if $check_for_latest_update; then
-    ./opt/microsoft/aznfs/aznfs_install.sh "watchdog"
+    ./opt/microsoft/aznfs/aznfs_install.sh "auto-update"
 fi
 
 
