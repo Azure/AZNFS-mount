@@ -4,6 +4,11 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
+APPNAME="aznfs"
+OPTDIR="/opt/microsoft/${APPNAME}"
+OPTDIRDATA="${OPTDIR}/data"
+LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
+
 RELEASE_NUMBER=x.y.z
 REPO_OWNER="Azure"
 REPO_NAME="AZNFS-mount"
@@ -20,20 +25,30 @@ distro_id=
 install_cmd=
 
 # Define the path to the configuration file
-CONFIG_FILE="/opt/microsoft/aznfs/data/config"
+CONFIG_FILE="${OPTDIRDATA}/config"
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
 YELLOW="\e[2;33m"
 NORMAL="\e[0m"
 
+HOSTNAME=$(hostname)
+
 #
 # Core logging function.
 #
-_log()
+_log() 
 {
     color=$1
     msg=$2
+
+    if [ "$SERVICE_NAME" == "auto-update" ]; then
+        log_message="$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}"
+        (
+            flock -e 999
+            echo -e "$log_message" >> "$LOGFILE"
+        ) 999<"$LOGFILE"
+    fi
 
     echo -e "${color}${msg}${NORMAL}"
 }
@@ -71,6 +86,26 @@ wecho()
 eecho()
 {
     color=$RED
+    _log $color "${*}"
+}
+
+#
+# Verbose echo, no-op unless AZNFS_VERBOSE env variable is set.
+#
+vecho()
+{
+    color=$NORMAL
+
+    # Unless AZNFS_VERBOSE flag is set, do not echo to console.
+    if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
+        (
+            flock -e 999
+            echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
+        ) 999<$LOGFILE
+
+        return
+    fi
+
     _log $color "${*}"
 }
 
@@ -263,8 +298,7 @@ if [ "$SERVICE_NAME" == "auto-update" ]; then
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     # RELEASE_NUMBER=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.187"
-    pecho "Latest release version: $RELEASE_NUMBER"
+    RELEASE_NUMBER="0.1.190"
 fi
 
 # Check if apt is available
@@ -287,10 +321,11 @@ if [ $apt -eq 1 ]; then
                     # Create a flag file to indicate that an update is in progress
                     touch /tmp/update_in_progress_from_watchdog.flag
                 else
-                    pecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
+                    wecho "Version $RELEASE_NUMBER of AZNFS is available. Update to AZNFS $RELEASE_NUMBER for the latest features and improvements."
+                    wecho "Set AUTO_UPDATE_AZNFS=true in $CONFIG_FILE to auto-update" 
                 fi
             else
-                pecho "AZNFS version $current_version is up-to-date or newer."
+                pecho "AZNFS version $current_version is up-to-date or newer"
             fi
             
         elif [ "$SERVICE_NAME" == "manual-update" ]; then
@@ -340,10 +375,11 @@ elif [ $zypper -eq 1 ]; then
                     # Create a flag file to indicate that an update is in progress
                     touch /tmp/update_in_progress_from_watchdog.flag
                 else
-                    pecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
+                    wecho "Version $RELEASE_NUMBER of AZNFS is available. Update to AZNFS $RELEASE_NUMBER for the latest features and improvements."
+                    wecho "Set AUTO_UPDATE_AZNFS=true in $CONFIG_FILE to auto-update" 
                 fi
             else
-                pecho "AZNFS version $current_version is up-to-date or newer."
+                pecho "AZNFS version $current_version is up-to-date or newer"
             fi
             
         elif [ "$SERVICE_NAME" == "manual-update" ]; then
@@ -391,10 +427,11 @@ else
                     # Create a flag file to indicate that an update is in progress
                     touch /tmp/update_in_progress_from_watchdog.flag
                 else
-                    pecho "Version $RELEASE_NUMBER of AZNFS is available. Set AUTO_UPDATE_AZNFS=true to update"
+                    wecho "Version $RELEASE_NUMBER of AZNFS is available. Update to AZNFS $RELEASE_NUMBER for the latest features and improvements."
+                    wecho "Set AUTO_UPDATE_AZNFS=true in $CONFIG_FILE to auto-update" 
                 fi
             else
-                pecho "AZNFS version $current_version is up-to-date or newer."
+                pecho "AZNFS version $current_version is up-to-date or newer"
             fi
             
         elif [ "$SERVICE_NAME" == "manual-update" ]; then
@@ -425,7 +462,7 @@ else
     fi
 fi
 
-if [ -n "$install_error" ] && [ "$install_error" -ne 0 ]; then
+if [ -n "$install_error" ] && [ "$install_error" -ne 0 ]; then  
     eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
     exit 1
 fi
