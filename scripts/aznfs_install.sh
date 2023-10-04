@@ -298,7 +298,7 @@ if [ "$SERVICE_NAME" == "auto-update" ]; then
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     # RELEASE_NUMBER=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.190"
+    RELEASE_NUMBER="0.1.192"
 fi
 
 # Check if apt is available
@@ -352,7 +352,8 @@ if [ $apt -eq 1 ]; then
         install_error=$?
         rm -f "/tmp/${AZNFS_RELEASE}_amd64.deb"
 
-        if [ "$SERVICE_NAME" == "auto-update" ]; then
+        if [ "$SERVICE_NAME" == "auto-update" ] && [ "$install_error" -eq 0 ]; then
+            pecho "AZNFS updates installed. Restarting aznfswatchdog to apply changes!"
             systemctl daemon-reload
             systemctl restart aznfswatchdog
         fi
@@ -404,7 +405,8 @@ elif [ $zypper -eq 1 ]; then
         install_error=$?
         rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
 
-        if [ "$SERVICE_NAME" == "auto-update" ]; then
+        if [ "$SERVICE_NAME" == "auto-update" ] && [ "$install_error" -eq 0 ]; then
+            pecho "AZNFS updates installed. Restarting aznfswatchdog to apply changes!"
             systemctl daemon-reload
             systemctl restart aznfswatchdog
         fi
@@ -455,7 +457,8 @@ else
         install_error=$?
         rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 
-        if [ "$SERVICE_NAME" == "auto-update" ]; then
+        if [ "$SERVICE_NAME" == "auto-update" ] && [ "$install_error" -eq 0 ]; then
+            pecho "AZNFS updates installed. Restarting aznfswatchdog to apply changes!"
             systemctl daemon-reload
             systemctl restart aznfswatchdog
         fi
