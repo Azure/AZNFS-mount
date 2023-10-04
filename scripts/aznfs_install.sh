@@ -394,10 +394,7 @@ if [ $apt -eq 1 ]; then
     # For watchdog, the flag file will always be present; otherwise, the service will be "manual-update"
     if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "manual-update" ]; then
         wget "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
-        if [ "$SERVICE_NAME" == "manual-update" ]; then
-            apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
-        fi
-        
+        # apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
         install_error=1
         rm -f "/tmp/${AZNFS_RELEASE}_amd64.deb"
 
