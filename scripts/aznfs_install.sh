@@ -240,6 +240,52 @@ check_config_file()
     fi
 }
 
+rollback()
+{
+    local cmd="$1"
+    local current_version="$2"
+    local error_status=0
+
+    AZNFS_RELEASE="aznfs-${current_version}-1"
+    AZNFS_RELEASE_SUSE="aznfs_sles-${current_version}-1"
+
+    if [ "$cmd" == "apt" ]; then
+        wget "https://github.com/Azure/AZNFS-mount/releases/download/${current_version}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
+        apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
+        error_status=$?
+        rm -f "/tmp/${AZNFS_RELEASE}_amd64.deb"
+
+        if [ "$error_status" -eq 0 ]; then
+            wecho "AZNFS updates installation failed. The system will continue to use version $current_version"
+            systemctl daemon-reload
+            systemctl restart aznfswatchdog
+        fi 
+    elif [ "$cmd" == "zypper" ]
+        wget https://github.com/Azure/AZNFS-mount/releases/download/${current_version}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
+        zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
+        error_status=$?
+        rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
+
+        if [ "$error_status" -eq 0 ]; then
+            wecho "AZNFS updates installation failed. The system will continue to use version $current_version"
+            systemctl daemon-reload
+            systemctl restart aznfswatchdog
+        fi
+    else
+        wget https://github.com/Azure/AZNFS-mount/releases/download/${current_version}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
+        yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
+        error_status=$?
+        rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
+
+        if [ "$error_status" -eq 0 ]; then
+            wecho "AZNFS updates installation failed. The system will continue to use version $current_version"
+            systemctl daemon-reload
+            systemctl restart aznfswatchdog
+        fi
+    fi
+
+    return $error_status
+}
 
 # Check if an argument is provided and equals "auto-update"
 if [ $# -gt 0 ] && [ "$1" == "auto-update" ]; then
@@ -348,8 +394,8 @@ if [ $apt -eq 1 ]; then
     # For watchdog, the flag file will always be present; otherwise, the service will be "manual-update"
     if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "manual-update" ]; then
         wget "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}_amd64.deb" -P /tmp
-        apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
-        install_error=$?
+        # apt install -y "/tmp/${AZNFS_RELEASE}_amd64.deb"
+        install_error=1
         rm -f "/tmp/${AZNFS_RELEASE}_amd64.deb"
 
         if [ "$SERVICE_NAME" == "auto-update" ] && [ "$install_error" -eq 0 ]; then
@@ -401,8 +447,8 @@ elif [ $zypper -eq 1 ]; then
     # For watchdog, the flag file will always be present; otherwise, the service will be "manual-update"
     if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "manual-update" ]; then
         wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE_SUSE}.x86_64.rpm -P /tmp
-        zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
-        install_error=$?
+        # zypper install --allow-unsigned-rpm -y /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
+        install_error=1
         rm -f /tmp/${AZNFS_RELEASE_SUSE}.x86_64.rpm
 
         if [ "$SERVICE_NAME" == "auto-update" ] && [ "$install_error" -eq 0 ]; then
@@ -454,7 +500,7 @@ else
     if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$SERVICE_NAME" == "manual-update" ]; then
         wget https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${AZNFS_RELEASE}.x86_64.rpm -P /tmp
         yum install -y /tmp/${AZNFS_RELEASE}.x86_64.rpm
-        install_error=$?
+        install_error=1
         rm -f /tmp/${AZNFS_RELEASE}.x86_64.rpm
 
         if [ "$SERVICE_NAME" == "auto-update" ] && [ "$install_error" -eq 0 ]; then
@@ -465,9 +511,19 @@ else
     fi
 fi
 
-if [ -n "$install_error" ] && [ "$install_error" -ne 0 ]; then  
-    eecho "[FATAL] Error installing aznfs (Error: $install_error). See '$install_cmd' command logs for more information."
-    exit 1
+if [ -n "$install_error" ] && [ "$install_error" -ne 0 ]; then
+    eecho "[FATAL] Error installing aznfs $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information."
+
+    if [ "$SERVICE_NAME" == "auto-update" ]; then
+        rollback "$install_cmd" "$current_version"
+        rollback_status=$?
+        if [ "$rollback_status" -ne 0 ]; then
+            eecho "Rollback to $current_version failed! (Error: $rollback_status). See '$install_cmd' command logs for more information."
+            exit 1
+        fi
+    else
+        exit 1
+    fi
 fi
 
 if [ "$SERVICE_NAME" == "manual-update" ]; then
