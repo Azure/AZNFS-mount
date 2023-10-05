@@ -28,11 +28,24 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-if [ $1 == 2 ] && [ -f /opt/microsoft/aznfs/data/config ]; then
-    chattr -f +i /opt/microsoft/aznfs/data/config
+flag_file="/tmp/update_in_progress_from_watchdog.flag"
+
+if [ -f "$flag_file" ]; then
+	# Get the PID of aznfswatchdog
+	aznfswatchdog_pid=$(pgrep aznfswatchdog)
+	
+	# Read the PID from the flag file
+	aznfswatchdog_pid_inside_flag=$(cat "$flag_file")
+	echo "aznfswatchdog_pid_inside_flag: $aznfswatchdog_pid_inside_flag" # remove later
+	
+	if [ "$aznfswatchdog_pid" != "$aznfswatchdog_pid_inside_flag" ]; then
+		# The flag file is stale, remove it
+		rm -f "$flag_file"
+		echo "Removed stale flag file."
+	fi
 fi
 
-if [ $1 == 2 ] && [ ! -f /tmp/update_in_progress_from_watchdog.flag ]; then
+if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
 		systemctl stop aznfswatchdog
 		systemctl disable aznfswatchdog
 		echo "Stopped aznfswatchdog service."
@@ -80,7 +93,6 @@ if [ ! -f /opt/microsoft/aznfs/data/config ]; then
 
         # Set the permissions for the config file.
         chmod 0644 /opt/microsoft/aznfs/data/config
-        chattr -f -i /opt/microsoft/aznfs/data/config
 fi
 
 # Check if the flag file does not exist
@@ -145,8 +157,4 @@ if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	rm -rf /opt/microsoft/aznfs
-fi
-
-if [ $1 == 1 ]; then
-	chattr -i -f /opt/microsoft/aznfs/data/config
 fi
