@@ -332,7 +332,7 @@ if [ "$RUN_MODE" == "auto-update" ]; then
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     # RELEASE_NUMBER=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.192"
+    RELEASE_NUMBER="0.1.197"
 fi
 
 # Check if apt is available
