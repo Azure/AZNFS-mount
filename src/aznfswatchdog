@@ -164,7 +164,7 @@ if ! chattr -f +i $MOUNTMAP; then
     wecho "chattr does not work for ${MOUNTMAP}!"
 fi
 
-
+sleep 120
 check_for_latest_update=true
 
 if $check_for_latest_update; then

@@ -360,6 +360,7 @@ if [ $apt -eq 1 ]; then
     package_info=$(apt-cache show aznfs 2>/dev/null)
     is_uninstalled=$(echo "$package_info" | grep "^Status" | grep "\<deinstall\>")
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    pecho "inside if of apt, where current version: $current_version"
     if [ -n "$current_version" -a -z "$is_uninstalled" ]; then
         check_and_perform_update "$current_version"
     fi
