@@ -15,7 +15,7 @@ MONITOR_INTERVAL_SECS=5
 IP_CHANGE_DETECTION_FREQUENCY=60
 
 # How often do we check for updates of AZNFS.
-UPDATE_DETECTION_FREQUENCY=60
+UPDATE_DETECTION_FREQUENCY=86400
 
 #
 # Remove unmounted entries only if MOUNTMAP has not been changed till MONITOR_INTERVAL_SECS seconds.
@@ -165,12 +165,6 @@ if ! chattr -f +i $MOUNTMAP; then
 fi
 
 
-check_for_latest_update=true
-
-if $check_for_latest_update; then
-    ./opt/microsoft/aznfs/aznfs_install.sh "auto-update"
-fi
-
 
 #
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
@@ -189,17 +183,16 @@ while :; do
 
     epoch_now=$(date +%s)
 
-    # NOTE: commented out for now, as testing outside loop
     # To check if any AZNFS updates available.
-    # check_for_latest_update=false
-    # if [ $epoch_now -ge $next_update_detection_epoch ]; then
-    #     check_for_latest_update=true
-    #     next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
-    # fi
+    check_for_latest_update=false
+    if [ $epoch_now -ge $next_update_detection_epoch ]; then
+        check_for_latest_update=true
+        next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
+    fi
 
-    # if $check_for_latest_update; then
-    #     ./opt/microsoft/aznfs/aznfs_install.sh
-    # fi
+    if $check_for_latest_update; then
+        ./opt/microsoft/aznfs/aznfs_install.sh "auto-update"
+    fi
 
 
     #

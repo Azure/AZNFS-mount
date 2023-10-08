@@ -26,14 +26,14 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	fi
 fi
 
-flag_file="/tmp/update_in_progress_from_watchdog.flag"
+flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 if [ -f "$flag_file" ]; then
 	# Get the PID of aznfswatchdog
 	aznfswatchdog_pid=$(pgrep aznfswatchdog)
 	
 	# Read the PID from the flag file
-	aznfswatchdog_pid_inside_flag=$(cat "$flag_file")
+	aznfswatchdog_pid_inside_flag=$(cat $flag_file)
 	echo "aznfswatchdog_pid_inside_flag: $aznfswatchdog_pid_inside_flag" # remove later
 	
 	if [ "$aznfswatchdog_pid" != "$aznfswatchdog_pid_inside_flag" ]; then
