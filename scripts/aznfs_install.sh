@@ -363,7 +363,7 @@ if [ "$RUN_MODE" == "auto-update" ]; then
 
     # Parse the release number from the JSON response
     # RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.204"
+    RELEASE_NUMBER="0.1.206"
 fi
 
 # Check if apt is available
