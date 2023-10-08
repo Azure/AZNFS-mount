@@ -191,7 +191,11 @@ while :; do
     fi
 
     if $check_for_latest_update; then
-        ./opt/microsoft/aznfs/aznfs_install.sh "auto-update"
+        if [ -e "/opt/microsoft/aznfs/aznfs_install.sh" ]; then
+            ./opt/microsoft/aznfs/aznfs_install.sh "auto-update"
+        else
+            wecho "[FATAL] The 'aznfs_install.sh' script is not present in '/opt/microsoft/aznfs/'. Please make sure it exists."
+        fi
     fi
 
 
