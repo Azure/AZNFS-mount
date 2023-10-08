@@ -28,7 +28,7 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-flag_file="/tmp/update_in_progress_from_watchdog.flag"
+flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 if [ -f "$flag_file" ]; then
 	# Get the PID of aznfswatchdog
@@ -96,13 +96,13 @@ if [ ! -f /opt/microsoft/aznfs/data/config ]; then
 fi
 
 # Check if the flag file does not exist
-if [ ! -f /tmp/update_in_progress_from_watchdog.flag ]; then
+if [ ! -f /tmp/.update_in_progress_from_watchdog.flag ]; then
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
 else
         # Clean up the update in progress flag file
-        rm -f /tmp/update_in_progress_from_watchdog.flag
+        rm -f /tmp/.update_in_progress_from_watchdog.flag
 fi
 
 

@@ -126,61 +126,69 @@ is_new_version_available()
 # Function to perform AZNFS updates
 perform_aznfs_updates() 
 {
-    pecho "inside perform aznfs updates function."
     # For watchdog, the flag file will always be present; otherwise, the service will be "manual-update"
-    if [ -f /tmp/update_in_progress_from_watchdog.flag ] || [ "$RUN_MODE" == "manual-update" ]; then
+    if [ -f /tmp/.update_in_progress_from_watchdog.flag ] || [ "$RUN_MODE" == "manual-update" ]; then
         if [ "$install_cmd" == "apt" ]; then
             AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
             package_name=${AZNFS_RELEASE}_amd64.deb
         elif [ "$install_cmd" == "zypper" ]; then
-            pecho "inside perform aznfs updates function, changing names and package names"
             AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
             package_name=${AZNFS_RELEASE_SUSE}.x86_64.rpm
         else
             AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
             package_name=${AZNFS_RELEASE}.x86_64.rpm
         fi
-        
-        pecho "inside perform aznfs updates function, before downloading new version"
+                
+        # Use wget to download the package, and check for success
         wget "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${package_name}" -P /tmp
-        if [ "$install_cmd" == "zypper" ]; then
-            $install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}"
-        else
-            $install_cmd install -y "/tmp/${package_name}"
-        fi
-        install_error=$?
-        rm -f "/tmp/${package_name}"
+        wget_status=$?
 
-        if [ "$RUN_MODE" == "auto-update" ] && [ "$install_error" -eq 0 ]; then
-            pecho "AZNFS updates installed. Restarting aznfswatchdog to apply changes!"
-            systemctl daemon-reload
-            systemctl restart aznfswatchdog
-            exit 1 # Nothing in the script will run after this point.
+        if [ $wget_status -ne 0 ]; then
+            eecho "Failed to download the package using wget. Exiting."
+            exit 1
+        fi
+
+        # Check if the downloaded file exists before proceeding with installation
+        if [ -f "/tmp/${package_name}" ]; then
+            if [ "$install_cmd" == "zypper" ]; then
+                $install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}"
+            else
+                $install_cmd install -y "/tmp/${package_name}"
+            fi
+            install_error=$?
+            rm -f "/tmp/${package_name}"
+
+            if [ "$RUN_MODE" == "auto-update" ] && [ "$install_error" -eq 0 ]; then
+                pecho "AZNFS updates installed. Restarting aznfswatchdog to apply changes!"
+                systemctl daemon-reload
+                systemctl restart aznfswatchdog
+                exit 0 # Nothing in the script will run after this point.
+            fi
+        else
+            eecho "Downloaded package file not found. Installation aborted."
+            exit 1
         fi
     fi
 }
 
-check_and_perform_update()
+check_aznfs_updates()
 {
     local current_version="$1"
 
     # Check if the service name is "auto-update"
     if [ "$RUN_MODE" == "auto-update" ]; then
         # Compare the current version with the latest release
-        pecho "inside if of auto-update"
         if is_new_version_available "$current_version" "$RELEASE_NUMBER"; then
-            pecho "inside if after update is available."
             # Check if an update is available
             if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then
-                pecho "inside if of auto-update, after auto-update-aznfs==true is matched."           
                 # Get the PID of aznfswatchdog
                 aznfswatchdog_pid=$(pgrep aznfswatchdog)
                 pecho "aznfswatchdog_pid: $aznfswatchdog_pid" # remove later
                 if [ -n "$aznfswatchdog_pid" ]; then
                     # Create a flag file with the PID to indicate that an update is in progress
-                    echo "$aznfswatchdog_pid" > /tmp/update_in_progress_from_watchdog.flag
+                    echo "$aznfswatchdog_pid" > /tmp/.update_in_progress_from_watchdog.flag
                 else
-                    eecho "aznfswatchdog process not found."
+                    eecho "AZNFS auto-update can only be invoked by aznfswatchdog!"
                     exit 1
                 fi
             else
@@ -193,7 +201,6 @@ check_and_perform_update()
         
     elif [ "$RUN_MODE" == "manual-update" ]; then
         # Check if the current version matches the desired release number
-        pecho "inside if of manual-update." 
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
             secho "AZNFS version $current_version is already installed."
             exit 0
@@ -259,10 +266,8 @@ ensure_pkg()
         use_dnf_or_yum
         $yum install -y $pkg
     elif [ "$distro" == "sles" ]; then
-        pecho "inside ensure_pkg wget of sles"
         zypper=1
         zypper install -y $pkg
-        pecho "inside ensure_pkg wget of sles after install"
     fi
 }
 
@@ -350,8 +355,15 @@ if [ "$RUN_MODE" == "auto-update" ]; then
 
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
-    # RELEASE_NUMBER=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.200"
+    # RELEASE_INFO=$(curl -s "$API_URL")
+    # if [ $? -ne 0 ]; then
+    #     pecho "Failed to retrieve latest release information. Exiting."
+    #     exit 1
+    # fi
+
+    # Parse the release number from the JSON response
+    # RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep "tag_name" | cut -d '"' -f 4)
+    RELEASE_NUMBER="0.1.202"
 fi
 
 # Check if apt is available
@@ -360,28 +372,39 @@ if [ $apt -eq 1 ]; then
     package_info=$(apt-cache show aznfs 2>/dev/null)
     is_uninstalled=$(echo "$package_info" | grep "^Status" | grep "\<deinstall\>")
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
-    pecho "inside if of apt, where current version: $current_version"
+    # Check if RUN_MODE is auto-update and current_version is empty
+    if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
+        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        exit 1
+    fi
     if [ -n "$current_version" -a -z "$is_uninstalled" ]; then
-        check_and_perform_update "$current_version"
+        check_aznfs_updates "$current_version"
     fi
     perform_aznfs_updates
 
 elif [ $zypper -eq 1 ]; then
     install_cmd="zypper"
     current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
-    pecho "inside if of zypper, where current version: $current_version"
-    if [ -n "$current_version" ]; then
-        pecho "inside if of zypper, if there's already a current version."
-        check_and_perform_update "$current_version"
+    # Check if RUN_MODE is auto-update and current_version is empty
+    if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
+        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        exit 1
     fi
-    pecho "inside if of zypper, before running perform aznfs updates."
+    if [ -n "$current_version" ]; then
+        check_aznfs_updates "$current_version"
+    fi
     perform_aznfs_updates
 
 else
     install_cmd="yum"
     current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    # Check if RUN_MODE is auto-update and current_version is empty
+    if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
+        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        exit 1
+    fi
     if [ -n "$current_version" ]; then
-        check_and_perform_update "$current_version"
+        check_aznfs_updates "$current_version"
     fi
     perform_aznfs_updates
 fi
