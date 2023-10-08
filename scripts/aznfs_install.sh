@@ -279,7 +279,7 @@ verify_super_user()
     fi
 }
 
-parse_config_file()
+parse_user_config()
 {
     if [ -f "$CONFIG_FILE" ]; then
         # Read the value of AUTO_UPDATE_AZNFS from the configuration file
@@ -351,7 +351,7 @@ esac
 ensure_pkg "wget"
 
 if [ "$RUN_MODE" == "auto-update" ]; then
-    parse_config_file
+    parse_user_config
 
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"

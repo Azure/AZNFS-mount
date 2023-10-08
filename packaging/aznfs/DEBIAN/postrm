@@ -6,7 +6,7 @@
 # --------------------------------------------------------------------------------------------
 
 if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
-    chattr -f -i /opt/microsoft/aznfs/data/mountmap
-    chattr -f -i /opt/microsoft/aznfs/data/randbytes
-    rm -rf /opt/microsoft/aznfs
+        chattr -f -i /opt/microsoft/aznfs/data/mountmap
+        chattr -f -i /opt/microsoft/aznfs/data/randbytes
+        rm -rf /opt/microsoft/aznfs
 fi
