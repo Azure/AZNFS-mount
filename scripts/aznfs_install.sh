@@ -355,15 +355,14 @@ if [ "$RUN_MODE" == "auto-update" ]; then
 
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
-    # RELEASE_INFO=$(curl -s "$API_URL")
-    # if [ $? -ne 0 ]; then
-    #     pecho "Failed to retrieve latest release information. Exiting."
-    #     exit 1
-    # fi
+    RELEASE_INFO=$(curl -s "$API_URL")
+    if [ $? -ne 0 ]; then
+        pecho "Failed to retrieve latest release information. Exiting."
+        exit 1
+    fi
 
     # Parse the release number from the JSON response
-    # RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.206"
+    RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep "tag_name" | cut -d '"' -f 4)
 fi
 
 # Check if apt is available
