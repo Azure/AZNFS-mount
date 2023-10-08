@@ -355,8 +355,18 @@ if [ "$RUN_MODE" == "auto-update" ]; then
 
     # Define the GitHub API URL to get the latest release
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
-    # RELEASE_NUMBER=$(curl -s "$API_URL" | grep "tag_name" | cut -d '"' -f 4)
-    RELEASE_NUMBER="0.1.197"
+    RELEASE_INFO=$(curl -s "$API_URL")
+    if [ $? -ne 0 ]; then
+        eecho "Failed to retrieve latest release information. Exiting."
+        exit 1
+    fi
+
+    # Parse the release number from the JSON response
+    RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep "tag_name" | cut -d '"' -f 4)
+    if [ -z "$RELEASE_NUMBER" ]; then
+        eecho "Failed to retrieve latest release number from Latest release information. Exiting."
+        exit 1
+    fi
 fi
 
 # Check if apt is available
@@ -367,7 +377,7 @@ if [ $apt -eq 1 ]; then
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     # Check if RUN_MODE is auto-update and current_version is empty
     if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
-        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        pecho "Unable to retrieve the current version of AZNFS. Exiting."
         exit 1
     fi
     if [ -n "$current_version" -a -z "$is_uninstalled" ]; then
@@ -380,7 +390,7 @@ elif [ $zypper -eq 1 ]; then
     current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
     # Check if RUN_MODE is auto-update and current_version is empty
     if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
-        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        pecho "Unable to retrieve the current version of AZNFS. Exiting."
         exit 1
     fi
     if [ -n "$current_version" ]; then
@@ -393,7 +403,7 @@ else
     current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     # Check if RUN_MODE is auto-update and current_version is empty
     if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
-        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        pecho "Unable to retrieve the current version of AZNFS. Exiting."
         exit 1
     fi
     if [ -n "$current_version" ]; then
