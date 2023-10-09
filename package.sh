@@ -89,7 +89,7 @@ generate_tarball_package() {
     # Copy other static package file(s).
     mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
 	
-	# Set AKS_USER variable to true inside aznfswatchdog to indicate use by Azure Kubernetes Service (AKS)
+    # Set AKS_USER variable to true inside aznfswatchdog to indicate use by Azure Kubernetes Service (AKS)
     sed -i 's/AKS_USER=false/AKS_USER=true/' ${SOURCE_DIR}/src/aznfswatchdog
     cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
 
