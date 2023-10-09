@@ -183,7 +183,6 @@ check_aznfs_updates()
             if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then   
                 # Get the PID of aznfswatchdog
                 aznfswatchdog_pid=$(pgrep aznfswatchdog)
-                pecho "aznfswatchdog_pid: $aznfswatchdog_pid" # remove later
                 if [ -n "$aznfswatchdog_pid" ]; then
                     # Create a flag file with the PID to indicate that an update is in progress
                     echo "$aznfswatchdog_pid" > /tmp/.update_in_progress_from_watchdog.flag
