@@ -5,6 +5,7 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
+AKS_USER=false
 #
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob endpoints.
@@ -173,8 +174,6 @@ fi
 while :; do
     sleep $MONITOR_INTERVAL_SECS
 
-
-
     #
     # TODO: Add a function reconcile_mountmap() and call it from here. This
     #       should reconstruct the MOUNTMAP file from findmnt and output of
@@ -185,7 +184,7 @@ while :; do
 
     # To check if any AZNFS updates available.
     check_for_latest_update=false
-    if [ $epoch_now -ge $next_update_detection_epoch ]; then
+    if [ "$AKS_USER" != "true" ] && [ $epoch_now -ge $next_update_detection_epoch ]; then
         check_for_latest_update=true
         next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
     fi
