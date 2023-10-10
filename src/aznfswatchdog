@@ -5,7 +5,8 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-AKS_USER=false
+# Are we running inside the AKS?
+AKS_USER="false"
 #
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob endpoints.
@@ -35,7 +36,8 @@ AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 
 next_ip_change_detection_epoch=0
 
-next_update_detection_epoch=0
+# Defer update detection to 1 minute after start to avoid issues with auto-update.
+next_update_detection_epoch=$(expr $(date +%s) + 60)
 
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
@@ -186,17 +188,18 @@ while :; do
     check_for_latest_update=false
     if [ "$AKS_USER" != "true" ] && [ $epoch_now -ge $next_update_detection_epoch ]; then
         check_for_latest_update=true
-        next_update_detection_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
+        next_update_detection_epoch=$epoch_now + $UPDATE_DETECTION_FREQUENCY)
     fi
 
     if $check_for_latest_update; then
         if [ -e "/opt/microsoft/aznfs/aznfs_install.sh" ]; then
+            pecho "Running Auto-update"
             ./opt/microsoft/aznfs/aznfs_install.sh "auto-update"
         else
-            wecho "[FATAL] The 'aznfs_install.sh' script is not present in '/opt/microsoft/aznfs/'. Please make sure it exists."
+            wecho "[FATAL] /opt/microsoft/aznfs/aznfs_install.sh not found. This is an unexpected error."
+            Wecho "[FATAL] Please contact Microsoft support before using any Blob NFS shares."
         fi
     fi
-
 
     #
     # Go over all lines in $MOUNTMAP and check them for two things:
