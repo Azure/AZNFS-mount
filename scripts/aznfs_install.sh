@@ -398,7 +398,7 @@ if [ $apt -eq 1 ]; then
         exit 1
     fi
 
-    if [ -n "$current_version" -a -z "$is_uninstalled" ]: then
+    if [ -n "$current_version" -a -z "$is_uninstalled" ]; then
         is_installed=true
     else
         is_installed=false
