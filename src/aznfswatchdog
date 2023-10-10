@@ -188,7 +188,7 @@ while :; do
     check_for_latest_update=false
     if [ "$AKS_USER" != "true" ] && [ $epoch_now -ge $next_update_detection_epoch ]; then
         check_for_latest_update=true
-        next_update_detection_epoch=$epoch_now + $UPDATE_DETECTION_FREQUENCY)
+        next_update_detection_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
     fi
 
     if $check_for_latest_update; then
@@ -226,7 +226,7 @@ while :; do
     do_ip_change_detection=false
     if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
         do_ip_change_detection=true
-        next_update_detection_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
+        next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)
     fi
 
     #
