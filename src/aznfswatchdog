@@ -17,7 +17,7 @@ MONITOR_INTERVAL_SECS=5
 IP_CHANGE_DETECTION_FREQUENCY=60
 
 # How often do we check for updates of AZNFS.
-UPDATE_DETECTION_FREQUENCY=86400
+UPDATE_DETECTION_FREQUENCY=120
 
 #
 # Remove unmounted entries only if MOUNTMAP has not been changed till MONITOR_INTERVAL_SECS seconds.
