@@ -146,7 +146,7 @@ perform_aznfs_update()
     fi
     
     if [ ! -f "/tmp/${package_name}" ]; then
-        eecho "[BUG] Downloaded package file '/tmp/${package_name}' not found, Installation aborted!"
+        eecho "[BUG] Downloaded package file '/tmp/${package_name}' not found, installation aborted!"
         exit 1
     fi
     
@@ -166,14 +166,15 @@ perform_aznfs_update()
     fi
 
     if [ "$RUN_MODE" == "auto-update" ]; then
-        secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER "
+        secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER"
         pecho "Restarting aznfswatchdog to apply changes!"
         systemctl daemon-reload
         systemctl restart aznfswatchdog
-        exit 0 # Nothing in the script will run after this point.
     else
         secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"
     fi
+
+    exit 0 # Nothing in the script will run after this point.
 }
 
 check_aznfs_update()
@@ -190,7 +191,7 @@ check_aznfs_update()
                 # Create a flag file with the PID to indicate that an update is in progress.
                 echo "$pid_aznfswatchdog" > /tmp/.update_in_progress_from_watchdog.flag
                 if [ $? -ne 0 ]; then
-                    eecho "Failed to create the flag file to indicate the update in progress, exiting!"
+                    eecho "Failed to create the flag file to indicate update in progress, exiting!"
                     exit 1
                 fi
             else
