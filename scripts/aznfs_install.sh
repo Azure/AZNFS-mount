@@ -138,7 +138,7 @@ perform_aznfs_update()
     fi
 
     # Use wget to download the package, and check for success.
-    wget_output=$(wget "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${package_name}" -P /tmp 2>&1)
+    wget_output=$(wget --timeout=120 "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/${package_name}" -P /tmp 2>&1)
     if [ $? -ne 0 ]; then
         eecho "Failed to download the package using wget, exiting!"
         eecho "$wget_output"
@@ -311,7 +311,9 @@ parse_user_config()
 
 # Check if an argument is provided and equals "auto-update".
 if [ $# -gt 0 ] && [ "$1" == "auto-update" ]; then
-    RUN_MODE="$1"
+    RUN_MODE="auto-update"
+    parse_user_config
+    pecho "Running auto-update..."
 fi
 
 if [ "$RELEASE_NUMBER" == "x.y.z" ] && [ "$RUN_MODE" != "auto-update" ]; then
@@ -360,11 +362,9 @@ esac
 ensure_pkg "wget"
 
 if [ "$RUN_MODE" == "auto-update" ]; then
-    parse_user_config
-
     # Define the GitHub API URL to get the latest release.
     API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
-    RELEASE_INFO=$(curl -sS "$API_URL" 2>&1)
+    RELEASE_INFO=$(curl -sS --max-time 60 "$API_URL" 2>&1)
     if [ $? -ne 0 ]; then
         eecho "Failed to retrieve latest release information, exiting!"
         eecho "**************************************************************"
@@ -418,7 +418,7 @@ elif [ $zypper -eq 1 ]; then
         exit 1
     fi
     if [ -n "$current_version" ]; then
-    # Check if we need to update otherwise we exit for manual-update as well as auto-update.
+        # Check if we need to update otherwise we exit for manual-update as well as auto-update.
         check_aznfs_update "$current_version"
     fi
     perform_aznfs_update

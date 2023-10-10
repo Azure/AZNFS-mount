@@ -192,10 +192,10 @@ while :; do
     fi
 
     if $check_for_latest_update; then
-        if [ -e "/opt/microsoft/aznfs/aznfs_install.sh" ]; then
-            ./opt/microsoft/aznfs/aznfs_install.sh "auto-update"
+        if [ -e "$INSTALLSCRIPT" ]; then
+            "$INSTALLSCRIPT" "auto-update"
         else
-            wecho "[FATAL] /opt/microsoft/aznfs/aznfs_install.sh not found. This is an unexpected error!"
+            wecho "[FATAL] $INSTALLSCRIPT not found. This is an unexpected error!"
             Wecho "[FATAL] Please contact Microsoft support."
         fi
     fi

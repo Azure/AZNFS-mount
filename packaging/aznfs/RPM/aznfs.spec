@@ -36,7 +36,6 @@ if [ -f "$flag_file" ]; then
 	
 	# Read the PID from the flag file
 	aznfswatchdog_pid_inside_flag=$(cat "$flag_file")
-	echo "aznfswatchdog_pid_inside_flag: $aznfswatchdog_pid_inside_flag" # remove later
 	
 	if [ "$aznfswatchdog_pid" != "$aznfswatchdog_pid_inside_flag" ]; then
 		# The flag file is stale, remove it
@@ -96,7 +95,7 @@ if [ ! -f /opt/microsoft/aznfs/data/config ]; then
         chmod 0644 /opt/microsoft/aznfs/data/config
 fi
 
-# If it's an auto upgrade triggered by aznfswatchdog, don't restart watchdog.
+# If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
 if [ ! -f /tmp/.update_in_progress_from_watchdog.flag ]; then
         systemctl daemon-reload
         systemctl enable aznfswatchdog
