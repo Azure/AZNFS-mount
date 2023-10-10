@@ -144,34 +144,35 @@ perform_aznfs_update()
         eecho "$wget_output"
         exit 1
     fi
-
-    # Check if the downloaded file exists before proceeding with installation.
-    if [ -f "/tmp/${package_name}" ]; then
-        if [ "$install_cmd" == "zypper" ]; then
-            install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
-        else
-            install_output=$($install_cmd install -y "/tmp/${package_name}" 2>&1)
-        fi
-        install_error=$?
-        rm -f "/tmp/${package_name}"
-
-        if [ $install_error -ne 0 ]; then
-            eecho "[FATAL] Error installing AZNFS $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information."
-            eecho "$install_output"
-            exit 1
-        fi
-
-        if [ "$RUN_MODE" == "auto-update" ]; then
-            pecho "AZNFS updates installed. Restarting aznfswatchdog to apply changes!"
-            systemctl daemon-reload
-            systemctl restart aznfswatchdog
-            exit 0 # Nothing in the script will run after this point.
-        else
-            secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed."
-        fi
-    else
-        eecho "Downloaded package file not found. Installation aborted."
+    
+    if [ ! -f "/tmp/${package_name}" ]; then
+        eecho "[BUG] Downloaded package file '/tmp/${package_name}' not found, Installation aborted!"
         exit 1
+    fi
+    
+    # Check if the downloaded file exists before proceeding with installation.
+    if [ "$install_cmd" == "zypper" ]; then
+        install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
+    else
+        install_output=$($install_cmd install -y "/tmp/${package_name}" 2>&1)
+    fi
+    install_error=$?
+    rm -f "/tmp/${package_name}"
+
+    if [ $install_error -ne 0 ]; then
+        eecho "[FATAL] Error installing AZNFS $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
+        eecho "$install_output"
+        exit 1
+    fi
+
+    if [ "$RUN_MODE" == "auto-update" ]; then
+        secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER "
+        pecho "Restarting aznfswatchdog to apply changes!"
+        systemctl daemon-reload
+        systemctl restart aznfswatchdog
+        exit 0 # Nothing in the script will run after this point.
+    else
+        secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"
     fi
 }
 
@@ -183,23 +184,18 @@ check_aznfs_update()
     if [ "$RUN_MODE" == "auto-update" ]; then
         # Compare the current version with the latest release.
         if is_new_version_available "$current_version" "$RELEASE_NUMBER"; then
-            # Check if an update is available.
-            if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then   
-                # Get the PID of aznfswatchdog.
-                pid_aznfswatchdog=$(pgrep aznfswatchdog)
-                if [ -n "$pid_aznfswatchdog" ]; then
-                    # Create a flag file with the PID to indicate that an update is in progress.
-                    echo "$pid_aznfswatchdog" > /tmp/.update_in_progress_from_watchdog.flag
-                    if [ $? -ne 0 ]; then
-                        eecho "Failed to create the flag file to indicate the update in progress, exiting!"
-                        exit 1
-                    fi
-                else
-                    eecho "AZNFS auto-update can only be invoked by aznfswatchdog!"
+            # Get the PID of aznfswatchdog.
+            pid_aznfswatchdog=$(pgrep aznfswatchdog)
+            if [ -n "$pid_aznfswatchdog" ]; then
+                # Create a flag file with the PID to indicate that an update is in progress.
+                echo "$pid_aznfswatchdog" > /tmp/.update_in_progress_from_watchdog.flag
+                if [ $? -ne 0 ]; then
+                    eecho "Failed to create the flag file to indicate the update in progress, exiting!"
                     exit 1
                 fi
             else
-                exit 0
+                eecho "AZNFS auto-update can only be invoked by aznfswatchdog!"
+                exit 1
             fi
         else
             pecho "Not auto-updating to $RELEASE_NUMBER. AZNFS version $current_version is up-to-date or newer!"
@@ -315,7 +311,6 @@ parse_user_config()
 # Check if an argument is provided and equals "auto-update".
 if [ $# -gt 0 ] && [ "$1" == "auto-update" ]; then
     RUN_MODE="$1"
-    pecho "Service Name: $RUN_MODE"
 fi
 
 if [ "$RELEASE_NUMBER" == "x.y.z" ] && [ "$RUN_MODE" != "auto-update" ]; then
@@ -371,6 +366,7 @@ if [ "$RUN_MODE" == "auto-update" ]; then
     RELEASE_INFO=$(curl -sS "$API_URL" 2>&1)
     if [ $? -ne 0 ]; then
         eecho "Failed to retrieve latest release information, exiting!"
+        eecho "**************************************************************"
         eecho "JSON Response:"
         eecho "$RELEASE_INFO"
         eecho "**************************************************************"
@@ -381,6 +377,7 @@ if [ "$RUN_MODE" == "auto-update" ]; then
     RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep '"tag_name":' | cut -d '"' -f 4)
     if [ -z "$RELEASE_NUMBER" ]; then
         eecho "Failed to retrieve latest release number, exiting!"
+        eecho "**************************************************************"
         eecho "JSON Response:"
         eecho "$RELEASE_INFO"
         eecho "**************************************************************"
@@ -395,7 +392,7 @@ if [ $apt -eq 1 ]; then
     current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     # Without current version, auto-update cannot proceed.
     if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
-        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        eecho "Unable to retrieve the current version of AZNFS, exiting!"
         exit 1
     fi
 
@@ -416,7 +413,7 @@ elif [ $zypper -eq 1 ]; then
     current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
     # Without current version, auto-update cannot proceed.
     if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
-        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        eecho "Unable to retrieve the current version of AZNFS, exiting!"
         exit 1
     fi
     if [ -n "$current_version" ]; then
@@ -430,7 +427,7 @@ else
     current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     # Without current version, auto-update cannot proceed.
     if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
-        eecho "Unable to retrieve the current version of AZNFS. Exiting."
+        eecho "Unable to retrieve the current version of AZNFS, exiting!"
         exit 1
     fi
     if [ -n "$current_version" ]; then

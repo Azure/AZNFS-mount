@@ -41,15 +41,15 @@ if [ -f "$flag_file" ]; then
 	if [ "$aznfswatchdog_pid" != "$aznfswatchdog_pid_inside_flag" ]; then
 		# The flag file is stale, remove it
 		rm -f "$flag_file"
-		echo "Removed stale flag file."
+		echo "Removed stale flag file"
 	fi
 fi
 
 # In case of manual upgrade, stop the watchdog before proceeding.
 if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
-		systemctl stop aznfswatchdog
-		systemctl disable aznfswatchdog
-		echo "Stopped aznfswatchdog service."
+        systemctl stop aznfswatchdog
+        systemctl disable aznfswatchdog
+        echo "Stopped aznfswatchdog service"
 fi
 
 %post
@@ -149,7 +149,7 @@ if [ $1 == 0 ]; then
 	# Stop aznfswatchdog in case of removing the package.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
-	echo "Stopped aznfswatchdog service."
+	echo "Stopped aznfswatchdog service"
 fi
 
 %postun
