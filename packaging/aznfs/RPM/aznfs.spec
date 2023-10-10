@@ -45,6 +45,7 @@ if [ -f "$flag_file" ]; then
 	fi
 fi
 
+# In case of manual upgrade, stop the watchdog before proceeding.
 if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
 		systemctl stop aznfswatchdog
 		systemctl disable aznfswatchdog
@@ -95,7 +96,7 @@ if [ ! -f /opt/microsoft/aznfs/data/config ]; then
         chmod 0644 /opt/microsoft/aznfs/data/config
 fi
 
-# Check if the flag file does not exist
+# If it's an auto upgrade triggered by aznfswatchdog, don't restart watchdog.
 if [ ! -f /tmp/.update_in_progress_from_watchdog.flag ]; then
         systemctl daemon-reload
         systemctl enable aznfswatchdog

@@ -193,11 +193,10 @@ while :; do
 
     if $check_for_latest_update; then
         if [ -e "/opt/microsoft/aznfs/aznfs_install.sh" ]; then
-            pecho "Running Auto-update"
             ./opt/microsoft/aznfs/aznfs_install.sh "auto-update"
         else
-            wecho "[FATAL] /opt/microsoft/aznfs/aznfs_install.sh not found. This is an unexpected error."
-            Wecho "[FATAL] Please contact Microsoft support before using any Blob NFS shares."
+            wecho "[FATAL] /opt/microsoft/aznfs/aznfs_install.sh not found. This is an unexpected error!"
+            Wecho "[FATAL] Please contact Microsoft support."
         fi
     fi
 
