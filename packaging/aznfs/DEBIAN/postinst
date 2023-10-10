@@ -39,7 +39,6 @@ if [ -f /opt/microsoft/aznfs/randbytes ]; then
         chattr -f +i /opt/microsoft/aznfs/data/randbytes
 fi
 
-
 # Check if the config file exists; if not, create it.
 if [ ! -f /opt/microsoft/aznfs/data/config ]; then
         # Create the config file and set default AUTO_UPDATE_AZNFS=true inside it.
@@ -48,14 +47,15 @@ if [ ! -f /opt/microsoft/aznfs/data/config ]; then
         # Set the permissions for the config file.
         chmod 0644 /opt/microsoft/aznfs/data/config
 fi
+flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
-if [ ! -f /tmp/.update_in_progress_from_watchdog.flag ]; then
+if [ ! -f "$flag_file" ]; then
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
 else
         # Clean up the update in progress flag file
-        rm -f /tmp/.update_in_progress_from_watchdog.flag
+        rm -f "$flag_file"
 fi
 

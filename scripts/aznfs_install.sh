@@ -166,7 +166,7 @@ perform_aznfs_update()
     fi
 
     if [ "$RUN_MODE" == "auto-update" ]; then
-        secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER"
+        secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER..."
         pecho "Restarting aznfswatchdog to apply changes!"
         systemctl daemon-reload
         systemctl restart aznfswatchdog
@@ -204,13 +204,13 @@ check_aznfs_update()
         fi
         
     elif [ "$RUN_MODE" == "manual-update" ]; then
-        # Check if the current version matches the desired release number
+        # Check if the current version matches the desired release number.
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
             secho "AZNFS version $current_version is already installed"
             exit 0
         fi
         
-        # Ask the user if they want to install the desired release
+        # Ask the user if they want to install the desired release.
         read -n 1 -p "AZNFS version $current_version is already installed. Do you want to install version $RELEASE_NUMBER? [Y/n] " result < /dev/tty
         echo
         if [ -n "$result" -a "$result" != "y" -a "$result" != "Y" ]; then
