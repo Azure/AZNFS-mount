@@ -285,19 +285,23 @@ verify_super_user()
 
 parse_user_config()
 {
-    if [ -f "$CONFIG_FILE" ]; then
-        # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
-        AUTO_UPDATE_AZNFS=$(grep "^AUTO_UPDATE_AZNFS=" "$CONFIG_FILE" | cut -d '=' -f2)
-        if [ -z "$AUTO_UPDATE_AZNFS" ]; then
-            eecho "$CONFIG_FILE is present but AUTO_UPDATE_AZNFS is empty. Setting the default value!"
-            AUTO_UPDATE_AZNFS="false"
-        fi
-        # Convert to lowercase for easy comparison later.
-        AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
-    else
-        # If the configuration file doesn't exist, set a default value.
-        eecho "$CONFIG_FILE not found. Setting the default value!"
-        AUTO_UPDATE_AZNFS="false"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        eecho "$CONFIG_FILE not found. Please make sure it is present."
+        exit 1
+    fi
+
+    # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
+    AUTO_UPDATE_AZNFS=$(grep "^AUTO_UPDATE_AZNFS=" "$CONFIG_FILE" | cut -d '=' -f2)
+    if [ -z "$AUTO_UPDATE_AZNFS" ]; then
+        eecho "AUTO_UPDATE_AZNFS is missing in $CONFIG_FILE."
+        exit 1
+    fi
+
+    # Convert to lowercase for easy comparison later.
+    AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
+    if [ "$AUTO_UPDATE_AZNFS" != "true" ] && [ "$AUTO_UPDATE_AZNFS" != "false" ]; then
+        eecho "Invalid value for AUTO_UPDATE_AZNFS: '$AUTO_UPDATE_AZNFS'."
+        exit 1
     fi
 
     # Bailout and do nothing if user didn't set the auto-update.
