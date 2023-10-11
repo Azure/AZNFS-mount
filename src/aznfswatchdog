@@ -184,11 +184,11 @@ while :; do
 
     epoch_now=$(date +%s)
 
-    # To check if any AZNFS updates available.
+    # Check for AZNFS updates.
     check_for_latest_update=false
     if [ "$AKS_USER" != "true" ] && [ $epoch_now -ge $next_update_detection_epoch ]; then
         check_for_latest_update=true
-        next_update_detection_epoch=$epoch_now + $UPDATE_DETECTION_FREQUENCY)
+        next_update_detection_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
     fi
 
     if $check_for_latest_update; then

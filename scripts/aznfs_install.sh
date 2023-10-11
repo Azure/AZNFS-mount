@@ -144,13 +144,13 @@ perform_aznfs_update()
         eecho "$wget_output"
         exit 1
     fi
-    
+
+    # It's not possible that wget is successful, and package is not present before installation.
     if [ ! -f "/tmp/${package_name}" ]; then
         eecho "[BUG] Downloaded package file '/tmp/${package_name}' not found, installation aborted!"
         exit 1
     fi
     
-    # Check if the downloaded file exists before proceeding with installation.
     if [ "$install_cmd" == "zypper" ]; then
         install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
     else
@@ -160,14 +160,14 @@ perform_aznfs_update()
     rm -f "/tmp/${package_name}"
 
     if [ $install_error -ne 0 ]; then
-        eecho "[FATAL] Error installing AZNFS $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
+        eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
         eecho "$install_output"
         exit 1
     fi
 
     if [ "$RUN_MODE" == "auto-update" ]; then
-        secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER..."
-        pecho "Restarting aznfswatchdog to apply changes!"
+        secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER."
+        pecho "Restarting aznfswatchdog to apply changes..."
         systemctl daemon-reload
         systemctl restart aznfswatchdog
     else
@@ -288,21 +288,23 @@ parse_user_config()
     if [ -f "$CONFIG_FILE" ]; then
         # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
         AUTO_UPDATE_AZNFS=$(grep "^AUTO_UPDATE_AZNFS=" "$CONFIG_FILE" | cut -d '=' -f2)
-        
+        if [ -z "$AUTO_UPDATE_AZNFS" ]; then
+            eecho "$CONFIG_FILE is present but AUTO_UPDATE_AZNFS is empty. Setting the default value!"
+            AUTO_UPDATE_AZNFS="false"
+        fi
         # Convert to lowercase for easy comparison later.
         AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
     else
         # If the configuration file doesn't exist, set a default value.
-        eecho "$CONFIG_FILE not found. Setting the default values!"
+        eecho "$CONFIG_FILE not found. Setting the default value!"
         AUTO_UPDATE_AZNFS="false"
     fi
-
-    pecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 
     # Bailout and do nothing if user didn't set the auto-update.
     if [ "$AUTO_UPDATE_AZNFS" == "false" ]; then
         exit 0
     fi
+    pecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 }
 
 ######################
@@ -397,7 +399,7 @@ if [ $apt -eq 1 ]; then
         exit 1
     fi
 
-    if [ -n "$current_version" -a -z "$is_uninstalled" ]: then
+    if [ -n "$current_version" -a -z "$is_uninstalled" ]; then
         is_installed=true
     else
         is_installed=false
