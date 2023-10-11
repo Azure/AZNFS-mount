@@ -297,12 +297,11 @@ parse_user_config()
         AUTO_UPDATE_AZNFS="false"
     fi
 
-    pecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
-
     # Bailout and do nothing if user didn't set the auto-update.
     if [ "$AUTO_UPDATE_AZNFS" == "false" ]; then
         exit 0
     fi
+    pecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 }
 
 ######################
