@@ -7,6 +7,7 @@
 
 # Are we running inside the AKS?
 AKS_USER="false"
+
 #
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob endpoints.
@@ -16,7 +17,7 @@ MONITOR_INTERVAL_SECS=5
 # How often do we check for change in FQDN->IP?
 IP_CHANGE_DETECTION_FREQUENCY=60
 
-# How often do we check for updates of AZNFS.
+# How often do we check for updates of AZNFS?
 UPDATE_DETECTION_FREQUENCY=86400
 
 #

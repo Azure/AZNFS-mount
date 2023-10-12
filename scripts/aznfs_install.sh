@@ -292,6 +292,9 @@ parse_user_config()
 
     # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
     AUTO_UPDATE_AZNFS=$(grep "^AUTO_UPDATE_AZNFS=" "$CONFIG_FILE" | cut -d '=' -f2)
+    
+    # If the value in the configuration file contains leading or trailing whitespace, it may not behave as expected.
+    AUTO_UPDATE_AZNFS=$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' <<<"${AUTO_UPDATE_AZNFS}")
     if [ -z "$AUTO_UPDATE_AZNFS" ]; then
         eecho "AUTO_UPDATE_AZNFS is missing in $CONFIG_FILE."
         exit 1
