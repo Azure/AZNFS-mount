@@ -393,7 +393,7 @@ if [ "$RUN_MODE" == "auto-update" ]; then
     #     eecho "**************************************************************"
     #     exit 1
     # fi
-    RELEASE_NUMBER="0.1.213"
+    RELEASE_NUMBER="0.1.214"
 fi
 
 if [ $apt -eq 1 ]; then
