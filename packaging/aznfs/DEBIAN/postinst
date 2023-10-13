@@ -55,7 +55,7 @@ if [ ! -f "$flag_file" ]; then
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
 else
-        # Clean up the update in progress flag file
+        # Clean up the update in progress flag file.
         rm -f "$flag_file"
 fi
 

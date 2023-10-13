@@ -11,8 +11,6 @@ LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 CONFIG_FILE="${OPTDIRDATA}/config"
 
 RELEASE_NUMBER=x.y.z
-REPO_OWNER="Azure"
-REPO_NAME="AZNFS-mount"
 AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
 AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
 RUN_MODE="manual-update"
@@ -372,7 +370,7 @@ ensure_pkg "wget"
 
 if [ "$RUN_MODE" == "auto-update" ]; then
     # Define the GitHub API URL to get the latest release.
-    API_URL="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+    API_URL="https://api.github.com/repos/Azure/AZNFS-mount/releases/latest"
     RELEASE_INFO=$(curl -sS --max-time 60 "$API_URL" 2>&1)
     if [ $? -ne 0 ]; then
         eecho "Failed to retrieve latest release information, exiting!"

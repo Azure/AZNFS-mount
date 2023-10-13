@@ -31,14 +31,14 @@ fi
 flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 if [ -f "$flag_file" ]; then
-	# Get the PID of aznfswatchdog
+	# Get the PID of aznfswatchdog.
 	aznfswatchdog_pid=$(pgrep aznfswatchdog)
 	
-	# Read the PID from the flag file
+	# Read the PID from the flag file.
 	aznfswatchdog_pid_inside_flag=$(cat "$flag_file")
 	
 	if [ "$aznfswatchdog_pid" != "$aznfswatchdog_pid_inside_flag" ]; then
-		# The flag file is stale, remove it
+		# The flag file is stale, remove it.
 		rm -f "$flag_file"
 		echo "Removed stale flag file"
 	fi
@@ -101,7 +101,7 @@ if [ ! -f /tmp/.update_in_progress_from_watchdog.flag ]; then
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
 else
-        # Clean up the update in progress flag file
+        # Clean up the update in progress flag file.
         rm -f /tmp/.update_in_progress_from_watchdog.flag
 fi
 
