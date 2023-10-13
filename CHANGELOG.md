@@ -6,19 +6,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
-- Add Auto-Update feature for AZNFS
+- Introduce Auto-Update feature for AZNFS
 
 ## [1.0.10] - 2023-09-12
 
-To fail the mounting of shares if the Blob IP->FQDN entry is present in /etc/hosts file and log warnings if entry is added after aznfswatchdog is started running.
+Enhanced mounting of shares by introducing a mechanism to prevent mounting when the Blob IP-to-FQDN entry is detected in the /etc/hosts file. This modification aims to ensure that IP change detection remains effective. Additionally, the system now logs warnings when such an entry is added after aznfswatchdog has been initiated, allowing for proactive monitoring and issue resolution.
 
 ### Added
 - [AZNFS-mount](https://github.com/Azure/AZNFS-mount/pull/78)
-  Throw Error/Warning if entry is present in /etc/hosts
+  Prevent mounting of shares when the Blob IP->FQDN entry is present in /etc/hosts
 
 ### Fixed
-
-- [AZNFS-mount](https://github.com/Azure/AZNFS-mount/pull/83)
-  Syntax Error
-- [AZNFS-mount](https://github.com/Azure/AZNFS-mount/pull/79)
-  Bug fix in aznfswatchdog
+- [AZNFS-mount #83](https://github.com/Azure/AZNFS-mount/pull/83)
+  Corrected syntax error in the code
+- [AZNFS-mount #79](https://github.com/Azure/AZNFS-mount/pull/79)
+  Resolved a bug in aznfswatchdog introduced in an older version of bash
