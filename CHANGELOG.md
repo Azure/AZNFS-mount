@@ -4,9 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [Unreleased](https://github.com/Azure/AZNFS-mount/pull/84)
+## [Unreleased]
 
-- Introducing Auto-Update feature for AZNFS
+- Introducing Auto-Update feature for AZNFS (https://github.com/Azure/AZNFS-mount/pull/84)
 
 ## [1.0.10]- 2023-09-12
 
