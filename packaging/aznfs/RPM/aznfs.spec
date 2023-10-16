@@ -18,6 +18,7 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /sbin/mount.aznfs
 /opt/microsoft/aznfs/common.sh
 /opt/microsoft/aznfs/mountscript.sh
+/opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
 
 %pre
@@ -27,11 +28,27 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-# In case of upgrade.
-if [ $1 == 2 ]; then
-	systemctl stop aznfswatchdog
-	systemctl disable aznfswatchdog
-	echo "Stopped aznfswatchdog service."
+flag_file="/tmp/.update_in_progress_from_watchdog.flag"
+
+if [ -f "$flag_file" ]; then
+	# Get the PID of aznfswatchdog.
+	aznfswatchdog_pid=$(pgrep aznfswatchdog)
+	
+	# Read the PID from the flag file.
+	aznfswatchdog_pid_inside_flag=$(cat "$flag_file")
+	
+	if [ "$aznfswatchdog_pid" != "$aznfswatchdog_pid_inside_flag" ]; then
+		# The flag file is stale, remove it.
+		rm -f "$flag_file"
+		echo "Removed stale flag file"
+	fi
+fi
+
+# In case of manual upgrade, stop the watchdog before proceeding.
+if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
+        systemctl stop aznfswatchdog
+        systemctl disable aznfswatchdog
+        echo "Stopped aznfswatchdog service"
 fi
 
 %post
@@ -39,6 +56,7 @@ fi
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
+chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
 
 # Set suid bit for mount.aznfs to allow mount for non-super user.
@@ -68,10 +86,25 @@ if [ $1 == 2 ]; then
 	fi
 fi
 
-# Start aznfswatchdog service.
-systemctl daemon-reload
-systemctl enable aznfswatchdog
-systemctl start aznfswatchdog
+# Check if the config file exists; if not, create it.
+if [ ! -f /opt/microsoft/aznfs/data/config ]; then
+        # Create the config file and set default AUTO_UPDATE_AZNFS=true inside it.
+        echo "AUTO_UPDATE_AZNFS=true" > /opt/microsoft/aznfs/data/config
+
+        # Set the permissions for the config file.
+        chmod 0644 /opt/microsoft/aznfs/data/config
+fi
+
+# If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
+if [ ! -f /tmp/.update_in_progress_from_watchdog.flag ]; then
+        systemctl daemon-reload
+        systemctl enable aznfswatchdog
+        systemctl start aznfswatchdog
+else
+        # Clean up the update in progress flag file.
+        rm -f /tmp/.update_in_progress_from_watchdog.flag
+fi
+
 
 if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
 	echo 	
@@ -115,7 +148,7 @@ if [ $1 == 0 ]; then
 	# Stop aznfswatchdog in case of removing the package.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
-	echo "Stopped aznfswatchdog service."
+	echo "Stopped aznfswatchdog service"
 fi
 
 %postun

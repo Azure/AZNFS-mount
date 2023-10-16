@@ -12,6 +12,7 @@ set -e
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
+chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
 
 # Set suid bit for mount.aznfs to allow mount for non-super user.
@@ -38,7 +39,23 @@ if [ -f /opt/microsoft/aznfs/randbytes ]; then
         chattr -f +i /opt/microsoft/aznfs/data/randbytes
 fi
 
-# Start aznfswatchdog service.
-systemctl daemon-reload
-systemctl enable aznfswatchdog
-systemctl start aznfswatchdog
+# Check if the config file exists; if not, create it.
+if [ ! -f /opt/microsoft/aznfs/data/config ]; then
+        # Create the config file and set default AUTO_UPDATE_AZNFS=true inside it.
+        echo "AUTO_UPDATE_AZNFS=true" > /opt/microsoft/aznfs/data/config
+
+        # Set the permissions for the config file.
+        chmod 0644 /opt/microsoft/aznfs/data/config
+fi
+flag_file="/tmp/.update_in_progress_from_watchdog.flag"
+
+# If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
+if [ ! -f "$flag_file" ]; then
+        systemctl daemon-reload
+        systemctl enable aznfswatchdog
+        systemctl start aznfswatchdog
+else
+        # Clean up the update in progress flag file.
+        rm -f "$flag_file"
+fi
+

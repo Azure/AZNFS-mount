@@ -26,7 +26,25 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	fi
 fi
 
-# Stop aznfswatchdog service and clean it.
-systemctl stop aznfswatchdog
-systemctl disable aznfswatchdog
-echo "Stopped aznfswatchdog service."
+flag_file="/tmp/.update_in_progress_from_watchdog.flag"
+
+if [ -f "$flag_file" ]; then
+	# Get the PID of aznfswatchdog.
+	pid_aznfswatchdog=$(pgrep aznfswatchdog)
+	
+	# Read the PID from the flag file.
+	pid_aznfswatchdog_in_flagfile=$(cat $flag_file)
+	
+	if [ "$pid_aznfswatchdog" != "$pid_aznfswatchdog_in_flagfile" ]; then
+		# The flag file is stale, remove it.
+		rm -f "$flag_file"
+		echo "Removed stale flag file"
+	fi
+fi
+
+if [ ! -f "$flag_file" ]; then
+	# Stop aznfswatchdog service and clean it.
+	systemctl stop aznfswatchdog
+	systemctl disable aznfswatchdog
+	echo "Stopped aznfswatchdog service"
+fi
