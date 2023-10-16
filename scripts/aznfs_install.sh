@@ -289,7 +289,7 @@ parse_user_config()
     fi
 
     # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
-    AUTO_UPDATE_AZNFS=$(grep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | cut -d '=' -f2 | awk '{$1=$1};1')
+    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
     if [ -z "$AUTO_UPDATE_AZNFS" ]; then
         eecho "AUTO_UPDATE_AZNFS is missing in $CONFIG_FILE."
         exit 1
