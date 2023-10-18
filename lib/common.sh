@@ -257,28 +257,6 @@ get_authoritative_resolution()
     done
 }
 
-# Function to resolve the hostname using authoritative servers
-resolve_using_authoritative() 
-{
-    get_authoritative_resolution "$hname"
-    resolution_status=$?
-    if [ $resolution_status -ne 0 ]; then
-        vecho "Failed to resolve ${hname} using Azure Authoritative Server!"
-    fi
-}
-
-# Function to resolve the hostname using the host mechanism
-resolve_using_fallback() 
-{
-    get_host_resolution "$hname"
-    resolution_status=$?
-    if [ $resolution_status -ne 0 ]; then
-        eecho "All resolution attempts failed for ${hname}."
-        return 1
-    fi
-    fallback=true
-}
-
 #
 # Blob fqdn to IPv4 adddress.
 # Caller must make sure that it is called only for hostname and not IP address.
@@ -323,6 +301,15 @@ resolve_ipv4()
             vecho "host returned 0 address for ${hname}, expected one or more!"
             # Exhausted retries?
             if [ $i -eq $RETRIES ]; then
+                get_host_resolution "$hname"
+                resolution_status=$?
+                if [ $resolution_status -eq 0 ]; then
+                    cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
+                    if [ $cnt_ip -eq 0 ]; then
+                        return 1
+                    fi
+                    break
+                fi
                 return 1
             fi
             # Mostly some transient issue, retry after some sleep.
