@@ -191,7 +191,7 @@ get_host_resolution()
         break
     }
 
-    return 0  # Success
+    return 0  # Success.
 }
 
 #
@@ -212,15 +212,24 @@ get_authoritative_resolution()
             return 1
         fi
 
-        # Check if the result contains "origin = " in the "Authoritative answers can be found from" section
+        # Check if the nslookup_output contains "origin = " in the "Authoritative answers can be found from" section.
         if echo "$nslookup_output" | grep -q "origin = "; then
-            # Extract auth_ns from "origin = " line.
+            # Extract authoritative nameserver from "origin = " line.
             auth_ns=$(echo "$nslookup_output" | grep -o 'origin = \S*' | cut -d ' ' -f 3)
 
             # Perform an A record (IPv4) query.
             a_result=$(nslookup -query=a "$hname" "$auth_ns")
             if [ $? -ne 0 ]; then
-                eecho "DNS query for A record failed. Hostname: $hname, DNS server: $auth_ns"
+                #
+                # Special case of failure to indicate that the fqdn does not exist.
+                # We convey it to our caller using the special o/p "NXDOMAIN".
+                # Returning 2 to indicate that we don't want to retry in this case.
+                #
+                if [[ "$cname_result" =~ .*NXDOMAIN.* ]]; then
+                    echo "NXDOMAIN"
+                    return 2
+                fi
+                vecho "DNS query for A record failed. Hostname: $hname, Authoritative NS: $auth_ns"
                 return 1
             fi
 
@@ -245,12 +254,22 @@ get_authoritative_resolution()
             return 0  # Success
         fi
         # No "origin = " line found.
-        auth_ns=$(echo "$nslookup_output" | awk '/Authoritative answers can be found from:/ {getline; print $1; exit}')
+        auth_ns=$(echo "$nslookup_output" | grep -A1 "Authoritative answers can be found from:" | tail -n 1 | awk '{print $1}')
 
         # Perform nslookup to query for CNAME records.
         cname_result=$(nslookup -query=cname "$hname" "$auth_ns")
         if [ $? -ne 0 ]; then
-            eecho "DNS query for CNAME records failed. Hostname: $hname, Authoritative NS: $auth_ns"
+            #
+            # Special case of failure to indicate that the fqdn does not exist.
+            # We convey it to our caller using the special o/p "NXDOMAIN".
+            # Returning 2 to indicate that we don't want to retry in this case.
+            #
+            if [[ "$cname_result" =~ .*NXDOMAIN.* ]]; then
+                echo "NXDOMAIN"
+                return 2
+            fi
+            vecho "DNS query for CNAME records failed. Hostname: $hname, Authoritative NS: $auth_ns"
+            return 1
         fi
         canonical_name=$(echo "$cname_result" | grep "canonical name =" | cut -d '=' -f 2 | tr -d ' ' | rev | cut -c 2- | rev)
         hname=$canonical_name
@@ -275,16 +294,24 @@ resolve_ipv4()
     for((i=0;i<=$RETRIES;i++)) {
         # Resolve hostname to IPv4 address.
         get_authoritative_resolution "$hname"
-        resolution_status=$?
-        if [ $resolution_status -ne 0 ]; then
+        auth_resolution_status=$?
+
+        # Special case where NXDOMAIN is returned from DNS resolution, we treat it as non-retryable.
+        if [ $auth_resolution_status -eq 2 ]; then
+            get_host_resolution "$hname"
+            host_resolution_status=$?
+            if [ $host_resolution_status -ne 0 ]; then
+                return 1
+            fi
+
+        elif [ $auth_resolution_status -eq 1 ]; then
             vecho "Failed to resolve ${hname} using Azure Authoritative Server!"
             # Exhausted retries?
             if [ $i -eq $RETRIES ]; then
                 # All retries failed, try the fallback resolution mechanism.
                 get_host_resolution "$hname"
-                resolution_status=$?
-                if [ $resolution_status -ne 0 ]; then
-                    eecho "All resolution attempts failed for ${hname}."
+                host_resolution_status=$?
+                if [ $host_resolution_status -ne 0 ]; then
                     return 1
                 fi
                 fallback=true
@@ -302,8 +329,8 @@ resolve_ipv4()
             # Exhausted retries?
             if [ $i -eq $RETRIES ]; then
                 get_host_resolution "$hname"
-                resolution_status=$?
-                if [ $resolution_status -eq 0 ]; then
+                host_resolution_status=$?
+                if [ $host_resolution_status -eq 0 ]; then
                     cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
                     if [ $cnt_ip -eq 0 ]; then
                         return 1
@@ -339,7 +366,7 @@ resolve_ipv4()
     fi
 
     #
-    # Check if the IP-FQDN pair is present in /etc/hosts
+    # Check if the IP-FQDN pair is present in /etc/hosts.
     # 
     if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
         if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
