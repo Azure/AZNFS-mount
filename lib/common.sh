@@ -148,16 +148,11 @@ is_present_in_etc_hosts()
 }
 
 #
-# Blob fqdn to IPv4 adddress.
-# Caller must make sure that it is called only for hostname and not IP address.
+# To resolve Blob FQDN to IPV4 address using host.
 #
-# Note: Since caller captures its o/p this should not log anything other than
-#       the IP address, in case of success return.
-#
-resolve_ipv4()
+get_host_resolution()
 {
     local hname="$1"
-    local fail_if_present_in_etc_hosts="$2"
     local RETRIES=3
 
     # Some retries for resilience.
@@ -193,10 +188,139 @@ resolve_ipv4()
         ipv4_addr_all=$(echo "$host_op" | grep " has address " | awk '{print $4}' |\
                         sort | shuf --random-source=$RANDBYTES)
 
+        break
+    }
+
+    return 0  # Success
+}
+
+#
+# To resolve Blob FQDN to IPV4 address using Azure Authoritative Nameservers.
+#
+get_authoritative_resolution() 
+{
+    local hname="$1"
+
+    while true; do
+        # Remove the subdomain portion to query the higher-level domain.
+        parent_domain=$(echo "$hname" | cut -d "." -f2-)
+
+        # Perform nslookup to query for NS records.
+        nslookup_output=$(nslookup -query=ns "$parent_domain")
+        if [ $? -ne 0 ]; then
+            vecho "DNS query for NS records failed. Hostname: $hname"
+            return 1
+        fi
+
+        # Check if the result contains "origin = " in the "Authoritative answers can be found from" section
+        if echo "$nslookup_output" | grep -q "origin = "; then
+            # Extract auth_ns from "origin = " line.
+            auth_ns=$(echo "$nslookup_output" | grep -o 'origin = \S*' | cut -d ' ' -f 3)
+
+            # Perform an A record (IPv4) query.
+            a_result=$(nslookup -query=a "$hname" "$auth_ns")
+            if [ $? -ne 0 ]; then
+                eecho "DNS query for A record failed. Hostname: $hname, DNS server: $auth_ns"
+                return 1
+            fi
+
+            # For ZRS accounts, we get canonical name here.
+            if echo "$a_result" | grep -q "canonical name ="; then
+                canonical_name=$(echo "$a_result" | grep "canonical name =" | cut -d '=' -f 2 | tr -d ' ' | rev | cut -c 2- | rev)
+                hname=$canonical_name
+                continue
+            fi
+
+            # Extract all lines that contain $hname, along with the following lines.
+            ipv4_lines=$(echo "$a_result" | grep -A1 "$hname")
+
+            #
+            # For ZRS accounts, we will get 3 IP addresses whose order keeps changing.
+            # We sort the output of host so that we always look at the same address,
+            # also we shuffle it so that different clients balance out across different
+            # zones.
+            #
+            ipv4_addr_all=$(echo "$ipv4_lines" | grep -o 'Address: [0-9\.]*' | cut -d ' ' -f 2 |\
+                            sort | shuf --random-source=$RANDBYTES)
+            return 0  # Success
+        fi
+        # No "origin = " line found.
+        auth_ns=$(echo "$nslookup_output" | awk '/Authoritative answers can be found from:/ {getline; print $1; exit}')
+
+        # Perform nslookup to query for CNAME records.
+        cname_result=$(nslookup -query=cname "$hname" "$auth_ns")
+        if [ $? -ne 0 ]; then
+            eecho "DNS query for CNAME records failed. Hostname: $hname, Authoritative NS: $auth_ns"
+        fi
+        canonical_name=$(echo "$cname_result" | grep "canonical name =" | cut -d '=' -f 2 | tr -d ' ' | rev | cut -c 2- | rev)
+        hname=$canonical_name
+    done
+}
+
+# Function to resolve the hostname using authoritative servers
+resolve_using_authoritative() 
+{
+    get_authoritative_resolution "$hname"
+    resolution_status=$?
+    if [ $resolution_status -ne 0 ]; then
+        vecho "Failed to resolve ${hname} using Azure Authoritative Server!"
+    fi
+}
+
+# Function to resolve the hostname using the host mechanism
+resolve_using_fallback() 
+{
+    get_host_resolution "$hname"
+    resolution_status=$?
+    if [ $resolution_status -ne 0 ]; then
+        eecho "All resolution attempts failed for ${hname}."
+        return 1
+    fi
+    fallback=true
+}
+
+#
+# Blob fqdn to IPv4 adddress.
+# Caller must make sure that it is called only for hostname and not IP address.
+#
+# Note: Since caller captures its o/p this should not log anything other than
+#       the IP address, in case of success return.
+#
+resolve_ipv4()
+{
+    local hname="$1"
+    local fail_if_present_in_etc_hosts="$2"
+    local RETRIES=3
+    local fallback=false
+
+    # Some retries for resilience.
+    for((i=0;i<=$RETRIES;i++)) {
+        # Resolve hostname to IPv4 address.
+        get_authoritative_resolution "$hname"
+        resolution_status=$?
+        if [ $resolution_status -ne 0 ]; then
+            vecho "Failed to resolve ${hname} using Azure Authoritative Server!"
+            # Exhausted retries?
+            if [ $i -eq $RETRIES ]; then
+                # All retries failed, try the fallback resolution mechanism.
+                get_host_resolution "$hname"
+                resolution_status=$?
+                if [ $resolution_status -ne 0 ]; then
+                    eecho "All resolution attempts failed for ${hname}."
+                    return 1
+                fi
+                fallback=true
+            elif [ $fallback = false ]; then
+                # Mostly some transient issue, retry after some sleep.
+                sleep 1
+                continue
+            fi
+        fi
+
         cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
 
         if [ $cnt_ip -eq 0 ]; then
-            vecho "host returned 0 address for ${hname}, expected one or more! [$host_op]"
+            vecho "host returned 0 address for ${hname}, expected one or more!"
             # Exhausted retries?
             if [ $i -eq $RETRIES ]; then
                 return 1
