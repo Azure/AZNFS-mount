@@ -1,7 +1,7 @@
 ## [Unreleased]
 
 - Introducing Auto-Update feature for AZNFS (https://github.com/Azure/AZNFS-mount/pull/84)
-- Resolving Azure endpoint addresses by quering Azure authoritative Nameservers
+- Resolving Azure endpoint addresses by quering Azure authoritative Nameservers (https://github.com/Azure/AZNFS-mount/pull/85)
 - Adding the support for Regional Accounts
 
 ## [1.0.10]- 2023-09-12
