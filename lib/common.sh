@@ -312,18 +312,20 @@ resolve_ipv4()
         fi
     fi
 
-    current_time=$(date +%s)
-
     # Check if the cache entry for the hostname exists
     if grep -q "^$hname:" "$CACHE_FILE"; then
         data=$(grep "^$hname:" "$CACHE_FILE" | cut -d: -f2-)
         entry=($data)
         timestamp="${entry[0]}"
         cached_data="${entry[1]}"
+
+        # Calculate the expiration time based on cache TTL
+        current_time=$(date +%s)
+        cache_expiration_time=$((timestamp + cache_ttl))
         
-        if ((current_time - timestamp <= cache_ttl)); then
+        if ((current_time <= cache_expiration_time)); then
             # The cache entry is still valid, use it
-            ipv4_addr_all="$cached_data"
+            ipv4_addr="$cached_data"
             cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
             cache_miss=false
         else
@@ -388,24 +390,22 @@ resolve_ipv4()
                 continue
             fi
 
-            # TODO:
-            # 1) Add the entry in cache corrosponding to the hostname ie. <hostname, ipv4_addr_all>
-            # 2) Make sure to add TTL for the entry added just now.
-
-            # After obtaining ipv4_addr_all, update the cache file
-            echo "$hname:$current_time:$ipv4_addr_all" >> "$CACHE_FILE"
-            
-            # Maintain cache size and remove the least recently used entry if necessary
-            if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
-                sed -i '1d' "$CACHE_FILE"
-            fi
-
             break
         }
+
+        # Use first address from the above curated list.
+        ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
+
+        # After obtaining ipv4_addr_all, update the cache file
+        current_time=$(date +%s)
+        echo "$hname:$current_time:$ipv4_addr" >> "$CACHE_FILE"
+
+        # Maintain cache size and remove the least recently used entry if necessary
+        if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
+            sed -i '1d' "$CACHE_FILE"
+        fi
     fi
 
-    # Use first address from the above curated list.
-    ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
 
     # For ZRS we need to use the first reachable IP.
     if [ $cnt_ip -ne 1 ]; then
