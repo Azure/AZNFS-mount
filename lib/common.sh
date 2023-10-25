@@ -13,12 +13,11 @@ RANDBYTES="${OPTDIRDATA}/randbytes"
 INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
 
 #
-# Global DNS cache with a cache size limit and TTL for entries (in seconds)
+# DNS cache with a cache size limit and TTL for entries (in seconds)
 #
-declare -A cache
+CACHE_FILE="/opt/microsoft/aznfs/.cache"
 cache_size_limit=10
-cache_keys=()
-cache_ttl=86400  # 24 hours
+cache_ttl=86400 # 24 hours
 
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
@@ -304,25 +303,35 @@ resolve_ipv4()
     # 2) if yes, ipv4_addr_all is what we should store. Else, go through regular process of fetching the result below.
     # 3) check if the entry is stale, ie. time entry has been in cache > TTL. Refresh the cache entry and remove the stale. Let's set 86400 seconds as TTL.
 
-    current_time=$(date +%s)
-
-    # Check if the value is in the cache for the hostname
-    if [ -n "${cache["$hname"]}" ]; then
-        cache_entry=(${cache["$hname"]})  # Cache entry is an array [timestamp, data]
-        timestamp=${cache_entry[0]}
-        data=${cache_entry[1]}
-
-        if ((current_time - timestamp <= cache_ttl)); then
-            # The cache entry is still valid, use it
-            ipv4_addr_all="$data"
-            cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
-            # vecho "Using cached data for $hname"
-            cache_miss=false
-        else
-            vecho "Cached data for $hname has expired. Refreshing..."
+    # Check if the cache file exists or create it
+    if [ ! -f "$CACHE_FILE" ]; then
+        touch "$CACHE_FILE"
+        if [ $? -ne 0 ]; then
+            eecho "Failed to touch ${CACHE_FILE}!"
+            return 1
         fi
     fi
 
+    current_time=$(date +%s)
+
+    # Check if the cache entry for the hostname exists
+    if grep -q "^$hname:" "$CACHE_FILE"; then
+        data=$(grep "^$hname:" "$CACHE_FILE" | cut -d: -f2-)
+        entry=($data)
+        timestamp="${entry[0]}"
+        cached_data="${entry[1]}"
+        
+        if ((current_time - timestamp <= cache_ttl)); then
+            # The cache entry is still valid, use it
+            ipv4_addr_all="$cached_data"
+            cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
+            cache_miss=false
+        else
+            vecho "Cached data for $hname has expired. Refreshing..."
+            # Remove the stale cache entry from the cache file
+            sed -i "/^$hname:/d" "$CACHE_FILE"
+        fi
+    fi
 
     if $cache_miss; then
         # Some retries for resilience.
@@ -383,15 +392,12 @@ resolve_ipv4()
             # 1) Add the entry in cache corrosponding to the hostname ie. <hostname, ipv4_addr_all>
             # 2) Make sure to add TTL for the entry added just now.
 
-            # After obtaining ipv4_addr_all, store it in the cache with a timestamp
-            cache["$hname"]="$current_time $ipv4_addr_all"
-
+            # After obtaining ipv4_addr_all, update the cache file
+            echo "$hname:$current_time:$ipv4_addr_all" >> "$CACHE_FILE"
+            
             # Maintain cache size and remove the least recently used entry if necessary
-            cache_keys=("$hname" "${cache_keys[@]}")  # Add the key to the front
-            if (( ${#cache_keys[@]} > cache_size_limit )); then
-                local removed_key="${cache_keys[-1]}"  # Get the least recently used key
-                unset "cache[$removed_key]"  # Remove the entry from the cache
-                cache_keys=("${cache_keys[@]:0:cache_size_limit}")  # Trim the keys array
+            if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
+                sed -i '1d' "$CACHE_FILE"
             fi
 
             break

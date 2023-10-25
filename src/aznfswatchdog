@@ -351,6 +351,7 @@ while :; do
         # This is the migration check.
         #
         new_ip=$(resolve_ipv4 "$l_host" "false")
+        pecho "[LOG] resolved ipv4"
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then
