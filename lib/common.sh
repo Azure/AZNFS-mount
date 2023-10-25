@@ -315,6 +315,7 @@ resolve_ipv4()
         if ((current_time - timestamp <= cache_ttl)); then
             # The cache entry is still valid, use it
             ipv4_addr_all="$data"
+            cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
             # vecho "Using cached data for $hname"
             cache_miss=false
         else
@@ -323,7 +324,7 @@ resolve_ipv4()
     fi
 
 
-    if cache_miss; then
+    if $cache_miss; then
         # Some retries for resilience.
         for((i=0;i<=$RETRIES;i++)) {
             # Resolve hostname to IPv4 address.
