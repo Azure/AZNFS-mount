@@ -6,7 +6,7 @@
 # --------------------------------------------------------------------------------------------
 
 # Are we running inside the AKS?
-AKS_USER="false"
+AKS_USER="true"
 
 #
 # How often does the watchdog look for unmounts and/or IP address changes for
