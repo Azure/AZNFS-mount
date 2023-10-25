@@ -13,6 +13,14 @@ RANDBYTES="${OPTDIRDATA}/randbytes"
 INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
 
 #
+# Global DNS cache with a cache size limit and TTL for entries (in seconds)
+#
+declare -A cache
+cache_size_limit=10
+cache_keys=()
+cache_ttl=86400  # 24 hours
+
+#
 # This stores the map of local IP and share name and external blob endpoint IP.
 #
 MOUNTMAP="${OPTDIRDATA}/mountmap"
@@ -289,63 +297,105 @@ resolve_ipv4()
     local fail_if_present_in_etc_hosts="$2"
     local RETRIES=3
     local fallback=false
+    local cache_miss=true
 
-    # Some retries for resilience.
-    for((i=0;i<=$RETRIES;i++)) {
-        # Resolve hostname to IPv4 address.
-        get_authoritative_resolution "$hname"
-        auth_resolution_status=$?
+    # TODO: 
+    # 1) check if the value is in the cache for hostname in cache?
+    # 2) if yes, ipv4_addr_all is what we should store. Else, go through regular process of fetching the result below.
+    # 3) check if the entry is stale, ie. time entry has been in cache > TTL. Refresh the cache entry and remove the stale. Let's set 86400 seconds as TTL.
 
-        # Special case where NXDOMAIN is returned from DNS resolution, we treat it as non-retryable.
-        if [ $auth_resolution_status -eq 2 ]; then
-            get_host_resolution "$hname"
-            host_resolution_status=$?
-            if [ $host_resolution_status -ne 0 ]; then
-                return 1
-            fi
+    current_time=$(date +%s)
 
-        elif [ $auth_resolution_status -eq 1 ]; then
-            vecho "Failed to resolve ${hname} using Azure Authoritative Server!"
-            # Exhausted retries?
-            if [ $i -eq $RETRIES ]; then
-                # All retries failed, try the fallback resolution mechanism.
+    # Check if the value is in the cache for the hostname
+    if [ -n "${cache["$hname"]}" ]; then
+        cache_entry=(${cache["$hname"]})  # Cache entry is an array [timestamp, data]
+        timestamp=${cache_entry[0]}
+        data=${cache_entry[1]}
+
+        if ((current_time - timestamp <= cache_ttl)); then
+            # The cache entry is still valid, use it
+            ipv4_addr_all="$data"
+            # vecho "Using cached data for $hname"
+            cache_miss=false
+        else
+            vecho "Cached data for $hname has expired. Refreshing..."
+        fi
+    fi
+
+
+    if cache_miss; then
+        # Some retries for resilience.
+        for((i=0;i<=$RETRIES;i++)) {
+            # Resolve hostname to IPv4 address.
+            get_authoritative_resolution "$hname"
+            auth_resolution_status=$?
+
+            # Special case where NXDOMAIN is returned from DNS resolution, we treat it as non-retryable.
+            if [ $auth_resolution_status -eq 2 ]; then
                 get_host_resolution "$hname"
                 host_resolution_status=$?
                 if [ $host_resolution_status -ne 0 ]; then
                     return 1
                 fi
-                fallback=true
-            elif [ $fallback = false ]; then
+
+            elif [ $auth_resolution_status -eq 1 ]; then
+                vecho "Failed to resolve ${hname} using Azure Authoritative Server!"
+                # Exhausted retries?
+                if [ $i -eq $RETRIES ]; then
+                    # All retries failed, try the fallback resolution mechanism.
+                    get_host_resolution "$hname"
+                    host_resolution_status=$?
+                    if [ $host_resolution_status -ne 0 ]; then
+                        return 1
+                    fi
+                    fallback=true
+                elif [ $fallback = false ]; then
+                    # Mostly some transient issue, retry after some sleep.
+                    sleep 1
+                    continue
+                fi
+            fi
+
+            cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
+
+            if [ $cnt_ip -eq 0 ]; then
+                vecho "host returned 0 address for ${hname}, expected one or more!"
+                # Exhausted retries?
+                if [ $i -eq $RETRIES ]; then
+                    get_host_resolution "$hname"
+                    host_resolution_status=$?
+                    if [ $host_resolution_status -eq 0 ]; then
+                        cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
+                        if [ $cnt_ip -eq 0 ]; then
+                            return 1
+                        fi
+                        break
+                    fi
+                    return 1
+                fi
                 # Mostly some transient issue, retry after some sleep.
                 sleep 1
                 continue
             fi
-        fi
 
-        cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
+            # TODO:
+            # 1) Add the entry in cache corrosponding to the hostname ie. <hostname, ipv4_addr_all>
+            # 2) Make sure to add TTL for the entry added just now.
 
-        if [ $cnt_ip -eq 0 ]; then
-            vecho "host returned 0 address for ${hname}, expected one or more!"
-            # Exhausted retries?
-            if [ $i -eq $RETRIES ]; then
-                get_host_resolution "$hname"
-                host_resolution_status=$?
-                if [ $host_resolution_status -eq 0 ]; then
-                    cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
-                    if [ $cnt_ip -eq 0 ]; then
-                        return 1
-                    fi
-                    break
-                fi
-                return 1
+            # After obtaining ipv4_addr_all, store it in the cache with a timestamp
+            cache["$hname"]="$current_time $ipv4_addr_all"
+
+            # Maintain cache size and remove the least recently used entry if necessary
+            cache_keys=("$hname" "${cache_keys[@]}")  # Add the key to the front
+            if (( ${#cache_keys[@]} > cache_size_limit )); then
+                local removed_key="${cache_keys[-1]}"  # Get the least recently used key
+                unset "cache[$removed_key]"  # Remove the entry from the cache
+                cache_keys=("${cache_keys[@]:0:cache_size_limit}")  # Trim the keys array
             fi
-            # Mostly some transient issue, retry after some sleep.
-            sleep 1
-            continue
-        fi
 
-        break
-    }
+            break
+        }
+    fi
 
     # Use first address from the above curated list.
     ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
