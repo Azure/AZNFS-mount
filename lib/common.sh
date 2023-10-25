@@ -316,9 +316,8 @@ resolve_ipv4()
     if grep -q "^$hname:" "$CACHE_FILE"; then
         data=$(grep "^$hname:" "$CACHE_FILE" | cut -d: -f2-)
         entry=($data)
-        timestamp="${entry[0]}"
-        cached_data="${entry[1]}"
-        pecho "[LOG] CATCH ENTRY IS FOUND data: $data, timestamp: $timestamp, cached_data: $cached_data " 1>/dev/null
+        timestamp=$(echo "$entry" | cut -d: -f1)
+        cached_data=$(echo "$entry" | cut -d: -f2-)
 
         # Calculate the expiration time based on cache TTL
         current_time=$(date +%s)
@@ -329,12 +328,10 @@ resolve_ipv4()
             ipv4_addr="$cached_data"
             cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
             cache_miss=false
-            pecho "[LOG] INSIDE THE VALID CACHE ENTRY THING. ipv4_addr: $ipv4_addr cnt_ip: $cnt_ip" 1>/dev/null
         else
             vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null
             # Remove the stale cache entry from the cache file
             sed -i "/^$hname:/d" "$CACHE_FILE"
-            pecho "[LOG] REMOVED A STALE ENTRY" 1>/dev/null
         fi
     fi
 
@@ -418,7 +415,6 @@ resolve_ipv4()
             fi
         }
     fi
-    pecho "[LOG]" 1>/dev/null
 
     if ! is_valid_ipv4_address "$ipv4_addr"; then
         eecho "[FATAL] host returned bad IPv4 address $ipv4_addr for hostname ${hname}!"
