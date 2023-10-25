@@ -318,6 +318,7 @@ resolve_ipv4()
         entry=($data)
         timestamp="${entry[0]}"
         cached_data="${entry[1]}"
+        pecho "[LOG] CATCH ENTRY IS FOUND data: $data, timestamp: $timestamp, cached_data: $cached_data " 1>/dev/null
 
         # Calculate the expiration time based on cache TTL
         current_time=$(date +%s)
@@ -328,10 +329,12 @@ resolve_ipv4()
             ipv4_addr="$cached_data"
             cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
             cache_miss=false
+            pecho "[LOG] INSIDE THE VALID CACHE ENTRY THING. ipv4_addr: $ipv4_addr cnt_ip: $cnt_ip" 1>/dev/null
         else
-            vecho "Cached data for $hname has expired. Refreshing..."
+            vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null
             # Remove the stale cache entry from the cache file
             sed -i "/^$hname:/d" "$CACHE_FILE"
+            pecho "[LOG] REMOVED A STALE ENTRY" 1>/dev/null
         fi
     fi
 
@@ -398,14 +401,13 @@ resolve_ipv4()
 
         # After obtaining ipv4_addr_all, update the cache file
         current_time=$(date +%s)
-        echo "$hname:$current_time:$ipv4_addr" >> "$CACHE_FILE"
+        echo "$hname:$current_time:$ipv4_addr" >> "$CACHE_FILE" 1>/dev/null
 
         # Maintain cache size and remove the least recently used entry if necessary
         if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
             sed -i '1d' "$CACHE_FILE"
         fi
     fi
-
 
     # For ZRS we need to use the first reachable IP.
     if [ $cnt_ip -ne 1 ]; then
@@ -416,6 +418,7 @@ resolve_ipv4()
             fi
         }
     fi
+    pecho "[LOG]" 1>/dev/null
 
     if ! is_valid_ipv4_address "$ipv4_addr"; then
         eecho "[FATAL] host returned bad IPv4 address $ipv4_addr for hostname ${hname}!"
