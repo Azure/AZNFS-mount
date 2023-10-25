@@ -398,7 +398,7 @@ resolve_ipv4()
 
         # After obtaining ipv4_addr_all, update the cache file
         current_time=$(date +%s)
-        echo "$hname:$current_time:$ipv4_addr" >> "$CACHE_FILE" 1>/dev/null
+        echo "$hname:$current_time:$ipv4_addr" >> "$CACHE_FILE"
 
         # Maintain cache size and remove the least recently used entry if necessary
         if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
