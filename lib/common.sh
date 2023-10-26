@@ -315,9 +315,8 @@ resolve_ipv4()
     # Check if the cache entry for the hostname exists
     if grep -q "^$hname:" "$CACHE_FILE"; then
         data=$(grep "^$hname:" "$CACHE_FILE" | cut -d: -f2-)
-        entry=($data)
-        timestamp=$(echo "$entry" | cut -d: -f1)
-        cached_data=$(echo "$entry" | cut -d: -f2-)
+        timestamp=$(echo "$data" | cut -d: -f1)
+        cached_data=$(echo "$data" | cut -d: -f2-)
 
         # Calculate the expiration time based on cache TTL
         current_time=$(date +%s)
@@ -326,7 +325,6 @@ resolve_ipv4()
         if ((current_time <= cache_expiration_time)); then
             # The cache entry is still valid, use it
             ipv4_addr="$cached_data"
-            cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
             cache_miss=false
         else
             vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null
@@ -395,6 +393,16 @@ resolve_ipv4()
 
         # Use first address from the above curated list.
         ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
+        
+        # For ZRS we need to use the first reachable IP.
+        if [ $cnt_ip -ne 1 ]; then
+            for((i=1;i<=$cnt_ip;i++)) {
+                ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
+                if is_ip_port_reachable $ipv4_addr 2048; then
+                    break
+                fi
+            }
+        fi
 
         # After obtaining ipv4_addr_all, update the cache file
         current_time=$(date +%s)
@@ -404,16 +412,6 @@ resolve_ipv4()
         if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
             sed -i '1d' "$CACHE_FILE"
         fi
-    fi
-
-    # For ZRS we need to use the first reachable IP.
-    if [ $cnt_ip -ne 1 ]; then
-        for((i=1;i<=$cnt_ip;i++)) {
-            ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
-            if is_ip_port_reachable $ipv4_addr 2048; then
-                break
-            fi
-        }
     fi
 
     if ! is_valid_ipv4_address "$ipv4_addr"; then
