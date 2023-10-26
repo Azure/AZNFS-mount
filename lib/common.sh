@@ -283,6 +283,59 @@ get_authoritative_resolution()
     done
 }
 
+refresh_cache_entry() 
+{
+    current_time=$(date +%s)
+    echo "$hname $current_time $ipv4_addr" >> "$CACHE_FILE"
+    
+    # Maintain cache size and remove the least recently used entry if necessary
+    if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
+        sed -i '1d' "$CACHE_FILE"
+    fi
+}
+
+get_dns_cache()
+{
+    local hname="$1"
+
+    # Check if the cache entry for the hostname exists
+    if grep -q "^$hname" "$CACHE_FILE"; then
+        data=$(grep "^$hname" "$CACHE_FILE")
+        timestamp=$(echo "$data" | cut -d ' ' -f2)
+        cached_data=$(echo "$data" | cut -d ' ' -f3-)
+
+        # Calculate the expiration time based on cache TTL
+        current_time=$(date +%s)
+        cache_expiration_time=$((timestamp + cache_ttl))
+
+        if ((current_time > cache_expiration_time)); then
+            vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null
+            return 0
+        fi
+
+        # The cache entry is still valid, use it
+        ipv4_addr="$cached_data"
+        if is_ip_port_reachable $ipv4_addr 2048; then
+            cache_miss=false
+        fi
+    fi
+    
+    return 0
+}
+
+create_cache_file() 
+{
+    if [ ! -f "$CACHE_FILE" ]; then
+        touch "$CACHE_FILE"
+        if [ $? -ne 0 ]; then
+            eecho "Failed to touch ${CACHE_FILE}!"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
 #
 # Blob fqdn to IPv4 adddress.
 # Caller must make sure that it is called only for hostname and not IP address.
@@ -296,41 +349,17 @@ resolve_ipv4()
     local fail_if_present_in_etc_hosts="$2"
     local RETRIES=3
     local fallback=false
-    local cache_miss=true
 
-    # TODO: 
-    # 1) check if the value is in the cache for hostname in cache?
-    # 2) if yes, ipv4_addr_all is what we should store. Else, go through regular process of fetching the result below.
-    # 3) check if the entry is stale, ie. time entry has been in cache > TTL. Refresh the cache entry and remove the stale. Let's set 86400 seconds as TTL.
-
-    # Check if the cache file exists or create it
-    if [ ! -f "$CACHE_FILE" ]; then
-        touch "$CACHE_FILE"
-        if [ $? -ne 0 ]; then
-            eecho "Failed to touch ${CACHE_FILE}!"
-            return 1
-        fi
+    create_cache_file
+    if [ $? -ne 0 ]; then
+        return 1
     fi
 
-    # Check if the cache entry for the hostname exists
-    if grep -q "^$hname:" "$CACHE_FILE"; then
-        data=$(grep "^$hname:" "$CACHE_FILE" | cut -d: -f2-)
-        timestamp=$(echo "$data" | cut -d: -f1)
-        cached_data=$(echo "$data" | cut -d: -f2-)
-
-        # Calculate the expiration time based on cache TTL
-        current_time=$(date +%s)
-        cache_expiration_time=$((timestamp + cache_ttl))
-        
-        if ((current_time <= cache_expiration_time)); then
-            # The cache entry is still valid, use it
-            ipv4_addr="$cached_data"
-            cache_miss=false
-        else
-            vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null
-            # Remove the stale cache entry from the cache file
-            sed -i "/^$hname:/d" "$CACHE_FILE"
-        fi
+    # Default to cache miss until a valid entry inside DNS cache is found.
+    cache_miss=true
+    get_dns_cache "$hname"
+    if [ $? -ne 0 ]; then
+        return 1
     fi
 
     if $cache_miss; then
@@ -404,14 +433,7 @@ resolve_ipv4()
             }
         fi
 
-        # After obtaining ipv4_addr_all, update the cache file
-        current_time=$(date +%s)
-        echo "$hname:$current_time:$ipv4_addr" >> "$CACHE_FILE"
-
-        # Maintain cache size and remove the least recently used entry if necessary
-        if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
-            sed -i '1d' "$CACHE_FILE"
-        fi
+        refresh_cache_entry $hname $ipv4_addr
     fi
 
     if ! is_valid_ipv4_address "$ipv4_addr"; then
