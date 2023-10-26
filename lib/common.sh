@@ -285,6 +285,13 @@ get_authoritative_resolution()
 
 refresh_cache_entry() 
 {
+    #
+    # Keep track of entries based on FIFO principle and not on LRU (Least Recently Used).
+    # If there wasn't a cache miss implies entry already exists in DNS cache.
+    #
+    if ! $cache_miss; then
+        return 0
+    fi 
     current_time=$(date +%s)
     echo "$hname $current_time $ipv4_addr" >> "$CACHE_FILE"
     
@@ -432,8 +439,6 @@ resolve_ipv4()
                 fi
             }
         fi
-
-        refresh_cache_entry $hname $ipv4_addr
     fi
 
     if ! is_valid_ipv4_address "$ipv4_addr"; then
@@ -456,7 +461,8 @@ resolve_ipv4()
             wecho "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
         fi
     fi
-
+    
+    refresh_cache_entry $hname $ipv4_addr
     echo $ipv4_addr
     return 0
 }
