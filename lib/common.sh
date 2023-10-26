@@ -320,9 +320,9 @@ get_dns_cache()
             return 0
         fi
 
-        # The cache entry is still valid, use it
-        ipv4_addr="$cached_data"
-        if is_ip_port_reachable $ipv4_addr 2048; then
+        # Use the cached IPv4 address if it's valid and reachable
+        if is_valid_ipv4_address "$cached_data" && is_ip_port_reachable "$cached_data" 2048; then
+            ipv4_addr="$cached_data"
             cache_miss=false
         fi
     fi
