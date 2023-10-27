@@ -317,6 +317,9 @@ get_dns_cache()
 
         if ((current_time > cache_expiration_time)); then
             vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null
+            
+            # Delete the entire entry for hname from the cache file
+            sed -i "/^$hname/d" "$CACHE_FILE"
             return 0
         fi
 
