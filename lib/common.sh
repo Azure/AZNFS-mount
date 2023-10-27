@@ -316,14 +316,13 @@ get_dns_cache()
         cache_expiration_time=$((timestamp + cache_ttl))
 
         if ((current_time > cache_expiration_time)); then
-            vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null
-            
-            # Delete the entire entry for hname from the cache file
+            vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null    # remove later..
+            # The cached data for $hname has expired, so remove the old entry and make a fresh call to retrieve the IP address.
             sed -i "/^$hname/d" "$CACHE_FILE"
             return 0
         fi
 
-        # Use the cached IPv4 address if it's valid and reachable
+        # Use the cached IPv4 address if it's valid and reachable (not poisoned).
         if is_valid_ipv4_address "$cached_data" && is_ip_port_reachable "$cached_data" 2048; then
             ipv4_addr="$cached_data"
             cache_miss=false
