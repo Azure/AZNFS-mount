@@ -152,7 +152,7 @@ perform_aznfs_update()
     if [ "$install_cmd" == "zypper" ]; then
         install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
     else
-        install_output=$($install_cmd install -y "/tmp/${package_name}" 2>&1)
+        install_output=$($install_cmd install "/tmp/${package_name}")
     fi
     install_error=$?
     rm -f "/tmp/${package_name}"
@@ -469,7 +469,7 @@ if [ $apt -eq 1 ]; then
         # Check if we need to update otherwise we exit for manual-update as well as auto-update.
         check_aznfs_update "$current_version"
     fi
-    user_consent_for_auto_update
+    # user_consent_for_auto_update
     perform_aznfs_update
 
 elif [ $zypper -eq 1 ]; then
@@ -484,7 +484,7 @@ elif [ $zypper -eq 1 ]; then
         # Check if we need to update otherwise we exit for manual-update as well as auto-update.
         check_aznfs_update "$current_version"
     fi
-    user_consent_for_auto_update
+    # user_consent_for_auto_update
     perform_aznfs_update
 
 else
@@ -499,6 +499,6 @@ else
         # Check if we need to update otherwise we exit for manual-update as well as auto-update.
         check_aznfs_update "$current_version"
     fi
-    user_consent_for_auto_update
+    # user_consent_for_auto_update
     perform_aznfs_update
 fi

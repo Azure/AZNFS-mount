@@ -49,6 +49,18 @@ if [ ! -f /opt/microsoft/aznfs/data/config ]; then
 fi
 flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
+# AUTO_UPDATE_AZNFS is set to false or not set; ask the user if they want to auto-update.
+if dialog --yesno "Do you want to auto-update AZNFS?" 10 30; then
+
+        # Set AUTO_UPDATE_AZNFS to true in the config file.
+        echo "AUTO_UPDATE_AZNFS=true"
+
+else
+        # User chose "No"
+        # Set AUTO_UPDATE_AZNFS to false in the config file.
+        echo "AUTO_UPDATE_AZNFS=false"
+fi
+
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
 if [ ! -f "$flag_file" ]; then
         systemctl daemon-reload
