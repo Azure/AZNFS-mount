@@ -8,6 +8,28 @@
 # Exit on error.
 set -e
 
+FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
+CONFIG_FILE="/opt/microsoft/aznfs/data/config"
+
+parse_user_config()
+{
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "$CONFIG_FILE not found. Please make sure it is present."
+    fi
+
+    # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
+    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
+    if [ -z "$AUTO_UPDATE_AZNFS" ]; then
+        echo "AUTO_UPDATE_AZNFS is missing in $CONFIG_FILE." # TO BE HANDLED!
+    fi
+
+    # Convert to lowercase for easy comparison later.
+    AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
+    if [ "$AUTO_UPDATE_AZNFS" != "true" ] && [ "$AUTO_UPDATE_AZNFS" != "false" ]; then
+        echo "Invalid value for AUTO_UPDATE_AZNFS: '$AUTO_UPDATE_AZNFS'."  # TO BE HANDLED!
+    fi
+}
+
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
@@ -47,15 +69,44 @@ if [ ! -f /opt/microsoft/aznfs/data/config ]; then
         # Set the permissions for the config file.
         chmod 0644 /opt/microsoft/aznfs/data/config
 fi
-flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
-if [ ! -f "$flag_file" ]; then
+if [ ! -f "$FLAG_FILE" ]; then
+        
+        # make seperate case for config file exits with true and false.
+        # if the file has the value false, then ask user if they want to auto update using the dialog.if yes, then update true in config file, if no then update false in config file.
+        # if the already set option is true, then don't ask the user fr anything, just continue..
+        # In case of auto-update, don't ask using dialog, then set using default to false only (which we did just above)
+
+        # Check the value of AUTO_UPDATE_AZNFS in the config file
+        parse_user_config
+
+        if [ "$AUTO_UPDATE_AZNFS" != "true" ]; then
+
+            # Explore the option of copying the config file in tmp file first, and then do in place edit, in case of any error?
+            sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
+
+            # AUTO_UPDATE_AZNFS is set to false or not set; ask the user if they want to auto-update.
+            if dialog --yesno "Do you want to auto-update AZNFS?" 10 30; then
+
+                # Set AUTO_UPDATE_AZNFS to true in the config file.
+                echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
+
+                systemctl daemon-reload
+                systemctl enable aznfswatchdog
+                systemctl start aznfswatchdog
+            else
+                # User chose "No"
+                # Set AUTO_UPDATE_AZNFS to false in the config file.
+                echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
+            fi
+        fi
+
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
 else
         # Clean up the update in progress flag file.
-        rm -f "$flag_file"
+        rm -f "$FLAG_FILE"
 fi
 
