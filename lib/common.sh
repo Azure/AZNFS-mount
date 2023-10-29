@@ -13,12 +13,11 @@ RANDBYTES="${OPTDIRDATA}/randbytes"
 INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
 
 #
-# Global DNS cache with a cache size limit and TTL for entries (in seconds)
+# DNS cache with a cache size limit and TTL for entries (in seconds)
 #
-declare -A cache
-cache_size_limit=10
-cache_keys=()
-cache_ttl=86400  # 24 hours
+CACHE_FILE="/opt/microsoft/aznfs/.cache"
+cache_size_limit=5
+cache_ttl=300 # 5 mins
 
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
@@ -284,6 +283,68 @@ get_authoritative_resolution()
     done
 }
 
+refresh_cache_entry() 
+{
+    #
+    # Keep track of entries based on FIFO principle and not on LRU (Least Recently Used).
+    # If there wasn't a cache miss implies entry already exists in DNS cache.
+    #
+    if ! $cache_miss; then
+        return 0
+    fi 
+    current_time=$(date +%s)
+    echo "$hname $current_time $ipv4_addr" >> "$CACHE_FILE"
+    
+    # Maintain cache size and remove the least recently used entry if necessary
+    if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
+        sed -i '1d' "$CACHE_FILE"
+    fi
+}
+
+get_dns_cache()
+{
+    local hname="$1"
+
+    # Check if the cache entry for the hostname exists
+    if grep -q "^$hname" "$CACHE_FILE"; then
+        data=$(grep "^$hname" "$CACHE_FILE")
+        timestamp=$(echo "$data" | cut -d ' ' -f2)
+        cached_data=$(echo "$data" | cut -d ' ' -f3-)
+
+        # Calculate the expiration time based on cache TTL
+        current_time=$(date +%s)
+        cache_expiration_time=$((timestamp + cache_ttl))
+
+        if ((current_time > cache_expiration_time)); then
+            vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null    # remove later..
+            # The cached data for $hname has expired, so remove the old entry and make a fresh call to retrieve the IP address.
+            sed -i "/^$hname/d" "$CACHE_FILE"
+            return 0
+        fi
+
+        # Use the cached IPv4 address if it's valid and reachable (not poisoned).
+        if is_valid_ipv4_address "$cached_data" && is_ip_port_reachable "$cached_data" 2048; then
+            ipv4_addr="$cached_data"
+            cache_miss=false
+        fi
+    fi
+    
+    return 0
+}
+
+create_cache_file() 
+{
+    if [ ! -f "$CACHE_FILE" ]; then
+        touch "$CACHE_FILE"
+        if [ $? -ne 0 ]; then
+            eecho "Failed to touch ${CACHE_FILE}!"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
 #
 # Blob fqdn to IPv4 adddress.
 # Caller must make sure that it is called only for hostname and not IP address.
@@ -297,33 +358,20 @@ resolve_ipv4()
     local fail_if_present_in_etc_hosts="$2"
     local RETRIES=3
     local fallback=false
-    local cache_miss=true
 
-    # TODO: 
-    # 1) check if the value is in the cache for hostname in cache?
-    # 2) if yes, ipv4_addr_all is what we should store. Else, go through regular process of fetching the result below.
-    # 3) check if the entry is stale, ie. time entry has been in cache > TTL. Refresh the cache entry and remove the stale. Let's set 86400 seconds as TTL.
-
-    current_time=$(date +%s)
-
-    # Check if the value is in the cache for the hostname
-    if [ -n "${cache["$hname"]}" ]; then
-        cache_entry=(${cache["$hname"]})  # Cache entry is an array [timestamp, data]
-        timestamp=${cache_entry[0]}
-        data=${cache_entry[1]}
-
-        if ((current_time - timestamp <= cache_ttl)); then
-            # The cache entry is still valid, use it
-            ipv4_addr_all="$data"
-            # vecho "Using cached data for $hname"
-            cache_miss=false
-        else
-            vecho "Cached data for $hname has expired. Refreshing..."
-        fi
+    create_cache_file
+    if [ $? -ne 0 ]; then
+        return 1
     fi
 
+    # Default to cache miss until a valid entry inside DNS cache is found.
+    cache_miss=true
+    get_dns_cache "$hname"
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
 
-    if cache_miss; then
+    if $cache_miss; then
         # Some retries for resilience.
         for((i=0;i<=$RETRIES;i++)) {
             # Resolve hostname to IPv4 address.
@@ -378,36 +426,21 @@ resolve_ipv4()
                 continue
             fi
 
-            # TODO:
-            # 1) Add the entry in cache corrosponding to the hostname ie. <hostname, ipv4_addr_all>
-            # 2) Make sure to add TTL for the entry added just now.
-
-            # After obtaining ipv4_addr_all, store it in the cache with a timestamp
-            cache["$hname"]="$current_time $ipv4_addr_all"
-
-            # Maintain cache size and remove the least recently used entry if necessary
-            cache_keys=("$hname" "${cache_keys[@]}")  # Add the key to the front
-            if (( ${#cache_keys[@]} > cache_size_limit )); then
-                local removed_key="${cache_keys[-1]}"  # Get the least recently used key
-                unset "cache[$removed_key]"  # Remove the entry from the cache
-                cache_keys=("${cache_keys[@]:0:cache_size_limit}")  # Trim the keys array
-            fi
-
             break
         }
-    fi
 
-    # Use first address from the above curated list.
-    ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
-
-    # For ZRS we need to use the first reachable IP.
-    if [ $cnt_ip -ne 1 ]; then
-        for((i=1;i<=$cnt_ip;i++)) {
-            ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
-            if is_ip_port_reachable $ipv4_addr 2048; then
-                break
-            fi
-        }
+        # Use first address from the above curated list.
+        ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
+        
+        # For ZRS we need to use the first reachable IP.
+        if [ $cnt_ip -ne 1 ]; then
+            for((i=1;i<=$cnt_ip;i++)) {
+                ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
+                if is_ip_port_reachable $ipv4_addr 2048; then
+                    break
+                fi
+            }
+        fi
     fi
 
     if ! is_valid_ipv4_address "$ipv4_addr"; then
@@ -430,7 +463,8 @@ resolve_ipv4()
             wecho "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
         fi
     fi
-
+    
+    refresh_cache_entry $hname $ipv4_addr
     echo $ipv4_addr
     return 0
 }
