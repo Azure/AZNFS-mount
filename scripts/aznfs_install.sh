@@ -309,6 +309,63 @@ parse_user_config()
     pecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
 }
 
+
+parse_user_config_auto_update()
+{
+    # Check if the config file exists; if not, create it.
+    if [ ! -f /opt/microsoft/aznfs/data/config ]; then
+            # Create the config file and set default AUTO_UPDATE_AZNFS=true inside it.
+            echo "AUTO_UPDATE_AZNFS=false" > /opt/microsoft/aznfs/data/config
+
+            # Set the permissions for the config file.
+            chmod 0644 /opt/microsoft/aznfs/data/config
+            AUTO_UPDATE_AZNFS="false"
+            return 0
+    fi
+
+    # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
+    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
+    if [ -z "$AUTO_UPDATE_AZNFS" ]; then
+        echo "AUTO_UPDATE_AZNFS is missing in $CONFIG_FILE." # TO BE HANDLED!
+    fi
+
+    # Convert to lowercase for easy comparison later.
+    AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
+    if [ "$AUTO_UPDATE_AZNFS" != "true" ] && [ "$AUTO_UPDATE_AZNFS" != "false" ]; then
+        echo "Invalid value for AUTO_UPDATE_AZNFS: '$AUTO_UPDATE_AZNFS'."  # TO BE HANDLED!
+    fi
+}
+
+user_consent_for_auto_update()
+{
+
+    # make seperate case for config file exits with true and false.
+    # if the file has the value false, then ask user if they want to auto update using the dialog.if yes, then update true in config file, if no then update false in config file.
+    # if the already set option is true, then don't ask the user fr anything, just continue..
+    # In case of auto-update, don't ask using dialog, then set using default to false only (which we did just above)
+
+    # Check the value of AUTO_UPDATE_AZNFS in the config file
+    parse_user_config_auto_update
+
+    if [ "$AUTO_UPDATE_AZNFS" != "true" ]; then
+
+        # Explore the option of copying the config file in tmp file first, and then do in place edit, in case of any error?
+        sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
+
+        # AUTO_UPDATE_AZNFS is set to false or not set; ask the user if they want to auto-update.
+        if dialog --yesno "Do you want to auto-update AZNFS?" 10 30; then
+
+            # Set AUTO_UPDATE_AZNFS to true in the config file.
+            echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
+
+        else
+            # User chose "No"
+            # Set AUTO_UPDATE_AZNFS to false in the config file.
+            echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
+        fi
+    fi
+}
+
 ######################
 # Action starts here #
 ######################
@@ -391,20 +448,6 @@ if [ "$RUN_MODE" == "auto-update" ]; then
     RELEASE_NUMBER="0.1.229"
 fi
 
-if dialog --yesno "Do you want to auto-update AZNFS?" 10 30; then
-
-    # Set AUTO_UPDATE_AZNFS to true in the config file.
-    echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
-
-    systemctl daemon-reload
-    systemctl enable aznfswatchdog
-    systemctl start aznfswatchdog
-else
-    # User chose "No"
-    # Set AUTO_UPDATE_AZNFS to false in the config file.
-    echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
-fi
-
 if [ $apt -eq 1 ]; then
     install_cmd="apt"
     package_info=$(apt-cache show aznfs 2>/dev/null)
@@ -426,6 +469,7 @@ if [ $apt -eq 1 ]; then
         # Check if we need to update otherwise we exit for manual-update as well as auto-update.
         check_aznfs_update "$current_version"
     fi
+    user_consent_for_auto_update
     perform_aznfs_update
 
 elif [ $zypper -eq 1 ]; then
@@ -440,6 +484,7 @@ elif [ $zypper -eq 1 ]; then
         # Check if we need to update otherwise we exit for manual-update as well as auto-update.
         check_aznfs_update "$current_version"
     fi
+    user_consent_for_auto_update
     perform_aznfs_update
 
 else
@@ -454,5 +499,6 @@ else
         # Check if we need to update otherwise we exit for manual-update as well as auto-update.
         check_aznfs_update "$current_version"
     fi
+    user_consent_for_auto_update
     perform_aznfs_update
 fi
