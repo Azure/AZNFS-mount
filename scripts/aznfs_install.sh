@@ -152,7 +152,7 @@ perform_aznfs_update()
     if [ "$install_cmd" == "zypper" ]; then
         install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
     else
-        install_output=$($install_cmd install "/tmp/${package_name}")
+        install_output=$($install_cmd install -y "/tmp/${package_name}" 2>&1)
     fi
     install_error=$?
     rm -f "/tmp/${package_name}"
@@ -389,6 +389,20 @@ if [ "$RUN_MODE" == "auto-update" ]; then
     #     exit 1
     # fi
     RELEASE_NUMBER="0.1.229"
+fi
+
+if dialog --yesno "Do you want to auto-update AZNFS?" 10 30; then
+
+    # Set AUTO_UPDATE_AZNFS to true in the config file.
+    echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
+
+    systemctl daemon-reload
+    systemctl enable aznfswatchdog
+    systemctl start aznfswatchdog
+else
+    # User chose "No"
+    # Set AUTO_UPDATE_AZNFS to false in the config file.
+    echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
 fi
 
 if [ $apt -eq 1 ]; then
