@@ -42,7 +42,7 @@ fi
 # Check if the config file exists; if not, create it.
 if [ ! -f /opt/microsoft/aznfs/data/config ]; then
         # Create the config file and set default AUTO_UPDATE_AZNFS=true inside it.
-        echo "AUTO_UPDATE_AZNFS=true" > /opt/microsoft/aznfs/data/config
+        echo "AUTO_UPDATE_AZNFS=false" > /opt/microsoft/aznfs/data/config
 
         # Set the permissions for the config file.
         chmod 0644 /opt/microsoft/aznfs/data/config
