@@ -225,7 +225,18 @@ perform_aznfs_update()
         systemctl daemon-reload
         systemctl restart aznfswatchdog
     else
-        user_consent_for_auto_update
+        secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"
+        # user_consent_for_auto_update
+        if dialog --yesno "Do you want to auto-update AZNFS?" 10 30; then
+
+            # Set AUTO_UPDATE_AZNFS to true in the config file.
+            echo "AUTO_UPDATE_AZNFS=true"
+
+        else
+            # User chose "No"
+            # Set AUTO_UPDATE_AZNFS to false in the config file.
+            echo "AUTO_UPDATE_AZNFS=false"
+        fi
         secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"
     fi
 
