@@ -147,6 +147,11 @@ parse_user_config_auto_update()
     fi
 }
 
+#
+# TODO: 
+# 1) Make box size not hardcoded, but dependent on size of terminal.
+# 2) 
+
 user_consent_for_auto_update()
 {
 
@@ -160,11 +165,19 @@ user_consent_for_auto_update()
 
     if [ "$AUTO_UPDATE_AZNFS" != "true" ]; then
 
+        # Get the terminal window dimensions
+        rows=$(tput lines)
+        cols=$(tput cols)
+
+        # Calculate dialog box size based on screen dimensions
+        height=$((rows * 30 / 100))  # You can adjust the percentage as needed
+        width=$((cols * 60 / 100))   # You can adjust the percentage as needed
+
         # Explore the option of copying the config file in tmp file first, and then do in place edit, in case of any error?
         sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
         # AUTO_UPDATE_AZNFS is set to false or not set; ask the user if they want to auto-update.
-        if dialog --yesno "Do you want to auto-update AZNFS?" 10 30; then
+        if dialog --yesno "Do you want to auto-update AZNFS?" $height $width; then
 
             # Set AUTO_UPDATE_AZNFS to true in the config file.
             echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
@@ -446,7 +459,7 @@ if [ "$RUN_MODE" == "auto-update" ]; then
     #     eecho "**************************************************************"
     #     exit 1
     # fi
-    RELEASE_NUMBER="0.1.230"
+    RELEASE_NUMBER="0.1.232"
 fi
 
 if [ $apt -eq 1 ]; then
