@@ -28,6 +28,7 @@ YELLOW="\e[2;33m"
 NORMAL="\e[0m"
 
 HOSTNAME=$(hostname)
+export NCURSES_NO_UTF8_ACS=1
 
 #
 # Core logging function.
@@ -121,6 +122,77 @@ is_new_version_available()
     [ $latest_version_integer -gt $current_version_integer ]
 }
 
+parse_user_config()
+{
+    if [ ! -f "$CONFIG_FILE" ]; then
+        eecho "$CONFIG_FILE not found. Please make sure it is present."
+        exit 1
+    fi
+
+    # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
+    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
+    if [ "$RUN_MODE" == "manual-update" ]; then
+        AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
+        return 0
+    fi
+    if [ -z "$AUTO_UPDATE_AZNFS" ]; then
+        eecho "AUTO_UPDATE_AZNFS is missing in $CONFIG_FILE."
+        exit 1
+    fi
+
+    # Convert to lowercase for easy comparison later.
+    AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
+    if [ "$AUTO_UPDATE_AZNFS" != "true" ] && [ "$AUTO_UPDATE_AZNFS" != "false" ]; then
+        eecho "Invalid value for AUTO_UPDATE_AZNFS: '$AUTO_UPDATE_AZNFS'."
+        exit 1
+    fi
+
+    # Bailout and do nothing if user didn't set the auto-update.
+    if [ "$AUTO_UPDATE_AZNFS" == "false" ]; then
+        exit 0
+    fi
+    pecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
+}
+
+user_consent_for_auto_update()
+{
+    # Check the value of AUTO_UPDATE_AZNFS in the config file
+    parse_user_config
+
+    if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then
+        return 0
+    fi
+
+    # Get the terminal window dimensions
+    rows=$(tput lines)
+    cols=$(tput cols)
+
+    # Keep dialog box size based on screen dimensions
+    height=$((rows * 30 / 100))
+    width=$((cols * 60 / 100))
+
+    title="Auto-Update Configuration"
+    auto_update_prompt="Do you wish to enable automatic updates for AZNFS to ensure you stay up-to-date with the \
+                        latest features, improvements, and security patches? We recommend enabling automatic updates \
+                        to ensure you have the best AZNFS experience. If you choose to enable automatic updates, \
+                        the AZNFS will periodically check for updates and apply them automatically."
+
+    # TODO: Explore the option of copying the config file in tmp file first, and then do in place edit, in case of any error?
+    sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
+
+    # Run the dialog command and capture its exit code
+    dialog --timeout 300 --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width
+    dialog_exit_code=$?
+
+    if [ $dialog_exit_code -eq 0 ] || [ $dialog_exit_code -eq 255 ]; then
+        # User chose "Yes" or it timed out (consider it as "true")
+        echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
+    else
+        # User chose "No"
+        echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
+    fi
+}
+
 # Function to perform AZNFS update.
 perform_aznfs_update() 
 {
@@ -170,6 +242,8 @@ perform_aznfs_update()
         systemctl restart aznfswatchdog
     else
         secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"
+        # user_consent_for_auto_update
+        user_consent_for_auto_update
     fi
 
     exit 0 # Nothing in the script will run after this point.
@@ -281,34 +355,6 @@ verify_super_user()
     fi
 }
 
-parse_user_config()
-{
-    if [ ! -f "$CONFIG_FILE" ]; then
-        eecho "$CONFIG_FILE not found. Please make sure it is present."
-        exit 1
-    fi
-
-    # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
-    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
-    if [ -z "$AUTO_UPDATE_AZNFS" ]; then
-        eecho "AUTO_UPDATE_AZNFS is missing in $CONFIG_FILE."
-        exit 1
-    fi
-
-    # Convert to lowercase for easy comparison later.
-    AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
-    if [ "$AUTO_UPDATE_AZNFS" != "true" ] && [ "$AUTO_UPDATE_AZNFS" != "false" ]; then
-        eecho "Invalid value for AUTO_UPDATE_AZNFS: '$AUTO_UPDATE_AZNFS'."
-        exit 1
-    fi
-
-    # Bailout and do nothing if user didn't set the auto-update.
-    if [ "$AUTO_UPDATE_AZNFS" == "false" ]; then
-        exit 0
-    fi
-    pecho "AUTO_UPDATE_AZNFS is set to: $AUTO_UPDATE_AZNFS"
-}
-
 ######################
 # Action starts here #
 ######################
@@ -388,7 +434,7 @@ if [ "$RUN_MODE" == "auto-update" ]; then
     #     eecho "**************************************************************"
     #     exit 1
     # fi
-    RELEASE_NUMBER="0.1.229"
+    RELEASE_NUMBER="0.1.232"
 fi
 
 if [ $apt -eq 1 ]; then
