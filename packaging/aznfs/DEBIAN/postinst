@@ -62,14 +62,14 @@ flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 # fi
 
 # Display a message box with an OK button.
-dialog --msgbox "This is a message to the user." 10 30
+# dialog --msgbox "This is a message to the user." 10 30
 
-# Check the exit status to determine if the OK button was pressed.
-if [ $? -eq 0 ]; then
-    echo "OK button was pressed."
-else
-    echo "Dialog was canceled."
-fi
+# # Check the exit status to determine if the OK button was pressed.
+# if [ $? -eq 0 ]; then
+#     echo "OK button was pressed."
+# else
+#     echo "Dialog was canceled."
+# fi
 
 
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
