@@ -162,7 +162,7 @@ ensure_az_files_mountmap_not_exist()
             fi
         fi
 
-	chattr -f -i $AZ_FILES_MOUNTMAP
+        chattr -f -i $AZ_FILES_MOUNTMAP
         #
         # We do this thing instead of inplace update by sed as that has a
         # very bad side-effect of creating a new AZ_FILES_MOUNTMAP file. This breaks
@@ -189,7 +189,7 @@ ensure_az_files_mountmap_not_exist()
         fi
         chattr -f +i $AZ_FILES_MOUNTMAP
 
-	# Return the mtime after our mods.
+        # Return the mtime after our mods.
         echo $(stat -c%Y $AZ_FILES_MOUNTMAP)
     ) 999<$AZ_FILES_MOUNTMAP
 }
@@ -500,8 +500,8 @@ processNFS4Mounts()
             continue
         fi
 
-	accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
-	vecho "accept_port: $accept_port"
+        accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
+        vecho "accept_port: $accept_port"
 
         #
         # Delete entry from AZ_FILES_MOUNTMAP if there are no mounted shares on that host.
@@ -545,7 +545,7 @@ processNFS4Mounts()
                 l_mtime=$(ensure_az_files_mountmap_not_exist "$line" "$mtime_mountmap")
                 [ $? -eq 0 ] && mtime_mountmap=$l_mtime
                 continue
-	    fi
+            fi
 
             is_stunnel_running=$(netstat -anp | grep stunnel | grep `cat $l_pid`)
             if [ -z "$is_stunnel_running" ]; then
@@ -568,11 +568,11 @@ processNFS4Mounts()
                         eecho "[FATAL] azfilenfs-watchdog service is unable to start stunnel process for '${l_conf}'!"
                         eecho "Please check the stunnel logs in $l_log for more details."
                         eecho "It's recommended to unmount all shares from $l_host and then remount shares using aznfs mount helper!"
-		    fi
-		fi
-	    else
-	        vecho "stunnel is running!!"
-	    fi
+                    fi
+                fi
+            else
+                vecho "stunnel is running!!"
+            fi
         fi
     done
 }
