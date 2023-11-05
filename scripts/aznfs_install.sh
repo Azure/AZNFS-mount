@@ -181,7 +181,7 @@ user_consent_for_auto_update()
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
     # Run the dialog command and capture its exit code
-    dialog --timeout 300 --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width
+    dialog --timeout 60 --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width
     dialog_exit_code=$?
 
     if [ $dialog_exit_code -eq 0 ] || [ $dialog_exit_code -eq 255 ]; then
