@@ -241,9 +241,8 @@ perform_aznfs_update()
         systemctl daemon-reload
         systemctl restart aznfswatchdog
     else
-        secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"
-        # user_consent_for_auto_update
         user_consent_for_auto_update
+        secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"
     fi
 
     exit 0 # Nothing in the script will run after this point.
@@ -414,27 +413,26 @@ ensure_pkg "wget"
 if [ "$RUN_MODE" == "auto-update" ]; then
     # Define the GitHub API URL to get the latest release.
     API_URL="https://api.github.com/repos/Azure/AZNFS-mount/releases/latest"
-    # RELEASE_INFO=$(curl -sS --max-time 60 "$API_URL" 2>&1)
-    # if [ $? -ne 0 ]; then
-    #     eecho "Failed to retrieve latest release information, exiting!"
-    #     eecho "**************************************************************"
-    #     eecho "JSON Response:"
-    #     eecho "$RELEASE_INFO"
-    #     eecho "**************************************************************"
-    #     exit 1
-    # fi
+    RELEASE_INFO=$(curl -sS --max-time 60 "$API_URL" 2>&1)
+    if [ $? -ne 0 ]; then
+        eecho "Failed to retrieve latest release information, exiting!"
+        eecho "**************************************************************"
+        eecho "JSON Response:"
+        eecho "$RELEASE_INFO"
+        eecho "**************************************************************"
+        exit 1
+    fi
 
-    # # Parse the release number from the JSON response.
-    # RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep '"tag_name":' | cut -d '"' -f 4)
-    # if [ -z "$RELEASE_NUMBER" ]; then
-    #     eecho "Failed to retrieve latest release number, exiting!"
-    #     eecho "**************************************************************"
-    #     eecho "JSON Response:"
-    #     eecho "$RELEASE_INFO"
-    #     eecho "**************************************************************"
-    #     exit 1
-    # fi
-    RELEASE_NUMBER="0.1.232"
+    # Parse the release number from the JSON response.
+    RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep '"tag_name":' | cut -d '"' -f 4)
+    if [ -z "$RELEASE_NUMBER" ]; then
+        eecho "Failed to retrieve latest release number, exiting!"
+        eecho "**************************************************************"
+        eecho "JSON Response:"
+        eecho "$RELEASE_INFO"
+        eecho "**************************************************************"
+        exit 1
+    fi
 fi
 
 if [ $apt -eq 1 ]; then
