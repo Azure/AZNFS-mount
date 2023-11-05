@@ -4,7 +4,7 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, dialog
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
@@ -88,8 +88,8 @@ fi
 
 # Check if the config file exists; if not, create it.
 if [ ! -f /opt/microsoft/aznfs/data/config ]; then
-        # Create the config file and set default AUTO_UPDATE_AZNFS=true inside it.
-        echo "AUTO_UPDATE_AZNFS=true" > /opt/microsoft/aznfs/data/config
+        # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
+        echo "AUTO_UPDATE_AZNFS=false" > /opt/microsoft/aznfs/data/config
 
         # Set the permissions for the config file.
         chmod 0644 /opt/microsoft/aznfs/data/config
