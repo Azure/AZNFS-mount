@@ -95,6 +95,16 @@ if [ ! -f /opt/microsoft/aznfs/data/config ]; then
         chmod 0644 /opt/microsoft/aznfs/data/config
 fi
 
+# Display a dialog box with a "Yes" or "No" choice and capture the result in a >
+if dialog --yesno "Do you want to proceed?" 10 30; then
+    choice="Yes"
+else
+    choice="No"
+fi
+
+# Display the user's choice
+dialog --msgbox "You chose: $choice" 10 30
+
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
 if [ ! -f /tmp/.update_in_progress_from_watchdog.flag ]; then
         systemctl daemon-reload
