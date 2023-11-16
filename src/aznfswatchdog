@@ -139,8 +139,8 @@ reconcile_conntrack()
 }
 
 #
-# Function for running stat for mountpoint so that everytime DNAT rule is updated. 
-# Used to make sure to send atleast one packet that matches the DNAT rule to the server.
+# Function for running stat for mountpoint so that everytime DNAT rule is updated, it is 
+# used to make sure to send atleast one packet that matches the DNAT rule.
 # This will eventually make sure the conntrack entry created always for communication.
 #
 run_stat()
