@@ -138,6 +138,23 @@ reconcile_conntrack()
     done
 }
 
+#
+# Function for running stat for mountpoint so that everytime DNAT rule is updated. 
+# Used to make sure to send atleast one packet that matches the DNAT rule to the server.
+# This will eventually make sure the conntrack entry created always for communication.
+#
+run_stat()
+{
+    local target="$1"
+    vecho "[$BASHPID @ $(date)] Starting bg stat"
+    statres=$(stat $target)
+    vecho "[$BASHPID @ $(date) #1] statres=$statres"
+    sleep 35
+    statres=$(stat $target)
+    vecho "[$BASHPID @ $(date) #2] statres=$statres"
+    vecho "[$BASHPID @ $(date)] Finishing bg stat"
+}
+
 vecho "Starting aznfswatchdog..."
 
 # Detect and log distro and bash version
@@ -382,6 +399,10 @@ while :; do
             if ! update_mountmap_entry "$line" "$l_host $l_ip $new_ip"; then
                 eecho "Will reattempt the operation in next iteration."
             fi
+            mountpoint=$(echo "$findmnt" | grep " nfs ${l_ip}:" | awk '{print $4}')
+            run_stat "$mountpoint" &
+            background_pid=$!
+            vecho "Background process started with PID: $background_pid"
         fi
     done
 
