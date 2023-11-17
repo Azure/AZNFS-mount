@@ -494,7 +494,7 @@ ensure_iptable_entry_not_exist()
         fi
 
         # Ignore status of conntrack because entry may not exist (timed out).
-        output=$(conntrack -D conntrack -p tcp -d "$1" 2>&1)
+        output=$(conntrack -D conntrack -p tcp -d "$1" -r "$2" 2>&1)
         if [ $? -ne 0 ]; then
             vecho "$output"
 
