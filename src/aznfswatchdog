@@ -120,7 +120,7 @@ reconcile_conntrack_unreplied()
     # We are called every 5 secs, so this deletes an entry stuck in
     # UNREPLIED for 25/30 secs.
     #
-    if [ ${cthash_synsent[$key]} -ge 5 ]; then
+    if [ ${cthash_unreplied[$key]} -ge 5 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
         wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
 
@@ -167,8 +167,8 @@ reconcile_conntrack()
         done
     fi
 
-    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip --dport 111 | grep "\[UNREPLIED\]" 2>/dev/null)
-    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip --dport 2048 | grep "\[UNREPLIED\]" 2>/dev/null)
+    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip --dport 111 | grep -v "SYN_SENT" | grep "\[UNREPLIED\]" 2>/dev/null)
+    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip --dport 2048 | grep -v "SYN_SENT" | grep "\[UNREPLIED\]" 2>/dev/null)
     output="$output111"$'\n'"$output2048"
     if [ -n "$output" ]; then
         for line in $output; do
