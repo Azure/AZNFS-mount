@@ -131,7 +131,6 @@ reconcile_conntrack_unreplied()
             unset cthash_unreplied[$key]
         fi
     fi
-
 }
 
 reconcile_conntrack()
@@ -175,7 +174,7 @@ reconcile_conntrack()
             # XXX Remove this log after running for few days.
             vecho "$line"
 
-            matchstr=".* dst=$l_ip sport=([0-9]+) dport=([0-9]+) [UNREPLIED] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
+            matchstr=".* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
             if [[ "$line" =~ $matchstr ]]; then
                 l_sport=${BASH_REMATCH[1]}
                 l_dport=${BASH_REMATCH[2]}
