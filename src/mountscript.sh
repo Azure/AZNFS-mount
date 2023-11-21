@@ -241,9 +241,8 @@ get_version_from_MOUNT_OPTIONS()
     local nfs_minorvers=""
 
     if [ -z "$mount_options" ] || [[ ! "$mount_options" == *"$ver_string"* ]]; then
-        eecho "Bad mount options: ${mount_options}."
-        eecho "Share to be mounted must have version '-o vers=4.1'."
-        return 1
+        pecho "Adding default vers=3 mount option!"
+        mount_options="$mount_options,vers=3"
     fi
 
     IFS=','
@@ -251,19 +250,19 @@ get_version_from_MOUNT_OPTIONS()
 
     for option in "${options_arr[@]}";
     do
-            if [[ "$option" == *"$ver_string"* ]]; then
-                    nfs_ver=$(echo $option | cut -d= -f2)
-            fi
+        if [[ "$option" == *"$ver_string"* ]]; then
+            nfs_ver=$(echo $option | cut -d= -f2)
+        fi
 
-            if [[ "$option" == *"$minor_ver_string"* ]]; then
-                    nfs_minorvers=$(echo $option | cut -d= -f2)
-            fi
+        if [[ "$option" == *"$minor_ver_string"* ]]; then
+            nfs_minorvers=$(echo $option | cut -d= -f2)
+        fi
     done
 
     if [ -z "$nfs_minorvers" ]; then
-            echo "$nfs_ver"
+        echo "$nfs_ver"
     else
-            echo "$nfs_ver.$nfs_minorvers"
+        echo "$nfs_ver.$nfs_minorvers"
     fi
 }
 
@@ -658,7 +657,7 @@ find_next_available_port_and_start_stunnel()
         vecho "Next Available Port: '$available_port'"
 
         if [ -z "$available_port" ]; then
-            eecho "Running out of ports. Nfsv4 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+            eecho "Running out of ports. For Nfsv4, stunnel uses port range from $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
             return 1
         fi
 
@@ -687,8 +686,8 @@ find_next_available_port_and_start_stunnel()
                 return 1
             fi
         else
-	    vecho "Found new port '$new_used_port' and restarted stunnel."
-	    break
+	        vecho "Found new port '$new_used_port' and restarted stunnel."
+	        break
         fi
     done
 }
@@ -697,7 +696,7 @@ get_next_available_port()
 {
     for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
     do
-        is_port_available=`netstat -tulpn | grep ":$port "`
+        is_port_available=`netstat -tuapn | grep "$LOCALHOST:$port "`
         if [ -z "$is_port_available" ]; then
             break
         fi
@@ -865,38 +864,38 @@ tls_nfsv4_files_share_mount()
 
         if [ $add_stunnel_configuration_status -ne 0 ]; then
             eecho "Failed to add stunnel configuration to $stunnel_conf_file!"
-	    chattr -i -f $stunnel_conf_file
-	    rm $stunnel_conf_file
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
             exit 1
         fi
 
-	# start the stunnel process
-	stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
-	if [ -n "$stunnel_status" ]; then
-	    # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
+        # start the stunnel process
+        stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
+        if [ -n "$stunnel_status" ]; then
+            # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
                 eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
-		chattr -i -f $stunnel_conf_file
-		rm $stunnel_conf_file
+                chattr -i -f $stunnel_conf_file
+                rm $stunnel_conf_file
                 exit 1
             else
                 find_next_available_port_and_start_stunnel "$stunnel_conf_file"
-		is_stunnel_running=$?
-		if [ $is_stunnel_running -ne 0 ]; then
-		    eecho "Failed to get the next available port and start stunnel."
-		    chattr -i -f $stunnel_conf_file
-		    rm $stunnel_conf_file
-		    exit 1
-		fi
-	    fi
-	fi
+                is_stunnel_running=$?
+                if [ $is_stunnel_running -ne 0 ]; then
+                    eecho "Failed to get the next available port and start stunnel."
+                    chattr -i -f $stunnel_conf_file
+                    rm $stunnel_conf_file
+                    exit 1
+                fi
+            fi
+        fi
 
         checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
         if [ $? -ne 0 ]; then
             eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
-	    chattr -i -f $stunnel_conf_file
-	    rm $stunnel_conf_file
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
             exit 1
         fi
 
@@ -906,8 +905,8 @@ tls_nfsv4_files_share_mount()
         if [ $? -ne 0 ]; then
             chattr -f +i $AZ_FILES_MOUNTMAP
             eecho "[$mountmap_entry] failed to add!"
-	    chattr -i -f $stunnel_conf_file
-	    rm $stunnel_conf_file
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
             exit 1
         fi
         chattr -f +i $AZ_FILES_MOUNTMAP
@@ -927,22 +926,22 @@ tls_nfsv4_files_share_mount()
         if [ -z "$is_stunnel_running" ]; then
             vecho "stunnel is not running! Restarting the stunnel"
 
-	    stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
-	    if [ -n "$stunnel_status" ]; then
-	        # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
-	        is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
-	        if [ -z "$is_binding_error" ]; then
-	            eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
-		    exit 1
-	        else
-		    find_next_available_port_and_start_stunnel "$stunnel_conf_file"
-		    is_stunnel_running=$?
-		    if [ $is_stunnel_running -ne 0 ]; then
-		        eecho "Failed to get the next available port and start stunnel."
-		        exit 1
-		    fi
-	        fi
-	    fi
+            stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
+            if [ -n "$stunnel_status" ]; then
+                # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
+                is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
+                if [ -z "$is_binding_error" ]; then
+                    eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                    exit 1
+                else
+                    find_next_available_port_and_start_stunnel "$stunnel_conf_file"
+                    is_stunnel_running=$?
+                    if [ $is_stunnel_running -ne 0 ]; then
+                        eecho "Failed to get the next available port and start stunnel."
+                        exit 1
+                    fi
+                fi
+            fi
         fi
 
         available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
@@ -954,12 +953,12 @@ tls_nfsv4_files_share_mount()
 
     if [ -n "$mount_output" ]; then
         pecho "$mount_output"
-	vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
+        vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
     fi
 
     if [ $mount_status -ne 0 ]; then
         eecho "Mount failed!"
-	exit 1
+        exit 1
     fi
 }
 
@@ -1024,10 +1023,10 @@ if [ "$nfs_vers" == "4.1" ]; then
     # AZ_FILES_MOUNTMAP file must have been created by aznfswatchdog service.
     if [ ! -f $AZ_FILES_MOUNTMAP ]; then
         touch $AZ_FILES_MOUNTMAP
-	if [ $? -ne 0 ]; then
+        if [ $? -ne 0 ]; then
             eecho "[FATAL] Not able to create '${AZ_FILES_MOUNTMAP}'!"
-	    exit 1
-	fi
+            exit 1
+        fi
     fi
 
     if ! chattr -f +i $AZ_FILES_MOUNTMAP; then
@@ -1041,7 +1040,7 @@ if [ "$nfs_vers" == "4.1" ]; then
             MOUNT_OPTIONS=${MOUNT_OPTIONS//notls,/}
         else
             MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
-	fi
+        fi
 
         # Do the actual mount.
         mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
@@ -1049,15 +1048,15 @@ if [ "$nfs_vers" == "4.1" ]; then
 
         if [ -n "$mount_output" ]; then
             pecho "$mount_output"
-	    vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
-	fi
+            vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
+        fi
 
         if [ $mount_status -ne 0 ]; then
             eecho "Mount failed!"
-	    exit 1
-	fi
+            exit 1
+        fi
     else
-	vecho "Mount nfs share with TLS."
+        vecho "Mount nfs share with TLS."
         tls_nfsv4_files_share_mount
     fi
 
