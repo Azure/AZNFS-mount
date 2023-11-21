@@ -59,6 +59,35 @@ if [ ! -s $RANDBYTES ]; then
 fi
 chattr -f +i $RANDBYTES
 
+declare -A ip_change_count
+declare -A last_ip_change_time
+declare -A regional_accounts
+
+# To check if an account should be marked as a "Regional Account".
+check_for_regional_account()
+{
+    local l_host=$1
+
+    let ip_change_count[$l_host]++
+    local current_time=$(date +"%s")
+
+    # Check if it's the first IP change or if the time since the last change is greater than 5 minutes.
+    if [ ${ip_change_count["$l_host"]} -eq 1 ] || [ $((current_time - last_ip_change_time["$l_host"])) -gt 300 ]; then
+        last_ip_change_time["$l_host"]=$current_time
+
+        #
+        # Ensures that the count is reset to 1 when either it's the first IP change or
+        # when the time since the last change is greater than 5 minutes.
+        #  
+        ip_change_count["$l_host"]=1
+
+    elif [ ${ip_change_count["$l_host"]} -gt 3 ]; then
+        # If the IP changed more than 3 times in less than 5 minutes, mark it as "Regional Account" FQDN.
+        wecho "Marking $l_host as Regional Account FQDN due to frequent IP changes."
+        regional_accounts["$l_host"]=1  # Set to true
+    fi
+}
+
 #
 # Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
 # Used for finding if some entry is stuck in SYN_SENT state due to a bug in older
@@ -399,7 +428,13 @@ while :; do
                 # it's safe to update the MOUNTMAP, so update mtime_mountmap to the
                 # mtime after this update.
                 #
-                [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+                if [ $? -eq 0 ]; then
+                    mtime_mountmap=$l_mtime
+
+                    unset ip_change_count["$l_host"]
+                    unset last_ip_change_time["$l_host"]
+                    unset regional_accounts["$l_host"]
+                fi
                 continue
             fi
         else
@@ -427,6 +462,10 @@ while :; do
         # since it will cause DNS calls on network.
         #
         if ! $do_ip_change_detection; then
+            continue
+        fi
+        if [ ${regional_accounts["$l_host"]} -eq 1 ]; then
+            vecho "$l_host is a Regional Account FQDN. Skipping IP change detection!"
             continue
         fi
 
@@ -461,6 +500,7 @@ while :; do
         #
         if [ "$new_ip" != "$l_nfsip" ]; then
             pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
+            check_for_regional_account "$l_host"
 
             # This will update DNAT rule as well.
             if ! update_mountmap_entry "$line" "$l_host $l_ip $new_ip"; then
