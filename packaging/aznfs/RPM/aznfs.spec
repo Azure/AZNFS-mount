@@ -148,7 +148,7 @@ if [ $1 == 0 ]; then
 		fi
 	fi
 
-	existing_mounts_for_nfsv4FilesShares=$(cat /opt/microsoft/aznfs/aznfs_files_mountmap 2>/dev/null | egrep '^\S+' | wc -l)
+	existing_mounts_for_nfsv4FilesShares=$(cat /opt/microsoft/aznfs/data/aznfs_files_mountmap 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts_for_nfsv4FilesShares -ne 0 ]; then
 		echo
 		echo -e "${RED}There are existing Azure Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
