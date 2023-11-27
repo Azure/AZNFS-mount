@@ -47,6 +47,8 @@ next_ip_change_detection_epoch=0
 # Defer update detection to 1 minute after start to avoid issues with auto-update.
 next_update_detection_epoch=$(expr $(date +%s) + 60)
 
+next_daily_run_epoch=$(expr $(date +%s) + 60)
+
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
 
@@ -76,16 +78,6 @@ declare -A regional_accounts
 should_skip_regional_account()
 {
     local l_host=$1
-
-    epoch_now=$(date +%s)
-
-    # Check for AZNFS updates.
-    check_for_latest_update=false
-    if [ "$AKS_USER" != "true" ] && [ $epoch_now -ge $next_update_detection_epoch ]; then
-        check_for_latest_update=true
-        next_update_detection_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
-    fi
-
     
     if [ ${regional_accounts["$l_host"]} -eq 1 ]; then
         # Environment variable prohibits skipping, return failure to do so.
@@ -287,6 +279,22 @@ ping_new_endpoint()
     vecho "[$BASHPID] stat($target) #2 done"
 }
 
+run_daily_once()
+{
+    unset ip_change_count
+    unset last_ip_change_time
+    unset regional_accounts
+
+    if [ "$AKS_USER" == "true" ]; then
+        return 1
+    fi
+
+    epoch_now=$(date +%s)
+
+    check_for_latest_update=true
+    next_daily_run_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
+}
+
 vecho "Starting aznfswatchdog..."
 
 # Detect and log distro and bash version
@@ -334,11 +342,9 @@ while :; do
 
     epoch_now=$(date +%s)
 
-    # Check for AZNFS updates.
     check_for_latest_update=false
-    if [ "$AKS_USER" != "true" ] && [ $epoch_now -ge $next_update_detection_epoch ]; then
-        check_for_latest_update=true
-        next_update_detection_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
+    if [ $epoch_now -ge $next_daily_run_epoch ]; then
+        run_daily_once
     fi
 
     if $check_for_latest_update; then
