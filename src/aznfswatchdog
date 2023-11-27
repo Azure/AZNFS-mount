@@ -281,6 +281,9 @@ ping_new_endpoint()
 
 run_daily_once()
 {
+    epoch_now=$(date +%s)
+    next_daily_run_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
+
     unset ip_change_count
     unset last_ip_change_time
     unset regional_accounts
@@ -288,11 +291,7 @@ run_daily_once()
     if [ "$AKS_USER" == "true" ]; then
         return 1
     fi
-
-    epoch_now=$(date +%s)
-
     check_for_latest_update=true
-    next_daily_run_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
 }
 
 vecho "Starting aznfswatchdog..."
