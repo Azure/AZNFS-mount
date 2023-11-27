@@ -281,6 +281,7 @@ ping_new_endpoint()
 
 run_daily_once()
 {
+    vecho "Inside run_daily_once"
     epoch_now=$(date +%s)
     next_daily_run_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
 
@@ -291,6 +292,7 @@ run_daily_once()
     if [ "$AKS_USER" == "true" ]; then
         return 1
     fi
+    vecho "Inside run_daily_once, when AKS_USER=false"
     check_for_latest_update=true
 }
 
@@ -343,11 +345,14 @@ while :; do
 
     check_for_latest_update=false
     if [ $epoch_now -ge $next_daily_run_epoch ]; then
+        vecho "Inside if [ epoch_now -ge next_daily_run_epoch ]"
         run_daily_once
     fi
 
     if $check_for_latest_update; then
+    vecho "Inside if check_for_latest_update; then"
         if [ -e "$INSTALLSCRIPT" ]; then
+            vecho "Running INSTALLSCRIPT"
             "$INSTALLSCRIPT" "auto-update"
         else
             wecho "[FATAL] $INSTALLSCRIPT not found. This is an unexpected error!"
@@ -510,7 +515,7 @@ while :; do
         # See if the account is regional account and we need to skip IP change detection for that.
         #
         if should_skip_regional_account "$l_host"; then
-            # vecho "$l_host is a Regional Account FQDN. Skipping IP change detection!"
+            vecho "$l_host is a Regional Account FQDN. Skipping IP change detection!"
             continue
         fi
 
