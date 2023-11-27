@@ -35,6 +35,13 @@ AZNFS_SKIP_UNMOUNT_CLEANUP="${AZNFS_SKIP_UNMOUNT_CLEANUP:-0}"
 # TIMEWAIT timeout to be used for conntrack entries.
 AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 
+#
+# Environment variable to control skipping of IP change detection for regional accounts.
+# By default we want to skip IP change detection for regional accounts, but if we want to 
+# disable skipping we can set this environment variable to 0.
+#
+AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS="${AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS:-1}"
+
 next_ip_change_detection_epoch=0
 
 # Defer update detection to 1 minute after start to avoid issues with auto-update.
@@ -62,6 +69,35 @@ chattr -f +i $RANDBYTES
 declare -A ip_change_count
 declare -A last_ip_change_time
 declare -A regional_accounts
+
+#
+# Checks the passed in account FQDN and tells if the IP change detection has to be skipped as it is a regional account.
+#
+should_skip_regional_account()
+{
+    local l_host=$1
+
+    epoch_now=$(date +%s)
+
+    # Check for AZNFS updates.
+    check_for_latest_update=false
+    if [ "$AKS_USER" != "true" ] && [ $epoch_now -ge $next_update_detection_epoch ]; then
+        check_for_latest_update=true
+        next_update_detection_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
+    fi
+
+    
+    if [ ${regional_accounts["$l_host"]} -eq 1 ]; then
+        # Environment variable prohibits skipping, return failure to do so.
+        if [ $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0 ]; then
+            return 1
+        fi
+
+        return 0
+    fi
+
+    return 1
+}
 
 # To check if an account should be marked as a "Regional Account".
 check_for_regional_account()
@@ -464,8 +500,12 @@ while :; do
         if ! $do_ip_change_detection; then
             continue
         fi
-        if [ ${regional_accounts["$l_host"]} -eq 1 ]; then
-            vecho "$l_host is a Regional Account FQDN. Skipping IP change detection!"
+
+        #
+        # See if the account is regional account and we need to skip IP change detection for that.
+        #
+        if should_skip_regional_account "$l_host"; then
+            # vecho "$l_host is a Regional Account FQDN. Skipping IP change detection!"
             continue
         fi
 
