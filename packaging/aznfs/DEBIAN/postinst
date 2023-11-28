@@ -5,12 +5,12 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
+export NCURSES_NO_UTF8_ACS=1
+
 # Exit on error.
 set -e
 
-# Set the terminal type
-export TERM=xterm
-export NCURSES_NO_UTF8_ACS=1
+
 
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 CONFIG_FILE="/opt/microsoft/aznfs/data/config"
