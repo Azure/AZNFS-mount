@@ -282,12 +282,11 @@ ping_new_endpoint()
 run_daily_once()
 {
     vecho "Inside run_daily_once"
-    epoch_now=$(date +%s)
-    next_daily_run_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
-
-    unset ip_change_count
-    unset last_ip_change_time
-    unset regional_accounts
+    next_daily_run_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
+    
+    ip_change_count=()
+    last_ip_change_time=()
+    regional_accounts=()
 
     if [ "$AKS_USER" == "true" ]; then
         return 1
