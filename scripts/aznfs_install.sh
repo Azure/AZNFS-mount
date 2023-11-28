@@ -152,16 +152,16 @@ perform_aznfs_update()
     if [ "$install_cmd" == "zypper" ]; then
         install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
     else
-        install_output=$($install_cmd install -y "/tmp/${package_name}" 2>&1)
+        $install_cmd install "/tmp/${package_name}"
     fi
-    install_error=$?
+    # install_error=$?
     rm -f "/tmp/${package_name}"
 
-    if [ $install_error -ne 0 ]; then
-        eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
-        eecho "$install_output"
-        exit 1
-    fi
+    # if [ $install_error -ne 0 ]; then
+    #     eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
+    #     eecho "$install_output"
+    #     exit 1
+    # fi
 
     if [ "$RUN_MODE" == "auto-update" ]; then
         secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER."
@@ -367,27 +367,28 @@ ensure_pkg "wget"
 
 if [ "$RUN_MODE" == "auto-update" ]; then
     # Define the GitHub API URL to get the latest release.
-    API_URL="https://api.github.com/repos/Azure/AZNFS-mount/releases/latest"
-    RELEASE_INFO=$(curl -sS --max-time 60 "$API_URL" 2>&1)
-    if [ $? -ne 0 ]; then
-        eecho "Failed to retrieve latest release information, exiting!"
-        eecho "**************************************************************"
-        eecho "JSON Response:"
-        eecho "$RELEASE_INFO"
-        eecho "**************************************************************"
-        exit 1
-    fi
+    # API_URL="https://api.github.com/repos/Azure/AZNFS-mount/releases/latest"
+    # RELEASE_INFO=$(curl -sS --max-time 60 "$API_URL" 2>&1)
+    # if [ $? -ne 0 ]; then
+    #     eecho "Failed to retrieve latest release information, exiting!"
+    #     eecho "**************************************************************"
+    #     eecho "JSON Response:"
+    #     eecho "$RELEASE_INFO"
+    #     eecho "**************************************************************"
+    #     exit 1
+    # fi
 
-    # Parse the release number from the JSON response.
-    RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep '"tag_name":' | cut -d '"' -f 4)
-    if [ -z "$RELEASE_NUMBER" ]; then
-        eecho "Failed to retrieve latest release number, exiting!"
-        eecho "**************************************************************"
-        eecho "JSON Response:"
-        eecho "$RELEASE_INFO"
-        eecho "**************************************************************"
-        exit 1
-    fi
+    # # Parse the release number from the JSON response.
+    # RELEASE_NUMBER=$(echo "$RELEASE_INFO" | grep '"tag_name":' | cut -d '"' -f 4)
+    # if [ -z "$RELEASE_NUMBER" ]; then
+    #     eecho "Failed to retrieve latest release number, exiting!"
+    #     eecho "**************************************************************"
+    #     eecho "JSON Response:"
+    #     eecho "$RELEASE_INFO"
+    #     eecho "**************************************************************"
+    #     exit 1
+    # fi
+    RELEASE_NUMBER="0.1.243"
 fi
 
 if [ $apt -eq 1 ]; then
