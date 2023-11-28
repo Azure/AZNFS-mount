@@ -44,9 +44,11 @@ AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS="${AZNFS_SKIP_IP_CHANGE_DET
 
 next_ip_change_detection_epoch=0
 
-# Defer update detection to 1 minute after start to avoid issues with auto-update.
-next_update_detection_epoch=$(expr $(date +%s) + 60)
-
+#
+# To track the time for daily_run_once function with a 1-minute deferral for update detection.
+# The deferral is intended to prevent any issues with auto-update,
+# and ensures that updates are deferred until 1 minute after the start of the aznfswatchdog.
+#
 next_daily_run_epoch=$(expr $(date +%s) + 60)
 
 # Load common aznfs helpers.
@@ -267,27 +269,27 @@ reconcile_conntrack()
 ping_new_endpoint()
 {
     local target="$1"
-    vecho "[$BASHPID] stat($target) #1 start"
-    stat "$target"
-    vecho "[$BASHPID] stat($target) #1 done"
 
+    stat "$target"
     sleep 35
-
     # One more stat after 30 sec sleep to let dir attributes timeout.
-    vecho "[$BASHPID] stat($target) #2 start"
     stat "$target"
-    vecho "[$BASHPID] stat($target) #2 done"
 }
 
 run_daily_once()
 {
-    epoch_now=$(date +%s)
-    next_daily_run_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
+    next_daily_run_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
+    
+    #
+    # To increase resilience in case the account is marked as regional due to a bad state,
+    # the arrays have been cleared. This ensures that we can check and mark the regional account on a daily basis.
+    # This helps prevent falsely marking an account as a regional account.
+    #
+    ip_change_count=()
+    last_ip_change_time=()
+    regional_accounts=()
 
-    unset ip_change_count
-    unset last_ip_change_time
-    unset regional_accounts
-
+    # Since AKS users don't require auto-update, there's no need to check for updates.
     if [ "$AKS_USER" == "true" ]; then
         return 1
     fi
@@ -510,7 +512,6 @@ while :; do
         # See if the account is regional account and we need to skip IP change detection for that.
         #
         if should_skip_regional_account "$l_host"; then
-            # vecho "$l_host is a Regional Account FQDN. Skipping IP change detection!"
             continue
         fi
 
