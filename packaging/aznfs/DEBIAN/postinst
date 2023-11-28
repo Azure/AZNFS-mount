@@ -10,8 +10,6 @@ export NCURSES_NO_UTF8_ACS=1
 # Exit on error.
 set -e
 
-
-
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 CONFIG_FILE="/opt/microsoft/aznfs/data/config"
 AUTO_UPDATE_AZNFS="false"
@@ -40,7 +38,7 @@ user_consent_for_auto_update()
 #     rows=$(tput lines)
 #     cols=$(tput cols)
 
-#     # Keep dialog box size based on screen dimensions
+#     # To Keep dialog box size based on screen dimensions
 #     height=$((rows * 30 / 100))
 #     width=$((cols * 60 / 100))
 
