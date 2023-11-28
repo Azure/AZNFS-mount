@@ -63,11 +63,8 @@ user_consent_for_auto_update()
 
 
 dialog --msgbox "I'm a dialog box message" 10 30
-if [ $? -eq 0 ]; then
-    echo "OK button was pressed."
-else
-    echo "Dialog was canceled."
-fi
+
+echo "working --msgbox"
 
 }
 
