@@ -8,6 +8,9 @@
 # Exit on error.
 set -e
 
+# Set the terminal type
+export TERM=xterm
+
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 CONFIG_FILE="/opt/microsoft/aznfs/data/config"
 AUTO_UPDATE_AZNFS="false"
@@ -61,11 +64,20 @@ user_consent_for_auto_update()
 #     fi
 #*******************************************************************************************************
 
+# Check if dialog is installed
+if ! command -v dialog > /dev/null; then
+    echo "Error: 'dialog' is not installed. Please install it and try again."
+    exit 1
+fi
 
+# Debugging
+echo "Before dialog"
 dialog --msgbox "I'm a dialog box message" 10 30
+dialog_exit_code=$?
+echo "After dialog"
 
-echo "working --msgbox"
-
+# Debugging: Output the exit code
+echo "Exit code: $dialog_exit_code"
 }
 
 # Set appropriate permissions.
