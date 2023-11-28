@@ -47,6 +47,11 @@ next_ip_change_detection_epoch=0
 # Defer update detection to 1 minute after start to avoid issues with auto-update.
 next_update_detection_epoch=$(expr $(date +%s) + 60)
 
+#
+# To track the time for daily_run_once function with a 1-minute deferral for update detection.
+# The deferral is intended to prevent any issues with auto-update,
+# and ensures that updates are deferred until 1 minute after the start of the aznfswatchdog.
+#
 next_daily_run_epoch=$(expr $(date +%s) + 60)
 
 # Load common aznfs helpers.
@@ -281,17 +286,20 @@ ping_new_endpoint()
 
 run_daily_once()
 {
-    vecho "Inside run_daily_once"
     next_daily_run_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
     
+    #
+    # To increase resilience in case the account is marked as regional due to a bad state,
+    # the arrays have been cleared. This ensures that we can check and mark the regional account on a daily basis.
+    #
     ip_change_count=()
     last_ip_change_time=()
     regional_accounts=()
 
+    # Since AKS users don't require auto-update, there's no need to check for updates.
     if [ "$AKS_USER" == "true" ]; then
         return 1
     fi
-    vecho "Inside run_daily_once, when AKS_USER=false"
     check_for_latest_update=true
 }
 
@@ -344,14 +352,11 @@ while :; do
 
     check_for_latest_update=false
     if [ $epoch_now -ge $next_daily_run_epoch ]; then
-        vecho "Inside if [ epoch_now -ge next_daily_run_epoch ]"
         run_daily_once
     fi
 
     if $check_for_latest_update; then
-    vecho "Inside if check_for_latest_update; then"
         if [ -e "$INSTALLSCRIPT" ]; then
-            vecho "Running INSTALLSCRIPT"
             "$INSTALLSCRIPT" "auto-update"
         else
             wecho "[FATAL] $INSTALLSCRIPT not found. This is an unexpected error!"
