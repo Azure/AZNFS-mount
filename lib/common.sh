@@ -497,9 +497,6 @@ ensure_iptable_entry_not_exist()
         output=$(conntrack -D conntrack -p tcp -d "$1" -r "$2" 2>&1)
         if [ $? -ne 0 ]; then
             vecho "$output"
-
-            vecho "conntrack output = $(conntrack -L)"
-            vecho "iptables output = $(iptables -t nat -L -v)"
         fi
     fi
 }

@@ -115,7 +115,7 @@ check_for_regional_account()
         #  
         ip_change_count["$l_host"]=1
 
-    elif [ ${ip_change_count["$l_host"]} -gt 3 ]; then
+    elif [ ${ip_change_count["$l_host"]} -ge 3 ]; then
         # If the IP changed more than 3 times in less than 5 minutes, mark it as "Regional Account" FQDN.
         wecho "Marking $l_host as Regional Account FQDN due to frequent IP changes."
         regional_accounts["$l_host"]=1  # Set to true
