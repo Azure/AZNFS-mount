@@ -17,8 +17,8 @@ MONITOR_INTERVAL_SECS=5
 # How often do we check for change in FQDN->IP?
 IP_CHANGE_DETECTION_FREQUENCY=60
 
-# How often do we check for updates of AZNFS?
-UPDATE_DETECTION_FREQUENCY=86400
+# Determines the frequency at which we check for updates of AZNFS and run the daily function.
+DAILY_CHECK_AFTER_SECONDS=86400
 
 #
 # Remove unmounted entries only if MOUNTMAP has not been changed till MONITOR_INTERVAL_SECS seconds.
@@ -80,7 +80,7 @@ declare -A regional_accounts
 should_skip_regional_account()
 {
     local l_host=$1
-    
+
     if [ ${regional_accounts["$l_host"]} -eq 1 ]; then
         # Environment variable prohibits skipping, return failure to do so.
         if [ $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0 ]; then
@@ -97,6 +97,10 @@ should_skip_regional_account()
 check_for_regional_account()
 {
     local l_host=$1
+
+    if [ $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0 ]; then
+        return 0
+    fi
 
     let ip_change_count[$l_host]++
     local current_time=$(date +"%s")
@@ -283,7 +287,7 @@ ping_new_endpoint()
 
 run_daily_once()
 {
-    next_daily_run_epoch=$(expr $(date +%s) + $UPDATE_DETECTION_FREQUENCY)
+    next_daily_run_epoch=$(expr $(date +%s) + $DAILY_CHECK_AFTER_SECONDS)
     
     #
     # To increase resilience in case the account is marked as regional due to a bad state,
