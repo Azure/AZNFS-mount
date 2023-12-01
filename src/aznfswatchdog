@@ -122,6 +122,19 @@ check_for_regional_account()
     fi
 }
 
+delete_stuck_conntrack_entry()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_reply_srcip=$4
+
+    local cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
+    wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
+
+    eval $cmd
+}
+
 #
 # Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
 # Used for finding if some entry is stuck in SYN_SENT state due to a bug in older
@@ -147,10 +160,7 @@ reconcile_conntrack_synsent()
     # SYN_SENT for 25/30 secs.
     #
     if [ ${cthash_synsent[$key]} -ge 5 ]; then
-        cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in SYN_SENT state [$cmd]"
-
-        eval $cmd
+        delete_stuck_conntrack_entry "$l_ip" "$l_sport" "$l_dport" "$l_nfsip"
         if [ $? -ne 0 ]; then
             eecho "Failed to delete conntrack entry [$cmd]!"
         else
@@ -176,14 +186,10 @@ reconcile_conntrack_unreplied()
     local l_reply_srcip=$4
 
     if [ "$l_ip" == "$l_reply_srcip" ]; then
-        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
-
-        eval $cmd
+        delete_stuck_conntrack_entry "$l_ip" "$l_sport" "$l_dport" "$l_reply_srcip"
         if [ $? -ne 0 ]; then
             eecho "Failed to delete conntrack entry [$cmd]!"
         fi
-        return 0
     fi
 
     key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
@@ -195,10 +201,7 @@ reconcile_conntrack_unreplied()
     # UNREPLIED for 25/30 secs.
     #
     if [ ${cthash_unreplied[$key]} -ge 5 ]; then
-        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
-
-        eval $cmd
+        delete_stuck_conntrack_entry "$l_ip" "$l_sport" "$l_dport" "$l_reply_srcip"
         if [ $? -ne 0 ]; then
             eecho "Failed to delete conntrack entry [$cmd]!"
         else
