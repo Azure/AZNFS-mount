@@ -175,6 +175,17 @@ reconcile_conntrack_unreplied()
     local l_dport=$3
     local l_reply_srcip=$4
 
+    if [ "$l_ip" == "$l_reply_srcip" ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
+
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        fi
+        return 0
+    fi
+
     key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
     let cthash_unreplied[$key]++
     let cthash_unreplied_now[$key]++
