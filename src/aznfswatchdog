@@ -190,6 +190,7 @@ reconcile_conntrack_unreplied()
         if [ $? -ne 0 ]; then
             eecho "Failed to delete conntrack entry [$cmd]!"
         fi
+        return 0
     fi
 
     key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
