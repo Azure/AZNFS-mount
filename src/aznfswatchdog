@@ -98,7 +98,7 @@ check_for_regional_account()
 {
     local l_host=$1
 
-    if [ $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0 ]; then
+    if [ ${regional_accounts["$l_host"]} -eq 1 ]; then
         return 0
     fi
 
@@ -500,7 +500,7 @@ while :; do
         # it around.
         #
         if ! echo "$findmnt" | grep " nfs ${l_ip}:" >/dev/null; then
-            if $do_unmount_gc; then
+            if $do_unmount_gc || [ $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0 ]; then
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAP} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
@@ -596,7 +596,9 @@ while :; do
             else
                 reconcile_conntrack_after_dnat_update $l_ip
                 mountpoint=$(echo "$findmnt" | grep " nfs ${l_ip}:" | awk '{print $4}')
-                ping_new_endpoint "$mountpoint" &
+                if [ -n "$mountpoint" ]; then
+                    ping_new_endpoint "$mountpoint" &
+                fi
             fi
         fi
     done
