@@ -83,7 +83,7 @@ should_skip_regional_account()
 
     if [[ ${regional_accounts["$l_host"]} -eq 1 ]]; then
         # Environment variable prohibits skipping, return failure to do so.
-        if [ "$AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS" -eq "0" ]; then
+        if [ "$AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS" == "0" ]; then
             return 1
         fi
 
@@ -105,7 +105,7 @@ check_for_regional_account()
     fi
 
     let ip_change_count[$l_host]++
-    local current_time=$(date +"%s")
+    local current_time=$(date +%s)
 
     # Check if it's the first IP change or if the time since the last change is greater than 5 minutes.
     if [ ${ip_change_count["$l_host"]} -eq 1 ] || [ $((current_time - last_ip_change_time["$l_host"])) -gt 300 ]; then
@@ -187,7 +187,7 @@ reconcile_conntrack_unreplied()
     #
     if [ ${cthash_unreplied[$key]} -ge 5 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in SYN_SENT state [$cmd]"
+        wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
 
         eval $cmd
         if [ $? -ne 0 ]; then
@@ -275,6 +275,7 @@ reconcile_conntrack()
 ping_new_endpoint()
 {
     local target="$1"
+
     vecho "[$BASHPID] stat($target) #1 start"
     stat "$target"
     vecho "[$BASHPID] stat($target) #1 done"
@@ -336,7 +337,12 @@ if ! chattr -f +i $MOUNTMAP; then
     wecho "chattr does not work for ${MOUNTMAP}!"
 fi
 
-if [ "$AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS" -eq "0" ]; then
+#
+# If we are not skipping IP change detection for regional accounts, then mountmap file will be updated every minute
+# due to the change in IP for regional account FQDN. If we use standard MOUNTMAP_INACTIVITY_SECS,
+# then this will prevent mountmap entry to be deleted. We set this to less than 1 minute in this case.
+#
+if [ "$AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS" == "0" ]; then
     MOUNTMAP_INACTIVITY_SECS=45
 fi
 
@@ -483,13 +489,7 @@ while :; do
                 # it's safe to update the MOUNTMAP, so update mtime_mountmap to the
                 # mtime after this update.
                 #
-                if [ $? -eq 0 ]; then
-                    mtime_mountmap=$l_mtime
-
-                    unset ip_change_count["$l_host"]
-                    unset last_ip_change_time["$l_host"]
-                    unset regional_accounts["$l_host"]
-                fi
+                [ $? -eq 0 ] && mtime_mountmap=$l_mtime
                 continue
             fi
         else
