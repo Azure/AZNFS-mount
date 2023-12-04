@@ -485,8 +485,8 @@ ensure_iptable_entry()
         # delete the entry if such an entry exists.
         #
         output=$(conntrack -D -p tcp -d "$1" -r "$1" 2>&1)
-        if [ $? -ne 0 ]; then
-            vecho "$output"
+        if [ $? -eq 0 ]; then
+            wecho "Deleted undesired conntrack entry [$1 -> $1]!"
         fi
     fi
 }
