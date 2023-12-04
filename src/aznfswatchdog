@@ -368,7 +368,9 @@ if ! chattr -f +i $MOUNTMAP; then
     wecho "chattr does not work for ${MOUNTMAP}!"
 fi
 
-
+if [ $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0]; then
+    MOUNTMAP_INACTIVITY_SECS=45
+fi
 
 #
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
