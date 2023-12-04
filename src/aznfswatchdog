@@ -25,6 +25,7 @@ DAILY_CHECK_AFTER_SECONDS=86400
 # Don't set it below 3 minutes.
 #
 MOUNTMAP_INACTIVITY_SECS=300
+MOUNTMAP_INACTIVITY_SECS_FOR_REGIONAL_ACCOUNT=30
 
 #
 # Don't perform mountmap and iptables rule cleanup for unmounted filesystems.
@@ -440,6 +441,13 @@ while :; do
         fi
     fi
 
+    do_unmount_gc_for_regional_account=false
+    if [ $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0 ]; then
+        if [ $epoch_now -ge $(expr $mtime_mountmap + $MOUNTMAP_INACTIVITY_SECS_FOR_REGIONAL_ACCOUNT) ]; then
+            do_unmount_gc_for_regional_account=true
+        fi
+    fi
+
     #
     # findmnt must be done after reading MOUNTMAP so that if we come accross a
     # MOUNTMAP entry whose proxy_ip is not used by any existing mount, we know
@@ -500,7 +508,7 @@ while :; do
         # it around.
         #
         if ! echo "$findmnt" | grep " nfs ${l_ip}:" >/dev/null; then
-            if $do_unmount_gc || [ ${regional_accounts["$l_host"]} -eq 1 && $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0 ]; then
+            if $do_unmount_gc || [ ${regional_accounts["$l_host"]} -eq 1 && $do_unmount_gc_for_regional_account ]; then
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAP} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
