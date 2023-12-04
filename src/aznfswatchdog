@@ -231,8 +231,8 @@ reconcile_conntrack()
         done
     fi
 
-    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip --dport 111 | grep -v "SYN_SENT" | grep "\[UNREPLIED\]" 2>/dev/null)
-    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip --dport 2048 | grep -v "SYN_SENT" | grep "\[UNREPLIED\]" 2>/dev/null)
+    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip --dport 111 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
+    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip --dport 2048 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
     output="$output111"$'\n'"$output2048"
     if [ -n "$output" ]; then
         for line in $output; do
