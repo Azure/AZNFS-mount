@@ -101,7 +101,7 @@ check_for_regional_account()
     local l_host=$1
 
     if [[ ${regional_accounts["$l_host"]} -eq 1 ]]; then
-        return 0
+        return
     fi
 
     let ip_change_count[$l_host]++
@@ -565,6 +565,7 @@ while :; do
                 eecho "Will reattempt the operation in next iteration."
             else
                 mountpoint=$(echo "$findmnt" | grep " nfs ${l_ip}:" | awk '{print $4}')
+                mountpoint=$(echo -e "$mountpoint")
                 if [ -n "$mountpoint" ]; then
                     ping_new_endpoint "$mountpoint" &
                 fi
