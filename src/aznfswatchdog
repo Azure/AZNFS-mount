@@ -500,7 +500,7 @@ while :; do
         # it around.
         #
         if ! echo "$findmnt" | grep " nfs ${l_ip}:" >/dev/null; then
-            if $do_unmount_gc || [ $AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS -eq 0 ]; then
+            if $do_unmount_gc; then
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAP} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
