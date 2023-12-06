@@ -17,8 +17,8 @@ MONITOR_INTERVAL_SECS=5
 # How often do we check for change in FQDN->IP?
 IP_CHANGE_DETECTION_FREQUENCY=60
 
-# How often do we check for updates of AZNFS?
-UPDATE_DETECTION_FREQUENCY=86400
+# Determines the frequency at which we check for updates of AZNFS and run the daily function.
+DAILY_CHECK_AFTER_SECONDS=86400
 
 #
 # Remove unmounted entries only if MOUNTMAP has not been changed till MONITOR_INTERVAL_SECS seconds.
@@ -35,10 +35,21 @@ AZNFS_SKIP_UNMOUNT_CLEANUP="${AZNFS_SKIP_UNMOUNT_CLEANUP:-0}"
 # TIMEWAIT timeout to be used for conntrack entries.
 AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 
+#
+# Environment variable to control skipping of IP change detection for regional accounts.
+# By default we want to skip IP change detection for regional accounts, but if we want to 
+# disable skipping we can set this environment variable to 0.
+#
+AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS="${AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS:-1}"
+
 next_ip_change_detection_epoch=0
 
-# Defer update detection to 1 minute after start to avoid issues with auto-update.
-next_update_detection_epoch=$(expr $(date +%s) + 60)
+#
+# To track the time for daily_run_once function with a 1-minute deferral for update detection.
+# The deferral is intended to prevent any issues with auto-update,
+# and ensures that updates are deferred until 1 minute after the start of the aznfswatchdog.
+#
+next_daily_run_epoch=$(expr $(date +%s) + 60)
 
 # Load common aznfs helpers.
 . /opt/microsoft/aznfs/common.sh
@@ -59,6 +70,60 @@ if [ ! -s $RANDBYTES ]; then
 fi
 chattr -f +i $RANDBYTES
 
+declare -A ip_change_count
+declare -A last_ip_change_time
+declare -A regional_accounts
+
+#
+# Checks the passed in account FQDN and tells if the IP change detection has to be skipped as it is a regional account.
+#
+should_skip_regional_account()
+{
+    local l_host=$1
+
+    if [[ ${regional_accounts["$l_host"]} -eq 1 ]]; then
+        # Environment variable prohibits skipping, return failure to do so.
+        if [ "$AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS" == "0" ]; then
+            return 1
+        fi
+
+        return 0
+    fi
+
+    return 1
+}
+
+#
+# To check if an account should be marked as a "Regional Account".
+#
+check_for_regional_account()
+{
+    local l_host=$1
+
+    if [[ ${regional_accounts["$l_host"]} -eq 1 ]]; then
+        return
+    fi
+
+    let ip_change_count[$l_host]++
+    local current_time=$(date +%s)
+
+    # Check if it's the first IP change or if the time since the last change is greater than 5 minutes.
+    if [ ${ip_change_count["$l_host"]} -eq 1 ] || [ $((current_time - last_ip_change_time["$l_host"])) -gt 300 ]; then
+        last_ip_change_time["$l_host"]=$current_time
+
+        #
+        # Ensures that the count is reset to 1 when either it's the first IP change or
+        # when the time since the last change is greater than 5 minutes.
+        #  
+        ip_change_count["$l_host"]=1
+
+    elif [ ${ip_change_count["$l_host"]} -ge 3 ]; then
+        # If the IP changed more than 3 times in less than 5 minutes, mark it as "Regional Account" FQDN.
+        wecho "Marking $l_host as Regional Account FQDN due to frequent IP changes."
+        regional_accounts["$l_host"]=1  # Set to true
+    fi
+}
+
 #
 # Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
 # Used for finding if some entry is stuck in SYN_SENT state due to a bug in older
@@ -68,7 +133,7 @@ chattr -f +i $RANDBYTES
 declare -A cthash_synsent
 declare -A cthash_synsent_now
 
-reconcile_conntrack_one()
+reconcile_conntrack_synsent()
 {
     local l_ip=$1
     local l_sport=$2
@@ -96,14 +161,53 @@ reconcile_conntrack_one()
     fi
 }
 
+#
+# Hash for storing how many times we have seen a conntrack entry in UNREPLIED state.
+# Used for finding if some entry is stuck in UNREPLIED state due to no response from
+# NFS server or some n/w issue. We want to delete the entry as it prevents creation of
+# a new conntrack entry, if the IP were to change again soon.
+#
+declare -A cthash_unreplied
+declare -A cthash_unreplied_now
+
+reconcile_conntrack_unreplied()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_reply_srcip=$4
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
+    let cthash_unreplied[$key]++
+    let cthash_unreplied_now[$key]++
+
+    #
+    # We are called every 5 secs, so this deletes an entry stuck in
+    # UNREPLIED for 25/30 secs.
+    #
+    if [ ${cthash_unreplied[$key]} -ge 5 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
+
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_unreplied[$key]
+        fi
+    fi
+}
+
 reconcile_conntrack()
 {
     local l_ip=$1
     local l_nfsip=$2
 
-    # cthash_synsent_now holds only entries found in this call, so clear it before starting.
+    # cthash_synsent_now and cthash_unreplied_now holds only entries found in this call, so clear it before starting.
     unset cthash_synsent_now
+    unset cthash_unreplied_now
     declare -A cthash_synsent_now
+    declare -A cthash_unreplied_now
 
     #
     # For mounts with nconnect, there could be more than one conntrack entries to the same
@@ -122,20 +226,85 @@ reconcile_conntrack()
             if [[ "$line" =~ $matchstr ]]; then
                 l_sport=${BASH_REMATCH[1]}
                 l_dport=${BASH_REMATCH[2]}
-                reconcile_conntrack_one $l_ip $l_sport $l_dport $l_nfsip
+                reconcile_conntrack_synsent $l_ip $l_sport $l_dport $l_nfsip
+            fi
+        done
+    fi
+
+    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip --dport 111 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
+    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip --dport 2048 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
+    output="$output111"$'\n'"$output2048"
+    if [ -n "$output" ]; then
+        for line in $output; do
+            # XXX Remove this log after running for few days.
+            vecho "$line"
+
+            matchstr=".* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
+            if [[ "$line" =~ $matchstr ]]; then
+                l_sport=${BASH_REMATCH[1]}
+                l_dport=${BASH_REMATCH[2]}
+                l_reply_srcip=${BASH_REMATCH[3]}
+                reconcile_conntrack_unreplied $l_ip $l_sport $l_dport $l_reply_srcip
             fi
         done
     fi
 
     #
     # Any port that is not stuck now, means it's recovered since the last time and can be removed
-    # from the global cthash_synsent map.
+    # from the global cthash_synsent and cthash_unreplied map.
     #
     for key in "${!cthash_synsent[@]}"; do
         if [ ! -v cthash_synsent_now[$key] ]; then
             unset cthash_synsent[$key]
         fi
     done
+
+    for key in "${!cthash_unreplied[@]}"; do
+        if [ ! -v cthash_unreplied_now[$key] ]; then
+            unset cthash_unreplied[$key]
+        fi
+    done
+}
+
+#
+# Function for running stat for mountpoint so that everytime DNAT rule is updated, it is
+# used to make sure to send atleast one packet that matches the DNAT rule.
+# This will make sure that the connection gets a TCP reset and outstanding NFS RPC requests
+# are retransmitted right away w/o waiting for the 1 min timeout.
+#
+ping_new_endpoint()
+{
+    local target="$1"
+
+    vecho "[$BASHPID] stat($target) #1 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #1 done"
+
+    sleep 35
+
+    # One more stat after 30 sec sleep to let dir attributes timeout.
+    vecho "[$BASHPID] stat($target) #2 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #2 done"
+}
+
+run_daily_once()
+{
+    next_daily_run_epoch=$(expr $(date +%s) + $DAILY_CHECK_AFTER_SECONDS)
+    
+    #
+    # To increase resilience in case the account is marked as regional due to a bad state,
+    # the arrays have been cleared. This ensures that we can check and mark the regional account on a daily basis.
+    # This helps prevent falsely marking an account as a regional account.
+    #
+    ip_change_count=()
+    last_ip_change_time=()
+    regional_accounts=()
+
+    # Since AKS users don't require auto-update, there's no need to check for updates.
+    if [ "$AKS_USER" != "true" ]; then
+        check_for_latest_update=true
+    fi
 }
 
 vecho "Starting aznfswatchdog..."
@@ -168,7 +337,14 @@ if ! chattr -f +i $MOUNTMAP; then
     wecho "chattr does not work for ${MOUNTMAP}!"
 fi
 
-
+#
+# If we are not skipping IP change detection for regional accounts, then mountmap file will be updated every minute
+# due to the change in IP for regional account FQDN. If we use standard MOUNTMAP_INACTIVITY_SECS,
+# then this will prevent mountmap entry to be deleted. We set this to less than 1 minute in this case.
+#
+if [ "$AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS" == "0" ]; then
+    MOUNTMAP_INACTIVITY_SECS=45
+fi
 
 #
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
@@ -185,11 +361,9 @@ while :; do
 
     epoch_now=$(date +%s)
 
-    # Check for AZNFS updates.
     check_for_latest_update=false
-    if [ "$AKS_USER" != "true" ] && [ $epoch_now -ge $next_update_detection_epoch ]; then
-        check_for_latest_update=true
-        next_update_detection_epoch=$((epoch_now + UPDATE_DETECTION_FREQUENCY))
+    if [ $epoch_now -ge $next_daily_run_epoch ]; then
+        run_daily_once
     fi
 
     if $check_for_latest_update; then
@@ -347,6 +521,13 @@ while :; do
         fi
 
         #
+        # See if the account is regional account and we need to skip IP change detection for that.
+        #
+        if should_skip_regional_account "$l_host"; then
+            continue
+        fi
+
+        #
         # Check if blob endpoint IP address changed.
         # This is the migration check.
         #
@@ -377,10 +558,17 @@ while :; do
         #
         if [ "$new_ip" != "$l_nfsip" ]; then
             pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
+            check_for_regional_account "$l_host"
 
             # This will update DNAT rule as well.
             if ! update_mountmap_entry "$line" "$l_host $l_ip $new_ip"; then
                 eecho "Will reattempt the operation in next iteration."
+            else
+                mountpoint=$(echo "$findmnt" | grep " nfs ${l_ip}:" | awk '{print $4}')
+                mountpoint=$(echo -e "$mountpoint")
+                if [ -n "$mountpoint" ]; then
+                    ping_new_endpoint "$mountpoint" &
+                fi
             fi
         fi
     done

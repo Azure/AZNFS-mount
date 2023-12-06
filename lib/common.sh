@@ -476,6 +476,18 @@ ensure_iptable_entry()
             eecho "Failed to add DNAT rule [$1 -> $2]!"
             return 1
         fi
+        
+        #
+        # While the DNAT entry was not there, if there was some NFS traffic (targeted to proxy IP),
+        # it would have created a conntrack entry with destination and reply source IP as the proxy IP.
+        # This conntrack entry will prevent the creation of the correct conntrack entry with destination as
+        # proxy IP and reply source as NFS server IP. This will cause traffic to be stalled, hence we need to
+        # delete the entry if such an entry exists.
+        #
+        output=$(conntrack -D -p tcp -d "$1" -r "$1" 2>&1)
+        if [ $? -eq 0 ]; then
+            wecho "Deleted undesired conntrack entry [$1 -> $1]!"
+        fi
     fi
 }
 
@@ -514,6 +526,18 @@ verify_iptable_entry()
         if [ $? -ne 0 ]; then
             eecho "Failed to add DNAT rule [$1 -> $2]!"
             return 1
+        fi
+
+        #
+        # While the DNAT entry was not there, if there was some NFS traffic (targeted to proxy IP),
+        # it would have created a conntrack entry with destination and reply source IP as the proxy IP.
+        # This conntrack entry will prevent the creation of the correct conntrack entry with destination as
+        # proxy IP and reply source as NFS server IP. This will cause traffic to be stalled, hence we need to
+        # delete the entry if such an entry exists.
+        #
+        output=$(conntrack -D -p tcp -d "$1" -r "$1" 2>&1)
+        if [ $? -eq 0 ]; then
+            wecho "Deleted undesired conntrack entry [$1 -> $1]!"
         fi
     fi
 }
