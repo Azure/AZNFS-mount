@@ -71,7 +71,7 @@ fi
 
 # Debugging
 echo "Before dialog"
-dialog --msgbox "I'm a dialog box message" 10 30 2>&1 > /dev/tty
+dialog --msgbox "I'm a dialog box message" 10 30 > /dev/tty 2>&1
 dialog_exit_code=$?
 echo "After dialog"
 
