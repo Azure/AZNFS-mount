@@ -150,18 +150,17 @@ perform_aznfs_update()
     fi
     
     if [ "$install_cmd" == "zypper" ]; then
-        install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
+        $install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" < /dev/tty
     else
         $install_cmd install "/tmp/${package_name}" < /dev/tty
     fi
-    # install_error=$?
+    install_error=$?
     rm -f "/tmp/${package_name}"
 
-    # if [ $install_error -ne 0 ]; then
-    #     eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
-    #     eecho "$install_output"
-    #     exit 1
-    # fi
+    if [ $install_error -ne 0 ]; then
+        eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
+        exit 1
+    fi
 
     if [ "$RUN_MODE" == "auto-update" ]; then
         secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER."
