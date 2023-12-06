@@ -63,6 +63,7 @@ parse_user_config() {
         echo "$CONFIG_FILE not found. Please make sure it is present."
     fi
 
+	# Read the value of AUTO_UPDATE_AZNFS from the configuration file and convert to lowercase for easy comparison later.
     AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
     AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
 }
@@ -79,6 +80,7 @@ user_consent_for_auto_update() {
         exit 1
     fi
 
+    # To Keep dialog box size based on screen dimensions use terminal window dimensions.
     rows=$(tput lines)
     cols=$(tput cols)
     height=$((rows * 30 / 100))
@@ -92,12 +94,11 @@ user_consent_for_auto_update() {
 
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
-    dialog --timeout 300 --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width > /dev/tty 2>&1
+    dialog --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width > /dev/tty 2>&1
     dialog_exit_code=$?
-
     echo "Dialog exited with code: $dialog_exit_code"
     
-    if [ $dialog_exit_code -eq 0 ] || [ $dialog_exit_code -eq 255 ]; then
+    if [ $dialog_exit_code -eq 0 ]; then
         echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
     else
         echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
