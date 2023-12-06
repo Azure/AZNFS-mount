@@ -52,6 +52,8 @@ if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
 fi
 
 %post
+export NCURSES_NO_UTF8_ACS=1
+
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 CONFIG_FILE="/opt/microsoft/aznfs/data/config"
 AUTO_UPDATE_AZNFS="false"
