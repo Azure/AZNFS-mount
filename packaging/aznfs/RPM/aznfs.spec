@@ -4,7 +4,7 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, dialog
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
@@ -52,6 +52,56 @@ if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
 fi
 
 %post
+FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
+CONFIG_FILE="/opt/microsoft/aznfs/data/config"
+AUTO_UPDATE_AZNFS="false"
+
+parse_user_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "$CONFIG_FILE not found. Please make sure it is present."
+    fi
+
+    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
+    AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
+}
+
+user_consent_for_auto_update() {
+    parse_user_config
+
+    if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then
+        return 0
+    fi
+
+    if ! command -v dialog > /dev/null; then
+        echo "Error: 'dialog' is not installed. Please install it using your package manager and try again."
+        exit 1
+    fi
+
+    rows=$(tput lines)
+    cols=$(tput cols)
+    height=$((rows * 30 / 100))
+    width=$((cols * 60 / 100))
+
+    title="Auto-Update Configuration"
+    auto_update_prompt="Do you wish to enable automatic updates for AZNFS to ensure you stay up-to-date with the \
+                        latest features, improvements, and security patches? We recommend enabling automatic updates \
+                        to ensure you have the best AZNFS experience. If you choose to enable automatic updates, \
+                        the AZNFS will periodically check for updates and apply them automatically."
+
+    sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
+
+    dialog --timeout 300 --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width > /dev/tty 2>&1
+    dialog_exit_code=$?
+
+    echo "Dialog exited with code: $dialog_exit_code"
+    
+    if [ $dialog_exit_code -eq 0 ] || [ $dialog_exit_code -eq 255 ]; then
+        echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
+    else
+        echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
+    fi
+}
+
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
@@ -87,22 +137,23 @@ if [ $1 == 2 ]; then
 fi
 
 # Check if the config file exists; if not, create it.
-if [ ! -f /opt/microsoft/aznfs/data/config ]; then
-        # Create the config file and set default AUTO_UPDATE_AZNFS=true inside it.
-        echo "AUTO_UPDATE_AZNFS=true" > /opt/microsoft/aznfs/data/config
+if [ ! -f "$CONFIG_FILE" ]; then
+        # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
+        echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
 
         # Set the permissions for the config file.
-        chmod 0644 /opt/microsoft/aznfs/data/config
+        chmod 0644 "$CONFIG_FILE"
 fi
 
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
-if [ ! -f /tmp/.update_in_progress_from_watchdog.flag ]; then
+if [ ! -f "$FLAG_FILE" ]; then
+        user_consent_for_auto_update
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
 else
         # Clean up the update in progress flag file.
-        rm -f /tmp/.update_in_progress_from_watchdog.flag
+        rm -f "$FLAG_FILE"
 fi
 
 

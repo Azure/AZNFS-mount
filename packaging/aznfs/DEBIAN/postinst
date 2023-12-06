@@ -101,19 +101,17 @@ if [ -f /opt/microsoft/aznfs/randbytes ]; then
 fi
 
 # Check if the config file exists; if not, create it.
-if [ ! -f /opt/microsoft/aznfs/data/config ]; then
+if [ ! -f "$CONFIG_FILE" ]; then
         # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
-        echo "AUTO_UPDATE_AZNFS=false" > /opt/microsoft/aznfs/data/config
+        echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
 
         # Set the permissions for the config file.
-        chmod 0644 /opt/microsoft/aznfs/data/config
+        chmod 0644 "$CONFIG_FILE"
 fi
 
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
 if [ ! -f "$FLAG_FILE" ]; then
-
         user_consent_for_auto_update
-
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
