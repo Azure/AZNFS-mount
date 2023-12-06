@@ -55,7 +55,7 @@ user_consent_for_auto_update()
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
     # Run the dialog command and capture its exit code.
-    dialog --timeout 300 --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width > /dev/tty
+    dialog --timeout 60 --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width > /dev/tty
     dialog_exit_code=$?
     
     # Debugging: Output the exit code
