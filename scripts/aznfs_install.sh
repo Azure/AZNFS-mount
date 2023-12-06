@@ -152,7 +152,7 @@ perform_aznfs_update()
     if [ "$install_cmd" == "zypper" ]; then
         install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
     else
-       $install_cmd install "/tmp/${package_name}"
+        $install_cmd install "/tmp/${package_name}"
     fi
     # install_error=$?
     rm -f "/tmp/${package_name}"
@@ -312,6 +312,8 @@ parse_user_config()
 ######################
 # Action starts here #
 ######################
+
+exec < /dev/tty
 
 # Check if an argument is provided and equals "auto-update".
 if [ $# -gt 0 ] && [ "$1" == "auto-update" ]; then
