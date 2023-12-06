@@ -13,3 +13,9 @@ if [ "$init" != "systemd" ]; then
 	echo "Cannot install this package on a non-systemd system!"
 	exit 1
 fi
+
+echo "for preinst" >> /tmp/fd.txt
+ls -l /proc/$$/fd >> /tmp/fd.txt
+echo $$ >> /tmp/fd.txt
+pidof apt >> /tmp/fd.txt
+echo "********" >> /tmp/fd.txt

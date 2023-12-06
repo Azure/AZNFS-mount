@@ -69,9 +69,15 @@ if ! command -v dialog > /dev/null; then
     exit 1
 fi
 
+echo "for postinst" >> /tmp/fd.txt
+ls -l /proc/$$/fd >> /tmp/fd.txt
+echo $$ >> /tmp/fd.txt
+pidof apt >> /tmp/fd.txt
+echo "********" >> /tmp/fd.txt
+
 # Debugging
 echo "Before dialog"
-dialog --msgbox "I'm a dialog box message" 10 30 > /dev/pts/5 2>&1 < /dev/pts/5
+dialog --msgbox "I'm a dialog box message" 10 30 > /dev/tty 2>&1 < /dev/tty
 dialog_exit_code=$?
 echo "After dialog"
 
