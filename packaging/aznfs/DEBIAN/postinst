@@ -27,20 +27,18 @@ parse_user_config()
 
 user_consent_for_auto_update()
 {
-    # Check the value of AUTO_UPDATE_AZNFS in the config file.
     parse_user_config
 
     if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then
         return 0
     fi
 
-    # Check if dialog is installed
     if ! command -v dialog > /dev/null; then
         echo "Error: 'dialog' is not installed. Please install it using your package manager and try again."
         exit 1
     fi
 
-    # To Keep dialog box size based on screen dimensions use terminal window dimensions
+    # To Keep dialog box size based on screen dimensions use terminal window dimensions.
     rows=$(tput lines)
     cols=$(tput cols)
     height=$((rows * 30 / 100))
@@ -54,17 +52,13 @@ user_consent_for_auto_update()
 
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
-    # Run the dialog command and capture its exit code.
-    dialog --timeout 300 --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width > /dev/tty 2>&1
+    dialog --default-button yes --title "$title" --yesno "$auto_update_prompt" $height $width > /dev/tty
     dialog_exit_code=$?
-    
-    # Debugging: Output the exit code
     echo "Dialog exited with code: $dialog_exit_code"
-    if [ $dialog_exit_code -eq 0 ] || [ $dialog_exit_code -eq 255 ]; then
-        # User chose "Yes" or it timed out (consider it as "true")
+
+    if [ $dialog_exit_code -eq 0 ]; then
         echo "AUTO_UPDATE_AZNFS=true" > "$CONFIG_FILE"
     else
-        # User chose "No"
         echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
     fi
 }
