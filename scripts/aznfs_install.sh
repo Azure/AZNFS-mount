@@ -9,6 +9,7 @@ OPTDIR="/opt/microsoft/${APPNAME}"
 OPTDIRDATA="${OPTDIR}/data"
 LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 CONFIG_FILE="${OPTDIRDATA}/config"
+FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 
 RELEASE_NUMBER=x.y.z
 AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
@@ -205,7 +206,7 @@ check_aznfs_update()
             pid_aznfswatchdog=$(pgrep aznfswatchdog)
             if [ -n "$pid_aznfswatchdog" ]; then
                 # Create a flag file with the PID to indicate that an update is in progress.
-                echo "$pid_aznfswatchdog" > /tmp/.update_in_progress_from_watchdog.flag
+                echo "$pid_aznfswatchdog" > "$FLAG_FILE"
                 if [ $? -ne 0 ]; then
                     eecho "Failed to create the flag file to indicate update in progress, exiting!"
                     exit 1
