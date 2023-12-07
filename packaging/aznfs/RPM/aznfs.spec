@@ -92,7 +92,7 @@ EOF
 
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
-    if whiptail --title "$title" --yesno "$auto_update_prompt" 0 0; then
+    if whiptail --title "$title" --yesno "$auto_update_prompt" 0 0 > /dev/null; then
         echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
     else
         echo "AUTO_UPDATE_AZNFS=false" >> "$CONFIG_FILE"
