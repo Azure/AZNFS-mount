@@ -9,6 +9,7 @@ OPTDIR="/opt/microsoft/${APPNAME}"
 OPTDIRDATA="${OPTDIR}/data"
 LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 CONFIG_FILE="${OPTDIRDATA}/config"
+FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 
 RELEASE_NUMBER=x.y.z
 AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
@@ -148,27 +149,45 @@ perform_aznfs_update()
         eecho "[BUG] Downloaded package file '/tmp/${package_name}' not found, installation aborted!"
         exit 1
     fi
-    
-    if [ "$install_cmd" == "zypper" ]; then
-        install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
-    else
-        install_output=$($install_cmd install -y "/tmp/${package_name}" 2>&1)
-    fi
-    install_error=$?
-    rm -f "/tmp/${package_name}"
 
-    if [ $install_error -ne 0 ]; then
-        eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
-        eecho "$install_output"
-        exit 1
-    fi
-
+    #
+    # Here we capture the output seperately in case of auto-update, since we want it to be silent update
+    # and show in logs only in case of error while installation. 
+    # For users manual-update, we needn't capture the output seperately and let it out on terminal to avoid
+    # issues with dialog box showing up.
+    #
     if [ "$RUN_MODE" == "auto-update" ]; then
+        if [ "$install_cmd" == "zypper" ]; then
+            install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
+        else
+            install_output=$(DEBIAN_FRONTEND=noninteractive $install_cmd install -y "/tmp/${package_name}" 2>&1)
+        fi
+        install_error=$?
+        rm -f "/tmp/${package_name}"
+
+        if [ $install_error -ne 0 ]; then
+            eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error)"
+            eecho "$install_output"
+            exit 1
+        fi
         secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER."
         pecho "Restarting aznfswatchdog to apply changes..."
         systemctl daemon-reload
         systemctl restart aznfswatchdog
-    else
+
+    elif [ "$RUN_MODE" == "manual-update" ]; then
+        if [ "$install_cmd" == "zypper" ]; then
+            $install_cmd install --allow-unsigned-rpm "/tmp/${package_name}" < /dev/tty
+        else
+            $install_cmd install "/tmp/${package_name}" < /dev/tty
+        fi
+        install_error=$?
+        rm -f "/tmp/${package_name}"
+
+        if [ $install_error -ne 0 ]; then
+            eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs above for more information"
+            exit 1
+        fi
         secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"
     fi
 
@@ -187,7 +206,7 @@ check_aznfs_update()
             pid_aznfswatchdog=$(pgrep aznfswatchdog)
             if [ -n "$pid_aznfswatchdog" ]; then
                 # Create a flag file with the PID to indicate that an update is in progress.
-                echo "$pid_aznfswatchdog" > /tmp/.update_in_progress_from_watchdog.flag
+                echo "$pid_aznfswatchdog" > "$FLAG_FILE"
                 if [ $? -ne 0 ]; then
                     eecho "Failed to create the flag file to indicate update in progress, exiting!"
                     exit 1
