@@ -158,15 +158,15 @@ perform_aznfs_update()
     #
     if [ "$RUN_MODE" == "auto-update" ]; then
         if [ "$install_cmd" == "zypper" ]; then
-            install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
+            install_output=$(DEBIAN_FRONTEND=noninteractive $install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
         else
-            install_output=$($install_cmd install -y "/tmp/${package_name}" 2>&1)
+            install_output=$(DEBIAN_FRONTEND=noninteractive $install_cmd install -y "/tmp/${package_name}" 2>&1)
         fi
         install_error=$?
         rm -f "/tmp/${package_name}"
 
         if [ $install_error -ne 0 ]; then
-            eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
+            eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error)"
             eecho "$install_output"
             exit 1
         fi
@@ -185,7 +185,7 @@ perform_aznfs_update()
         rm -f "/tmp/${package_name}"
 
         if [ $install_error -ne 0 ]; then
-            eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs for more information"
+            eecho "[FATAL] Error installing AZNFS version $RELEASE_NUMBER (Error: $install_error). See '$install_cmd' command logs above for more information"
             exit 1
         fi
         secho "Version $RELEASE_NUMBER of aznfs mount helper is successfully installed"

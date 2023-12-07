@@ -53,13 +53,16 @@ fi
 
 
 %post
+
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 CONFIG_FILE="/opt/microsoft/aznfs/data/config"
 AUTO_UPDATE_AZNFS="false"
 
-parse_user_config() {
+parse_user_config()
+{
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo "$CONFIG_FILE not found. Please make sure it is present."
+        echo "[BUG] $CONFIG_FILE not found, proceeding with default values..."
+        return 1
     fi
 
     # Read the value of AUTO_UPDATE_AZNFS from the configuration file and convert to lowercase for easy comparison later.
@@ -67,28 +70,29 @@ parse_user_config() {
     AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
 }
 
-user_consent_for_auto_update() {
+user_consent_for_auto_update()
+{
     parse_user_config
 
     if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then
         return 0
     fi
 
-    # To Keep dialog box size based on screen dimensions use terminal window dimensions.
     title="Enable auto update for AZNFS mount helper"
     auto_update_prompt=$(cat << EOF
-    Stay up-to-date with the latest features, improvements, and security patches?
+    Stay up-to-date with the latest features, improvements, and security patches!
 
     AUTO-UPDATE WILL JUST UPDATE THE MOUNT HELPER BINARY AND WILL NOT CAUSE ANY DISRUPTION TO MOUNTED SHARES.
 
     We recommend enabling automatic updates for the best/seamless AZNFS experience.
-	
+
     You can turn off auto-update at any time from /opt/microsoft/aznfs/data/config.
 EOF
 )
+
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
-    if whiptail --title "$title" --yesno "$auto_update_prompt" 0 0 > /dev/tty; then
+    if whiptail --title "$title" --yesno "$auto_update_prompt" 0 0; then
         echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
     else
         echo "AUTO_UPDATE_AZNFS=false" >> "$CONFIG_FILE"
@@ -138,9 +142,13 @@ if [ ! -f "$CONFIG_FILE" ]; then
         chmod 0644 "$CONFIG_FILE"
 fi
 
+#
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
+# Additionally, ask user about auto update configuration.
+#
 if [ ! -f "$FLAG_FILE" ]; then
         user_consent_for_auto_update
+		
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
