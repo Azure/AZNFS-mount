@@ -34,10 +34,10 @@ user_consent_for_auto_update()
     # To Keep dialog box size based on screen dimensions use terminal window dimensions.
     title="Enable auto update for AZNFS mount helper"
     auto_update_prompt=$(cat << EOF
-    Stay up-to-date with the latest features, improvements, and security patches?
-    AUTO-UPDATE WILL JUST UPDATE THE MOUNT HELPER BINARY AND WILL NOT CAUSE ANY DISRUPTION TO MOUNTED SHARES.
-    We recommend enabling automatic updates for the best/seamless AZNFS experience.
-    You can turn off auto-update at any time from /opt/microsoft/aznfs/data/config.
+                        Stay up-to-date with the latest features, improvements, and security patches?
+                        AUTO-UPDATE WILL JUST UPDATE THE MOUNT HELPER BINARY AND WILL NOT CAUSE ANY DISRUPTION TO MOUNTED SHARES.
+                        We recommend enabling automatic updates for the best/seamless AZNFS experience.
+                        You can turn off auto-update at any time from /opt/microsoft/aznfs/data/config.
 EOF
 )
 

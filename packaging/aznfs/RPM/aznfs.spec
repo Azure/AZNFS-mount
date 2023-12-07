@@ -62,7 +62,7 @@ parse_user_config() {
         echo "$CONFIG_FILE not found. Please make sure it is present."
     fi
 
-	# Read the value of AUTO_UPDATE_AZNFS from the configuration file and convert to lowercase for easy comparison later.
+    # Read the value of AUTO_UPDATE_AZNFS from the configuration file and convert to lowercase for easy comparison later.
     AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
     AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
 }
