@@ -431,7 +431,7 @@ cleanupStunnelFiles()
     pid=$(cat $l_pid)
     kill -9 $pid
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Unable to kill stunnel process '$pid'!"
+        eecho "[FATAL] Unable to kill stunnel process $pid!"
     fi
 
     # Cleanup stunnel files
@@ -766,7 +766,7 @@ processNFS4Mounts()
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         else
-            # check if checksumHash for stunnel.conf file has changed.
+            # Check if checksumHash for stunnel.conf file has changed.
             # Customers should not modify stunnel.conf files created by aznfs mount helper.
             checksumHash=`cksum $l_conf | awk '{print $1}'`
             if [ $? -ne 0 ]; then
