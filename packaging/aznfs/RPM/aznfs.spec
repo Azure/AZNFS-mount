@@ -62,7 +62,7 @@ parse_user_config()
 {
     if [ ! -f "$CONFIG_FILE" ]; then
         echo "[BUG] $CONFIG_FILE not found, proceeding with default values..."
-        return 1
+        return
     fi
 
     # Read the value of AUTO_UPDATE_AZNFS from the configuration file and convert to lowercase for easy comparison later.
@@ -148,7 +148,7 @@ fi
 #
 if [ ! -f "$FLAG_FILE" ]; then
         user_consent_for_auto_update
-		
+
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
