@@ -74,11 +74,6 @@ user_consent_for_auto_update() {
         return 0
     fi
 
-    if ! command -v dialog > /dev/null; then
-        echo "Error: 'dialog' is not installed. Please install it using your package manager and try again."
-        exit 1
-    fi
-
     # To Keep dialog box size based on screen dimensions use terminal window dimensions.
     title="Enable auto update for AZNFS mount helper"
     auto_update_prompt=$(cat << EOF
