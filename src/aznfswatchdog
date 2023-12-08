@@ -186,7 +186,7 @@ vecho "Linux distribution: $linux_distro"
 vecho "Bash version: $bash_version"
 
 detect_aznfs_version
-vecho "$current_version"
+vecho "AZNFS version: $current_version"
 
 # Dump NAT table once on startup in case we have reported conflicts.
 vecho "NAT table:\n$(iptables-save -t nat)"
