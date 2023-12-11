@@ -1,5 +1,5 @@
 ## [2.0.1]- December 2023
--[AZNFS-mount #93](https://github.com/Azure/AZNFS-mount/pull/93)
+- [AZNFS-mount #93](https://github.com/Azure/AZNFS-mount/pull/93)
   Adding CHANGELOG.md file, editing Readme.md and printing AZNFS version in aznfswatchdog.
 
 ## [2.0.0]- December 2023
