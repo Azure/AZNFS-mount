@@ -1,9 +1,3 @@
-## [Unreleased]
-
-- Resolving Azure endpoint addresses by quering Azure authoritative Nameservers (https://github.com/Azure/AZNFS-mount/pull/85)
-- Inclusion of AZNFS in the packages.microsoft.com repository
-- Leverage fingerprinting for identifying mounts using AZNFS.
-
 ## [2.0.0]- 2023-12-08
 
 ### Added
