@@ -40,6 +40,18 @@ AZNFS is supported on following Linux distros:
 	```
 	It will install the aznfs mount helper program and the aznfswatchdog service.
 
+## Auto Update AZNFS
+
+- Upon running the installation command, you will be prompted to configure automatic updates for AZNFS. Enabling automatic updates ensures that you 
+  stay current with the latest features, improvements, and security patches, providing you with the best and most seamless AZNFS experience. 
+  You can turn off/on auto-update at any time from /opt/microsoft/aznfs/data/config and update respectively.
+
+- To enable automatic updates for AZNFS at any point, update the following parameter in `/opt/microsoft/aznfs/data/config` file:
+	```
+	AUTO_UPDATE_AZNFS=true
+	```
+  If you ever need to turn off automatic updates, you can do so by modifying the configuration file and setting this parameter to false.
+
 
 ## Usage Instructions
 
@@ -47,7 +59,7 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-- Logs generated from AZNFS will be in `/opt/microsoft/aznfs/aznfs.log`.
+- Logs generated from AZNFS will be in `/opt/microsoft/aznfs/data/aznfs.log`.
 
 ## Implementation Details
 
@@ -79,7 +91,7 @@ Unmount cleanup can be disabled by setting the env variable `AZNFS_SKIP_UNMOUNT_
 aznfswatchdog service.
 
 
-## TroubleShoot
+## Troubleshoot
 
 - Check the status of aznfswatchdog service using `systemctl status aznfswatchdog`. If the service is not active, start
   it using `systemctl start aznfswatchdog`.
