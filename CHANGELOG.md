@@ -20,4 +20,4 @@
 
 ## [1.0.7] - 08-08-2023
 - [AZNFS-mount #76](https://github.com/Azure/AZNFS-mount/pull/76)
-  Introduced support for AZNFS when used with the AKS CSI driver.
+  Introduced support for AZNFS when used with the AKS CSI driver, packaging a tarball for amd64 architecture.
