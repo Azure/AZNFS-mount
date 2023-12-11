@@ -10,6 +10,7 @@
 #
 . /opt/microsoft/aznfs/common.sh
 STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
+STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
 NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 CONNECT_PORT=2049
@@ -67,11 +68,11 @@ PID=""
 OPTIMIZE_GET_FREE_LOCAL_IP=true
 
 #
-# Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
+# Check if the given string is a valid blob/file FQDN (<accountname>.<blob/file>.core.windows.net).
 #
-is_valid_blob_fqdn()
+is_valid_fqdn()
 {
-    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?(.privatelink)?.blob(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
+    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?(.privatelink)?.$2(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
 }
 
 #
@@ -223,7 +224,7 @@ get_dir_from_share()
     IFS=: read _ share <<< "$hostshare"
     IFS=/ read _ account container extra <<< "$share"
 
-    if [ -z "$account" -o -z "$container" -o -n "$extra" ]; then
+    if [ -z "$account" -o -z "$container" ]; then
         eecho "Bad share name: ${hostshare}."
         eecho "Share to be mounted must be of the form 'account.$2.core.windows.net:/account/container'."
         return 1
@@ -240,9 +241,16 @@ get_version_from_MOUNT_OPTIONS()
     local nfs_ver=""
     local nfs_minorvers=""
 
+    #
+    # v3 team adds vers=3 option if version is missing in mount command.
+    # Hence, to avoid any breaking changes for v3,
+    # defaulting vers=3 if the version is not given.
+    #
     if [ -z "$mount_options" ] || [[ ! "$mount_options" == *"$ver_string"* ]]; then
         pecho "Adding default vers=3 mount option!"
         mount_options="$mount_options,vers=3"
+        echo "3"
+        return
     fi
 
     IFS=','
@@ -679,7 +687,6 @@ find_next_available_port_and_start_stunnel()
         # start the stunnel process
         stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
         if [ -n "$stunnel_status" ]; then
-            # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$new_used_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
                 eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
@@ -729,9 +736,8 @@ add_stunnel_configuration()
 {
     chattr -f -i $stunnel_conf_file
 
-    stunnel_CAFile="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
 
-    if [ ! -f $stunnel_CAFile ]; then
+    if [ ! -f $STUNNEL_CAFILE ]; then
         vecho "CA root cert is missing for stunnel configuration. Installing DigiCert_Global_Root_G2 certificate."
         install_CA_cert
         if [ $? -ne 0 ]; then
@@ -741,7 +747,7 @@ add_stunnel_configuration()
         fi
     fi
 
-    echo "CAFile = $stunnel_CAFile" >> $stunnel_conf_file
+    echo "CAFile = $STUNNEL_CAFILE" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add CAFile path to $stunnel_conf_file!"
@@ -755,6 +761,16 @@ add_stunnel_configuration()
         return 1
     fi
 
+    # TODO: checkHost value could be different for prod tenants.
+    # So need to change this value in future.
+    echo "checkHost = xtest-superadmin.int.rdst-internal.net" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add checkHost option to $stunnel_conf_file!"
+        return 1
+    fi
+
+    # TODO: Change to TLSv1.3 once we have TLSv1.3 version enabled.
     echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -769,7 +785,7 @@ add_stunnel_configuration()
         return 1
     fi
 
-    stunnel_log_file="$STUNNELDIR/logs/stunnel_$nfs_host.log"
+    stunnel_log_file="$STUNNELDIR/logs/stunnel_$storageaccount.log"
     echo "output = $stunnel_log_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -777,7 +793,7 @@ add_stunnel_configuration()
         return 1
     fi
 
-    stunnel_pid_file="$STUNNELDIR/logs/stunnel_$nfs_host.pid"
+    stunnel_pid_file="$STUNNELDIR/logs/stunnel_$storageaccount.pid"
     echo "pid = $stunnel_pid_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -840,8 +856,8 @@ tls_nfsv4_files_share_mount()
     fi
 
     EntryExistinMountMap="true"
-    # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
-    stunnel_conf_file="$STUNNELDIR/stunnel_$nfs_host.conf"
+
+    stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount.conf"
 
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
@@ -872,7 +888,6 @@ tls_nfsv4_files_share_mount()
         # start the stunnel process
         stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
         if [ -n "$stunnel_status" ]; then
-            # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
                 eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
@@ -915,8 +930,7 @@ tls_nfsv4_files_share_mount()
         # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount.
 
         # Check if stunnel_pid_file exist for storageaccount
-        # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
-        stunnel_pid_file=`cat $AZ_FILES_MOUNTMAP | grep "stunnel_$nfs_host.pid" | cut -d ";" -f4`
+        stunnel_pid_file=`cat $AZ_FILES_MOUNTMAP | grep "stunnel_$storageaccount.pid" | cut -d ";" -f4`
         if [ ! -f $stunnel_pid_file ]; then
             eecho "[FATAL] '${stunnel_pid_file}' does not exist!"
             exit 1
@@ -928,7 +942,6 @@ tls_nfsv4_files_share_mount()
 
             stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
             if [ -n "$stunnel_status" ]; then
-                # TODO: Change nfs_host to storageaccount later after server side changes are implemented and merged into Main.
                 is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
                 if [ -z "$is_binding_error" ]; then
                     eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
@@ -996,14 +1009,12 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# TODO: Uncomment below code later. We don't have server side changes yet, so cannot test this mount helper script on storageaccount/test tenants for v4. Hence, 'is_valid_blob_fqdn' will fail.
-<<comment
-if ! is_valid_blob_fqdn "$nfs_host" "$AZ_PREFIX"; then
+# TODO: Comment out below code for devfabric. 'is_valid_fqdn' will fail on devfabric.
+if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
     eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
     eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
     exit 1
 fi
-comment
 
 nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
@@ -1057,6 +1068,10 @@ if [ "$nfs_vers" == "4.1" ]; then
         fi
     else
         vecho "Mount nfs share with TLS."
+
+        IFS=/ read _ account container extra <<< "$nfs_dir"
+        storageaccount="$account"
+
         tls_nfsv4_files_share_mount
     fi
 
@@ -1078,12 +1093,6 @@ if [ ! -f "$MOUNTMAP" ]; then
     fi
     
     pecho "If the problem persists, contact Microsoft support."
-    exit 1
-fi
-
-if ! is_valid_blob_fqdn "$nfs_host"; then
-    eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
-    eecho "Must be of the form 'account.blob.core.windows.net'!"
     exit 1
 fi
 
