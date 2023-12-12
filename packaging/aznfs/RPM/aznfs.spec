@@ -80,7 +80,7 @@ user_consent_for_auto_update()
 
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
-    if [ "$DEBIAN_FRONTEND" == "noninteractive" ]; then
+    if [ "$AZNFS_NON_INTERACTIVE_INSTALL" == "1" ]; then
         echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
         return
     fi
