@@ -39,6 +39,11 @@ user_consent_for_auto_update()
         return
     fi
 
+    if [ "$AZNFS_NON_INTERACTIVE_INSTALL" == "noninteractive" ]; then
+        echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
+        return
+    fi
+
     title="Enable auto update for AZNFS mount helper"
     auto_update_prompt=$(cat << EOF
     Stay up-to-date with the latest features, improvements, and security patches!
