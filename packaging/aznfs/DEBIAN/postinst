@@ -32,6 +32,13 @@ user_consent_for_auto_update()
         return
     fi
 
+    sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
+
+    if [ "$DEBIAN_FRONTEND" == "noninteractive" ]; then
+        echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
+        return
+    fi
+
     title="Enable auto update for AZNFS mount helper"
     auto_update_prompt=$(cat << EOF
     Stay up-to-date with the latest features, improvements, and security patches!
@@ -43,13 +50,6 @@ user_consent_for_auto_update()
     You can turn off auto-update at any time from /opt/microsoft/aznfs/data/config.
 EOF
 )
-
-    sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
-
-    if [ "$DEBIAN_FRONTEND" == "noninteractive" ]; then
-        echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
-        return
-    fi
 
     if whiptail --title "$title" --yesno "$auto_update_prompt" 0 0; then
         echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
