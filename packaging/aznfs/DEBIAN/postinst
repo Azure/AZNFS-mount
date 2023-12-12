@@ -46,7 +46,9 @@ EOF
 
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
-    if dialog --backtitle "$title" --yesno "$auto_update_prompt" 30 30; then
+    dialog --title "title" --msgbox "auto_update_prompt" 30 30
+
+    if dialog --title "$title" --yesno "$auto_update_prompt" 30 30; then
         echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
     else
         echo "AUTO_UPDATE_AZNFS=false" >> "$CONFIG_FILE"
