@@ -177,9 +177,9 @@ perform_aznfs_update()
 
     elif [ "$RUN_MODE" == "manual-update" ]; then
         if [ "$install_cmd" == "zypper" ]; then
-            $install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" < /dev/tty
+            $install_cmd install --allow-unsigned-rpm "/tmp/${package_name}" < /dev/tty
         else
-            $install_cmd install -y "/tmp/${package_name}" < /dev/tty
+            $install_cmd install "/tmp/${package_name}" < /dev/tty
         fi
         install_error=$?
         rm -f "/tmp/${package_name}"
