@@ -92,7 +92,7 @@ EOF
 
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
-	if [ "$DEBIAN_FRONTEND" == "noninteractive" ]; then
+    if [ "$DEBIAN_FRONTEND" == "noninteractive" ]; then
         echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
         return
     fi
