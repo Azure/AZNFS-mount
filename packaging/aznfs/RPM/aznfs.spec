@@ -75,7 +75,7 @@ user_consent_for_auto_update()
     parse_user_config
 
     if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then
-        return 0
+        return
     fi
 
     title="Enable auto update for AZNFS mount helper"
@@ -91,6 +91,11 @@ EOF
 )
 
     sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
+
+	if [ "$DEBIAN_FRONTEND" == "noninteractive" ]; then
+        echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
+        return
+    fi
 
     if whiptail --title "$title" --yesno "$auto_update_prompt" 0 0 > /dev/tty; then
         echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
