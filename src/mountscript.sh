@@ -874,13 +874,13 @@ find_next_available_port_and_start_stunnel()
         # get the next available port
         available_port=$(get_next_available_port)
         if [ $? -ne 0 ]; then
-            eecho "Failed to get the next available port for nfsv4 mount."
+            eecho "Failed to get the next available port for nfsv4.1 mount."
             return 1
         fi
         vecho "Next Available Port: '$available_port'"
 
         if [ -z "$available_port" ]; then
-            eecho "Running out of ports. For Nfsv4, stunnel uses port range from $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+            eecho "Running out of ports. For Nfsv4.1, stunnel uses port range from $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
             return 1
         fi
 
@@ -1059,14 +1059,14 @@ tls_nfsv4_files_share_mount()
     # Note the available port
     available_port=$(get_next_available_port)
     if [ $? -ne 0 ]; then
-        eecho "Failed to get the available port for nfsv4 mount."
+        eecho "Failed to get the available port for nfsv4.1 mount."
         exit 1
     fi
 
     vecho "Available Port: $available_port"
 
     if [ -z "$available_port" ]; then
-        eecho "Running out of ports. Nfsv4 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+        eecho "Running out of ports. Nfsv4.1 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
         exit 1
     fi
 
