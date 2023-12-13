@@ -323,6 +323,11 @@ canonicalize_distro_id()
     echo "$distro_lower"
 }
 
+#
+# Detecting AZNFS version in background with a sleep of 45 seconds to ensure that package manager
+# is correctly able to fetch the version after aznfswatchdog starts. 
+# For eg. In sles it takes few seconds generally after installation to fetch the right version.
+#
 detect_aznfs_version()
 {
     local distro="$distro_id"
@@ -340,25 +345,30 @@ detect_aznfs_version()
     vecho "AZNFS version: $current_version"
 }
 
+log_version_info()
+{
+    if [ -f /etc/centos-release ]; then
+        linux_distro=$(cat /etc/centos-release 2>&1)
+        distro_id="centos"
+    elif [ -f /etc/os-release ]; then
+        linux_distro=$(grep "^PRETTY_NAME=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(canonicalize_distro_id $distro_id)
+    else
+        linux_distro="Unknown"
+    fi
+
+    bash_version=$(bash --version | head -n 1)
+    vecho "Linux distribution: $linux_distro"
+    vecho "Bash version: $bash_version"
+
+    detect_aznfs_version &
+}
+
 vecho "Starting aznfswatchdog..."
 
 # Detect and log distro, bash and AZNFS-mount version
-if [ -f /etc/centos-release ]; then
-    linux_distro=$(cat /etc/centos-release 2>&1)
-    distro_id="centos"
-elif [ -f /etc/os-release ]; then
-    linux_distro=$(grep "^PRETTY_NAME=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
-    distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
-    distro_id=$(canonicalize_distro_id $distro_id)
-else
-    linux_distro="Unknown"
-fi
-
-bash_version=$(bash --version | head -n 1)
-vecho "Linux distribution: $linux_distro"
-vecho "Bash version: $bash_version"
-
-detect_aznfs_version &
+log_version_info
 
 # Dump NAT table once on startup in case we have reported conflicts.
 vecho "NAT table:\n$(iptables-save -t nat)"
