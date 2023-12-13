@@ -64,8 +64,8 @@ AZNFS is supported on following Linux distros:
   ```
 	export AZNFS_NONINTERACTIVE_INSTALL=1
 	```
-  > [!NOTE]
-  > Installing noninteractively will set `AUTO_UPDATE_AZNFS=true` by default.
+> [!NOTE]
+> Installing noninteractively will set `AUTO_UPDATE_AZNFS=true` by default.
 
 ## Usage Instructions
 
