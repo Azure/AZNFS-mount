@@ -378,8 +378,8 @@ ensure_az_files_mountmap_not_exist()
         flock -e 999
 
         #
-        # If user wants to delete the entry only if AZ_FILES_MOUNTMAP has not changed since
-        # he looked up, honour that.
+        # If watchdog wants to delete the entry only if AZ_FILES_MOUNTMAP has not changed since
+        # watchdog looked up, honour that.
         #
         local ifmatch="$2"
         if [ -n "$ifmatch" ]; then
@@ -427,6 +427,10 @@ ensure_az_files_mountmap_not_exist()
 #
 cleanupStunnelFiles()
 {
+    local l_conf=$1
+    local l_log=$2
+    local l_pid=$3
+
     # Kill stunnel process first.
     pid=$(cat $l_pid)
     kill -9 $pid
@@ -684,6 +688,12 @@ processNFS3Mounts()
 #
 processNFS4Mounts()
 {
+    local l_host
+    local l_conf
+    local l_log
+    local l_pid
+    local l_checksumhash
+
     epoch_now=$(date +%s)
 
     #
@@ -751,7 +761,7 @@ processNFS4Mounts()
         if ! echo "$findmnt" | grep "$accept_port" >/dev/null; then
             pecho "No mounted shares for host $l_host, deleting from ${AZ_FILES_MOUNTMAP} [$line]."
 
-            cleanupStunnelFiles
+            cleanupStunnelFiles $l_conf $l_log $l_pid
 
             # Delete IFF mountmap is not changed since we read it above.
             l_mtime=$(ensure_az_files_mountmap_not_exist "$line" "$mtime_mountmap")
@@ -779,7 +789,7 @@ processNFS4Mounts()
                 eecho "azfilenfs-watchdog service will do cleanup, kill stunnel process with pid:$(cat $l_pid) and remove '${l_conf}'; '${l_log}'; '${l_pid}'!"
                 eecho "Please remount the shares from ${l_host} using aznfs mount helper."
 
-                cleanupStunnelFiles
+                cleanupStunnelFiles $l_conf $l_log $l_pid
 
                 # Delete IFF mountmap is not changed since we read it above.
                 l_mtime=$(ensure_az_files_mountmap_not_exist "$line" "$mtime_mountmap")
@@ -800,7 +810,6 @@ processNFS4Mounts()
                         eecho "[FATAL] Restarting stunnel failed.$used_port port is already being used by other process.!"
                         eecho "It's recommended to unmount all shares from $l_host and then remount shares using aznfs mount helper!"
                     elif [ -n "$is_caroot_cert_failure" ]; then
-                        # TODO: confirm exactly which CA root cert to download for production.
                         eecho "[FATAL] Restarting stunnel failed. CA root certificate is either missing or is unable to authenticate TLS server certificate."
                         eecho "Please download the CA root certificate from https://learn.microsoft.com/en-us/azure/security/fundamentals/azure-ca-details"
                         eecho "It's recommended to unmount all shares from $l_host and then remount shares using aznfs mount helper!"
