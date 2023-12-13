@@ -1,4 +1,6 @@
 ## [2.0.1]- December 2023
+- [AZNFS-mount #94](https://github.com/Azure/AZNFS-mount/pull/94)
+  Adding functionality to support non-interactive installation for the package.
 - [AZNFS-mount #93](https://github.com/Azure/AZNFS-mount/pull/93)
   Adding CHANGELOG.md file, editing Readme.md and printing AZNFS version in aznfswatchdog.
 
