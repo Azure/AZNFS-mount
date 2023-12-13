@@ -49,7 +49,21 @@ AZNFS is supported on following Linux distros:
 	AUTO_UPDATE_AZNFS=true
 	```
   If you ever need to turn off automatic updates, you can do so by modifying the AUTO_UPDATE_AZNFS to false.
+- In case your setup requires a noninteractive install, you can do that by setting the following environment variables before installing.
+  
+  For DEBIAN based distos:
+  ```
+	export DEBIAN_FRONTEND=noninteractive
+	```
+  Alternatively, you can also use:
+  ```
+	export AZNFS_NONINTERACTIVE_INSTALL=1
+	```
 
+  For RPM based distros:
+  ```
+	export AZNFS_NONINTERACTIVE_INSTALL=1
+	```
 
 ## Usage Instructions
 
