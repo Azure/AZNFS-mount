@@ -126,32 +126,10 @@ NORMAL="\e[0m"
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
 	existing_mounts=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	if [ $existing_mounts -ne 0 ]; then 
-		echo
-		echo -e "${RED}There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
-		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
-		read -n 1 result < /dev/tty
-		echo
-		if [ "$result" != "y" -a "$result" != "Y" ]; then
-			echo "Removal aborted!"
-			if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
-				echo
-				echo "*******************************************************************"
-				echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
-				echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
-				echo "To fix this, run the below command to install dependencies:"
-				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME"
-				echo "*******************************************************************"
-				echo
-			fi
-			exit 1
-		fi
-	fi
-
 	existing_mounts_for_nfsv4FilesShares=$(cat /opt/microsoft/aznfs/data/aznfs_files_mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	if [ $existing_mounts_for_nfsv4FilesShares -ne 0 ]; then
+	if [ $existing_mounts -ne 0 -o $existing_mounts_for_nfsv4FilesShares -ne 0 ]; then
 		echo
-		echo -e "${RED}There are existing Azure Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
+		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
 		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
 		read -n 1 result < /dev/tty
 		echo
@@ -170,6 +148,7 @@ if [ $1 == 0 ]; then
 			exit 1
 		fi
 	fi
+
 	# Stop aznfswatchdog in case of removing the package.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
