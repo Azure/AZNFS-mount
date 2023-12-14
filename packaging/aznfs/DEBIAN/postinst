@@ -69,6 +69,8 @@ chmod 0644 /opt/microsoft/aznfs/common.sh
 chmod 4755 /sbin/mount.aznfs
 
 # Create data directory for holding mountmap and log file. 
+# TODO: Confirm with v3 team if we want to protect data folder(or why do we
+# need to give 0755 permission to data folder?)
 mkdir -p /opt/microsoft/aznfs/data
 chmod 0755 /opt/microsoft/aznfs/data
 
