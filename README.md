@@ -44,6 +44,7 @@ AZNFS is supported on following Linux distros:
 
 - Upon running the installation command, you will be prompted to configure automatic updates for AZNFS. Enabling automatic updates ensures that you 
   stay current with the latest features, improvements, and security patches, providing you with the best and most seamless AZNFS experience.
+  In /opt/microsoft/aznfs/data/config, set:
   ```
 	AUTO_UPDATE_AZNFS=true
 	```
