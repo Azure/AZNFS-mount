@@ -43,13 +43,13 @@ AZNFS is supported on following Linux distros:
 ## Auto Update
 
 - Upon running the installation command, you will be prompted to configure automatic updates for AZNFS. Enabling automatic updates ensures that you 
-  stay current with the latest features, improvements, and security patches, providing you with the best and most seamless AZNFS experience. 
+  stay current with the latest features, improvements, and security patches, providing you with the best and most seamless AZNFS experience.
+  ```
+	AUTO_UPDATE_AZNFS=true
+	```
 > [!NOTE]
 > 1. You can also turn off/on auto-update at any time by changing the value of AUTO_UPDATE_AZNFS variable in `/opt/microsoft/aznfs/data/config`.
 > 2. Existing mounts will not be effected by auto update.
-	```
-	AUTO_UPDATE_AZNFS=true
-	```
 
 ## Non-Interactive Installation
 - If your setup requires a noninteractive install, set the following environment variables before installing AZNFS:
