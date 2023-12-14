@@ -307,20 +307,63 @@ run_daily_once()
     fi
 }
 
+#
+# We only use lowercase single word names for distro id:
+# ubuntu, centos, redhat, sles.
+#
+canonicalize_distro_id()
+{
+    local distro_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+    # Use sles for SUSE/SLES.
+    if [ "$distro_lower" == "suse" ]; then
+        distro_lower="sles"
+    fi
+
+    echo "$distro_lower"
+}
+
+log_version_info()
+{
+    if [ -f /etc/centos-release ]; then
+        linux_distro=$(cat /etc/centos-release 2>&1)
+        distro_id="centos"
+    elif [ -f /etc/os-release ]; then
+        linux_distro=$(grep "^PRETTY_NAME=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(canonicalize_distro_id $distro_id)
+    else
+        # Ideally, this should not happen.
+        linux_distro="Unknown"
+    fi
+
+    #
+    # aznfswatchdog gets started during postinst, wait for installation to complete for the version to appear correctly.
+    #
+    sleep 2
+
+    if [ "$distro_id" == "ubuntu" ]; then
+        current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
+        current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    elif [ "$distro_id" == "sles" ]; then
+        current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
+    else
+        # Ideally, this should not happen.
+        current_version="Unknown"
+    fi
+
+    bash_version=$(bash --version | head -n 1)
+
+    vecho "Linux distribution: $linux_distro"
+    vecho "Bash version: $bash_version"
+    vecho "AZNFS version: $current_version"
+}
+
 vecho "Starting aznfswatchdog..."
 
-# Detect and log distro and bash version
-if [ -f /etc/centos-release ]; then
-    linux_distro=$(cat /etc/centos-release 2>&1)
-elif [ -f /etc/os-release ]; then
-    linux_distro=$(grep "^PRETTY_NAME=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
-else
-    linux_distro="Unknown"
-fi
-
-bash_version=$(bash --version | head -n 1)
-vecho "Linux distribution: $linux_distro"
-vecho "Bash version: $bash_version"
+# Detect and log distro, bash and AZNFS-mount version
+log_version_info
 
 # Dump NAT table once on startup in case we have reported conflicts.
 vecho "NAT table:\n$(iptables-save -t nat)"
