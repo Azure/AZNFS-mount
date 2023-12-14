@@ -75,7 +75,14 @@ user_consent_for_auto_update()
     parse_user_config
 
     if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then
-        return 0
+        return
+    fi
+
+    sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
+
+    if [ "$AZNFS_NONINTERACTIVE_INSTALL" == "1" ]; then
+        echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
+        return
     fi
 
     title="Enable auto update for AZNFS mount helper"
@@ -89,8 +96,6 @@ user_consent_for_auto_update()
     You can turn off auto-update at any time from /opt/microsoft/aznfs/data/config.
 EOF
 )
-
-    sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
 
     if whiptail --title "$title" --yesno "$auto_update_prompt" 0 0 > /dev/tty; then
         echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
