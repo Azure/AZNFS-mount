@@ -40,6 +40,31 @@ AZNFS is supported on following Linux distros:
 	```
 	It will install the aznfs mount helper program and the aznfswatchdog service.
 
+## Auto Update
+
+- Upon running the installation command, you will be prompted to configure automatic updates for AZNFS. Enabling automatic updates ensures that you 
+  stay current with the latest features, improvements, and security patches, providing you with the best and most seamless AZNFS experience. 
+> [!NOTE]
+> 1. You can also turn off/on auto-update at any time by changing the value of AUTO_UPDATE_AZNFS variable in `/opt/microsoft/aznfs/data/config`.
+> 2. Existing mounts will not be effected by auto update.
+
+	```
+	AUTO_UPDATE_AZNFS=true
+	```
+
+## Non-Interactive Installation
+- If your setup requires a noninteractive install, set the following environment variables before installing AZNFS:
+  
+  For all distros, you can use:
+  ```
+	export AZNFS_NONINTERACTIVE_INSTALL=1
+	```
+  For DEBIAN based distos, you can additionally use:
+  ```
+	export DEBIAN_FRONTEND=noninteractive
+	```
+> [!NOTE]
+> Installing noninteractively will set `AUTO_UPDATE_AZNFS=true` by default.
 
 ## Usage Instructions
 
@@ -47,11 +72,7 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-- Logs generated from AZNFS will be in `/opt/microsoft/aznfs/aznfs.log`.
-
-> [!NOTE]
-> 1. You can also turn off/on auto-update at any time by changing the value of AUTO_UPDATE_AZNFS variable in `/opt/microsoft/aznfs/data/config`.
-> 2. Existing mounts will not be effected by auto update. 
+- Logs generated from AZNFS can be found in `/opt/microsoft/aznfs/data/aznfs.log`.
 
 ## Implementation Details
 
@@ -83,7 +104,7 @@ Unmount cleanup can be disabled by setting the env variable `AZNFS_SKIP_UNMOUNT_
 aznfswatchdog service.
 
 
-## TroubleShoot
+## Troubleshoot
 
 - Check the status of aznfswatchdog service using `systemctl status aznfswatchdog`. If the service is not active, start
   it using `systemctl start aznfswatchdog`.
