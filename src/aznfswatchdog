@@ -337,6 +337,9 @@ log_version_info()
         linux_distro="Unknown"
     fi
 
+    #
+    # aznfswatchdog gets started during postinst, wait for installation to complete for the version to appear correctly.
+    #
     sleep 2
 
     if [ "$distro_id" == "ubuntu" ]; then
