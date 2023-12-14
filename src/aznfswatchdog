@@ -355,6 +355,7 @@ log_version_info()
     vecho "AZNFS version: $current_version"
 }
 
+systemctl restart aznfswatchdog
 vecho "Starting aznfswatchdog..."
 
 # Detect and log distro, bash and AZNFS-mount version
