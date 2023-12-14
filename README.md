@@ -47,7 +47,6 @@ AZNFS is supported on following Linux distros:
 > [!NOTE]
 > 1. You can also turn off/on auto-update at any time by changing the value of AUTO_UPDATE_AZNFS variable in `/opt/microsoft/aznfs/data/config`.
 > 2. Existing mounts will not be effected by auto update.
-
 	```
 	AUTO_UPDATE_AZNFS=true
 	```
