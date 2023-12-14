@@ -328,23 +328,6 @@ canonicalize_distro_id()
 # is correctly able to fetch the version after aznfswatchdog starts. 
 # For eg. In sles it takes few seconds generally after installation to fetch the right version.
 #
-detect_aznfs_version()
-{
-    local distro="$distro_id"
-
-    sleep 45
-
-    if [ "$distro" == "ubuntu" ]; then
-        current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
-    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" ]; then
-        current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
-    elif [ "$distro" == "sles" ]; then
-        current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
-    fi
-
-    vecho "AZNFS version: $current_version"
-}
-
 log_version_info()
 {
     if [ -f /etc/centos-release ]; then
@@ -362,7 +345,15 @@ log_version_info()
     vecho "Linux distribution: $linux_distro"
     vecho "Bash version: $bash_version"
 
-    detect_aznfs_version &
+    if [ "$distro_id" == "ubuntu" ]; then
+        current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
+        current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    elif [ "$distro_id" == "sles" ]; then
+        current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
+    fi
+
+    vecho "AZNFS version: $current_version"
 }
 
 vecho "Starting aznfswatchdog..."

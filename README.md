@@ -40,29 +40,28 @@ AZNFS is supported on following Linux distros:
 	```
 	It will install the aznfs mount helper program and the aznfswatchdog service.
 
-## Auto Update AZNFS
+## Auto Update
 
 - Upon running the installation command, you will be prompted to configure automatic updates for AZNFS. Enabling automatic updates ensures that you 
   stay current with the latest features, improvements, and security patches, providing you with the best and most seamless AZNFS experience. 
-  You can also turn off/on auto-update at any time by changing the value of AUTO_UPDATE_AZNFS variable in `/opt/microsoft/aznfs/data/config`.
+> [!NOTE]
+> You can also turn off/on auto-update at any time by changing the value of AUTO_UPDATE_AZNFS variable in `/opt/microsoft/aznfs/data/config`.
+> Existing mounts will not be effected by auto update. 
 	```
 	AUTO_UPDATE_AZNFS=true
 	```
   If you ever need to turn off automatic updates, you can do so by modifying the AUTO_UPDATE_AZNFS to false.
-- Additionally, if your setup requires a noninteractive install, set the following environment variables before installing AZNFS:
+
+## Non-Interactive Installation
+- If your setup requires a noninteractive install, set the following environment variables before installing AZNFS:
   
-  For DEBIAN based distos:
+  For all distros, you can use:
+  ```
+	export AZNFS_NONINTERACTIVE_INSTALL=1
+	```
+  For DEBIAN based distos, you can additionally use:
   ```
 	export DEBIAN_FRONTEND=noninteractive
-	```
-  Alternatively, you can also use:
-  ```
-	export AZNFS_NONINTERACTIVE_INSTALL=1
-	```
-
-  For RPM based distros:
-  ```
-	export AZNFS_NONINTERACTIVE_INSTALL=1
 	```
 > [!NOTE]
 > Installing noninteractively will set `AUTO_UPDATE_AZNFS=true` by default.
@@ -73,7 +72,7 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-- Logs generated from AZNFS will be in `/opt/microsoft/aznfs/data/aznfs.log`.
+- Logs generated from AZNFS can be found in `/opt/microsoft/aznfs/data/aznfs.log`.
 
 ## Implementation Details
 
