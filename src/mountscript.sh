@@ -789,6 +789,7 @@ install_CA_cert()
 #
 add_stunnel_configuration()
 {
+    local storageaccount=$1
     chattr -f -i $stunnel_conf_file
 
 
@@ -894,7 +895,13 @@ add_stunnel_configuration()
 #
 tls_nfsv4_files_share_mount()
 {
+    local storageaccount
+    local container
+    local extra
+
     vecho "nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+
+    IFS=/ read _ storageaccount container extra <<< "$nfs_dir"
 
     # Note the available port
     available_port=$(get_next_available_port)
@@ -930,7 +937,7 @@ tls_nfsv4_files_share_mount()
         stunnel_log_file=
         stunnel_pid_file=
 
-        add_stunnel_configuration
+        add_stunnel_configuration $storageaccount
         add_stunnel_configuration_status=$?
 
         if [ $add_stunnel_configuration_status -ne 0 ]; then
@@ -1123,9 +1130,6 @@ if [ "$nfs_vers" == "4.1" ]; then
         fi
     else
         vecho "Mount nfs share with TLS."
-
-        IFS=/ read _ account container extra <<< "$nfs_dir"
-        storageaccount="$account"
 
         tls_nfsv4_files_share_mount
     fi
