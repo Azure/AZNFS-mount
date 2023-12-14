@@ -49,6 +49,10 @@ AZNFS is supported on following Linux distros:
 	```
 - Logs generated from AZNFS will be in `/opt/microsoft/aznfs/aznfs.log`.
 
+> [!NOTE]
+> 1. You can also turn off/on auto-update at any time by changing the value of AUTO_UPDATE_AZNFS variable in `/opt/microsoft/aznfs/data/config`.
+> 2. Existing mounts will not be effected by auto update. 
+
 ## Implementation Details
 
 This version of **AZNFS** mount helper uses iptables DNAT rules to forward NFS traffic directed to a local proxy IP
