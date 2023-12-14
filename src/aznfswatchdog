@@ -323,11 +323,6 @@ canonicalize_distro_id()
     echo "$distro_lower"
 }
 
-#
-# Detecting AZNFS version in background with a sleep of 45 seconds to ensure that package manager
-# is correctly able to fetch the version after aznfswatchdog starts. 
-# For eg. In sles it takes few seconds generally after installation to fetch the right version.
-#
 log_version_info()
 {
     if [ -f /etc/centos-release ]; then
@@ -341,10 +336,6 @@ log_version_info()
         linux_distro="Unknown"
     fi
 
-    bash_version=$(bash --version | head -n 1)
-    vecho "Linux distribution: $linux_distro"
-    vecho "Bash version: $bash_version"
-
     if [ "$distro_id" == "ubuntu" ]; then
         current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
@@ -353,6 +344,9 @@ log_version_info()
         current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
     fi
 
+    bash_version=$(bash --version | head -n 1)
+    vecho "Linux distribution: $linux_distro"
+    vecho "Bash version: $bash_version"
     vecho "AZNFS version: $current_version"
 }
 
