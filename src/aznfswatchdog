@@ -7,7 +7,7 @@
 
 # Are we running inside the AKS?
 AKS_USER="false"
-AZNFS_VERSION_FOR_AKS=x.y.z
+RELEASE_NUMBER_FOR_AKS=x.y.z
 
 #
 # How often does the watchdog look for unmounts and/or IP address changes for
