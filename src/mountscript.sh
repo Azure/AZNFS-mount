@@ -9,6 +9,16 @@
 # Load common aznfs helpers.
 #
 . /opt/microsoft/aznfs/common.sh
+STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
+STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
+NFSV4_PORT_RANGE_START=20049
+NFSV4_PORT_RANGE_END=21049
+LOCALHOST="127.0.0.1"
+DEBUG_LEVEL="info"
+AZFILENFS_WATCHDOG_INTERVAL_SECS=5
+
+# TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
+CONNECT_PORT=2049
 
 #
 # Default order in which we try the network prefixes for a free local IP to use.
@@ -60,11 +70,11 @@ PID=""
 OPTIMIZE_GET_FREE_LOCAL_IP=true
 
 #
-# Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
+# Check if the given string is a valid blob/file FQDN (<accountname>.<blob/file>.core.windows.net).
 #
-is_valid_blob_fqdn()
+is_valid_fqdn()
 {
-    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?(.privatelink)?.blob(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
+    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?(.privatelink)?.$2(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
 }
 
 #
@@ -195,11 +205,12 @@ check_account_count()
 get_host_from_share()
 {
     local hostshare="$1"
+    local azprefix="$2"
     IFS=: read host share <<< "$hostshare"
 
     if [ -z "$host" -o -z "$share" ]; then
         eecho "Bad share name: ${hostshare}."
-        eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'."
+        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container'."
         return 1
     fi
 
@@ -212,16 +223,66 @@ get_host_from_share()
 get_dir_from_share()
 {
     local hostshare="$1"
+    local azprefix="$2"
+    local is_bad_share_name="false"
     IFS=: read _ share <<< "$hostshare"
     IFS=/ read _ account container extra <<< "$share"
 
-    if [ -z "$account" -o -z "$container" -o -n "$extra" ]; then
+    # Added two separate if blocks below instead of one complicated if condition.
+    if [ \( $azprefix == "file" \) -a \( -z "$account" -o -z "$container" \) ]; then
+        is_bad_share_name="true"
+    elif [ \( $azprefix == "blob" \) -a \( -z "$account" -o -z "$container" -o -n "$extra" \) ]; then
+        is_bad_share_name="true"
+    fi
+
+    if [ $is_bad_share_name == "true" ]; then
         eecho "Bad share name: ${hostshare}."
-        eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'."
+        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container'."
         return 1
     fi
 
     echo "$share"
+}
+
+get_version_from_MOUNT_OPTIONS()
+{
+    local mount_options="$MOUNT_OPTIONS"
+    local ver_string="vers="
+    local minor_ver_string="minorversion"
+    local nfs_ver=""
+    local nfs_minorvers=""
+
+    #
+    # v3 team adds vers=3 option if version is missing in mount command.
+    # Hence, to avoid any breaking changes for v3,
+    # defaulting vers=3 if the version is not given.
+    #
+    if [ -z "$mount_options" ] || [[ ! "$mount_options" == *"$ver_string"* ]]; then
+        pecho "Adding default vers=3 mount option!"
+        mount_options="$mount_options,vers=3"
+        echo "3"
+        return
+    fi
+
+    IFS=','
+    read -a options_arr <<< "$mount_options"
+
+    for option in "${options_arr[@]}";
+    do
+        if [[ "$option" == *"$ver_string"* ]]; then
+            nfs_ver=$(echo $option | cut -d= -f2)
+        fi
+
+        if [[ "$option" == *"$minor_ver_string"* ]]; then
+            nfs_minorvers=$(echo $option | cut -d= -f2)
+        fi
+    done
+
+    if [ -z "$nfs_minorvers" ]; then
+        echo "$nfs_ver"
+    else
+        echo "$nfs_ver.$nfs_minorvers"
+    fi
 }
 
 #
@@ -602,6 +663,336 @@ ensure_aznfswatchdog()
     fi
 }
 
+find_next_available_port_and_start_stunnel()
+{
+    while true
+    do
+        # get the next available port
+        available_port=$(get_next_available_port)
+        if [ $? -ne 0 ]; then
+            eecho "Failed to get the next available port for nfsv4.1 mount."
+            return 1
+        fi
+        vecho "Next Available Port: '$available_port'"
+
+        if [ -z "$available_port" ]; then
+            eecho "Running out of ports. For Nfsv4.1, stunnel uses port range from $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+            return 1
+        fi
+
+        used_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+        vecho "used port: '$used_port'"
+
+        chattr -f -i $stunnel_conf_file
+
+        sed -i "s/$used_port/$available_port/" $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            eecho "Failed to replace the port in $stunnel_conf_file."
+            chattr -f +i $stunnel_conf_file
+            return 1
+        fi
+        chattr -f +i $stunnel_conf_file
+
+        new_used_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+
+        # start the stunnel process
+        stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
+        if [ -n "$stunnel_status" ]; then
+            is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$new_used_port: Address already in use")
+            if [ -z "$is_binding_error" ]; then
+                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                return 1
+            fi
+        else
+	        vecho "Found new port '$new_used_port' and restarted stunnel."
+	        break
+        fi
+    done
+}
+
+get_next_available_port()
+{
+    for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
+    do
+        is_port_available=`netstat -tuapn | grep "$LOCALHOST:$port "`
+        if [ -z "$is_port_available" ]; then
+            break
+        fi
+    done
+
+    if [ $port -le $NFSV4_PORT_RANGE_END ]; then
+        echo "$port"
+    else
+        echo ""
+    fi
+}
+
+
+install_CA_cert()
+{
+    wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O /usr/local/share/ca-certificates/DigiCert_Global_Root_G2.crt
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem !"
+        return 1
+    fi
+
+    update-ca-certificates
+}
+
+
+#
+# Add stunnel configuration in stunnel_<storageaccount>.conf file.
+#
+add_stunnel_configuration()
+{
+    local storageaccount=$1
+    chattr -f -i $stunnel_conf_file
+
+
+    if [ ! -f $STUNNEL_CAFILE ]; then
+        vecho "CA root cert is missing for stunnel configuration. Installing DigiCert_Global_Root_G2 certificate."
+        install_CA_cert
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+            return 1
+        fi
+    fi
+
+    echo "CAFile = $STUNNEL_CAFILE" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add CAFile path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "verifyChain = yes" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add verifyChain option to $stunnel_conf_file!"
+        return 1
+    fi
+
+    # TODO: checkHost value could be different for prod tenants.
+    # So need to change this value in future.
+    echo "checkHost = xtest-superadmin.int.rdst-internal.net" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add checkHost option to $stunnel_conf_file!"
+        return 1
+    fi
+
+    # TODO: Change to TLSv1.3 once we have TLSv1.3 version enabled.
+    echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add sslVersion option to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add debug option to $stunnel_conf_file!"
+        return 1
+    fi
+
+    stunnel_log_file="$STUNNELDIR/logs/stunnel_$storageaccount.log"
+    echo "output = $stunnel_log_file" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add log file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    stunnel_pid_file="$STUNNELDIR/logs/stunnel_$storageaccount.pid"
+    echo "pid = $stunnel_pid_file" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add pid file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo >> $stunnel_conf_file
+
+    echo "[$nfs_host]" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add $nfs_host service/entry name to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "client = yes" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to 'client = yes' to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "accept = $LOCALHOST:$available_port" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add 'accept' info to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "connect = $nfs_host:$CONNECT_PORT" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add 'connect' info to $stunnel_conf_file!"
+        return 1
+    fi
+
+    chattr -f +i $stunnel_conf_file
+}
+
+#
+# Mount nfsv4 files share with TLS encryption.
+#
+tls_nfsv4_files_share_mount()
+{
+    local storageaccount
+    local container
+    local extra
+
+    vecho "nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+
+    IFS=/ read _ storageaccount container extra <<< "$nfs_dir"
+
+    # Note the available port
+    available_port=$(get_next_available_port)
+    if [ $? -ne 0 ]; then
+        eecho "Failed to get the available port for nfsv4.1 mount."
+        exit 1
+    fi
+
+    vecho "Available Port: $available_port"
+
+    if [ -z "$available_port" ]; then
+        eecho "Running out of ports. Nfsv4.1 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+        exit 1
+    fi
+
+    EntryExistinMountMap="true"
+
+    stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount.conf"
+
+    if [ ! -f $stunnel_conf_file ]; then
+        EntryExistinMountMap="false"
+    fi
+
+    if [ "$EntryExistinMountMap" == "false" ]; then
+        touch $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${stunnel_conf_file}'!"
+            exit 1
+        fi
+
+        chattr -f +i $stunnel_conf_file
+
+        stunnel_log_file=
+        stunnel_pid_file=
+
+        add_stunnel_configuration $storageaccount
+        add_stunnel_configuration_status=$?
+
+        if [ $add_stunnel_configuration_status -ne 0 ]; then
+            eecho "Failed to add stunnel configuration to $stunnel_conf_file!"
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
+            exit 1
+        fi
+
+        # start the stunnel process
+        stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
+        if [ -n "$stunnel_status" ]; then
+            is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
+            if [ -z "$is_binding_error" ]; then
+                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                chattr -i -f $stunnel_conf_file
+                rm $stunnel_conf_file
+                exit 1
+            else
+                find_next_available_port_and_start_stunnel "$stunnel_conf_file"
+                is_stunnel_running=$?
+                if [ $is_stunnel_running -ne 0 ]; then
+                    eecho "Failed to get the next available port and start stunnel."
+                    chattr -i -f $stunnel_conf_file
+                    rm $stunnel_conf_file
+                    exit 1
+                fi
+            fi
+        fi
+
+        checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
+        if [ $? -ne 0 ]; then
+            eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
+            exit 1
+        fi
+
+        local mountmap_entry="$nfs_host;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash"
+        chattr -f -i $AZ_FILES_MOUNTMAP
+        echo "$mountmap_entry" >> $AZ_FILES_MOUNTMAP
+        if [ $? -ne 0 ]; then
+            chattr -f +i $AZ_FILES_MOUNTMAP
+            eecho "[$mountmap_entry] failed to add!"
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
+            exit 1
+        fi
+        chattr -f +i $AZ_FILES_MOUNTMAP
+
+    else
+        # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount.
+
+        # Check if stunnel_pid_file exist for storageaccount
+        stunnel_pid_file=`cat $AZ_FILES_MOUNTMAP | grep "stunnel_$storageaccount.pid" | cut -d ";" -f4`
+        if [ ! -f $stunnel_pid_file ]; then
+            eecho "[FATAL] '${stunnel_pid_file}' does not exist!"
+            exit 1
+        fi
+
+        is_stunnel_running=$(netstat -anp | grep stunnel | grep `cat $stunnel_pid_file`)
+        if [ -z "$is_stunnel_running" ]; then
+            vecho "stunnel is not running! Restarting the stunnel"
+
+            stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
+            if [ -n "$stunnel_status" ]; then
+                is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
+                if [ -z "$is_binding_error" ]; then
+                    eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                    exit 1
+                else
+                    find_next_available_port_and_start_stunnel "$stunnel_conf_file"
+                    is_stunnel_running=$?
+                    if [ $is_stunnel_running -ne 0 ]; then
+                        eecho "Failed to get the next available port and start stunnel."
+                        exit 1
+                    fi
+                fi
+            fi
+        fi
+
+        available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+        vecho "Local Port to use: $available_port"
+    fi
+
+    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$available_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
+    mount_status=$?
+
+    if [ -n "$mount_output" ]; then
+        pecho "$mount_output"
+        vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
+    fi
+
+    if [ $mount_status -ne 0 ]; then
+        eecho "Mount failed!"
+        exit 1
+    fi
+}
+
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
 
@@ -609,6 +1000,102 @@ vecho "Got arguments: [$*]"
 if ! ensure_aznfswatchdog; then
     exit 1
 fi
+
+mount_point="$2"
+
+OPTIONS=
+MOUNT_OPTIONS=
+AZ_PREFIX=
+
+parse_arguments $*
+
+nfs_vers=$(get_version_from_MOUNT_OPTIONS "$MOUNT_OPTIONS")
+if [ $? -ne 0 ]; then
+    echo "$nfs_vers"
+    exit 1
+fi
+
+if [ $nfs_vers == "4.1" ]; then
+    AZ_PREFIX="file"
+else
+    AZ_PREFIX="blob"
+fi
+
+nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
+if [ $? -ne 0 ]; then
+    echo "$nfs_host"
+    exit 1
+fi
+
+# TODO: Comment out below code for devfabric. 'is_valid_fqdn' will fail on devfabric.
+if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
+    eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
+    eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
+    exit 1
+fi
+
+nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
+if [ $? -ne 0 ]; then
+    echo "$nfs_dir"
+    exit 1
+fi
+
+if [ -z "$nfs_dir" ]; then
+    eecho "Bad share name: ${1}!"
+    eecho "Share to be mounted must be of the form 'account.$AZ_PREFIX.core.windows.net:/account/container'!"
+    exit 1
+fi
+
+if [ "$nfs_vers" == "4.1" ]; then
+    vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+
+    # AZ_FILES_MOUNTMAP file must have been created by aznfswatchdog service.
+    if [ ! -f $AZ_FILES_MOUNTMAP ]; then
+        touch $AZ_FILES_MOUNTMAP
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${AZ_FILES_MOUNTMAP}'!"
+            exit 1
+        fi
+    fi
+
+    if ! chattr -f +i $AZ_FILES_MOUNTMAP; then
+        wecho "chattr does not work for ${AZ_FILES_MOUNTMAP}!"
+    fi
+
+    if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
+        vecho "notls option is enabled. Mount nfs share without TLS."
+
+        if [[ "$MOUNT_OPTIONS" == *"notls,"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//notls,/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
+        fi
+
+        # Do the actual mount.
+        mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
+        mount_status=$?
+
+        if [ -n "$mount_output" ]; then
+            pecho "$mount_output"
+            vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
+        fi
+
+        if [ $mount_status -ne 0 ]; then
+            eecho "Mount failed!"
+            exit 1
+        fi
+    else
+        vecho "Mount nfs share with TLS."
+
+        tls_nfsv4_files_share_mount
+    fi
+
+    exit 0
+fi
+
+#
+# NfsV3 logic for mount helper below
+#
 
 # MOUNTMAP file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAP" ]; then
@@ -624,18 +1111,6 @@ if [ ! -f "$MOUNTMAP" ]; then
     exit 1
 fi
 
-nfs_host=$(get_host_from_share "$1")
-if [ $? -ne 0 ]; then
-    echo "$nfs_host"
-    exit 1
-fi
-
-if ! is_valid_blob_fqdn "$nfs_host"; then
-    eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
-    eecho "Must be of the form 'account.blob.core.windows.net'!"
-    exit 1
-fi
-
 # Resolve the IP address for the NFS host
 nfs_ip=$(resolve_ipv4 "$nfs_host" "true")
 if [ $? -ne 0 ]; then
@@ -644,25 +1119,6 @@ if [ $? -ne 0 ]; then
     eecho "Mount failed!"
     exit 1
 fi
-
-nfs_dir=$(get_dir_from_share "$1")
-if [ $? -ne 0 ]; then
-    echo "$nfs_dir"
-    exit 1
-fi
-
-if [ -z "$nfs_dir" ]; then
-    eecho "Bad share name: ${1}!"
-    eecho "Share to be mounted must be of the form 'account.blob.core.windows.net:/account/container'!"
-    exit 1
-fi
-
-mount_point="$2"
-
-OPTIONS=
-MOUNT_OPTIONS=
-
-parse_arguments $*
 
 #
 # Check azure nconnect flag.
