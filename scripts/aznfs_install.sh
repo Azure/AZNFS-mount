@@ -176,10 +176,15 @@ perform_aznfs_update()
         systemctl restart aznfswatchdog
 
     elif [ "$RUN_MODE" == "manual-update" ]; then
-        if [ "$install_cmd" == "zypper" ]; then
-            $install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" < /dev/tty
+        # Choosing the appropriate installation options based on distro.
+        install_options="-y"
+        [ "$install_cmd" == "zypper" ] && install_options+=" --allow-unsigned-rpm"
+
+        if [ "$AZNFS_NONINTERACTIVE_INSTALL" == "1" ] || [ "$install_cmd" == "apt" -a "$DEBIAN_FRONTEND" == "noninteractive" ]; then
+            # Install the package without input from /dev/tty in case of noninteractive install.
+            $install_cmd install $install_options "/tmp/${package_name}"
         else
-            $install_cmd install -y "/tmp/${package_name}" < /dev/tty
+            $install_cmd install $install_options "/tmp/${package_name}" < /dev/tty
         fi
         install_error=$?
         rm -f "/tmp/${package_name}"
@@ -225,6 +230,11 @@ check_aznfs_update()
         if [ "$current_version" == "$RELEASE_NUMBER" ]; then
             secho "AZNFS version $current_version is already installed"
             exit 0
+        fi
+
+        # Check for noninteractive installation.
+        if [ "$AZNFS_NONINTERACTIVE_INSTALL" == "1" ] || [ "$install_cmd" == "apt" -a "$DEBIAN_FRONTEND" == "noninteractive" ]; then
+            return
         fi
         
         # Ask the user if they want to install the desired release.
