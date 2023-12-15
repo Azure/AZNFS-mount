@@ -13,10 +13,12 @@ STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
 STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
 NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
-CONNECT_PORT=2049
 LOCALHOST="127.0.0.1"
 DEBUG_LEVEL="info"
 AZFILENFS_WATCHDOG_INTERVAL_SECS=5
+
+# TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
+CONNECT_PORT=2049
 
 #
 # Default order in which we try the network prefixes for a free local IP to use.
@@ -377,21 +379,21 @@ get_host_from_share()
 get_dir_from_share()
 {
     local hostshare="$1"
-    local nfsversion="$3"
+    local azprefix="$2"
     local is_bad_share_name="false"
     IFS=: read _ share <<< "$hostshare"
     IFS=/ read _ account container extra <<< "$share"
 
     # Added two separate if blocks below instead of one complicated if condition.
-    if [ \( $nfsversion == "4.1" \) -a \( -z "$account" -o -z "$container" \) ]; then
+    if [ \( $azprefix == "file" \) -a \( -z "$account" -o -z "$container" \) ]; then
         is_bad_share_name="true"
-    elif [ \( $nfsversion == "3" \) -a \( -z "$account" -o -z "$container" -o -n "$extra" \) ]; then
+    elif [ \( $azprefix == "blob" \) -a \( -z "$account" -o -z "$container" -o -n "$extra" \) ]; then
         is_bad_share_name="true"
     fi
 
     if [ $is_bad_share_name == "true" ]; then
         eecho "Bad share name: ${hostshare}."
-        eecho "Share to be mounted must be of the form 'account.$2.core.windows.net:/account/container'."
+        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container'."
         return 1
     fi
 
@@ -1247,7 +1249,7 @@ if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
     exit 1
 fi
 
-nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX" "$nfs_vers")
+nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
     echo "$nfs_dir"
     exit 1
