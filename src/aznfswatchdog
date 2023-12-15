@@ -8,6 +8,8 @@
 # Are we running inside the AKS?
 AKS_USER="false"
 
+RELEASE_NUMBER_FOR_AKS=x.y.z
+
 #
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob endpoints.
@@ -337,6 +339,16 @@ log_version_info()
         linux_distro="Unknown"
     fi
 
+    bash_version=$(bash --version | head -n 1)
+
+    vecho "Linux distribution: $linux_distro"
+    vecho "Bash version: $bash_version"
+
+    if [ "$AKS_USER" == "true" ]; then
+        vecho "AZNFS version: $RELEASE_NUMBER_FOR_AKS"
+        return
+    fi
+
     #
     # aznfswatchdog gets started during postinst, wait for installation to complete for the version to appear correctly.
     #
@@ -353,10 +365,6 @@ log_version_info()
         current_version="Unknown"
     fi
 
-    bash_version=$(bash --version | head -n 1)
-
-    vecho "Linux distribution: $linux_distro"
-    vecho "Bash version: $bash_version"
     vecho "AZNFS version: $current_version"
 }
 
