@@ -377,10 +377,19 @@ get_host_from_share()
 get_dir_from_share()
 {
     local hostshare="$1"
+    local nfsversion="$3"
+    local is_bad_share_name="false"
     IFS=: read _ share <<< "$hostshare"
     IFS=/ read _ account container extra <<< "$share"
 
-    if [ -z "$account" -o -z "$container" ]; then
+    # Added two separate if blocks below instead of one complicated if condition.
+    if [ \( $nfsversion == "4.1" \) -a \( -z "$account" -o -z "$container" \) ]; then
+        is_bad_share_name="true"
+    elif [ \( $nfsversion == "3" \) -a \( -z "$account" -o -z "$container" -o -n "$extra" \) ]; then
+        is_bad_share_name="true"
+    fi
+
+    if [ $is_bad_share_name == "true" ]; then
         eecho "Bad share name: ${hostshare}."
         eecho "Share to be mounted must be of the form 'account.$2.core.windows.net:/account/container'."
         return 1
@@ -1238,7 +1247,7 @@ if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
     exit 1
 fi
 
-nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
+nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX" "$nfs_vers")
 if [ $? -ne 0 ]; then
     echo "$nfs_dir"
     exit 1
