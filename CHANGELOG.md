@@ -1,6 +1,6 @@
 ## [2.0.2]- December 2023
 - [AZNFS-mount #97](https://github.com/Azure/AZNFS-mount/pull/97)
-  (NFSv3) Avoid /dev/tty in case of non-interactive setup. [Issue #96](https://github.com/Azure/AZNFS-mount/issues/96)
+  (NFSv3) Avoid user interaction completely in case of non-interactive setup. [Issue #96](https://github.com/Azure/AZNFS-mount/issues/96)
 
 ## [2.0.1]- December 2023
 - [AZNFS-mount #94](https://github.com/Azure/AZNFS-mount/pull/94)
