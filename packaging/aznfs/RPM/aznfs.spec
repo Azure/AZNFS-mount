@@ -4,7 +4,7 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, stunnel
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
@@ -63,8 +63,13 @@ chmod 0644 /opt/microsoft/aznfs/common.sh
 chmod 4755 /sbin/mount.aznfs
 
 # Create data directory for holding mountmap and log file. 
+# TODO: Confirm with v3 team if we want to protect data folder(or why do we
+# need to give 0755 permission to data folder?)
 mkdir -p /opt/microsoft/aznfs/data
 chmod 0755 /opt/microsoft/aznfs/data
+
+# Create log directory under /etc/stunnel to store stunnel logs
+mkdir -p /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
 
 # In case of upgrade.
 if [ $1 == 2 ]; then
@@ -123,9 +128,10 @@ NORMAL="\e[0m"
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
 	existing_mounts=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	if [ $existing_mounts -ne 0 ]; then 
+	existing_mounts_for_nfsv4FilesShares=$(cat /opt/microsoft/aznfs/data/aznfs_files_mountmap 2>/dev/null | egrep '^\S+' | wc -l)
+	if [ $existing_mounts -ne 0 -o $existing_mounts_for_nfsv4FilesShares -ne 0 ]; then
 		echo
-		echo -e "${RED}There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
+		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
 		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
 		read -n 1 result < /dev/tty
 		echo
@@ -137,7 +143,7 @@ if [ $1 == 0 ]; then
 				echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
 				echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
 				echo "To fix this, run the below command to install dependencies:"
-				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME"
+				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME stunnel"
 				echo "*******************************************************************"
 				echo
 			fi
@@ -156,5 +162,8 @@ fi
 if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
+	chattr -i -f /opt/microsoft/aznfs/data/aznfs_files_mountmap
 	rm -rf /opt/microsoft/aznfs
+	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
+	rm -rf /etc/stunnel/microsoft/aznfs/nfsv4_fileShare
 fi
