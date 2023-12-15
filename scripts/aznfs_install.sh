@@ -158,9 +158,9 @@ perform_aznfs_update()
     #
     if [ "$RUN_MODE" == "auto-update" ]; then
         if [ "$install_cmd" == "zypper" ]; then
-            install_output=$($install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
+            install_output=$(AZNFS_NONINTERACTIVE_INSTALL=1 $install_cmd install --allow-unsigned-rpm -y "/tmp/${package_name}" 2>&1)
         else
-            install_output=$(DEBIAN_FRONTEND=noninteractive $install_cmd install -y "/tmp/${package_name}" 2>&1)
+            install_output=$(DEBIAN_FRONTEND=noninteractive AZNFS_NONINTERACTIVE_INSTALL=1 $install_cmd install -y "/tmp/${package_name}" 2>&1)
         fi
         install_error=$?
         rm -f "/tmp/${package_name}"
@@ -178,7 +178,7 @@ perform_aznfs_update()
     elif [ "$RUN_MODE" == "manual-update" ]; then
         # Choosing the appropriate installation options based on distro.
         install_options="-y"
-        [ "$install_cmd" == "zypper" ] && install_options+=" --allow-unsigned-rpm"
+        [ "$install_cmd" == "zypper" ] && install_options="$install_options --allow-unsigned-rpm"
 
         if [ "$AZNFS_NONINTERACTIVE_INSTALL" == "1" ] || [ "$install_cmd" == "apt" -a "$DEBIAN_FRONTEND" == "noninteractive" ]; then
             # Install the package without input from /dev/tty in case of noninteractive install.
