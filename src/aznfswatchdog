@@ -615,13 +615,13 @@ while :; do
             if ! update_mountmap_entry "$line" "$l_host $l_ip $new_ip"; then
                 eecho "Will reattempt the operation in next iteration."
             else
-                mountpoint2048=$(echo "$findmnt" | grep " nfs ${l_ip}:" | egrep "\<port=2048\>" | awk '{print $4}' | head -n 1)
+                mountpoint2048=$(echo "$findmnt" | egrep " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}' | head -n 1)
                 mountpoint2048=$(echo -e "$mountpoint2048")
                 if [ -n "$mountpoint2048" ]; then
                     ping_new_endpoint "$mountpoint2048" &
                 fi
 
-                mountpoint2047=$(echo "$findmnt" | grep " nfs ${l_ip}:" | egrep "\<port=2047\>" | awk '{print $4}' | head -n 1)
+                mountpoint2047=$(echo "$findmnt" | egrep " nfs ${l_ip}:.*\<port=2047\>" | awk '{print $4}' | head -n 1)
                 mountpoint2047=$(echo -e "$mountpoint2047")
                 if [ -n "$mountpoint2047" ]; then
                     ping_new_endpoint "$mountpoint2047" &
