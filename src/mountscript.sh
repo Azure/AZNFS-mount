@@ -659,12 +659,12 @@ status=$?
 if [ $status -ne 0 ]; then
     if [ $status -eq 2 ]; then
         vecho "Resolving the IP for FQDN:$nfs_host to $nfs_ip from mountmap"
-        return
+    else
+        echo "$nfs_ip"
+        eecho "Cannot resolve IP address for ${nfs_host}!"
+        eecho "Mount failed!"
+        exit 1
     fi
-    echo "$nfs_ip"
-    eecho "Cannot resolve IP address for ${nfs_host}!"
-    eecho "Mount failed!"
-    exit 1
 fi
 
 nfs_dir=$(get_dir_from_share "$1")
