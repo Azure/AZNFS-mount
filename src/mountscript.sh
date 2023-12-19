@@ -616,6 +616,10 @@ resolve_ipv4_with_preference_to_mountmap()
             echo $old_nfs_ip
             return 2 
         fi
+
+        #
+        # Resolve FQDN to IPv4 using DNS if not found in the mountmap.
+        #
         resolve_ipv4 "$nfs_host" "true"
 }
 
