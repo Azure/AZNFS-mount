@@ -539,7 +539,7 @@ get_local_ip_for_fqdn()
             #
             touch_mountmap
 
-            if [ "$old_nfs_ip" != "$nfs_ip"]; then
+            if [ "$old_nfs_ip" != "$nfs_ip" ]; then
                 nfs_ip=$old_nfs_ip
             fi
 
