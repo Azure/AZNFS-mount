@@ -527,9 +527,9 @@ get_local_ip_for_fqdn()
         local fqdn=$1
         local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAP)
         # One local ip per fqdn, so return existing one if already present.
-        IFS=" " read _ local_ip old_nfs_ip <<< "$mountmap_entry"
+        IFS=" " read _ local_ip _ <<< "$mountmap_entry"
 
-        if [ -n "$local_ip" ] && [ -n "$old_nfs_ip" ]; then
+        if [ -n "$local_ip" ]; then
             LOCAL_IP=$local_ip
 
             #
@@ -538,14 +538,6 @@ get_local_ip_for_fqdn()
             # proxy IP w/o worrying about aznfswatchdog deleting it for 5 minutes.
             #
             touch_mountmap
-
-            #
-            # To maintain consistency in case of regional account and avoid creating
-            # multiple DNAT entries corrosponding to one LOCAL_IP.
-            #
-            if [ "$old_nfs_ip" != "$nfs_ip" ]; then
-                nfs_ip=$old_nfs_ip
-            fi
 
             #
             # This is not really needed since iptable entry must also be present,
@@ -610,6 +602,23 @@ ensure_aznfswatchdog()
     fi
 }
 
+#
+# To maintain consistency in case of regional account and in general to avoid creating
+# multiple DNAT entries corrosponding to one LOCAL_IP.
+#
+resolve_ipv4_with_preference_to_mountmap()
+{
+        local fqdn=$1
+        local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAP)
+
+        IFS=" " read _ local_ip old_nfs_ip <<< "$mountmap_entry"
+        if [ -n "$old_nfs_ip" ]; then
+            echo $old_nfs_ip
+            return 2 
+        fi
+        resolve_ipv4 "$nfs_host" "true"
+}
+
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
 
@@ -645,8 +654,12 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
 fi
 
 # Resolve the IP address for the NFS host
-nfs_ip=$(resolve_ipv4 "$nfs_host" "true")
+nfs_ip=$(resolve_ipv4_with_preference_to_mountmap "$nfs_host")
 if [ $? -ne 0 ]; then
+    if [ $? -eq 2 ]; then
+        vecho "Resolving the IP for FQDN:$nfs_host to $nfs_ip from mountmap"
+        return
+    fi
     echo "$nfs_ip"
     eecho "Cannot resolve IP address for ${nfs_host}!"
     eecho "Mount failed!"
