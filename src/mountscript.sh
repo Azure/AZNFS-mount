@@ -605,6 +605,7 @@ ensure_aznfswatchdog()
 #
 # To maintain consistency in case of regional account and in general to avoid creating
 # multiple DNAT entries corrosponding to one LOCAL_IP, first check for resolved IP in mountmap.
+# This will help keep mountmap and DNAT entries in sync with each other.
 #
 resolve_ipv4_with_preference_to_mountmap()
 {
