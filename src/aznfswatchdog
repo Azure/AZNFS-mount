@@ -218,12 +218,12 @@ reconcile_conntrack()
     output="$output111"$'\n'"$output2048"
 
     if [ -n "$output" ]; then
-        for line in $output; do
+        for entry in $output; do
             # XXX Remove this log after running for few days.
-            vecho "$line"
+            vecho "$entry"
 
             matchstr=".* SYN_SENT src=.* dst=$l_ip sport=([0-9]+) dport=([0-9]+).*"
-            if [[ "$line" =~ $matchstr ]]; then
+            if [[ "$entry" =~ $matchstr ]]; then
                 l_sport=${BASH_REMATCH[1]}
                 l_dport=${BASH_REMATCH[2]}
                 reconcile_conntrack_synsent $l_ip $l_sport $l_dport $l_nfsip
@@ -235,12 +235,12 @@ reconcile_conntrack()
     IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip --dport 2048 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
     output="$output111"$'\n'"$output2048"
     if [ -n "$output" ]; then
-        for line in $output; do
+        for entry in $output; do
             # XXX Remove this log after running for few days.
-            vecho "$line"
+            vecho "$entry"
 
             matchstr=".* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
-            if [[ "$line" =~ $matchstr ]]; then
+            if [[ "$entry" =~ $matchstr ]]; then
                 l_sport=${BASH_REMATCH[1]}
                 l_dport=${BASH_REMATCH[2]}
                 l_reply_srcip=${BASH_REMATCH[3]}
@@ -607,10 +607,10 @@ while :; do
             if ! update_mountmap_entry "$line" "$l_host $l_ip $new_ip"; then
                 eecho "Will reattempt the operation in next iteration."
             else
-                mountpoint=$(echo "$findmnt" | grep " nfs ${l_ip}:" | awk '{print $4}')
-                mountpoint=$(echo -e "$mountpoint")
-                if [ -n "$mountpoint" ]; then
-                    ping_new_endpoint "$mountpoint" &
+                mountpoint2048=$(echo "$findmnt" | egrep " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}' | head -n 1)
+                mountpoint2048=$(echo -e "$mountpoint2048")
+                if [ -n "$mountpoint2048" ]; then
+                    ping_new_endpoint "$mountpoint2048" &
                 fi
             fi
         fi
