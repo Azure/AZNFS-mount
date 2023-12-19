@@ -527,9 +527,9 @@ get_local_ip_for_fqdn()
         local fqdn=$1
         local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAP)
         # One local ip per fqdn, so return existing one if already present.
-        IFS=" " read _ local_ip _ <<< "$mountmap_entry"
+        IFS=" " read _ local_ip old_nfs_ip <<< "$mountmap_entry"
 
-        if [ -n "$local_ip" ]; then
+        if [ -n "$local_ip" ] && [ -n "$old_nfs_ip" ]; then
             LOCAL_IP=$local_ip
 
             #
@@ -538,6 +538,14 @@ get_local_ip_for_fqdn()
             # proxy IP w/o worrying about aznfswatchdog deleting it for 5 minutes.
             #
             touch_mountmap
+
+            #
+            # To maintain consistency in case of regional account and avoid creating
+            # multiple DNAT entries corrosponding to one LOCAL_IP.
+            #
+            if [ "$old_nfs_ip" != "$nfs_ip" ]; then
+                nfs_ip=$old_nfs_ip
+            fi
 
             #
             # This is not really needed since iptable entry must also be present,
