@@ -655,8 +655,9 @@ fi
 
 # Resolve the IP address for the NFS host
 nfs_ip=$(resolve_ipv4_with_preference_to_mountmap "$nfs_host")
-if [ $? -ne 0 ]; then
-    if [ $? -eq 2 ]; then
+status=$?
+if [ $status -ne 0 ]; then
+    if [ $status -eq 2 ]; then
         vecho "Resolving the IP for FQDN:$nfs_host to $nfs_ip from mountmap"
         return
     fi
