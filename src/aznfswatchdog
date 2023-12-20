@@ -133,7 +133,6 @@ check_for_regional_account()
 # we delete the entry so that kernel looks up fresh NAT rules and creates a new entry.
 #
 declare -A cthash_synsent
-declare -A cthash_synsent_now
 
 reconcile_conntrack_synsent()
 {
@@ -141,16 +140,22 @@ reconcile_conntrack_synsent()
     local l_sport=$2
     local l_dport=$3
     local l_nfsip=$4
+    local seconds_remaining=$5
 
     key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
-    let cthash_synsent[$key]++
-    let cthash_synsent_now[$key]++
+    
+    if [ ! -v cthash_synsent[$key] ]; then
+        cthash_synsent[$key]=$seconds_remaining
+        return
+    fi
+
+    age_seconds=$(expr ${cthash_synsent[$key]} - $seconds_remaining)
 
     #
     # We are called every 5 secs, so this deletes an entry stuck in
     # SYN_SENT for 25/30 secs.
     #
-    if [ ${cthash_synsent[$key]} -ge 5 ]; then
+    if [ $age_seconds -ge 25 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
         wecho "Deleting conntrack entry stuck in SYN_SENT state [$cmd]"
 
@@ -170,7 +175,6 @@ reconcile_conntrack_synsent()
 # a new conntrack entry, if the IP were to change again soon.
 #
 declare -A cthash_unreplied
-declare -A cthash_unreplied_now
 
 reconcile_conntrack_unreplied()
 {
@@ -178,16 +182,22 @@ reconcile_conntrack_unreplied()
     local l_sport=$2
     local l_dport=$3
     local l_reply_srcip=$4
+    local seconds_remaining=$5
 
     key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
-    let cthash_unreplied[$key]++
-    let cthash_unreplied_now[$key]++
+
+    if [ ! -v cthash_unreplied[$key] ]; then
+        cthash_unreplied[$key]=$seconds_remaining
+        return
+    fi
+
+    age_seconds=$(expr ${cthash_unreplied[$key]} - $seconds_remaining)
 
     #
     # We are called every 5 secs, so this deletes an entry stuck in
     # UNREPLIED for 25/30 secs.
     #
-    if [ ${cthash_unreplied[$key]} -ge 5 ]; then
+    if [ $age_seconds -ge 25 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
         wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
 
@@ -205,12 +215,6 @@ reconcile_conntrack()
     local l_ip=$1
     local l_nfsip=$2
 
-    # cthash_synsent_now and cthash_unreplied_now holds only entries found in this call, so clear it before starting.
-    unset cthash_synsent_now
-    unset cthash_unreplied_now
-    declare -A cthash_synsent_now
-    declare -A cthash_unreplied_now
-
     #
     # For mounts with nconnect, there could be more than one conntrack entries to the same
     # proxy IP, but with different local ports. We must track them separately.
@@ -221,14 +225,18 @@ reconcile_conntrack()
 
     if [ -n "$output" ]; then
         for entry in $output; do
-            # XXX Remove this log after running for few days.
+            # XXX Remove this log after running for few days.(not too noisy!)
             vecho "$entry"
 
-            matchstr=".* SYN_SENT src=.* dst=$l_ip sport=([0-9]+) dport=([0-9]+).*"
+            # pasting here for ease during review (remove later)
+            # tcp      6 114 SYN_SENT src=10.20.0.17 dst=10.161.100.101 sport=819 dport=2048 [UNREPLIED] src=20.150.35.196 dst=10.20.0.17 sport=2048 dport=819 mark=0 use=1
+            matchstr="tcp \s*[0-9]+ \s*([0-9]+).* SYN_SENT src=.* dst=$l_ip sport=([0-9]+) dport=([0-9]+).*"
             if [[ "$entry" =~ $matchstr ]]; then
-                l_sport=${BASH_REMATCH[1]}
-                l_dport=${BASH_REMATCH[2]}
-                reconcile_conntrack_synsent $l_ip $l_sport $l_dport $l_nfsip
+                l_seconds_remaining=${BASH_REMATCH[1]}
+                l_sport=${BASH_REMATCH[2]}
+                l_dport=${BASH_REMATCH[3]}
+                vecho "l_seconds_remaining (syn_sent): $l_seconds_remaining" # remove later
+                reconcile_conntrack_synsent $l_ip $l_sport $l_dport $l_nfsip $l_seconds_remaining
             fi
         done
     fi
@@ -238,34 +246,22 @@ reconcile_conntrack()
     output="$output111"$'\n'"$output2048"
     if [ -n "$output" ]; then
         for entry in $output; do
-            # XXX Remove this log after running for few days.
+            # XXX Remove this log after running for few days.(too noisy!)
             vecho "$entry"
 
-            matchstr=".* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
+            # pasting here for ease during review (remove later)
+            # tcp      6 299 ESTABLISHED src=10.2.4.4 dst=10.161.100.100 sport=1015 dport=2048 [UNREPLIED] src=20.60.236.11 dst=10.2.4.4 sport=2048 dport=1015 mark=0 use=1 
+            matchstr="tcp \s*[0-9]+ \s*([0-9]+) .* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
             if [[ "$entry" =~ $matchstr ]]; then
-                l_sport=${BASH_REMATCH[1]}
-                l_dport=${BASH_REMATCH[2]}
-                l_reply_srcip=${BASH_REMATCH[3]}
-                reconcile_conntrack_unreplied $l_ip $l_sport $l_dport $l_reply_srcip
+                l_seconds_remaining=${BASH_REMATCH[1]}
+                l_sport=${BASH_REMATCH[2]}
+                l_dport=${BASH_REMATCH[3]}
+                l_reply_srcip=${BASH_REMATCH[4]}
+                vecho "l_seconds_remaining (unreplied): $l_seconds_remaining" # remove later
+                reconcile_conntrack_unreplied $l_ip $l_sport $l_dport $l_reply_srcip $l_seconds_remaining
             fi
         done
     fi
-
-    #
-    # Any port that is not stuck now, means it's recovered since the last time and can be removed
-    # from the global cthash_synsent and cthash_unreplied map.
-    #
-    for key in "${!cthash_synsent[@]}"; do
-        if [ ! -v cthash_synsent_now[$key] ]; then
-            unset cthash_synsent[$key]
-        fi
-    done
-
-    for key in "${!cthash_unreplied[@]}"; do
-        if [ ! -v cthash_unreplied_now[$key] ]; then
-            unset cthash_unreplied[$key]
-        fi
-    done
 }
 
 #
