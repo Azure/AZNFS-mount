@@ -143,21 +143,23 @@ reconcile_conntrack_synsent()
     local seconds_remaining=$5
 
     key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
-    
+
+    # First time we are seeing this conntrack entry.
     if [ ! -v cthash_synsent[$key] ]; then
         cthash_synsent[$key]=$seconds_remaining
         return
     fi
 
+    #
+    # How long has this entry been around?
+    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
+    # be created, and help make progress.
+    #
     age_seconds=$(expr ${cthash_synsent[$key]} - $seconds_remaining)
 
-    #
-    # We are called every 5 secs, so this deletes an entry stuck in
-    # SYN_SENT for 25/30 secs.
-    #
     if [ $age_seconds -ge 25 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in SYN_SENT state [$cmd]"
+        wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
 
         eval $cmd
         if [ $? -ne 0 ]; then
@@ -186,20 +188,22 @@ reconcile_conntrack_unreplied()
 
     key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
 
+    # First time we are seeing this conntrack entry.
     if [ ! -v cthash_unreplied[$key] ]; then
         cthash_unreplied[$key]=$seconds_remaining
         return
     fi
 
+    #
+    # How long has this entry been around?
+    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
+    # be created, and help make progress.
+    #
     age_seconds=$(expr ${cthash_unreplied[$key]} - $seconds_remaining)
 
-    #
-    # We are called every 5 secs, so this deletes an entry stuck in
-    # UNREPLIED for 25/30 secs.
-    #
     if [ $age_seconds -ge 25 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in UNREPLIED state [$cmd]"
+        wecho "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
 
         eval $cmd
         if [ $? -ne 0 ]; then
@@ -225,17 +229,16 @@ reconcile_conntrack()
 
     if [ -n "$output" ]; then
         for entry in $output; do
-            # XXX Remove this log after running for few days.(not too noisy!)
+            # XXX Remove this log after running for few days (not too noisy!)
             vecho "$entry"
 
-            # pasting here for ease during review (remove later)
+            # Sample conntrack entry.
             # tcp      6 114 SYN_SENT src=10.20.0.17 dst=10.161.100.101 sport=819 dport=2048 [UNREPLIED] src=20.150.35.196 dst=10.20.0.17 sport=2048 dport=819 mark=0 use=1
-            matchstr="tcp \s*[0-9]+ \s*([0-9]+).* SYN_SENT src=.* dst=$l_ip sport=([0-9]+) dport=([0-9]+).*"
+            matchstr="tcp\s+[0-9]+\s+([0-9]+)\s+SYN_SENT\s+src=[0-9]+.[0-9]+.[0-9]+.[0-9]+\s+dst=${l_ip}\s+sport=([0-9]+)\s+dport=([0-9]+).*"
             if [[ "$entry" =~ $matchstr ]]; then
                 l_seconds_remaining=${BASH_REMATCH[1]}
                 l_sport=${BASH_REMATCH[2]}
                 l_dport=${BASH_REMATCH[3]}
-                vecho "l_seconds_remaining (syn_sent): $l_seconds_remaining" # remove later
                 reconcile_conntrack_synsent $l_ip $l_sport $l_dport $l_nfsip $l_seconds_remaining
             fi
         done
@@ -246,18 +249,17 @@ reconcile_conntrack()
     output="$output111"$'\n'"$output2048"
     if [ -n "$output" ]; then
         for entry in $output; do
-            # XXX Remove this log after running for few days.(too noisy!)
+            # XXX Remove this log after running for few days (too noisy!)
             vecho "$entry"
 
-            # pasting here for ease during review (remove later)
+           # Sample conntrack entry.
             # tcp      6 299 ESTABLISHED src=10.2.4.4 dst=10.161.100.100 sport=1015 dport=2048 [UNREPLIED] src=20.60.236.11 dst=10.2.4.4 sport=2048 dport=1015 mark=0 use=1 
-            matchstr="tcp \s*[0-9]+ \s*([0-9]+) .* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
+            matchstr="tcp\s+[0-9]+\s+([0-9]+) .* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
             if [[ "$entry" =~ $matchstr ]]; then
                 l_seconds_remaining=${BASH_REMATCH[1]}
                 l_sport=${BASH_REMATCH[2]}
                 l_dport=${BASH_REMATCH[3]}
                 l_reply_srcip=${BASH_REMATCH[4]}
-                vecho "l_seconds_remaining (unreplied): $l_seconds_remaining" # remove later
                 reconcile_conntrack_unreplied $l_ip $l_sport $l_dport $l_reply_srcip $l_seconds_remaining
             fi
         done
