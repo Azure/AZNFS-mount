@@ -1,3 +1,7 @@
+## [2.0.3]- December 2023
+- [AZNFS-mount #97](https://github.com/Azure/AZNFS-mount/pull/98)
+  (NFSv3) Resolved several bugs and logic added top retrieve the IP address from the mountmap during the mount process when an entry corresponding to the FQDN is present.
+
 ## [2.0.2]- December 2023
 - [AZNFS-mount #97](https://github.com/Azure/AZNFS-mount/pull/97)
   (NFSv3) Avoid user interaction completely in case of non-interactive setup. [Issue #96](https://github.com/Azure/AZNFS-mount/issues/96)
