@@ -602,6 +602,38 @@ ensure_aznfswatchdog()
     fi
 }
 
+#
+# To maintain consistency in case of regional account and in general to avoid creating
+# multiple DNAT entries corrosponding to one LOCAL_IP, first check for resolved IP in mountmap.
+# This will help keep mountmap and DNAT entries in sync with each other.
+# If the current resolved IP is different from the one stored in mountmap then it means that the IP has changed
+# since the mountmap entry was created (could be due to migration or more likely due to RAs roundrobin DNS). 
+# In any case this will be properly handled by aznfswatchdog next time it checks for IP change for this fqdn.
+#
+resolve_ipv4_with_preference_to_mountmap()
+{
+    local fqdn=$1
+
+    exec {fd}<$MOUNTMAP
+    flock -e $fd
+
+    local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAP)
+    
+    flock -u $fd
+    exec {fd}<&-
+
+    IFS=" " read _ local_ip old_nfs_ip <<< "$mountmap_entry"
+    if [ -n "$old_nfs_ip" ]; then
+        echo "$old_nfs_ip"
+        return 2 
+    fi
+
+    #
+    # Resolve FQDN to IPv4 using DNS if not found in the mountmap.
+    #
+    resolve_ipv4 "$fqdn" "true"
+}
+
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
 
@@ -637,12 +669,17 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
 fi
 
 # Resolve the IP address for the NFS host
-nfs_ip=$(resolve_ipv4 "$nfs_host" "true")
-if [ $? -ne 0 ]; then
-    echo "$nfs_ip"
-    eecho "Cannot resolve IP address for ${nfs_host}!"
-    eecho "Mount failed!"
-    exit 1
+nfs_ip=$(resolve_ipv4_with_preference_to_mountmap "$nfs_host")
+status=$?
+if [ $status -ne 0 ]; then
+    if [ $status -eq 2 ]; then
+        vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
+    else
+        echo "$nfs_ip"
+        eecho "Cannot resolve IP address for ${nfs_host}!"
+        eecho "Mount failed!"
+        exit 1
+    fi
 fi
 
 nfs_dir=$(get_dir_from_share "$1")
