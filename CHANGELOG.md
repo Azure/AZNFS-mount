@@ -1,8 +1,8 @@
 ## [2.0.3]- December 2023
 - [AZNFS-mount #98](https://github.com/Azure/AZNFS-mount/pull/98)
-  (NFSv3) Fixed a bug when reconciling conntrack entries with multiple mounts to different accounts.
-  (NFSv3) Fixed a bug to accurately fetch the mountpoint in case of multiple mounts to different containers on the same account.
-  (NFSv3) Now we consult the mountmap for resolving regional account FQDN before we do the host lookup to ensure that multiple container mounts resolve to same the IP.
+  - (NFSv3) Fixed a bug when reconciling conntrack entries with multiple mounts to different accounts.
+  - (NFSv3) Fixed a bug to accurately fetch the mountpoint in case of multiple mounts to different containers on the same account.
+  - (NFSv3) Now we consult the mountmap for resolving regional account FQDN before we do the host lookup to ensure that multiple container mounts resolve to same the IP.
 
 ## [2.0.2]- December 2023
 - [AZNFS-mount #97](https://github.com/Azure/AZNFS-mount/pull/97)
