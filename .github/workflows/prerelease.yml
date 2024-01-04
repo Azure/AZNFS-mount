@@ -9,7 +9,7 @@
 
 name: Create Test Release
 
-on:
+on: [push, pull_request]
   workflow_dispatch:
     inputs:
       versionName:
@@ -19,7 +19,7 @@ on:
 jobs:
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }} (Test Release)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     - name: Check Version Number
       shell: bash
