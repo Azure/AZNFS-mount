@@ -1,0 +1,17 @@
+name: Run Additional Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  additional_tests:
+    name: Additional Tests
+    runs-on: self-hosted
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Run Tests
+      run: |
+        # Add your test commands or script invocations here
+        echo "Running additional tests..."
