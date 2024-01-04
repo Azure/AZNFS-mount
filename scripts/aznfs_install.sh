@@ -64,7 +64,7 @@ pecho()
 secho()
 {
     color=$GREEN
-    _log $color "${*}"
+    _log $color "SUCCESS: ${*}"
 }
 
 #
@@ -73,7 +73,7 @@ secho()
 wecho()
 {
     color=$YELLOW
-    _log $color "${*}"
+    _log $color "WARNING: ${*}"
 }
 
 #
@@ -82,7 +82,7 @@ wecho()
 eecho()
 {
     color=$RED
-    _log $color "${*}"
+    _log $color "ERROR: ${*}"
 }
 
 #
@@ -102,7 +102,7 @@ vecho()
         return
     fi
 
-    _log $color "${*}"
+    _log $color "VERBOSE: ${*}"
 }
 
 use_dnf_or_yum() 
