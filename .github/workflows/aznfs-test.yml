@@ -1,0 +1,31 @@
+name: Test AZNFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      versionName:
+        description: 'Version Name'
+        required: true
+      storageAccount:
+        description: 'Storage Account'
+        required: true
+
+jobs:
+  test_aznfs:
+    name: Test AZNFS
+    runs-on: [self-hosted-ubuntu20]
+    steps:
+    - name: Check Version and Storage Account
+      shell: bash
+      run: |
+        versionName=${{ github.event.inputs.versionName }}
+        storageAccount=${{ github.event.inputs.storageAccount }}
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+    - name: Run Test Script
+      shell: bash
+      run: |
+        export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+        export STORAGE_ACCOUNT=${{ github.event.inputs.storageAccount }}
+        chmod +x $GITHUB_WORKSPACE/testing/testscript.sh
+        $GITHUB_WORKSPACE/testing/testscript.sh
