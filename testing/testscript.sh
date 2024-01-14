@@ -1,5 +1,19 @@
 #!/bin/bash
 
+log_file="/opt/microsoft/aznfs/data/aznfs.log"
+
+verify_aznfs_version() {
+    local release_number="$1"
+
+    # Verify if the log line is present in the log file.
+    if grep -q "AZNFS version: $release_number" "$log_file"; then
+        echo "AZNFS version log verification successful. The log line is present."
+    else
+        echo "AZNFS version log verification failed. The log line is not present."
+        return 1
+    fi
+}
+
 # Function to download and execute AZNFS installation script.
 install_aznfs() {
     local release_number="$1"
@@ -15,7 +29,15 @@ install_aznfs() {
 
     local return_code=$?
     if [ "$return_code" -ne 0 ]; then
-        log "Error: Installation script failed with exit code $return_code"
+        echo "Error: Installation script failed with exit code $return_code"
+        exit 1
+    fi
+
+    verify_aznfs_version "$release_number"
+
+    local return_code=$?
+    if [ "$return_code" -ne 0 ]; then
+        echo "Error: AZNFS version verification failed."
         exit 1
     fi
 }
@@ -59,7 +81,7 @@ do_mount() {
     
     local return_code=$?
     if [ "$return_code" -ne 0 ]; then
-        log "Error: Mount operation failed with exit code $return_code"
+        echo "Error: Mount operation failed with exit code $return_code"
         exit 1
     fi
 
@@ -111,9 +133,8 @@ perform_mount_stress_test() {
 
     for ((i=lower_limit; i<=upper_limit; i++)); do
         local mount_directory="/mnt/palashvijmh$i"
-        
-        mkdir -p "$mount_directory"
-        mount -t aznfs -o vers=3,proto=tcp "$storage_account.blob.core.windows.net:/$storage_account/container1" "$mount_directory"
+
+        do_mount "$storage_account" "$mount_directory"
         echo "$i"
         
         local file_path="$mount_directory/file$i"
@@ -148,12 +169,29 @@ perform_unmount_stress_test() {
     done
 }
 
+declare -a STORAGE_ACCOUNTS_ARRAY
+IFS=' ' read -ra STORAGE_ACCOUNTS_ARRAY <<< "$STORAGE_ACCOUNTS"
+
+# Get the count of elements
+storage_account_count="${#STORAGE_ACCOUNTS_ARRAY[@]}"
+echo "Number of storage accounts in the array: $storage_account_count"
+
+# Access the first element of the array
+first_storage_account="${STORAGE_ACCOUNTS_ARRAY[0]}"
+echo "First storage account: $first_storage_account"
 
 install_aznfs "${RELEASE_NUMBER}"
 check_scripts_with_shellcheck
-do_mount "${STORAGE_ACCOUNT}" "/mnt/palashvij" 
+do_mount "${first_storage_account}" "/mnt/palashvij" 
 run_connectathon_tests "/mnt/palashvij"
 perform_basic_tests "/mnt/palashvij"
 umount -f "/mnt/palashvij"
-perform_mount_stress_test "${STORAGE_ACCOUNT}" "1" "100"
+perform_mount_stress_test "${first_storage_account}" "1" "100"
 perform_unmount_stress_test "1" "100"
+
+# TODO: Mountmap Validation:
+#     a. Verify Maximum number of accounts that can be mounted from the same tenant/cluster == 20
+#     b. Verify only 1 entry per FQDN.
+#     c. Verify all entries have unique pseudo IP.
+#     d. Verify entry deleted from mountmap after 45 seconds (RA), otherwise 3 mins of inactivity/last modification time.
+#     e. Verify if entry is already present in mountmap for corrosponding FQDN, then pick the resolved IP from mountmap.

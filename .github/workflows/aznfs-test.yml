@@ -6,26 +6,46 @@ on:
       versionName:
         description: 'Version Name'
         required: true
-      storageAccount:
-        description: 'Storage Account'
+      storageAccounts:
+        description: 'Space-separated Storage Accounts'
         required: true
 
 jobs:
-  test_aznfs:
-    name: Test AZNFS
-    runs-on: [self-hosted-ubuntu20]
+  test_aznfs_ubuntu20:
+    name: Test AZNFS on Ubuntu 20
+    runs-on: self-hosted-ubuntu20
     steps:
-    - name: Check Version and Storage Account
-      shell: bash
-      run: |
-        versionName=${{ github.event.inputs.versionName }}
-        storageAccount=${{ github.event.inputs.storageAccount }}
-    - name: Checkout Repository
-      uses: actions/checkout@v3
-    - name: Run Test Script
-      shell: bash
-      run: |
-        export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
-        export STORAGE_ACCOUNT=${{ github.event.inputs.storageAccount }}
-        chmod +x $GITHUB_WORKSPACE/testing/testscript.sh
-        $GITHUB_WORKSPACE/testing/testscript.sh
+      - name: Check Version and Storage Account
+        shell: bash
+        run: |
+          versionName=${{ github.event.inputs.versionName }}
+          storageAccounts=${{ github.event.inputs.storageAccounts }}
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+      - name: Run Test Script
+        shell: bash
+        run: |
+          export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+          export STORAGE_ACCOUNTS="${{ github.event.inputs.storageAccounts }}"
+          chmod +x $GITHUB_WORKSPACE/testing/testscript.sh
+          $GITHUB_WORKSPACE/testing/testscript.sh
+
+  test_aznfs_ubuntu22:
+    name: Test AZNFS on Ubuntu 22
+    runs-on: self-hosted-ubuntu22
+    needs: test_aznfs_ubuntu20
+    steps:
+      - name: Check Version and Storage Account
+        shell: bash
+        run: |
+          versionName=${{ github.event.inputs.versionName }}
+          storageAccounts=${{ github.event.inputs.storageAccounts }}
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+      - name: Run Test Script
+        shell: bash
+        run: |
+          export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+          export STORAGE_ACCOUNTS="${{ github.event.inputs.storageAccounts }}"
+          chmod +x $GITHUB_WORKSPACE/testing/testscript.sh
+          $GITHUB_WORKSPACE/testing/testscript.sh
