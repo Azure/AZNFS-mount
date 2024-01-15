@@ -240,8 +240,6 @@ jobs:
       - name: Install Prerequisites
         shell: bash
         run: |
-          sudo yum install -y epel-release
-          sudo yum install -y shellcheck
           sudo yum groupinstall -y "Development Tools"
       - name: Check Version and Storage Account
         shell: bash
@@ -266,8 +264,6 @@ jobs:
       - name: Install Prerequisites
         shell: bash
         run: |
-          sudo yum install -y epel-release
-          sudo yum install -y shellcheck
           sudo yum groupinstall -y "Development Tools"
       - name: Check Version and Storage Account
         shell: bash
