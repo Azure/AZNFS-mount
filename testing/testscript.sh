@@ -33,7 +33,7 @@ check_scripts_with_shellcheck()
 
     # TODO: Older Disto's don't have support for shellcheck --severity. Need to Change logic here/ Also we don't need every distro to support it.
     # Ubuntu 20,22 supporting will help catch errors!
-    
+
     for file in "${files_to_check[@]}"; do
         echo "***Checking $file for errors...***"
         output=$(shellcheck --severity=error "$file")
@@ -94,6 +94,20 @@ run_connectathon_tests()
     sudo "$testsuite_directory/runtests" -cthon "$mount_directory/unixtests"
 }
 
+do_unmount() 
+{
+    local directory="$1"
+
+    # Unmount the share.
+    sudo umount -f "$directory"
+    local return_code=$?
+    if [ "$return_code" -ne 0 ]; then
+        echo "[ERROR] Unmount operation failed with exit code $return_code" >&2
+        exit 1
+    fi
+}
+
+
 declare -a STORAGE_ACCOUNTS_ARRAY
 IFS=' ' read -ra STORAGE_ACCOUNTS_ARRAY <<< "$STORAGE_ACCOUNTS"
 
@@ -108,4 +122,4 @@ install_aznfs "${RELEASE_NUMBER}"
 check_scripts_with_shellcheck
 do_mount "${first_storage_account}" "/mnt/palashvij" 
 run_connectathon_tests "/mnt/palashvij"
-umount -f "/mnt/palashvij"
+do_unmount "/mnt/palashvij"
