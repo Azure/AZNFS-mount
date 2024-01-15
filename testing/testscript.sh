@@ -48,6 +48,7 @@ check_scripts_with_shellcheck() {
     "/usr/sbin/aznfswatchdog"
     "/opt/microsoft/aznfs/common.sh"
     "/opt/microsoft/aznfs/mountscript.sh"
+    "/opt/microsoft/aznfs/aznfs_install.sh"
   )
 
   for file in "${files_to_check[@]}"; do
@@ -84,10 +85,6 @@ do_mount() {
         echo "Error: Mount operation failed with exit code $return_code"
         exit 1
     fi
-
-    nfsstat_output=$(nfsstat -m)
-    echo "Output of nfsstat -m:"
-    echo "$nfsstat_output"
 }
 
 # Function to run connectathon tests for AZNFS mount
