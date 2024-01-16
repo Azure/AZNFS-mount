@@ -21,31 +21,6 @@ install_aznfs()
     fi
 }
 
-# Function to check scripts for errors using shellcheck.
-check_scripts_with_shellcheck()
-{
-    local files_to_check=(
-        "/usr/sbin/aznfswatchdog"
-        "/opt/microsoft/aznfs/common.sh"
-        "/opt/microsoft/aznfs/mountscript.sh"
-        "/opt/microsoft/aznfs/aznfs_install.sh"
-    )
-
-    # TODO: Older Disto's don't have support for shellcheck --severity. Need to Change logic here/ Also we don't need every distro to support it.
-    # Ubuntu 20,22 supporting will help catch errors!
-
-    for file in "${files_to_check[@]}"; do
-        echo "***Checking $file for errors...***"
-        output=$(shellcheck --severity=error "$file")
-
-        if [ -n "$output" ]; then
-        echo "$output"
-        else
-        echo "No errors found in $file."
-        fi
-    done
-}
-
 # Function to mount NFS share using AZNFS.
 do_mount() 
 {
@@ -119,7 +94,6 @@ echo "Number of storage accounts in the input: $storage_account_count"
 first_storage_account="${STORAGE_ACCOUNTS_ARRAY[0]}"
 
 install_aznfs "${RELEASE_NUMBER}"
-check_scripts_with_shellcheck
 do_mount "${first_storage_account}" "/mnt/palashvij" 
 run_connectathon_tests "/mnt/palashvij"
 do_unmount "/mnt/palashvij"

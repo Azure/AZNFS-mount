@@ -11,15 +11,57 @@ on:
         required: true
 
 jobs:
+  run_shellcheck:
+    name: Shellcheck for AZNFS
+    runs-on: self-hosted-ubuntu22
+    steps:
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      - name: Check Version and Storage Account
+        shell: bash
+        run: |
+          versionName=${{ github.event.inputs.versionName }}
+          storageAccounts="${{ github.event.inputs.storageAccounts }}"
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+      - name: Install AZNFS
+        shell: bash
+        run: |
+          export AZNFS_NONINTERACTIVE_INSTALL=1
+          sudo wget -O - -q "https://github.com/Azure/AZNFS-mount/releases/download/${{ github.event.inputs.versionName }}/aznfs_install.sh" | bash
+      - name: Run Shellcheck on Scripts
+        shell: bash
+        run: |
+          declare -a files_to_check=(
+            "/src/aznfswatchdog"
+            "/src/mountscript.sh"
+            "/lib/common.sh"
+            "/scripts/aznfs_install.sh"
+          )
+
+          for file in "${files_to_check[@]}"; do
+            echo "=== Checking $file for errors ==="
+
+            full_file_path="$GITHUB_WORKSPACE$file"
+            if output=$(shellcheck --severity=error "$full_file_path"); then
+              echo "No errors found in $file."
+            else
+              echo "$output"
+            fi
+
+          done
+
   test_aznfs_ubuntu18:
     name: Test AZNFS - Ubuntu 18
     runs-on: self-hosted-ubuntu18
+    needs: run_shellcheck
     steps:
       - name: Install Prerequisites
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
           sudo apt-get install -y build-essential
       - name: Check Version and Storage Account
         shell: bash
@@ -45,7 +87,6 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
           sudo apt-get install -y build-essential
       - name: Check Version and Storage Account
         shell: bash
@@ -71,7 +112,6 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
           sudo apt-get install -y build-essential
       - name: Check Version and Storage Account
         shell: bash
@@ -96,8 +136,6 @@ jobs:
       - name: Install Prerequisites
         shell: bash
         run: |
-          sudo yum install -y epel-release
-          sudo yum install -y shellcheck
           sudo yum groupinstall -y "Development Tools"
       - name: Check Version and Storage Account
         shell: bash
@@ -122,8 +160,6 @@ jobs:
       - name: Install Prerequisites
         shell: bash
         run: |
-          sudo yum install -y epel-release
-          sudo yum install -y shellcheck
           sudo yum groupinstall -y "Development Tools"
       - name: Check Version and Storage Account
         shell: bash
