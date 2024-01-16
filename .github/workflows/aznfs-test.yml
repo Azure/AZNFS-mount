@@ -44,8 +44,8 @@ jobs:
             else
               echo "$output"
             fi
-
           done
+
   test_aznfs_ubuntu18:
     name: Test AZNFS - Ubuntu 18
     runs-on: self-hosted-ubuntu18
