@@ -145,7 +145,7 @@ reconcile_conntrack_synsent()
     key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
 
     # First time we are seeing this conntrack entry.
-    if [ ! -v cthash_synsent[$key] ]; then
+    if [ ! -v "cthash_synsent[$key]" ]; then
         cthash_synsent[$key]=$seconds_remaining
         return
     fi
@@ -189,7 +189,7 @@ reconcile_conntrack_unreplied()
     key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
 
     # First time we are seeing this conntrack entry.
-    if [ ! -v cthash_unreplied[$key] ]; then
+    if [ ! -v "cthash_unreplied[$key]" ]; then
         cthash_unreplied[$key]=$seconds_remaining
         return
     fi
