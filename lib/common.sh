@@ -144,7 +144,7 @@ is_present_in_etc_hosts()
     local hostname="$2"
 
     # Search for the entry in /etc/hosts
-    grep -qE "^[[:space:]]*$ip[[:space:]]+[^#]*\<$hostname\>" /etc/hosts
+    grep -qE "^[[:space:]]*${ip}[[:space:]]+[^#]*\<${hostname}\>" /etc/hosts
 }
 
 #
@@ -576,6 +576,6 @@ fi
 #
 # In case there are inherited fds, close other than 0,1,2.
 #
-for fd in $(ls /proc/$$/fd/); do
+for fd in /proc/$$/fd/*; do
     [ $fd -gt 2 ] && exec {fd}<&-
 done
