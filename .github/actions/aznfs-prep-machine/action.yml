@@ -1,0 +1,15 @@
+name: 'AZNFS Prep Machine'
+description: 'Prepare the machine for AZNFS'
+
+runs:
+  using: 'composite'
+  steps:
+    - run: chmod +x $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup.sh
+      shell: bash
+    - run: $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup.sh
+      shell: bash
+    - name: Untar UnixTestSuite
+      shell: bash
+      run: |
+        mkdir -p /lib
+        tar -xf $GITHUB_WORKSPACE/UnixTestSuite.tar -C /lib
