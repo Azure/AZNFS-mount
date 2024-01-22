@@ -1,6 +1,12 @@
 name: 'AZNFS Prep Machine'
 description: 'Prepare the machine for AZNFS'
 
+inputs:
+  RUNS_ON:
+    description: 'The runs-on value of the self-hosted runner.'
+    required: true
+
+
 runs:
   using: 'composite'
   steps:
@@ -13,3 +19,9 @@ runs:
       run: |
         mkdir -p /lib
         tar -xf $GITHUB_WORKSPACE/UnixTestSuite.tar -C /lib
+    - name: Alternative Approach
+      shell: bash
+      run: |
+        chmod +x $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup2.sh
+        $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup2.sh "${{ inputs.RUNS_ON }}"
+

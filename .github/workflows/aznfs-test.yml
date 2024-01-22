@@ -59,6 +59,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: 'ubuntu'
       - name: Run Test Script
         shell: bash
         run: |
@@ -74,6 +76,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: 'ubuntu'
       - name: Run Test Script
         shell: bash
         run: |
@@ -89,6 +93,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine 
+        with:
+          RUNS_ON: 'ubuntu'
       - name: Run Test Script
         shell: bash
         run: |
@@ -104,6 +110,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: 'centos'
       - name: Run Test Script
         shell: bash
         run: |
@@ -119,6 +127,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: 'centos'
       - name: Run Test Script
         shell: bash
         run: |
@@ -134,6 +144,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: 'sles'
       - name: Run Test Script
         shell: bash
         run: |
@@ -149,6 +161,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: 'rhel'
       - name: Run Test Script
         shell: bash
         run: |
@@ -164,6 +178,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: 'rhel'
       - name: Run Test Script
         shell: bash
         run: |
@@ -179,6 +195,8 @@ jobs:
         uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: 'rhel'
       - name: Run Test Script
         shell: bash
         run: |
