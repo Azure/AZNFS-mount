@@ -55,8 +55,6 @@ jobs:
     runs-on: self-hosted-ubuntu18
     needs: run_shellcheck
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
@@ -72,8 +70,6 @@ jobs:
     runs-on: self-hosted-ubuntu20
     needs: test_aznfs_ubuntu18
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
@@ -89,8 +85,6 @@ jobs:
     runs-on: self-hosted-ubuntu22
     needs: test_aznfs_ubuntu20
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine 
         with:
@@ -106,8 +100,6 @@ jobs:
     runs-on: self-hosted-centos7
     needs: test_aznfs_ubuntu22
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
@@ -123,8 +115,6 @@ jobs:
     runs-on: self-hosted-centos8
     needs: test_aznfs_centos7
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
@@ -140,8 +130,6 @@ jobs:
     runs-on: self-hosted-suse15
     needs: test_aznfs_centos8
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
@@ -157,8 +145,6 @@ jobs:
     runs-on: self-hosted-redhat7
     needs: test_aznfs_suse15
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
@@ -174,8 +160,6 @@ jobs:
     runs-on: self-hosted-redhat8
     needs: test_aznfs_redhat7
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
@@ -191,8 +175,6 @@ jobs:
     runs-on: self-hosted-redhat9
     needs: test_aznfs_redhat8
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
@@ -208,8 +190,6 @@ jobs:
   #   runs-on: self-hosted-rocky8
   #   needs: test_aznfs_redhat9
   #   steps:
-  #     - name: Checkout Repository
-  #       uses: actions/checkout@v3
       # - name: AZNFS Prep Machine
       #   uses: ./.github/actions/aznfs-prep-machine
   #     - name: Run Test Script
@@ -222,8 +202,6 @@ jobs:
   #   runs-on: self-hosted-rocky9
   #   needs: test_aznfs_rocky8
   #   steps:
-  #     - name: Checkout Repository
-  #       uses: actions/checkout@v3
       # - name: AZNFS Prep Machine
       #   uses: ./.github/actions/aznfs-prep-machine
   #     - name: Run Test Script
