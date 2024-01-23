@@ -10,18 +10,14 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - run: chmod +x $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup.sh
-      shell: bash
-    - run: $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup.sh
-      shell: bash
     - name: Untar UnixTestSuite
       shell: bash
       run: |
         mkdir -p /lib
         tar -xf $GITHUB_WORKSPACE/UnixTestSuite.tar -C /lib
-    - name: Alternative Approach
+    - name: Setup self hosted runner
       shell: bash
       run: |
-        chmod +x $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup2.sh
-        $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup2.sh "${{ inputs.RUNS_ON }}"
+        chmod +x $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup.sh
+        $GITHUB_WORKSPACE/.github/actions/aznfs-prep-machine/machineSetup.sh "${{ inputs.RUNS_ON }}"
 
