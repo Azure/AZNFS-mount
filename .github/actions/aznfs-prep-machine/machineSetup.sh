@@ -23,12 +23,15 @@ untar_unix_test_suite()
    local directory="/lib"
 
     if [ ! -d "$directory" ]; then
-        sudo mkdir -p "$directory" || { echo "[ERROR] Unable to create directory $directory. Exiting."; exit 1; }
+        sudo mkdir -p "$directory"
+        if [ $? -ne 0 ]; then
+            echo "[ERROR] Unable to create directory $directory. Exiting."
+            exit 1
+        fi
         echo "Directory '$directory' created."
     else
         echo "Directory '$directory' already exists."
     fi
-
 
     echo "Untarring UnixTestSuite.tar to /lib..."
     tar -xf "$GITHUB_WORKSPACE/UnixTestSuite.tar" -C /lib
