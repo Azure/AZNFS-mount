@@ -2,12 +2,12 @@
 
 install_dependencies() 
 {
-    local distro="$1"
+    local runner="$1"
 
-    if [ "$distro" == "ubuntu" ]; then
+    if [ "$runner" == "self-hosted-ubuntu18" -o "$runner" == "self-hosted-ubuntu20" -o "$runner" == "self-hosted-ubuntu22" ]; then
         sudo apt-get update
         sudo apt-get install -y build-essential
-    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" ]; then
+    elif [ "$runner" == "self-hosted-centos7" -o "$runner" == "self-hosted-centos8" -o "$runner" == "self-hosted-redhat7" -o "$runner" == "self-hosted-redhat8" -o "$runner" == "self-hosted-redhat9" ]; then
         sudo yum groupinstall -y "Development Tools"
     fi
         
