@@ -33,15 +33,21 @@ untar_unix_test_suite()
         echo "Directory '$directory' already exists."
     fi
 
-    echo "Untarring UnixTestSuite.tar to /lib..."
-    tar -xf "$GITHUB_WORKSPACE/UnixTestSuite.tar" -C /lib
+    echo "Checking if /lib/UnixTestSuite already exists..."
+    if [ -d "/lib/UnixTestSuite" ]; then
+        echo "Directory '/lib/UnixTestSuite' already exists. Skipping untar."
+    else
+        echo "Untarring UnixTestSuite.tar to /lib..."
+        tar -xf "$GITHUB_WORKSPACE/UnixTestSuite.tar" -C /lib
 
-    if [ $? -ne 0 ]; then
-        echo "[ERROR] Unable to untar UnixTestSuite.tar."
-        exit 1
+        if [ $? -ne 0 ]; then
+            echo "[ERROR] Unable to untar UnixTestSuite.tar."
+            exit 1
+        fi
+
+        echo "UnixTestSuite.tar untarred successfully to /lib."
     fi
 
-    echo "UnixTestSuite.tar untarred successfully to /lib."
 }
 
 runs_on="$1"  # The value passed from the workflow.
