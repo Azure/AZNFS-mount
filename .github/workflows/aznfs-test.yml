@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           export AZNFS_NONINTERACTIVE_INSTALL=1
-          sudo wget -O - -q "https://github.com/Azure/AZNFS-mount/releases/download/${{ github.event.inputs.versionName }}/aznfs_install.sh" | bash
+          sudo wget -O - -q "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_install.sh" | bash
       - name: Run Shellcheck on Scripts
         shell: bash
         run: |
