@@ -65,7 +65,7 @@ remove_aznfs()
 
     return_code=$?
 
-    if [ $exit_code -ne 0 ]; then
+    if [ $return_code -ne 0 ]; then
         echo "Error occurred while removing the package. Exit Code: $return_code"
         echo "Error Output: $remove_output"
     fi
