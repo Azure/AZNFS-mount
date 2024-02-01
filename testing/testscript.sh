@@ -122,8 +122,7 @@ run_connectathon_tests()
     # Check if the connectathon test directory already exists.
     while [ -d "$full_connectathon_test_directory" ]; do
         echo "Connectathon test directory $full_connectathon_test_directory already exists. Generating a new random number."
-        random_number=$RANDOM
-        connectathon_test_directory="githubtest$random_number"
+        connectathon_test_directory="githubtest$RANDOM"
         full_connectathon_test_directory="$mount_directory/$connectathon_test_directory"
     done
 
@@ -131,7 +130,7 @@ run_connectathon_tests()
     echo "Creating connectathon test directory: $full_connectathon_test_directory"
     sudo mkdir -p "$full_connectathon_test_directory"
 
-    echo "=== Running connectathon tests on: $full_connectathon_test_directory ==="
+    echo "=== Running connectathon tests on $full_connectathon_test_directory ==="
 
     # Run connectathon tests.
     # TODO:

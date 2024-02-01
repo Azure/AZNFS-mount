@@ -6,11 +6,11 @@ install_dependencies()
 
     if [ "$runner" == "self-hosted-ubuntu18" -o "$runner" == "self-hosted-ubuntu20" -o "$runner" == "self-hosted-ubuntu22" ]; then
         sudo apt-get update
-        sudo apt install -y wget
-        sudo apt-get install -y build-essential
+        sudo apt install -y wget build-essential
     elif [ "$runner" == "self-hosted-centos7" -o "$runner" == "self-hosted-centos8" -o "$runner" == "self-hosted-redhat7" -o "$runner" == "self-hosted-redhat8" -o "$runner" == "self-hosted-redhat9" -o "$runner" == "self-hosted-rocky8" -o "$runner" == "self-hosted-rocky9" ]; then
         sudo yum install -y wget && sudo yum groupinstall -y "Development Tools"
     elif [ "$runner" == "self-hosted-suse15" ]; then
+        # TODO: See if we need build essential.
         sudo zypper install -y wget
     fi
         
