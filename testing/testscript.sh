@@ -107,13 +107,13 @@ run_connectathon_tests()
 
     # Check if the UnixTestSuite directory doesn't exist.
     if [ ! -d "$testsuite_directory" ]; then
-        echo "[ERROR] UnixTestSuite directory is missing at: $testsuite_directory"
+        echo "[ERROR] UnixTestSuite directory is missing at $testsuite_directory"
         exit 1
     fi
 
     # Check if the mount directory doesn't exist.
     if [ ! -d "$mount_directory" ]; then
-        echo "[ERROR] Mount directory does not exist at: $mount_directory"
+        echo "[ERROR] Mount directory does not exist at $mount_directory"
         exit 1
     fi
 
@@ -138,7 +138,7 @@ run_connectathon_tests()
     sudo "$testsuite_directory/runtests" -cthon "$full_connectathon_test_directory/unixtests"
 
     # Log deletion of the connectathon test directory.
-    echo "Deleting connectathon test directory: $full_connectathon_test_directory"
+    echo "Deleting connectathon test directory $full_connectathon_test_directory"
     sudo rm -rf "$full_connectathon_test_directory"
 }
 
