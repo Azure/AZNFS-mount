@@ -60,7 +60,7 @@ jobs:
           done
 
         # Fail the job if any file has errors
-        if [ "$has_errors" == true ]; then
+        if [ "$has_errors" ]; then
           echo "One or more files have ShellCheck errors, Exiting!"
           exit 1
         fi
