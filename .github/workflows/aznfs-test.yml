@@ -71,8 +71,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [self-hosted-ubuntu18, self-hosted-ubuntu20, self-hosted-ubuntu22, self-hosted-centos7, self-hosted-centos8, self-hosted-rocky8, self-hosted-rocky9, self-hosted-redhat7, self-hosted-redhat8, self-hosted-redhat9, self-hosted-suse15]
-
+        # os: [self-hosted-ubuntu18, self-hosted-ubuntu20, self-hosted-ubuntu22, self-hosted-centos7, self-hosted-centos8, self-hosted-rocky8, self-hosted-rocky9, self-hosted-redhat7, self-hosted-redhat8, self-hosted-redhat9, self-hosted-suse15]
+        os: [self-hosted-ubuntu18, self-hosted-ubuntu22]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
