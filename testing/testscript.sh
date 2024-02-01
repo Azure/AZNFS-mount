@@ -64,10 +64,10 @@ remove_aznfs()
     fi
 
     return_code=$?
-
     if [ $return_code -ne 0 ]; then
         echo "Error occurred while removing the package. Exit Code: $return_code"
         echo "Error Output: $remove_output"
+        exit 1
     fi
 
     echo "Successfully removed aznfs package!"
@@ -81,14 +81,14 @@ do_mount()
 
     # Create mount directory if not exists.
     if [ ! -d "$directory" ]; then
-        sudo mkdir "$directory"
+        sudo mkdir -p "$directory"
         echo "Directory '$directory' created."
     else
         echo "Directory '$directory' already exists."
     fi
 
     # Mount the share.
-    sudo mount -t aznfs -o vers=3,proto=tcp "${storage_account}.blob.core.windows.net:/${storage_account}/container1" "$directory"
+    sudo mount -v -t aznfs -o vers=3,proto=tcp "${storage_account}.blob.core.windows.net:/${storage_account}/githubtest" "$directory"
 
     local return_code=$?
     if [ "$return_code" -ne 0 ]; then
@@ -102,7 +102,7 @@ run_connectathon_tests()
 {
     local mount_directory="$1"
     local testsuite_directory="/lib/UnixTestSuite/linx"
-    local random_number=$((10000 + RANDOM % 90000))
+    local random_number=$RANDOM
     local connectathon_test_directory="githubtest$random_number"
 
     # Check if the UnixTestSuite directory doesn't exist.
@@ -120,24 +120,27 @@ run_connectathon_tests()
     local full_connectathon_test_directory="$mount_directory/$connectathon_test_directory"
 
     # Check if the connectathon test directory already exists.
-    if [ -d "$full_connectathon_test_directory" ]; then
-        echo "[ERROR] Connectathon test directory already exists at: $full_connectathon_test_directory"
-        echo "Please rerun the workflow with a new random number."
-        exit 1
-    fi
+    while [ -d "$full_connectathon_test_directory" ]; do
+        echo "Connectathon test directory $full_connectathon_test_directory already exists. Generating a new random number."
+        random_number=$RANDOM
+        connectathon_test_directory="githubtest$random_number"
+        full_connectathon_test_directory="$mount_directory/$connectathon_test_directory"
+    done
 
     # Create the connectathon test directory.
     echo "Creating connectathon test directory: $full_connectathon_test_directory"
     sudo mkdir -p "$full_connectathon_test_directory"
 
-    echo "=== Running connectathon tests on mountpoint: $full_connectathon_test_directory ==="
+    echo "=== Running connectathon tests on: $full_connectathon_test_directory ==="
 
     # Run connectathon tests.
+    # TODO:
+    # 1. Fail the job if any mandatory connectathon test fails, and don't delete the directory as well.
     sudo "$testsuite_directory/runtests" -cthon "$full_connectathon_test_directory/unixtests"
 
     # Log deletion of the connectathon test directory.
     echo "Deleting connectathon test directory: $full_connectathon_test_directory"
-    sudo rm -r "$full_connectathon_test_directory"
+    sudo rm -rf "$full_connectathon_test_directory"
 }
 
 do_unmount() 
@@ -145,10 +148,10 @@ do_unmount()
     local directory="$1"
 
     # Unmount the share.
-    sudo umount -f "$directory"
+    sudo umount "$directory"
     local return_code=$?
     if [ "$return_code" -ne 0 ]; then
-        echo "[ERROR] Unmount operation failed with exit code $return_code" >&2
+        echo "[ERROR] Unmount operation failed with exit code $return_code"
         exit 1
     fi
 }
@@ -164,7 +167,7 @@ echo "Number of storage accounts in the input: $storage_account_count"
 first_storage_account="${STORAGE_ACCOUNTS_ARRAY[0]}"
 
 install_aznfs "${RELEASE_NUMBER}"
-do_mount "${first_storage_account}" "/mnt/palashvij" 
-run_connectathon_tests "/mnt/palashvij"
-do_unmount "/mnt/palashvij"
+do_mount "${first_storage_account}" "/mnt/githubtest" 
+run_connectathon_tests "/mnt/githubtest"
+do_unmount "/mnt/githubtest"
 remove_aznfs
