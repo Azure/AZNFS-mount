@@ -88,7 +88,7 @@ do_mount()
     fi
 
     # Mount the share.
-    sudo mount -v -t aznfs -o vers=3,proto=tcp "${storage_account}.blob.core.windows.net:/${storage_account}/githubtest" "$directory"
+    sudo mount -v -t aznfs -o vers=3,proto=tcp "${storage_account}.blob.core.windows.net:/${storage_account}/container1" "$directory"
 
     local return_code=$?
     if [ "$return_code" -ne 0 ]; then
