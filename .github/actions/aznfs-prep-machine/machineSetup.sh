@@ -10,8 +10,7 @@ install_dependencies()
     elif [ "$runner" == "self-hosted-centos7" -o "$runner" == "self-hosted-centos8" -o "$runner" == "self-hosted-redhat7" -o "$runner" == "self-hosted-redhat8" -o "$runner" == "self-hosted-redhat9" -o "$runner" == "self-hosted-rocky8" -o "$runner" == "self-hosted-rocky9" ]; then
         sudo yum install -y wget && sudo yum groupinstall -y "Development Tools"
     elif [ "$runner" == "self-hosted-suse15" ]; then
-        # TODO: See if we need build essential.
-        sudo zypper install -y wget
+        sudo zypper install -y wget && sudo zypper install -y time
     fi
         
     install_error=$?

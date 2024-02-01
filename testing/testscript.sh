@@ -132,9 +132,33 @@ run_connectathon_tests()
     echo "=== Running connectathon tests on $full_connectathon_test_directory ==="
 
     # Run connectathon tests.
-    # TODO:
-    # 1. Fail the job if any mandatory connectathon test fails, and don't delete the directory as well.
-    sudo "$testsuite_directory/runtests" -cthon "$full_connectathon_test_directory/unixtests"
+    connectathon_output=$(sudo "$testsuite_directory/runtests" -cthon "$full_connectathon_test_directory/unixtests" 2>&1)
+
+    # Extract the content between TEST RESULT SUMMARY and All tests completed.
+    filtered_connectathon_output=$(echo "$connectathon_output" | sed -n '/TEST RESULT SUMMARY/,/All tests completed/{//b;p}')
+    failed_tests=""
+
+    while IFS= read -r line; do
+        # Split the line by "|".
+        IFS='|' read -ra columns <<< "$line"
+
+        # Remove leading and trailing whitespaces from the 6th column.
+        test_fail="$(echo -e "${columns[5]}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        test_name="${columns[2]}"
+
+        # Check if a test is failing and test_name is not "dupreq" (since we don't support hard links).
+        if [[ "$test_fail" == "1" && ! "$test_name" =~ dupreq ]]; then
+            failed_tests+="$test_name\n"
+        fi
+
+    done <<< "$filtered_connectathon_output"
+
+    # Check if there were failed tests.
+    if [ -n "$failed_tests" ]; then
+        echo -e "Failed Tests:\n$failed_tests"
+        echo -e "Connectathon Output:\n$connectathon_output"
+        exit 1
+    fi
 
     # Log deletion of the connectathon test directory.
     echo "Deleting connectathon test directory $full_connectathon_test_directory"

@@ -40,6 +40,7 @@ jobs:
             "/src/mountscript.sh"
             "/lib/common.sh"
             "/scripts/aznfs_install.sh"
+            "/testing/testscript.sh"
           )
           for file in "${files_to_check[@]}"; do
             echo "=== Checking $file for errors ==="
