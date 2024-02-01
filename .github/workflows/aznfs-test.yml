@@ -15,8 +15,6 @@ env:
   STORAGE_ACCOUNTS: ${{ github.event.inputs.storageAccounts }}
 
 jobs:
-
-# TODO: once all errors are fixed, fail after this job.
   run_shellcheck:
     name: Shellcheck for AZNFS
     runs-on: self-hosted-ubuntu22
@@ -25,13 +23,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
+
       - name: Checkout Repository
         uses: actions/checkout@v3
+
       - name: Install AZNFS
         shell: bash
         run: |
           export AZNFS_NONINTERACTIVE_INSTALL=1
           sudo wget -O - -q "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_install.sh" | bash
+
       - name: Run Shellcheck on Scripts
         shell: bash
         run: |
@@ -42,6 +43,10 @@ jobs:
             "/scripts/aznfs_install.sh"
             "/testing/testscript.sh"
           )
+
+          # Variable to track whether any file has errors
+          has_errors=false
+
           for file in "${files_to_check[@]}"; do
             echo "=== Checking $file for errors ==="
 
@@ -50,9 +55,15 @@ jobs:
               echo "No errors found in $file."
             else
               echo "$output"
+              has_errors=true
             fi
-
           done
+
+        # Fail the job if any file has errors
+        if [ "$has_errors" = true ]; then
+          echo "One or more files have ShellCheck errors, Exiting!"
+          exit 1
+        fi
 
 # Using Matrix Strategy.
   test_aznfs:
@@ -65,10 +76,12 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+
       - name: AZNFS Prep Machine
         uses: ./.github/actions/aznfs-prep-machine
         with:
           RUNS_ON: '${{ matrix.os }}'
+
       - name: Run Test Script
         shell: bash
         run: |
