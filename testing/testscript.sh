@@ -161,7 +161,6 @@ IFS=' ' read -ra STORAGE_ACCOUNTS_ARRAY <<< "$STORAGE_ACCOUNTS"
 storage_account_count="${#STORAGE_ACCOUNTS_ARRAY[@]}"
 echo "Number of storage accounts in the input: $storage_account_count"
 
-# Access the first storage account.
 first_storage_account="${STORAGE_ACCOUNTS_ARRAY[0]}"
 
 install_aznfs "${RELEASE_NUMBER}"
