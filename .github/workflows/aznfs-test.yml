@@ -59,6 +59,12 @@ jobs:
             fi
           done
 
+          # Fail the job if any file has errors
+          if [ "$has_errors" == true ]; then
+            echo "One or more files have ShellCheck errors. Failing the job."
+            exit 1
+          fi
+
 # Using Matrix Strategy.
   test_aznfs:
     name: Test AZNFS
