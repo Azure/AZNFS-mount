@@ -102,8 +102,7 @@ run_connectathon_tests()
 {
     local mount_directory="$1"
     local testsuite_directory="/lib/UnixTestSuite/linx"
-    local random_number=$RANDOM
-    local connectathon_test_directory="githubtest$random_number"
+    local connectathon_test_directory="githubtest$RANDOM"
 
     # Check if the UnixTestSuite directory doesn't exist.
     if [ ! -d "$testsuite_directory" ]; then
