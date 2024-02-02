@@ -61,7 +61,7 @@ remove_aznfs()
     timeout=300  # Maximum wait-time (MOUNTMAP_INACTIVITY_SECONDS).
     start_time=$(date +%s)
 
-    while [ ! -s "$MOUNTMAP" ] ; do
+    while [ -z "$(cat "$MOUNTMAP")" ]; do
         current_time=$(date +%s)
         elapsed_time=$((current_time - start_time))
 
