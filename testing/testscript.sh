@@ -145,8 +145,13 @@ run_connectathon_tests()
         subtest_name="${columns[2]}"
         test_fail="${columns[5]}"
 
+        # Ignore unwanted header lines.
+        if [[ ! "$test_fail" =~ [0-9]+ ]]; then
+                continue
+        fi
+
         # Check if a test is failing and test_name is not "dupreq" (since we don't support hard links).
-        if [[ "$test_fail" =~ 1 || "$test_fail" =~ 2 ]]; then
+        if [[ ! "$test_fail" =~ 0 ]]; then
             if [[ ! "$subtest_name" =~ dupreq ]]; then
                 failed_tests+="$subtest_name\n"
             fi
@@ -156,10 +161,12 @@ run_connectathon_tests()
 
     # Check if there were failed tests.
     if [ -n "$failed_tests" ]; then
-        echo -e "Failed Tests:\n$failed_tests"
+        echo -e "[ERROR] Failed Tests:\n$failed_tests"
         echo -e "Connectathon Output:\n$connectathon_output"
         exit 1
     fi
+
+    echo "Successfully completed all connectathon tests."
 
     # Log deletion of the connectathon test directory.
     echo "Deleting connectathon test directory $full_connectathon_test_directory"

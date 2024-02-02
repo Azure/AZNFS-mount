@@ -61,7 +61,7 @@ jobs:
 
           # Fail the job if any file has errors.
           if [ "$has_errors" == true ]; then
-            echo "One or more files have ShellCheck errors. Failing the job."
+            echo "[ERROR] One or more files have ShellCheck errors. Failing the job."
             exit 1
           fi
 

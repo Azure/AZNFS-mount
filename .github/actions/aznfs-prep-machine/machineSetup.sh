@@ -50,11 +50,12 @@ umount_all()
         echo "nfsstat output: $nfsstat_output"
         sudo umount -af -t nfs
 
-        # Check the exit status
+        # Check the exit status.
         if [ $? -eq 0 ]; then
             echo "Unmount successful."
         else
-            echo "Unmount failed. Check for errors."
+            echo "[ERROR] Unmount failed. Check for errors."
+            exit 1
         fi
     fi
 }
@@ -63,29 +64,33 @@ remove_aznfs()
 {
     local runner="$1"
 
-    # Check if MOUNTMAP is empty.
-    existing_mounts=$(cat "$MOUNTMAP" 2>/dev/null | egrep '^\S+' | wc -l)
+    # Check if MOUNTMAP file exists.
+    if [ -e "$MOUNTMAP" ]; then
+        # Check if MOUNTMAP is empty.
+        existing_mounts=$(cat "$MOUNTMAP" | egrep '^\S+' | wc -l)
 
-    timeout=300  # Maximum wait-time (MOUNTMAP_INACTIVITY_SECONDS).
-    start_time=$(date +%s)
+        timeout=330  # Maximum wait-time (MOUNTMAP_INACTIVITY_SECONDS) + 30 seconds.
+        start_time=$(date +%s)
 
-    # Keep waiting if existing_mounts is not equal to 0.
-    while [ "$existing_mounts" -ne 0 ]; do
-        current_time=$(date +%s)
-        elapsed_time=$((current_time - start_time))
+        # Keep waiting if existing_mounts is not equal to 0.
+        while [ "$existing_mounts" -ne 0 ]; do
+            current_time=$(date +%s)
+            elapsed_time=$((current_time - start_time))
 
-        if [ "$elapsed_time" -ge "$timeout" ]; then
-            echo "[ERROR] Timed out waiting for MOUNTMAP to become empty."
-            exit 1
-        fi
+            if [ "$elapsed_time" -ge "$timeout" ]; then
+                echo "[ERROR] Timed out waiting for MOUNTMAP to become empty."
+                exit 1
+            fi
 
-        echo "Waiting for MOUNTMAP to become empty..."
-        sleep 30
+            echo "Waiting for MOUNTMAP to become empty..."
+            sleep 30
 
-        # Update existing_mounts after each iteration.
-        existing_mounts=$(cat "$MOUNTMAP" 2>/dev/null | egrep '^\S+' | wc -l)
-    done
+            # Update existing_mounts after each iteration.
+            existing_mounts=$(cat "$MOUNTMAP" | egrep '^\S+' | wc -l)
+        done
+    fi
 
+    export AZNFS_NONINTERACTIVE_INSTALL=1
     if [ "$runner" == "self-hosted-ubuntu18" -o "$runner" == "self-hosted-ubuntu20" -o "$runner" == "self-hosted-ubuntu22" ]; then
         sudo apt purge -y aznfs
     elif [ "$runner" == "self-hosted-centos7" -o "$runner" == "self-hosted-centos8" -o "$runner" == "self-hosted-redhat7" -o "$runner" == "self-hosted-redhat8" -o "$runner" == "self-hosted-redhat9" -o "$runner" == "self-hosted-rocky8" -o "$runner" == "self-hosted-rocky9" ]; then
@@ -96,7 +101,7 @@ remove_aznfs()
 
     remove_error=$?
     if [ $remove_error -ne 0 ]; then
-        echo "[ERROR] Installing removing aznfs for $runner machine failed!"
+        echo "[ERROR] Removing aznfs for $runner machine failed!"
         exit 1
     fi
 }
