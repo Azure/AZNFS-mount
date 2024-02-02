@@ -1,0 +1,89 @@
+name: Test AZNFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      versionName:
+        description: 'Version Name'
+        required: true
+      storageAccounts:
+        description: 'Space-separated Storage Accounts (must have a container named githubtest)'
+        required: true
+
+env:
+  RELEASE_NUMBER: ${{ github.event.inputs.versionName }}
+  STORAGE_ACCOUNTS: ${{ github.event.inputs.storageAccounts }}
+
+jobs:
+  run_shellcheck:
+    name: Shellcheck for AZNFS
+    runs-on: self-hosted-ubuntu22
+    steps:
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Install AZNFS
+        shell: bash
+        run: |
+          export AZNFS_NONINTERACTIVE_INSTALL=1
+          sudo wget -O - -q "https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_install.sh" | bash
+
+      - name: Run Shellcheck on Scripts
+        shell: bash
+        run: |
+          declare -a files_to_check=(
+            "/src/aznfswatchdog"
+            "/src/mountscript.sh"
+            "/lib/common.sh"
+            "/scripts/aznfs_install.sh"
+            "/testing/testscript.sh"
+          )
+
+          # To track whether any file has errors.
+          has_errors=false
+
+          for file in "${files_to_check[@]}"; do
+            echo "=== Checking $file for errors ==="
+
+            full_file_path="$GITHUB_WORKSPACE$file"
+            if output=$(shellcheck --severity=error "$full_file_path"); then
+              echo "No errors found in $file."
+            else
+              echo "$output"
+              has_errors=true
+            fi
+          done
+
+          # Fail the job if any file has errors.
+          if [ "$has_errors" == true ]; then
+            echo "[ERROR] One or more files have ShellCheck errors. Failing the job."
+            exit 1
+          fi
+
+# Using Matrix Strategy.
+  test_aznfs:
+    name: Test AZNFS
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [self-hosted-ubuntu18, self-hosted-ubuntu20, self-hosted-ubuntu22, self-hosted-centos7, self-hosted-centos8, self-hosted-rocky8, self-hosted-rocky9, self-hosted-redhat7, self-hosted-redhat8, self-hosted-redhat9, self-hosted-suse15]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: AZNFS Prep Machine
+        uses: ./.github/actions/aznfs-prep-machine
+        with:
+          RUNS_ON: '${{ matrix.os }}'
+
+      - name: Run Test Script
+        shell: bash
+        run: |
+          chmod +x $GITHUB_WORKSPACE/testing/testscript.sh
+          $GITHUB_WORKSPACE/testing/testscript.sh
