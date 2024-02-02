@@ -576,6 +576,8 @@ fi
 #
 # In case there are inherited fds, close other than 0,1,2.
 #
-for fd in /proc/$$/fd/*; do
+push d /proc/$$/fd
+for fd in *; do
     [ $fd -gt 2 ] && exec {fd}<&-
 done
+pop d
