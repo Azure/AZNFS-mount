@@ -63,22 +63,28 @@ remove_aznfs()
 {
     local runner="$1"
 
-    # timeout=300  # Maximum wait-time (MOUNTMAP_INACTIVITY_SECONDS).
-    # start_time=$(date +%s)
+    # Check if MOUNTMAP is empty.
+    existing_mounts=$(cat "$MOUNTMAP" 2>/dev/null | egrep '^\S+' | wc -l)
 
-    # while [ -z "$(cat "$MOUNTMAP")" ]; do
-    #     current_time=$(date +%s)
-    #     elapsed_time=$((current_time - start_time))
+    timeout=300  # Maximum wait-time (MOUNTMAP_INACTIVITY_SECONDS).
+    start_time=$(date +%s)
 
-    #     if [ "$elapsed_time" -ge "$timeout" ]; then
-    #         echo "[ERROR] Timed out waiting for MOUNTMAP to become empty."
-    #         exit 1
-    #     fi
+    # Keep waiting if existing_mounts is not equal to 0.
+    while [ "$existing_mounts" -ne 0 ]; do
+        current_time=$(date +%s)
+        elapsed_time=$((current_time - start_time))
 
-    #     echo "Waiting for MOUNTMAP to become empty..."
-    #     sleep 30
-    # done
-    sleep 300
+        if [ "$elapsed_time" -ge "$timeout" ]; then
+            echo "[ERROR] Timed out waiting for MOUNTMAP to become empty."
+            exit 1
+        fi
+
+        echo "Waiting for MOUNTMAP to become empty..."
+        sleep 30
+
+        # Update existing_mounts after each iteration.
+        existing_mounts=$(cat "$MOUNTMAP" 2>/dev/null | egrep '^\S+' | wc -l)
+    done
 
     if [ "$runner" == "self-hosted-ubuntu18" -o "$runner" == "self-hosted-ubuntu20" -o "$runner" == "self-hosted-ubuntu22" ]; then
         sudo apt purge -y aznfs
