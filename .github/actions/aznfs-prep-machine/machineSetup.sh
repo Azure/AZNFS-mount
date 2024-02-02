@@ -44,13 +44,18 @@ untar_unix_test_suite()
 umount_all()
 {
     echo "unmounting all nfs shares (if any)"
-    sudo umount -af -t nfs
-    
-    # Check the exit status
-    if [ $? -eq 0 ]; then
-        echo "Unmount successful."
-    else
-        echo "Unmount failed. Check for errors."
+
+    nfsstat_output=$(nfsstat -m)
+    if [ -n "$nfsstat_output" ]; then
+        echo "nfsstat output: $nfsstat_output"
+        sudo umount -af -t nfs
+        
+        # Check the exit status
+        if [ $? -eq 0 ]; then
+            echo "Unmount successful."
+        else
+            echo "Unmount failed. Check for errors."
+        fi
     fi
 }
 
