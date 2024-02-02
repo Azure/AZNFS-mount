@@ -142,13 +142,14 @@ run_connectathon_tests()
         # Split the line by "|".
         IFS='|' read -ra columns <<< "$line"
 
-        # Remove leading and trailing whitespaces from subtest_name and test_fail columns.
-        subtest_name="$(echo -e "${columns[2]}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        test_fail="$(echo -e "${columns[5]}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        subtest_name="${columns[2]}"
+        test_fail="${columns[5]}"
 
         # Check if a test is failing and test_name is not "dupreq" (since we don't support hard links).
-        if [[ "$test_fail" != "0" && -n "$subtest_name" && ! "$subtest_name" =~ dupreq ]]; then
-            failed_tests+="$subtest_name\n"
+        if [[ "$test_fail" =~ 1 || "$test_fail" =~ 2 ]]; then
+            if [[ ! "$subtest_name" =~ dupreq ]]; then
+                failed_tests+="$subtest_name\n"
+            fi
         fi
 
     done <<< "$filtered_connectathon_output"
