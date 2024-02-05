@@ -16,6 +16,9 @@ on:
         description: 'Version Name'
         required: true
 
+permissions:
+  contents: write
+
 jobs:
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }} (Test Release)
