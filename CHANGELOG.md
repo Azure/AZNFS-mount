@@ -1,3 +1,7 @@
+## [2.0.4]- January 2024
+- [AZNFS-mount #110](https://github.com/Azure/AZNFS-mount/pull/110)
+  (NFSv3) Fixed a bug where proxy IP was being incorrectly computed in case of clash with an existing address from the host.
+
 ## [2.0.3]- December 2023
 - [AZNFS-mount #98](https://github.com/Azure/AZNFS-mount/pull/98)
   - (NFSv3) Fixed a bug when reconciling conntrack entries with multiple mounts to different accounts.
