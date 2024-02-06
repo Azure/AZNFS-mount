@@ -383,7 +383,7 @@ search_free_local_ip_with_prefix()
     while true; do
         if [ $num_octets -eq 2 ]; then
             for ((; _3rdoctet<255; _3rdoctet++)); do
-                ip_prefix="${ip_prefix}.$_3rdoctet"
+                ip_prefix="${initial_ip_prefix}.$_3rdoctet"
 
                 if is_link_ip $ip_prefix; then
                     vecho "Skipping link network ${ip_prefix}!"
@@ -459,7 +459,6 @@ search_free_local_ip_with_prefix()
         if [ $_4thoctet -eq 255 ]; then
             if [ $num_octets -eq 2 ]; then
                 let _3rdoctet++
-                ip_prefix=$initial_ip_prefix
                 continue
             else
                 #
