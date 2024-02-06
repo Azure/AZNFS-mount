@@ -352,6 +352,7 @@ search_free_local_ip_with_prefix()
 
     _3rdoctet=100
     ip_prefix=$initial_ip_prefix
+    _3rdoctet_ip_prefix=""
 
     #
     # Optimize the process to get free local IP by starting the loop to choose
@@ -383,13 +384,14 @@ search_free_local_ip_with_prefix()
     while true; do
         if [ $num_octets -eq 2 ]; then
             for ((; _3rdoctet<255; _3rdoctet++)); do
-                local_ip="${ip_prefix}.$_3rdoctet"
+                _3rdoctet_ip_prefix="${ip_prefix}.$_3rdoctet"
 
-                if is_link_ip $local_ip; then
-                    vecho "Skipping link network ${local_ip}!"
+                if is_link_ip $_3rdoctet_ip_prefix; then
+                    vecho "Skipping link network ${_3rdoctet_ip_prefix}!"
                     continue
                 fi
 
+                ip_prefix=$_3rdoctet_ip_prefix
                 break
             done
 
