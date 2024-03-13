@@ -74,7 +74,7 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 #
 is_valid_fqdn()
 {
-    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?(.privatelink)?.$2(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
+    [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.(windows\.net|usgovcloudapi\.net|chinacloudapi\.cn)$ ]]
 }
 
 #
@@ -657,7 +657,7 @@ ensure_aznfswatchdog()
         else
             eecho "aznfswatchdog service not running, please make sure it's running and try again!"
         fi
-        
+
         pecho "If the problem persists, contact Microsoft support."
         return 1
     fi

@@ -47,6 +47,14 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
+- Mount the Azure File NFS share using following command:
+	```
+	sudo mount -t aznfs -o vers=4.1 <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
+	```
+- Mount Azure File NFS share without TLS:
+	```
+	sudo mount -t aznfs -o vers=4.1,notls <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
+	```
 - Logs generated from AZNFS will be in `/opt/microsoft/aznfs/aznfs.log`.
 
 ## Implementation Details
