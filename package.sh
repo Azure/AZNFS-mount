@@ -38,6 +38,7 @@ generate_rpm_package()
 
 	# Create the archive for the package.
 	tar -cvzf ${rpm_pkg_dir}.tar.gz -C ${STG_DIR}/${rpm_dir}/tmp root
+	cp ${rpm_pkg_dir}.tar.gz ${STG_DIR}
 
 	# Copy the SPEC file to change the placeholders depending upon the RPM distro.
 	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec ${STG_DIR}/${rpm_dir}/tmp/
