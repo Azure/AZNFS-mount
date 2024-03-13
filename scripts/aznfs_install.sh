@@ -30,6 +30,7 @@ NORMAL="\e[0m"
 
 HOSTNAME=$(hostname)
 
+: <<'COMMENT'
 #
 # Core logging function.
 #
@@ -470,3 +471,4 @@ else
     fi
     perform_aznfs_update
 fi
+COMMENT
