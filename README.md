@@ -21,6 +21,23 @@ aznfswatchdog will update the DNAT rules appropriately.
 This package picks a free private IP which is not in use by user's machine and mount the NFSv3 share using that IP and
 create a DNAT rule to route the traffic from the chosen private IP to original endpoint IP.
 
+> **Mount helper program for a secure communication channel for Azure File NFS mounts.**
+
+It is essential to provide a secure communication channel for NFS traffic. This will be achieved by implementing TLS encryption for
+NFS traffic and leveraging the Security Support Provider Interface (SSPI) for secure communication.
+
+The aznfs mount helper will be used to mount the NFS shares with TLS support. The mount helper initializes dedicated stunnel client
+process for each storage account. The stunnel client process listens on a local port for inbound traffic, and then stunnel redirects
+nfs client traffic to the 2049 port where NFS server is listening on.
+
+User has to install AZNFS package and mount the NFSv4 shares using `-t aznfs` flag. During the mounting process, user can decide if
+they want to mount shares with TLS encryption or without it using `notls` option.
+
+The AZNFS package runs a background job called **aznfswatchdog**. It ensures that stunnel processes are running for each storage account
+and cleanup after all shares from the storage account are unmounted. If for some reason a stunnel process is terminated unexpectedly,
+the watchdog process restarts it.
+
+
 ## Supported Distros
 
 AZNFS is supported on following Linux distros:
