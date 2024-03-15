@@ -13,6 +13,13 @@ RANDBYTES="${OPTDIRDATA}/randbytes"
 INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
 
 #
+# DNS cache with a cache size limit and TTL for entries (in seconds)
+#
+CACHE_FILE="/opt/microsoft/aznfs/.cache"
+cache_size_limit=5
+cache_ttl=300 # 5 mins
+
+#
 # This stores the map of local IP and share name and external blob endpoint IP.
 #
 MOUNTMAP="${OPTDIRDATA}/mountmap"
@@ -148,16 +155,11 @@ is_present_in_etc_hosts()
 }
 
 #
-# Blob fqdn to IPv4 adddress.
-# Caller must make sure that it is called only for hostname and not IP address.
+# To resolve Blob FQDN to IPV4 address using host.
 #
-# Note: Since caller captures its o/p this should not log anything other than
-#       the IP address, in case of success return.
-#
-resolve_ipv4()
+get_host_resolution()
 {
     local hname="$1"
-    local fail_if_present_in_etc_hosts="$2"
     local RETRIES=3
 
     # Some retries for resilience.
@@ -193,33 +195,252 @@ resolve_ipv4()
         ipv4_addr_all=$(echo "$host_op" | grep " has address " | awk '{print $4}' |\
                         sort | shuf --random-source=$RANDBYTES)
 
-        cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
-
-        if [ $cnt_ip -eq 0 ]; then
-            vecho "host returned 0 address for ${hname}, expected one or more! [$host_op]"
-            # Exhausted retries?
-            if [ $i -eq $RETRIES ]; then
-                return 1
-            fi
-            # Mostly some transient issue, retry after some sleep.
-            sleep 1
-            continue
-        fi
-
         break
     }
 
-    # Use first address from the above curated list.
-    ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
+    return 0  # Success.
+}
 
-    # For ZRS we need to use the first reachable IP.
-    if [ $cnt_ip -ne 1 ]; then
-        for((i=1;i<=$cnt_ip;i++)) {
-            ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
-            if is_ip_port_reachable $ipv4_addr 2048; then
-                break
+#
+# To resolve Blob FQDN to IPV4 address using Azure Authoritative Nameservers.
+#
+get_authoritative_resolution() 
+{
+    local hname="$1"
+
+    while true; do
+        # Remove the subdomain portion to query the higher-level domain.
+        parent_domain=$(echo "$hname" | cut -d "." -f2-)
+
+        # Perform nslookup to query for NS records.
+        nslookup_output=$(nslookup -query=ns "$parent_domain")
+        if [ $? -ne 0 ]; then
+            vecho "DNS query for NS records failed. Hostname: $hname"
+            return 1
+        fi
+
+        # Check if the nslookup_output contains "origin = " in the "Authoritative answers can be found from" section.
+        if echo "$nslookup_output" | grep -q "origin = "; then
+            # Extract authoritative nameserver from "origin = " line.
+            auth_ns=$(echo "$nslookup_output" | grep -o 'origin = \S*' | cut -d ' ' -f 3)
+
+            # Perform an A record (IPv4) query.
+            a_result=$(nslookup -query=a "$hname" "$auth_ns")
+            if [ $? -ne 0 ]; then
+                #
+                # Special case of failure to indicate that the fqdn does not exist.
+                # We convey it to our caller using the special o/p "NXDOMAIN".
+                # Returning 2 to indicate that we don't want to retry in this case.
+                #
+                if [[ "$cname_result" =~ .*NXDOMAIN.* ]]; then
+                    echo "NXDOMAIN"
+                    return 2
+                fi
+                vecho "DNS query for A record failed. Hostname: $hname, Authoritative NS: $auth_ns"
+                return 1
             fi
+
+            # For ZRS accounts, we get canonical name here.
+            if echo "$a_result" | grep -q "canonical name ="; then
+                canonical_name=$(echo "$a_result" | grep "canonical name =" | cut -d '=' -f 2 | tr -d ' ' | rev | cut -c 2- | rev)
+                hname=$canonical_name
+                continue
+            fi
+
+            # Extract all lines that contain $hname, along with the following lines.
+            ipv4_lines=$(echo "$a_result" | grep -A1 "$hname")
+
+            #
+            # For ZRS accounts, we will get 3 IP addresses whose order keeps changing.
+            # We sort the output of host so that we always look at the same address,
+            # also we shuffle it so that different clients balance out across different
+            # zones.
+            #
+            ipv4_addr_all=$(echo "$ipv4_lines" | grep -o 'Address: [0-9\.]*' | cut -d ' ' -f 2 |\
+                            sort | shuf --random-source=$RANDBYTES)
+            return 0  # Success
+        fi
+        # No "origin = " line found.
+        auth_ns=$(echo "$nslookup_output" | grep -A1 "Authoritative answers can be found from:" | tail -n 1 | awk '{print $1}')
+
+        # Perform nslookup to query for CNAME records.
+        cname_result=$(nslookup -query=cname "$hname" "$auth_ns")
+        if [ $? -ne 0 ]; then
+            #
+            # Special case of failure to indicate that the fqdn does not exist.
+            # We convey it to our caller using the special o/p "NXDOMAIN".
+            # Returning 2 to indicate that we don't want to retry in this case.
+            #
+            if [[ "$cname_result" =~ .*NXDOMAIN.* ]]; then
+                echo "NXDOMAIN"
+                return 2
+            fi
+            vecho "DNS query for CNAME records failed. Hostname: $hname, Authoritative NS: $auth_ns"
+            return 1
+        fi
+        canonical_name=$(echo "$cname_result" | grep "canonical name =" | cut -d '=' -f 2 | tr -d ' ' | rev | cut -c 2- | rev)
+        hname=$canonical_name
+    done
+}
+
+refresh_cache_entry() 
+{
+    #
+    # Keep track of entries based on FIFO principle and not on LRU (Least Recently Used).
+    # If there wasn't a cache miss implies entry already exists in DNS cache.
+    #
+    if ! $cache_miss; then
+        return 0
+    fi 
+    current_time=$(date +%s)
+    echo "$hname $current_time $ipv4_addr" >> "$CACHE_FILE"
+    
+    # Maintain cache size and remove the least recently used entry if necessary
+    if (( $(wc -l < "$CACHE_FILE") > cache_size_limit )); then
+        sed -i '1d' "$CACHE_FILE"
+    fi
+}
+
+get_dns_cache()
+{
+    local hname="$1"
+
+    # Check if the cache entry for the hostname exists
+    if grep -q "^$hname" "$CACHE_FILE"; then
+        data=$(grep "^$hname" "$CACHE_FILE")
+        timestamp=$(echo "$data" | cut -d ' ' -f2)
+        cached_data=$(echo "$data" | cut -d ' ' -f3-)
+
+        # Calculate the expiration time based on cache TTL
+        current_time=$(date +%s)
+        cache_expiration_time=$((timestamp + cache_ttl))
+
+        if ((current_time > cache_expiration_time)); then
+            vecho "Cached data for $hname has expired. Refreshing..." 1>/dev/null    # remove later..
+            # The cached data for $hname has expired, so remove the old entry and make a fresh call to retrieve the IP address.
+            sed -i "/^$hname/d" "$CACHE_FILE"
+            return 0
+        fi
+
+        # Use the cached IPv4 address if it's valid and reachable (not poisoned).
+        if is_valid_ipv4_address "$cached_data" && is_ip_port_reachable "$cached_data" 2048; then
+            ipv4_addr="$cached_data"
+            cache_miss=false
+        fi
+    fi
+    
+    return 0
+}
+
+create_cache_file() 
+{
+    if [ ! -f "$CACHE_FILE" ]; then
+        touch "$CACHE_FILE"
+        if [ $? -ne 0 ]; then
+            eecho "Failed to touch ${CACHE_FILE}!"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+#
+# Blob fqdn to IPv4 adddress.
+# Caller must make sure that it is called only for hostname and not IP address.
+#
+# Note: Since caller captures its o/p this should not log anything other than
+#       the IP address, in case of success return.
+#
+resolve_ipv4()
+{
+    local hname="$1"
+    local fail_if_present_in_etc_hosts="$2"
+    local RETRIES=3
+    local fallback=false
+
+    create_cache_file
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    # Default to cache miss until a valid entry inside DNS cache is found.
+    cache_miss=true
+    get_dns_cache "$hname"
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    if $cache_miss; then
+        # Some retries for resilience.
+        for((i=0;i<=$RETRIES;i++)) {
+            # Resolve hostname to IPv4 address.
+            get_authoritative_resolution "$hname"
+            auth_resolution_status=$?
+
+            # Special case where NXDOMAIN is returned from DNS resolution, we treat it as non-retryable.
+            if [ $auth_resolution_status -eq 2 ]; then
+                get_host_resolution "$hname"
+                host_resolution_status=$?
+                if [ $host_resolution_status -ne 0 ]; then
+                    return 1
+                fi
+
+            elif [ $auth_resolution_status -eq 1 ]; then
+                vecho "Failed to resolve ${hname} using Azure Authoritative Server!"
+                # Exhausted retries?
+                if [ $i -eq $RETRIES ]; then
+                    # All retries failed, try the fallback resolution mechanism.
+                    get_host_resolution "$hname"
+                    host_resolution_status=$?
+                    if [ $host_resolution_status -ne 0 ]; then
+                        return 1
+                    fi
+                    fallback=true
+                elif [ $fallback = false ]; then
+                    # Mostly some transient issue, retry after some sleep.
+                    sleep 1
+                    continue
+                fi
+            fi
+
+            cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
+
+            if [ $cnt_ip -eq 0 ]; then
+                vecho "host returned 0 address for ${hname}, expected one or more!"
+                # Exhausted retries?
+                if [ $i -eq $RETRIES ]; then
+                    get_host_resolution "$hname"
+                    host_resolution_status=$?
+                    if [ $host_resolution_status -eq 0 ]; then
+                        cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
+                        if [ $cnt_ip -eq 0 ]; then
+                            return 1
+                        fi
+                        break
+                    fi
+                    return 1
+                fi
+                # Mostly some transient issue, retry after some sleep.
+                sleep 1
+                continue
+            fi
+
+            break
         }
+
+        # Use first address from the above curated list.
+        ipv4_addr=$(echo "$ipv4_addr_all" | head -n1)
+        
+        # For ZRS we need to use the first reachable IP.
+        if [ $cnt_ip -ne 1 ]; then
+            for((i=1;i<=$cnt_ip;i++)) {
+                ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
+                if is_ip_port_reachable $ipv4_addr 2048; then
+                    break
+                fi
+            }
+        fi
     fi
 
     if ! is_valid_ipv4_address "$ipv4_addr"; then
@@ -228,7 +449,7 @@ resolve_ipv4()
     fi
 
     #
-    # Check if the IP-FQDN pair is present in /etc/hosts
+    # Check if the IP-FQDN pair is present in /etc/hosts.
     # 
     if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
         if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
@@ -242,7 +463,8 @@ resolve_ipv4()
             wecho "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
         fi
     fi
-
+    
+    refresh_cache_entry $hname $ipv4_addr
     echo $ipv4_addr
     return 0
 }
