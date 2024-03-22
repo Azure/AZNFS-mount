@@ -91,7 +91,13 @@ USING_PORT_2047=false
 #
 is_valid_fqdn()
 {
-    [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.(windows\.net|usgovcloudapi\.net|chinacloudapi\.cn)$ ]]
+    # If AGEndPoint environment variable is set, use it to verify FQDN
+    if [[ -n "$AGEndPoint" ]]; then
+        ModifiedEndPoint = $(echo $AGEndPoint |  sed 's/\./\\./g')
+        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core+$ModifiedEndPoint$ ]]
+    else
+        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.(windows\.net|usgovcloudapi\.net|chinacloudapi\.cn)$ ]]
+    fi
 }
 
 #
@@ -1222,6 +1228,7 @@ fi
 if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
     eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
     eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
+    eecho "For air-gapped environments, must set the environment variable AGEndPoint to the appropriate endpoint!"
     exit 1
 fi
 
