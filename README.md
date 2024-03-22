@@ -90,6 +90,10 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=4.1 <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
+   For air-gapped environments, ensure that the environment varialbe "AGEndPoint" is set to the appropriate endpoint before running the mount command:
+	```
+	export AGEndPoint=".example.end.point"
+	```
 - Mount Azure File NFS share without TLS:
 	```
 	sudo mount -t aznfs -o vers=4.1,notls <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
