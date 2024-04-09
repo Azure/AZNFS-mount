@@ -15,6 +15,7 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 
 %files
 /usr/sbin/aznfswatchdog
+/usr/sbin/aznfswatchdogv4
 /sbin/mount.aznfs
 /opt/microsoft/aznfs/common.sh
 /opt/microsoft/aznfs/mountscript.sh
@@ -22,6 +23,7 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /opt/microsoft/aznfs/nfsv4mountscript.sh
 /opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
+/lib/systemd/system/aznfswatchdogv4.service
 
 %pre
 init="$(ps -q 1 -o comm=)"
@@ -34,7 +36,7 @@ flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 if [ -f "$flag_file" ]; then
 	# Get the PID of aznfswatchdog.
-	aznfswatchdog_pid=$(pgrep aznfswatchdog)
+	aznfswatchdog_pid=$(pgrep -x aznfswatchdog)
 	
 	# Read the PID from the flag file.
 	aznfswatchdog_pid_inside_flag=$(cat "$flag_file")
@@ -50,7 +52,11 @@ fi
 if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
         systemctl stop aznfswatchdog
         systemctl disable aznfswatchdog
-        echo "Stopped aznfswatchdog service"
+
+		systemctl stop aznfswatchdogv4
+        systemctl disable aznfswatchdogv4
+
+        echo "Stopped aznfswatchdog services"
 fi
 
 
@@ -109,6 +115,7 @@ EOF
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
+chmod 0755 /usr/sbin/aznfswatchdogv4
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/nfsv3mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/nfsv4mountscript.sh
@@ -161,9 +168,15 @@ fi
 if [ ! -f "$FLAG_FILE" ]; then
         user_consent_for_auto_update
 
+		# Start watchdog service for NFSv3
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
+
+		# Start watchdog service for NFSv4
+		systemctl daemon-reload
+        systemctl enable aznfswatchdogv4
+        systemctl start aznfswatchdogv4
 else
         # Clean up the update in progress flag file.
         rm -f "$FLAG_FILE"
@@ -213,6 +226,10 @@ if [ $1 == 0 ]; then
 	# Stop aznfswatchdog in case of removing the package.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
+
+	systemctl stop aznfswatchdogv4
+	systemctl disable aznfswatchdogv4
+
 	echo "Stopped aznfswatchdog service"
 fi
 

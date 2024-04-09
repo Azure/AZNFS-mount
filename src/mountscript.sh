@@ -414,33 +414,8 @@ parse_arguments()
     done
 }
 
-#
-# Ensure aznfswatchdog service is running, if not bail out with an appropriate
-# error.
-#
-ensure_aznfswatchdog()
-{
-    pidof -x aznfswatchdog > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        if systemd_is_init; then
-            eecho "aznfswatchdog service not running!"
-            pecho "Start the aznfswatchdog service using 'systemctl start aznfswatchdog' and try again."
-        else
-            eecho "aznfswatchdog service not running, please make sure it's running and try again!"
-        fi
-
-        pecho "If the problem persists, contact Microsoft support."
-        return 1
-    fi
-}
-
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
-
-# Check if aznfswatchdog service is running.
-if ! ensure_aznfswatchdog; then
-    exit 1
-fi
 
 mount_point="$2"
 

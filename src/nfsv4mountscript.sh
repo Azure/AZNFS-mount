@@ -347,6 +347,11 @@ tls_nfsv4_files_share_mount()
     fi
 }
 
+# Check if aznfswatchdogv4 service is running.
+if ! ensure_aznfswatchdog "aznfswatchdogv4"; then
+    exit 1
+fi
+
 vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
 # MOUNTMAPv4 file must have been created by aznfswatchdog service.

@@ -213,8 +213,6 @@ resolve_ipv4_with_preference_to_mountmapv3()
     resolve_ipv4 "$fqdn" "true"
 }
 
-
-
 #
 # Is the given address one of the host addresses?
 #
@@ -543,6 +541,11 @@ get_local_ip_for_fqdn()
         #
         get_free_local_ip
 }
+
+# Check if aznfswatchdog service is running.
+if ! ensure_aznfswatchdog "aznfswatchdog"; then
+    exit 1
+fi
 
 # MOUNTMAPv3 file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAPv3" ]; then

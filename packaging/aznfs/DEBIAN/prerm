@@ -31,7 +31,7 @@ flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 if [ -f "$flag_file" ]; then
 	# Get the PID of aznfswatchdog.
-	pid_aznfswatchdog=$(pgrep aznfswatchdog)
+	pid_aznfswatchdog=$(pgrep -x aznfswatchdog)
 	
 	# Read the PID from the flag file.
 	pid_aznfswatchdog_in_flagfile=$(cat $flag_file)
@@ -47,5 +47,9 @@ if [ ! -f "$flag_file" ]; then
 	# Stop aznfswatchdog service and clean it.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
-	echo "Stopped aznfswatchdog service"
+
+	systemctl stop aznfswatchdogv4
+	systemctl disable aznfswatchdogv4
+
+	echo "Stopped aznfswatchdog services"
 fi

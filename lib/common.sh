@@ -31,6 +31,12 @@ HOSTNAME=$(hostname)
 
 LOCALHOST="127.0.0.1"
 
+#
+# How often does the watchdog look for unmounts and/or IP address changes for
+# Blob and nfs file endpoints.
+#
+MONITOR_INTERVAL_SECS=5
+
 _log()
 {
     color=$1
@@ -126,6 +132,27 @@ systemd_is_init()
 {
     init="$(ps -q 1 -o comm=)"
     [ "$init" == "systemd" ]
+}
+
+#
+# Ensure aznfswatchdog service is running, if not bail out with an appropriate
+# error.
+#
+ensure_aznfswatchdog()
+{
+    local process_name="$1"
+    pidof -x "$process_name" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        if systemd_is_init; then
+            eecho "$process_name service not running!"
+            pecho "Start the $process_name service using 'systemctl start $process_name' and try again."
+        else
+            eecho "$process_name service not running, please make sure it's running and try again!"
+        fi
+
+        pecho "If the problem persists, contact Microsoft support."
+        return 1
+    fi
 }
 
 #
