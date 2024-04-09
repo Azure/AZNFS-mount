@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MOUNTMAP="/opt/microsoft/aznfs/data/mountmap"
+MOUNTMAPv3="/opt/microsoft/aznfs/data/mountmap"
 
 install_dependencies() 
 {
@@ -64,10 +64,10 @@ remove_aznfs()
 {
     local runner="$1"
 
-    # Check if MOUNTMAP file exists.
-    if [ -e "$MOUNTMAP" ]; then
-        # Check if MOUNTMAP is empty.
-        existing_mounts=$(cat "$MOUNTMAP" | egrep '^\S+' | wc -l)
+    # Check if MOUNTMAPv3 file exists.
+    if [ -e "$MOUNTMAPv3" ]; then
+        # Check if MOUNTMAPv3 is empty.
+        existing_mounts=$(cat "$MOUNTMAPv3" | egrep '^\S+' | wc -l)
 
         timeout=330  # Maximum wait-time (MOUNTMAP_INACTIVITY_SECONDS) + 30 seconds.
         start_time=$(date +%s)
@@ -78,15 +78,15 @@ remove_aznfs()
             elapsed_time=$((current_time - start_time))
 
             if [ "$elapsed_time" -ge "$timeout" ]; then
-                echo "[ERROR] Timed out waiting for MOUNTMAP to become empty."
+                echo "[ERROR] Timed out waiting for MOUNTMAPv3 to become empty."
                 exit 1
             fi
 
-            echo "Waiting for MOUNTMAP to become empty..."
+            echo "Waiting for MOUNTMAPv3 to become empty..."
             sleep 30
 
             # Update existing_mounts after each iteration.
-            existing_mounts=$(cat "$MOUNTMAP" | egrep '^\S+' | wc -l)
+            existing_mounts=$(cat "$MOUNTMAPv3" | egrep '^\S+' | wc -l)
         done
     fi
 

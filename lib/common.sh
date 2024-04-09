@@ -15,12 +15,12 @@ INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
 #
-MOUNTMAP="${OPTDIRDATA}/mountmap"
+MOUNTMAPv3="${OPTDIRDATA}/mountmap"
 
 #
 # This stores the map of hostname and stunnel conf, log, pid files paths.
 #
-AZ_FILES_MOUNTMAP="${OPTDIRDATA}/aznfs_files_mountmap"
+MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -28,6 +28,8 @@ YELLOW="\e[2;33m"
 NORMAL="\e[0m"
 
 HOSTNAME=$(hostname)
+
+LOCALHOST="127.0.0.1"
 
 _log()
 {
@@ -293,132 +295,144 @@ is_private_ip()
 }
 
 #
-# Mount helper must call this function to grab a timed lease on all MOUNTMAP
+# Mount helper must call this function to grab a timed lease on all MOUNTMAPv3
 # entries. It should do this if it decides to use any of the entries. Once
-# this is called aznfswatchdog is guaranteed to not delete any MOUNTMAP till
+# this is called aznfswatchdog is guaranteed to not delete any MOUNTMAPv3 till
 # the next 5 minutes.
 #
-# Must be called with MOUNTMAP lock held.
+# Must be called with MOUNTMAPv3 lock held.
 #
-touch_mountmap()
+touch_mountmapv3()
 {
-    chattr -f -i $MOUNTMAP
-    touch $MOUNTMAP
+    chattr -f -i $MOUNTMAPv3
+    touch $MOUNTMAPv3
     if [ $? -ne 0 ]; then
-        chattr -f +i $MOUNTMAP
-        eecho "Failed to touch ${MOUNTMAP}!"
+        chattr -f +i $MOUNTMAPv3
+        eecho "Failed to touch ${MOUNTMAPv3}!"
         return 1
     fi
-    chattr -f +i $MOUNTMAP
+    chattr -f +i $MOUNTMAPv3
+}
+
+# Create NFS V4 mount map file
+touch_mountmapv4()
+{
+    if [ ! -f $MOUNTMAPv4 ]; then
+        touch $MOUNTMAPv4
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${MOUNTMAPv4}'!"
+            exit 1
+        fi
+    fi
 }
 
 #
-# MOUNTMAP is accessed by both mount.aznfs and aznfswatchdog service. Update it
+# MOUNTMAPv3 is accessed by both mount.aznfs and aznfswatchdog service. Update it
 # only after taking exclusive lock.
 #
-# Add entry to $MOUNTMAP in case of a new mount or IP change for blob FQDN.
+# Add entry to MOUNTMAPv3 in case of a new mount or IP change for blob FQDN.
 #
-# This also ensures that the corresponding DNAT rule is created so that MOUNTMAP
+# This also ensures that the corresponding DNAT rule is created so that MOUNTMAPv3
 # entry and DNAT rule are always in sync.
 #
-ensure_mountmap_exist_nolock()
+ensure_mountmapv3_exist_nolock()
 {
     IFS=" " read l_host l_ip l_nfsip <<< "$1"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
-        eecho "[$1] failed to add to ${MOUNTMAP}!"
+        eecho "[$1] failed to add to ${MOUNTMAPv3}!"
         return 1
     fi
 
-    egrep -q "^${1}$" $MOUNTMAP
+    egrep -q "^${1}$" $MOUNTMAPv3
     if [ $? -ne 0 ]; then
-        chattr -f -i $MOUNTMAP
-        echo "$1" >> $MOUNTMAP
+        chattr -f -i $MOUNTMAPv3
+        echo "$1" >> $MOUNTMAPv3
         if [ $? -ne 0 ]; then
-            chattr -f +i $MOUNTMAP
-            eecho "[$1] failed to add to ${MOUNTMAP}!"
-            # Could not add MOUNTMAP entry, delete the DNAT rule added above.
+            chattr -f +i $MOUNTMAPv3
+            eecho "[$1] failed to add to ${MOUNTMAPv3}!"
+            # Could not add MOUNTMAPv3 entry, delete the DNAT rule added above.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip
             return 1
         fi
-        chattr -f +i $MOUNTMAP
+        chattr -f +i $MOUNTMAPv3
     else
-        pecho "[$1] already exists in ${MOUNTMAP}."
+        pecho "[$1] already exists in ${MOUNTMAPv3}."
     fi
 }
 
-ensure_mountmap_exist()
+ensure_mountmapv3_exist()
 {
     (
         flock -e 999
-        ensure_mountmap_exist_nolock "$1"
+        ensure_mountmapv3_exist_nolock "$1"
         return $?
-    ) 999<$MOUNTMAP
+    ) 999<$MOUNTMAPv3
 }
 
 #
-# Delete entry from $MOUNTMAP and also the corresponding iptable rule.
+# Delete entry from MOUNTMAPv3 and also the corresponding iptable rule.
 #
-ensure_mountmap_not_exist()
+ensure_mountmapv3_not_exist()
 {
     (
         flock -e 999
 
         #
-        # If user wants to delete the entry only if MOUNTMAP has not changed since
+        # If user wants to delete the entry only if MOUNTMAPv3 has not changed since
         # he looked up, honour that.
         #
         local ifmatch="$2"
         if [ -n "$ifmatch" ]; then
-            local mtime=$(stat -c%Y $MOUNTMAP)
+            local mtime=$(stat -c%Y $MOUNTMAPv3)
             if [ "$mtime" != "$ifmatch" ]; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAP} as $mtime != $ifmatch!"
+                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as $mtime != $ifmatch!"
                 return 1
             fi
         fi
 
-        # Delete iptable rule corresponding to the outgoing MOUNTMAP entry.
+        # Delete iptable rule corresponding to the outgoing MOUNTMAPv3 entry.
         IFS=" " read l_host l_ip l_nfsip <<< "$1"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAP} as iptable entry could not be deleted!"
+                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as iptable entry could not be deleted!"
                 return 1
             fi
         fi
 
-        chattr -f -i $MOUNTMAP
+        chattr -f -i $MOUNTMAPv3
         #
         # We do this thing instead of inplace update by sed as that has a
-        # very bad side-effect of creating a new MOUNTMAP file. This breaks
+        # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
         # any locking that we dependent on the old file.
         #
-        out=$(sed "\%^${1}$%d" $MOUNTMAP)
+        out=$(sed "\%^${1}$%d" $MOUNTMAPv3)
         ret=$?
         if [ $ret -eq 0 ]; then
             #
-            # If this echo fails then MOUNTMAP could be truncated. In that case we need
+            # If this echo fails then MOUNTMAPv3 could be truncated. In that case we need
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAP
+            echo "$out" > $MOUNTMAPv3
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAP may be in inconsistent state, contact Microsoft support ***"
+                eecho "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
             fi
         fi
 
         if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAP
-            eecho "[$1] failed to remove from ${MOUNTMAP}!"
+            chattr -f +i $MOUNTMAPv3
+            eecho "[$1] failed to remove from ${MOUNTMAPv3}!"
             # Reinstate DNAT rule deleted above.
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
         fi
-        chattr -f +i $MOUNTMAP
+        chattr -f +i $MOUNTMAPv3
 
         # Return the mtime after our mods.
-        echo $(stat -c%Y $MOUNTMAP)
-    ) 999<$MOUNTMAP
+        echo $(stat -c%Y $MOUNTMAPv3)
+    ) 999<$MOUNTMAPv3
 }
 
 #
@@ -427,12 +441,12 @@ ensure_mountmap_not_exist()
 # corresponding to old entry and adding the DNAT rule corresponding to the new
 # entry.
 #
-update_mountmap_entry()
+update_mountmapv3_entry()
 {
     local old=$1
     local new=$2
 
-    vecho "Updating mountmap entry [$old -> $new]"
+    vecho "Updating mountmapv3 entry [$old -> $new]"
 
     (
         flock -e 999
@@ -440,7 +454,7 @@ update_mountmap_entry()
         IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
-                eecho "[$old] Refusing to remove from ${MOUNTMAP} as old iptable entry could not be deleted!"
+                eecho "[$old] Refusing to remove from ${MOUNTMAPv3} as old iptable entry could not be deleted!"
                 return 1
             fi
         fi
@@ -448,45 +462,45 @@ update_mountmap_entry()
         IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
             if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
-                eecho "[$new] Refusing to remove from ${MOUNTMAP} as new iptable entry could not be added!"
+                eecho "[$new] Refusing to remove from ${MOUNTMAPv3} as new iptable entry could not be added!"
                 # Roll back.
                 ensure_iptable_entry $l_ip $l_nfsip_old
                 return 1
             fi
         fi
 
-        chattr -f -i $MOUNTMAP
+        chattr -f -i $MOUNTMAPv3
         #
         # We do this thing instead of inplace update by sed as that has a
-        # very bad side-effect of creating a new MOUNTMAP file. This breaks
+        # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
         # any locking that we dependent on the old file.
         #
-        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAP)
+        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAPv3)
         ret=$?
         if [ $ret -eq 0 ]; then
             #
-            # If this echo fails then MOUNTMAP could be truncated. In that case we need
+            # If this echo fails then MOUNTMAPv3 could be truncated. In that case we need
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAP
+            echo "$out" > $MOUNTMAPv3
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAP may be in inconsistent state, contact Microsoft support ***"
+                eecho "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
             fi
         fi
 
         if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAP
-            eecho "[$old -> $new] failed to update ${MOUNTMAP}!"
+            chattr -f +i $MOUNTMAPv3
+            eecho "[$old -> $new] failed to update ${MOUNTMAPv3}!"
             # Roll back.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
             ensure_iptable_entry $l_ip $l_nfsip_old
             return 1
         fi
-        chattr -f +i $MOUNTMAP
-    ) 999<$MOUNTMAP
+        chattr -f +i $MOUNTMAPv3
+    ) 999<$MOUNTMAPv3
 }
 
 #
@@ -539,7 +553,7 @@ ensure_iptable_entry_not_exist()
 }
 
 #
-# Verify if the mountmap entry is present but corresponding DNAT rule does not
+# Verify if the mountmapv3 entry is present but corresponding DNAT rule does not
 # exist. Add it to avoid IOps failure.
 #
 verify_iptable_entry()
@@ -584,13 +598,13 @@ if [ ! -f $LOGFILE ]; then
     fi
 fi
 
-if [ ! -f $MOUNTMAP ]; then
-    touch $MOUNTMAP
+if [ ! -f $MOUNTMAPv3 ]; then
+    touch $MOUNTMAPv3
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to create '${MOUNTMAP}'!"
+        eecho "[FATAL] Not able to create '${MOUNTMAPv3}'!"
         exit 1
     fi
-    chattr -f +i $MOUNTMAP
+    chattr -f +i $MOUNTMAPv3
 fi
 
 ulimitfd=$(ulimit -n 2>/dev/null)

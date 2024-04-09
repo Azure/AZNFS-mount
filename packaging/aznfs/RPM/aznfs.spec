@@ -18,6 +18,8 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /sbin/mount.aznfs
 /opt/microsoft/aznfs/common.sh
 /opt/microsoft/aznfs/mountscript.sh
+/opt/microsoft/aznfs/nfsv3mountscript.sh
+/opt/microsoft/aznfs/nfsv4mountscript.sh
 /opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
 
@@ -108,6 +110,8 @@ EOF
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
+chmod 0755 /opt/microsoft/aznfs/nfsv3mountscript.sh
+chmod 0755 /opt/microsoft/aznfs/nfsv4mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
 
@@ -182,9 +186,9 @@ RED="\e[2;31m"
 NORMAL="\e[0m"
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
-	existing_mounts=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	existing_mounts_for_nfsv4FilesShares=$(cat /opt/microsoft/aznfs/data/aznfs_files_mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	if [ $existing_mounts -ne 0 -o $existing_mounts_for_nfsv4FilesShares -ne 0 ]; then
+	existing_mounts_v3=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
+	existing_mountsv4=$(cat /opt/microsoft/aznfs/data/mountmapv4 2>/dev/null | egrep '^\S+' | wc -l)
+	if [ $existing_mounts_v3 -ne 0 -o $existing_mountsv4 -ne 0 ]; then
 		echo
 		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
 		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
@@ -217,7 +221,7 @@ fi
 if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
-	chattr -i -f /opt/microsoft/aznfs/data/aznfs_files_mountmap
+	chattr -i -f /opt/microsoft/aznfs/data/mountmapv4
 	rm -rf /opt/microsoft/aznfs
 	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
 	rm -rf /etc/stunnel/microsoft/aznfs/nfsv4_fileShare

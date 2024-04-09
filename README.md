@@ -1,8 +1,8 @@
 # AZNFS Mount Helper
 
-> **Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts.**
+> **Mount helper use case for correctly handling endpoint IP address changes for Azure Blob NFSv3 mounts.**
 
-Azure Blob NFS is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability
+Azure Blob NFSv3 is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability
 in case of infrequent-but-likely events like hardware failures, hardware decommissioning, etc, the endpoint IP of the Azure Blob
 NFS endpoint may change. This change in IP is mostly transparent to applications because the DNS records are updated such that the
 Azure Blob NFS FQDN always resolves to the updated IP. This works fine for new mounts as they will automatically connect to the new IP,
@@ -21,9 +21,9 @@ aznfswatchdog will update the DNAT rules appropriately.
 This package picks a free private IP which is not in use by user's machine and mount the NFSv3 share using that IP and
 create a DNAT rule to route the traffic from the chosen private IP to original endpoint IP.
 
-> **Mount helper program for a secure communication channel for Azure File NFS mounts.**
+> **Mount helper use case for a secure communication channel for Azure File NFSv4 mounts.**
 
-It is essential to provide a secure communication channel for NFS traffic. This will be achieved by implementing TLS encryption for
+The mount helper can be used to provide a secure communication channel for NFSv4 traffic. This is achieved by implementing TLS encryption for
 NFS traffic and leveraging the Security Support Provider Interface (SSPI) for secure communication.
 
 The aznfs mount helper will be used to mount the NFS shares with TLS support. The mount helper initializes dedicated stunnel client
@@ -82,19 +82,19 @@ AZNFS is supported on following Linux distros:
 
 ## Usage Instructions
 
-- Mount the Azure Blob NFS share using following command:
+- Mount the Azure Blob NFSv3 share using following command:
 	```
 	sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-- Mount the Azure File NFS share using following command:
+- Mount the Azure File NFSv4 share using following command:
 	```
 	sudo mount -t aznfs -o vers=4.1 <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-   For air-gapped environments, ensure that the environment varialbe "AGEndPoint" is set to the appropriate endpoint before running the mount command:
+   For air-gapped environments, ensure that the environment variable "AzureEndpointOverride" is set to the appropriate endpoint before running the mount command:
 	```
-	export AGEndPoint=".example.end.point"
+	export AzureEndpointOverride=".example.end.point"
 	```
-- Mount Azure File NFS share without TLS:
+- Mount Azure File NFSv4 share without TLS:
 	```
 	sudo mount -t aznfs -o vers=4.1,notls <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
