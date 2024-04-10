@@ -1,13 +1,13 @@
 Name: AZNFS_PACKAGE_NAME
 Version: x.y.z
 Release: 1
-Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
+Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel
 
 %description
-Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
+Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
 
 %prep
 mkdir -p ${STG_DIR}/RPM_DIR/root/rpmbuild/SOURCES/

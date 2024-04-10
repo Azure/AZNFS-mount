@@ -31,6 +31,9 @@ HOSTNAME=$(hostname)
 
 LOCALHOST="127.0.0.1"
 
+LOG_V3="v3"
+LOG_V4="v4"
+
 #
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob and nfs file endpoints.
@@ -40,12 +43,24 @@ MONITOR_INTERVAL_SECS=5
 _log()
 {
     color=$1
-    msg=$2
+    # log_message may contain the version and the actual message or just the message.
+    log_message=$2
+    # Extract the first argument from the log message.
+    version="${log_message%% *}"
+
+    if [[ $version == $LOG_V3 || $version == $LOG_V4 ]]; then
+        prefix="NFS${version}"
+        # Extract the rest from the log message.
+        msg="${log_message#* }"
+    else
+        prefix=""
+        msg=$log_message
+    fi
 
     echo -e "${color}${msg}${NORMAL}"
     (
         flock -e 999
-        echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}" >> $LOGFILE
+        echo -e "${prefix}: $(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}" >> $LOGFILE
     ) 999<$LOGFILE
 }
 
@@ -91,12 +106,21 @@ eecho()
 vecho()
 {
     color=$NORMAL
+    version=$1
+
+    if [[ $version == $LOG_V3 || $version == $LOG_V4 ]]; then
+        prefix="NFS${version}"
+        msg=$2
+    else
+        prefix=""
+        msg=$1
+    fi
 
     # Unless AZNFS_VERBOSE flag is set, do not echo to console.
     if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
         (
             flock -e 999
-            echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
+            echo -e "${prefix}: $(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}" >> $LOGFILE
         ) 999<$LOGFILE
 
         return
@@ -228,7 +252,7 @@ resolve_ipv4()
                 return 1
             fi
 
-            vecho "Failed to resolve ${hname}: $host_op!"
+            vecho $LOG_V3 "Failed to resolve ${hname}: $host_op!"
             # Exhausted retries?
             if [ $i -eq $RETRIES ]; then
                 return 1
@@ -250,7 +274,7 @@ resolve_ipv4()
         cnt_ip=$(echo "$ipv4_addr_all" | wc -l)
 
         if [ $cnt_ip -eq 0 ]; then
-            vecho "host returned 0 address for ${hname}, expected one or more! [$host_op]"
+            vecho $LOG_V3 "host returned 0 address for ${hname}, expected one or more! [$host_op]"
             # Exhausted retries?
             if [ $i -eq $RETRIES ]; then
                 return 1
@@ -277,7 +301,7 @@ resolve_ipv4()
     fi
 
     if ! is_valid_ipv4_address "$ipv4_addr"; then
-        eecho "[FATAL] host returned bad IPv4 address $ipv4_addr for hostname ${hname}!"
+        eecho $LOG_V3 "[FATAL] host returned bad IPv4 address $ipv4_addr for hostname ${hname}!"
         return 1
     fi
 
@@ -286,14 +310,14 @@ resolve_ipv4()
     # 
     if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
         if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
-            eecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!"
-            eecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes"
-            eecho "Please remove the entry for $hname from /etc/hosts"
+            eecho $LOG_V3 "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!"
+            eecho $LOG_V3 "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes"
+            eecho $LOG_V3 "Please remove the entry for $hname from /etc/hosts"
             return 1
         else
-            wecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!" 1>/dev/null
-            wecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes" 1>/dev/null
-            wecho "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
+            wecho $LOG_V3 "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!" 1>/dev/null
+            wecho $LOG_V3 "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes" 1>/dev/null
+            wecho $LOG_V3 "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
         fi
     fi
 
@@ -335,7 +359,7 @@ touch_mountmapv3()
     touch $MOUNTMAPv3
     if [ $? -ne 0 ]; then
         chattr -f +i $MOUNTMAPv3
-        eecho "Failed to touch ${MOUNTMAPv3}!"
+        eecho $LOG_V3 "Failed to touch ${MOUNTMAPv3}!"
         return 1
     fi
     chattr -f +i $MOUNTMAPv3
@@ -347,7 +371,7 @@ touch_mountmapv4()
     if [ ! -f $MOUNTMAPv4 ]; then
         touch $MOUNTMAPv4
         if [ $? -ne 0 ]; then
-            eecho "[FATAL] Not able to create '${MOUNTMAPv4}'!"
+            eecho $LOG_V4 "[FATAL] Not able to create '${MOUNTMAPv4}'!"
             exit 1
         fi
     fi
@@ -366,7 +390,7 @@ ensure_mountmapv3_exist_nolock()
 {
     IFS=" " read l_host l_ip l_nfsip <<< "$1"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
-        eecho "[$1] failed to add to ${MOUNTMAPv3}!"
+        eecho $LOG_V3 "[$1] failed to add to ${MOUNTMAPv3}!"
         return 1
     fi
 
@@ -376,14 +400,14 @@ ensure_mountmapv3_exist_nolock()
         echo "$1" >> $MOUNTMAPv3
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAPv3
-            eecho "[$1] failed to add to ${MOUNTMAPv3}!"
+            eecho $LOG_V3 "[$1] failed to add to ${MOUNTMAPv3}!"
             # Could not add MOUNTMAPv3 entry, delete the DNAT rule added above.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip
             return 1
         fi
         chattr -f +i $MOUNTMAPv3
     else
-        pecho "[$1] already exists in ${MOUNTMAPv3}."
+        pecho $LOG_V3 "[$1] already exists in ${MOUNTMAPv3}."
     fi
 }
 
@@ -412,7 +436,7 @@ ensure_mountmapv3_not_exist()
         if [ -n "$ifmatch" ]; then
             local mtime=$(stat -c%Y $MOUNTMAPv3)
             if [ "$mtime" != "$ifmatch" ]; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as $mtime != $ifmatch!"
+                eecho $LOG_V3 "[$1] Refusing to remove from ${MOUNTMAPv3} as $mtime != $ifmatch!"
                 return 1
             fi
         fi
@@ -421,7 +445,7 @@ ensure_mountmapv3_not_exist()
         IFS=" " read l_host l_ip l_nfsip <<< "$1"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as iptable entry could not be deleted!"
+                eecho $LOG_V3 "[$1] Refusing to remove from ${MOUNTMAPv3} as iptable entry could not be deleted!"
                 return 1
             fi
         fi
@@ -444,13 +468,13 @@ ensure_mountmapv3_not_exist()
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
+                eecho $LOG_V3 "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
             fi
         fi
 
         if [ $ret -ne 0 ]; then
             chattr -f +i $MOUNTMAPv3
-            eecho "[$1] failed to remove from ${MOUNTMAPv3}!"
+            eecho $LOG_V3 "[$1] failed to remove from ${MOUNTMAPv3}!"
             # Reinstate DNAT rule deleted above.
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
@@ -473,7 +497,7 @@ update_mountmapv3_entry()
     local old=$1
     local new=$2
 
-    vecho "Updating mountmapv3 entry [$old -> $new]"
+    vecho $LOG_V3 "Updating mountmapv3 entry [$old -> $new]"
 
     (
         flock -e 999
@@ -481,7 +505,7 @@ update_mountmapv3_entry()
         IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
-                eecho "[$old] Refusing to remove from ${MOUNTMAPv3} as old iptable entry could not be deleted!"
+                eecho $LOG_V3 "[$old] Refusing to remove from ${MOUNTMAPv3} as old iptable entry could not be deleted!"
                 return 1
             fi
         fi
@@ -489,7 +513,7 @@ update_mountmapv3_entry()
         IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
             if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
-                eecho "[$new] Refusing to remove from ${MOUNTMAPv3} as new iptable entry could not be added!"
+                eecho $LOG_V3 "[$new] Refusing to remove from ${MOUNTMAPv3} as new iptable entry could not be added!"
                 # Roll back.
                 ensure_iptable_entry $l_ip $l_nfsip_old
                 return 1
@@ -514,13 +538,13 @@ update_mountmapv3_entry()
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
+                eecho $LOG_V3 "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
             fi
         fi
 
         if [ $ret -ne 0 ]; then
             chattr -f +i $MOUNTMAPv3
-            eecho "[$old -> $new] failed to update ${MOUNTMAPv3}!"
+            eecho $LOG_V3 "[$old -> $new] failed to update ${MOUNTMAPv3}!"
             # Roll back.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
             ensure_iptable_entry $l_ip $l_nfsip_old
@@ -539,7 +563,7 @@ ensure_iptable_entry()
     if [ $? -ne 0 ]; then
         iptables -w 60 -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
-            eecho "Failed to add DNAT rule [$1 -> $2]!"
+            eecho $LOG_V3 "Failed to add DNAT rule [$1 -> $2]!"
             return 1
         fi
         
@@ -552,9 +576,52 @@ ensure_iptable_entry()
         #
         output=$(conntrack -D -p tcp -d "$1" -r "$1" 2>&1)
         if [ $? -eq 0 ]; then
-            wecho "Deleted undesired conntrack entry [$1 -> $1]!"
+            wecho $LOG_V3 "Deleted undesired conntrack entry [$1 -> $1]!"
         fi
     fi
+}
+
+log_version_info()
+{
+    if [ -f /etc/centos-release ]; then
+        linux_distro=$(cat /etc/centos-release 2>&1)
+        distro_id="centos"
+    elif [ -f /etc/os-release ]; then
+        linux_distro=$(grep "^PRETTY_NAME=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(canonicalize_distro_id $distro_id)
+    else
+        # Ideally, this should not happen.
+        linux_distro="Unknown"
+    fi
+
+    bash_version=$(bash --version | head -n 1)
+
+    vecho "Linux distribution: $linux_distro"
+    vecho "Bash version: $bash_version"
+
+    if [ "$AKS_USER" == "true" ]; then
+        vecho "AZNFS version: $RELEASE_NUMBER_FOR_AKS"
+        return
+    fi
+
+    #
+    # aznfswatchdog gets started during postinst, wait for installation to complete for the version to appear correctly.
+    #
+    sleep 2
+
+    if [ "$distro_id" == "ubuntu" ]; then
+        current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
+        current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    elif [ "$distro_id" == "sles" ]; then
+        current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
+    else
+        # Ideally, this should not happen.
+        current_version="Unknown"
+    fi
+
+    vecho "AZNFS version: $current_version"
 }
 
 #
@@ -567,14 +634,14 @@ ensure_iptable_entry_not_exist()
     if [ $? -eq 0 ]; then
         iptables -w 60 -t nat -D OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
-            eecho "Failed to delete DNAT rule [$1 -> $2]!"
+            eecho $LOG_V3 "Failed to delete DNAT rule [$1 -> $2]!"
             return 1
         fi
 
         # Ignore status of conntrack because entry may not exist (timed out).
         output=$(conntrack -D conntrack -p tcp -d "$1" -r "$2" 2>&1)
         if [ $? -ne 0 ]; then
-            vecho "$output"
+            vecho $LOG_V3 "$output"
         fi
     fi
 }
@@ -587,10 +654,10 @@ verify_iptable_entry()
 {
     iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
-        wecho "DNAT rule [$1 -> $2] does not exist, adding it."
+        wecho $LOG_V3 "DNAT rule [$1 -> $2] does not exist, adding it."
         iptables -w 60 -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
-            eecho "Failed to add DNAT rule [$1 -> $2]!"
+            eecho $LOG_V3 "Failed to add DNAT rule [$1 -> $2]!"
             return 1
         fi
 
@@ -603,7 +670,7 @@ verify_iptable_entry()
         #
         output=$(conntrack -D -p tcp -d "$1" -r "$1" 2>&1)
         if [ $? -eq 0 ]; then
-            wecho "Deleted undesired conntrack entry [$1 -> $1]!"
+            wecho $LOG_V3 "Deleted undesired conntrack entry [$1 -> $1]!"
         fi
     fi
 }

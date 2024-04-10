@@ -114,7 +114,7 @@ check_for_regional_account()
 
     elif [ ${ip_change_count["$l_host"]} -ge 3 ]; then
         # If the IP changed more than 3 times in less than 5 minutes, mark it as "Regional Account" FQDN.
-        wecho "Marking $l_host as Regional Account FQDN due to frequent IP changes."
+        wecho $LOG_V3 "Marking $l_host as Regional Account FQDN due to frequent IP changes."
         regional_accounts["$l_host"]=1  # Set to true
     fi
 }
@@ -152,11 +152,11 @@ reconcile_conntrack_synsent()
 
     if [ $age_seconds -ge 25 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
+        wecho $LOG_V3 "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
 
         eval $cmd
         if [ $? -ne 0 ]; then
-            eecho "Failed to delete conntrack entry [$cmd]!"
+            eecho $LOG_V3 "Failed to delete conntrack entry [$cmd]!"
         else
             unset cthash_synsent[$key]
         fi
@@ -196,11 +196,11 @@ reconcile_conntrack_unreplied()
 
     if [ $age_seconds -ge 25 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
+        wecho $LOG_V3 "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
 
         eval $cmd
         if [ $? -ne 0 ]; then
-            eecho "Failed to delete conntrack entry [$cmd]!"
+            eecho $LOG_V3 "Failed to delete conntrack entry [$cmd]!"
         else
             unset cthash_unreplied[$key]
         fi
@@ -223,7 +223,7 @@ reconcile_conntrack()
     if [ -n "$output" ]; then
         for entry in $output; do
             # XXX Remove this log after running for few days (not too noisy!)
-            vecho "$entry"
+            vecho $LOG_V3 "$entry"
 
             # Sample conntrack entry.
             # tcp      6 114 SYN_SENT src=10.20.0.17 dst=10.161.100.101 sport=819 dport=2048 [UNREPLIED] src=20.150.35.196 dst=10.20.0.17 sport=2048 dport=819 mark=0 use=1
@@ -243,7 +243,7 @@ reconcile_conntrack()
     if [ -n "$output" ]; then
         for entry in $output; do
             # XXX Remove this log after running for few days (too noisy!)
-            vecho "$entry"
+            vecho $LOG_V3 "$entry"
 
            # Sample conntrack entry.
             # tcp      6 299 ESTABLISHED src=10.2.4.4 dst=10.161.100.100 sport=1015 dport=2048 [UNREPLIED] src=20.60.236.11 dst=10.2.4.4 sport=2048 dport=1015 mark=0 use=1 
@@ -269,16 +269,16 @@ ping_new_endpoint()
 {
     local target="$1"
 
-    vecho "[$BASHPID] stat($target) #1 start"
+    vecho $LOG_V3 "[$BASHPID] stat($target) #1 start"
     stat "$target"
-    vecho "[$BASHPID] stat($target) #1 done"
+    vecho $LOG_V3 "[$BASHPID] stat($target) #1 done"
 
     sleep 35
 
     # One more stat after 30 sec sleep to let dir attributes timeout.
-    vecho "[$BASHPID] stat($target) #2 start"
+    vecho $LOG_V3 "[$BASHPID] stat($target) #2 start"
     stat "$target"
-    vecho "[$BASHPID] stat($target) #2 done"
+    vecho $LOG_V3 "[$BASHPID] stat($target) #2 done"
 }
 
 run_daily_once()
@@ -316,136 +316,6 @@ canonicalize_distro_id()
     echo "$distro_lower"
 }
 
-log_version_info()
-{
-    if [ -f /etc/centos-release ]; then
-        linux_distro=$(cat /etc/centos-release 2>&1)
-        distro_id="centos"
-    elif [ -f /etc/os-release ]; then
-        linux_distro=$(grep "^PRETTY_NAME=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
-        distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
-        distro_id=$(canonicalize_distro_id $distro_id)
-    else
-        # Ideally, this should not happen.
-        linux_distro="Unknown"
-    fi
-
-    bash_version=$(bash --version | head -n 1)
-
-    vecho "Linux distribution: $linux_distro"
-    vecho "Bash version: $bash_version"
-
-    if [ "$AKS_USER" == "true" ]; then
-        vecho "AZNFS version: $RELEASE_NUMBER_FOR_AKS"
-        return
-    fi
-
-    #
-    # aznfswatchdog gets started during postinst, wait for installation to complete for the version to appear correctly.
-    #
-    sleep 2
-
-    if [ "$distro_id" == "ubuntu" ]; then
-        current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
-    elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
-        current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
-    elif [ "$distro_id" == "sles" ]; then
-        current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
-    else
-        # Ideally, this should not happen.
-        current_version="Unknown"
-    fi
-
-    vecho "AZNFS version: $current_version"
-}
-
-#
-# Delete entry from MOUNTMAPv4.
-#
-ensure_mountmapv4_not_exist()
-{
-    (
-        flock -e 999
-
-        #
-        # If watchdog wants to delete the entry only if MOUNTMAPv4 has not changed since
-        # watchdog looked up, honour that.
-        #
-        local ifmatch="$2"
-        if [ -n "$ifmatch" ]; then
-            local mtime=$(stat -c%Y $MOUNTMAPv4)
-            if [ "$mtime" != "$ifmatch" ]; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv4} as $mtime != $ifmatch!"
-                return 1
-            fi
-        fi
-
-        chattr -f -i $MOUNTMAPv4
-        #
-        # We overwrite the file instead of inplace update by sed as that has a
-        # very bad side-effect of creating a new MOUNTMAPv4 file. This breaks
-        # any locking that we dependent on the old file.
-        #
-        out=$(sed "\%^${1}$%d" $MOUNTMAPv4)
-        ret=$?
-        if [ $ret -eq 0 ]; then
-            #
-            # If this echo fails then MOUNTMAPv4 could be truncated.
-            #
-            echo "$out" > $MOUNTMAPv4
-            ret=$?
-            out=
-            if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
-            fi
-        fi
-
-        if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv4
-            eecho "[$1] failed to remove from ${MOUNTMAPv4}!"
-            return 1
-        fi
-        chattr -f +i $MOUNTMAPv4
-
-        # Return the mtime after our mods.
-        echo $(stat -c%Y $MOUNTMAPv4)
-    ) 999<$MOUNTMAPv4
-}
-
-#
-# Kill stunnel process and clean up stunnel files generated by aznfs mount helper
-#
-cleanup_stunnel_files()
-{
-    local l_conf=$1
-    local l_log=$2
-    local l_pid=$3
-
-    # Kill stunnel process first.
-    pid=$(cat $l_pid)
-    kill -9 $pid
-    if [ $? -ne 0 ]; then
-        eecho "[FATAL] Unable to kill stunnel process $pid!"
-    fi
-
-    # Cleanup stunnel files
-    rm $l_log
-    if [ $? -ne 0 ]; then
-        eecho "[FATAL] Unable to delete stunnel log file $l_log!"
-    fi
-
-    rm $l_pid
-    if [ $? -ne 0 ]; then
-        eecho "[FATAL] Unable to delete stunnel pid file $l_pid!"
-    fi
-
-    chattr -if $l_conf
-    rm $l_conf
-    if [ $? -ne 0 ]; then
-        eecho "[FATAL] Unable to delete stunnel conf file $l_conf!"
-    fi
-}
-
 #
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
 # addresses possibly as a result of migration.
@@ -469,8 +339,8 @@ process_nfsv3_mounts()
         if [ -e "$INSTALLSCRIPT" ]; then
             "$INSTALLSCRIPT" "auto-update"
         else
-            wecho "[FATAL] $INSTALLSCRIPT not found. This is an unexpected error!"
-            Wecho "[FATAL] Please contact Microsoft support."
+            wecho $LOG_V3 "[FATAL] $INSTALLSCRIPT not found. This is an unexpected error!"
+            Wecho $LOG_V3 "[FATAL] Please contact Microsoft support."
         fi
     fi
 
@@ -527,10 +397,10 @@ process_nfsv3_mounts()
     # for both exit status and non-empty error o/p.
     #
     if [ $? -ne 0 -a -n "$findmnt" ]; then
-        eecho "${findmnt}."
-        eecho "[FATAL] findmnt failed unexpectedly!"
-        eecho "[FATAL] Aznfswatchdog service is exiting, will not monitor Azure NFS shares."
-        eecho "[FATAL] Please contact Microsoft support before using any Blob NFS shares."
+        eecho $LOG_V3 "${findmnt}."
+        eecho $LOG_V3 "[FATAL] findmnt failed unexpectedly!"
+        eecho $LOG_V3 "[FATAL] Aznfswatchdog service is exiting, will not monitor Azure NFS shares."
+        eecho $LOG_V3 "[FATAL] Please contact Microsoft support before using any Blob NFS shares."
         # This usually indicates some non-transient issue, bail out.
         exit 1
     fi
@@ -547,7 +417,7 @@ process_nfsv3_mounts()
         IFS=" " read l_host l_ip l_nfsip <<< "$line"
 
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
-            wecho "[FATAL] Deleting invalid line in $MOUNTMAPv3: [$line]!"
+            wecho $LOG_V3 "[FATAL] Deleting invalid line in $MOUNTMAPv3: [$line]!"
             l_mtime=$(ensure_mountmapv3_not_exist "$line")
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
@@ -555,7 +425,7 @@ process_nfsv3_mounts()
 
         # Since we added it to the MOUNTMAPv3 file, it cannot be invalid.
         if ! is_private_ip "$l_ip"; then
-            wecho "[FATAL] local ip ($l_ip) is invalid!"
+            wecho $LOG_V3 "[FATAL] local ip ($l_ip) is invalid!"
             l_mtime=$(ensure_mountmapv3_not_exist "$line")
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
@@ -563,7 +433,7 @@ process_nfsv3_mounts()
 
         # Since we added it to the MOUNTMAPv3 file, it cannot be invalid.
         if ! is_valid_ipv4_address "$l_nfsip"; then
-            wecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
+            wecho $LOG_V3 "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
             l_mtime=$(ensure_mountmapv3_not_exist "$line")
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
@@ -576,7 +446,7 @@ process_nfsv3_mounts()
         #
         if ! echo "$findmnt" | grep " nfs ${l_ip}:" >/dev/null; then
             if $do_unmount_gc; then
-                pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
+                pecho $LOG_V3 "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
                 l_mtime=$(ensure_mountmapv3_not_exist "$line" "$mtime_mountmap")
@@ -641,12 +511,12 @@ process_nfsv3_mounts()
             # the account may have been re-created after the dns lookup failure.
             #
             if [ "$new_ip" == "NXDOMAIN" ]; then
-                pecho "Account corresponding to $l_host seems to have been deleted, deleting from ${MOUNTMAPv3} [$line]!"
+                pecho $LOG_V3 "Account corresponding to $l_host seems to have been deleted, deleting from ${MOUNTMAPv3} [$line]!"
 
                 l_mtime=$(ensure_mountmapv3_not_exist "$line" "$mtime_mountmap")
                 [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             else
-                eecho "resolve_ipv4($l_host) failed: $new_ip"
+                eecho $LOG_V3 "resolve_ipv4($l_host) failed: $new_ip"
             fi
             continue
         fi
@@ -656,12 +526,12 @@ process_nfsv3_mounts()
         # This will take care of migration/failover causing the Blob endpoint IP to change.
         #
         if [ "$new_ip" != "$l_nfsip" ]; then
-            pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
+            pecho $LOG_V3 "IP for $l_host changed [$l_nfsip -> $new_ip]."
             check_for_regional_account "$l_host"
 
             # This will update DNAT rule as well.
             if ! update_mountmapv3_entry "$line" "$l_host $l_ip $new_ip"; then
-                eecho "Will reattempt the operation in next iteration."
+                eecho $LOG_V3 "Will reattempt the operation in next iteration."
             else
                 mountpoint2048=$(echo "$findmnt" 2>/dev/null | egrep -m1 " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}')
                 mountpoint2048=$(echo -e "$mountpoint2048")
@@ -673,24 +543,24 @@ process_nfsv3_mounts()
     done
 }
 
-vecho "Starting aznfswatchdog for NFSv3..."
+vecho $LOG_V3 "Starting aznfswatchdog for NFSv3..."
 
 # Detect and log distro, bash and AZNFS-mount version
 log_version_info
 
 # Dump NAT table once on startup in case we have reported conflicts.
-vecho "NAT table:\n$(iptables-save -t nat)"
+vecho $LOG_V3 "NAT table:\n$(iptables-save -t nat)"
 conntrack -L > /dev/null
 
 # conntrack timewait timeout higher than the TCP timewait timeout value isn't very valuable.
 conntrack_timeo_timew=$(cat /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait 2>/dev/null)
 if [ $? -eq 0 ] && [ -n "$conntrack_timeo_timew" -a $conntrack_timeo_timew -gt $AZNFS_TIMEWAIT_TIMEOUT ]; then
-        vecho "Changing /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait [$conntrack_timeo_timew -> $AZNFS_TIMEWAIT_TIMEOUT]"
+        vecho $LOG_V3 "Changing /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait [$conntrack_timeo_timew -> $AZNFS_TIMEWAIT_TIMEOUT]"
         echo $AZNFS_TIMEWAIT_TIMEOUT > /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_time_wait
 fi
 
 if ! chattr -f +i $MOUNTMAPv3; then
-    wecho "chattr does not work for ${MOUNTMAPv3}!"
+    wecho $LOG_V3 "chattr does not work for ${MOUNTMAPv3}!"
 fi
 
 #
@@ -704,7 +574,7 @@ fi
 
 while :; do
     sleep $MONITOR_INTERVAL_SECS
-    vecho "Processing NFSv3 mounts..."
+    vecho $LOG_V3 "Processing NFSv3 mounts..."
     process_nfsv3_mounts
 done
 

@@ -9,6 +9,9 @@
 
 MOUNT_OPTIONS=$1
 OPTIONS=$2
+nfs_host=$3
+nfs_dir=$4
+mount_point=$5
 
 #
 # Default order in which we try the network prefixes for a free local IP to use.
@@ -71,14 +74,14 @@ check_nconnect()
         if [ $value -gt 1 ]; then
             modprobe sunrpc
             if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
-                eecho "nconnect option needs NFS client with Azure nconnect support!"
+                eecho $LOG_V3 "nconnect option needs NFS client with Azure nconnect support!"
                 return 1
             fi
 
             # Supported, enable if not enabled.
             enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
             if ! [[ "$enabled" =~ [yY] ]]; then
-                pecho "Azure nconnect not enabled, enabling!"
+                pecho $LOG_V3 "Azure nconnect not enabled, enabling!"
                 echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
             fi
         fi
@@ -96,37 +99,37 @@ fix_mount_options()
     else
         value="${BASH_REMATCH[1]}"
         if [ "$value" != "sys" ]; then
-            pecho "Unsupported mount option sec=$value, fixing to sec=sys!"
+            pecho $LOG_V3 "Unsupported mount option sec=$value, fixing to sec=sys!"
             MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<sec\>=$value/sec=sys/g")
         fi
     fi
 
     matchstr="\<nolock\>"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding nolock mount option!"
+        pecho $LOG_V3 "Adding nolock mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,nolock"
     fi
 
     matchstr="\<proto\>=([^,]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding proto=tcp mount option!"
+        pecho $LOG_V3 "Adding proto=tcp mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,proto=tcp"
     else
         value="${BASH_REMATCH[1]}"
         if [ "$value" != "tcp" ]; then
-            pecho "Unsupported mount option proto=$value, fixing to proto=tcp!"
+            pecho $LOG_V3 "Unsupported mount option proto=$value, fixing to proto=tcp!"
             MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<proto\>=$value/proto=tcp/g")
         fi
     fi
 
     matchstr="\<vers\>=([0-9]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding vers=3 mount option!"
+        pecho $LOG_V3 "Adding vers=3 mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,vers=3"
     else
         value="${BASH_REMATCH[1]}"
         if [ "$value" != "3" ]; then
-            pecho "Unsupported mount option vers=$value, fixing to vers=3!"
+            pecho $LOG_V3 "Unsupported mount option vers=$value, fixing to vers=3!"
             MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<vers\>=$value/vers=3/g")
         fi
     fi
@@ -135,7 +138,7 @@ fix_mount_options()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         value="${BASH_REMATCH[1]}"
         if [ $value -ne 1048576 ]; then
-            pecho "Suboptimal rsize=$value mount option, setting rsize=1048576!"
+            pecho $LOG_V3 "Suboptimal rsize=$value mount option, setting rsize=1048576!"
             MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<rsize\>=$value/rsize=1048576/g")
         fi
     fi
@@ -144,7 +147,7 @@ fix_mount_options()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         value="${BASH_REMATCH[1]}"
         if [ $value -ne 1048576 ]; then
-            pecho "Suboptimal wsize=$value mount option, setting wsize=1048576!"
+            pecho $LOG_V3 "Suboptimal wsize=$value mount option, setting wsize=1048576!"
             MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<wsize\>=$value/wsize=1048576/g")
         fi
     fi
@@ -328,9 +331,9 @@ search_free_local_ip_with_prefix()
     num_octets=$(octets_in_ipv4_prefix $ip_prefix)
 
     if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
-        eecho "Invalid IPv4 prefix: ${ip_prefix}"
-        eecho "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
-        eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
+        eecho $LOG_V3 "Invalid IPv4 prefix: ${ip_prefix}"
+        eecho $LOG_V3 "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
+        eecho $LOG_V3 "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
         return 1
     fi
 
@@ -349,7 +352,7 @@ search_free_local_ip_with_prefix()
     #
     if [ $OPTIMIZE_GET_FREE_LOCAL_IP == true -a -n "$used_local_ips_with_same_prefix" ]; then
 
-        last_used_ip=$(echo "$used_local_ips_with_same_prefix" | tail -n1)
+        last_used_ip=$(echo $LOG_V3 "$used_local_ips_with_same_prefix" | tail -n1)
 
         IFS="." read _ _ last_used_3rd_octet last_used_4th_octet <<< "$last_used_ip"
 
@@ -375,7 +378,7 @@ search_free_local_ip_with_prefix()
                 ip_prefix="${initial_ip_prefix}.$_3rdoctet"
 
                 if is_link_ip $ip_prefix; then
-                    vecho "Skipping link network ${ip_prefix}!"
+                    vecho $LOG_V3 "Skipping link network ${ip_prefix}!"
                     continue
                 fi
 
@@ -404,28 +407,28 @@ search_free_local_ip_with_prefix()
 
             is_ip_used_by_aznfs=$(echo "$used_local_ips_with_same_prefix" | grep "^${local_ip}$")
             if [ -n "$is_ip_used_by_aznfs" ]; then
-                vecho "$local_ip is in use by aznfs!"
+                vecho $LOG_V3 "$local_ip is in use by aznfs!"
                 continue
             fi
 
             if is_host_ip $local_ip; then
-                vecho "Skipping host address ${local_ip}!"
+                vecho $LOG_V3 "Skipping host address ${local_ip}!"
                 continue
             fi
 
             if is_link_ip $local_ip; then
-                vecho "Skipping link network ${local_ip}!"
+                vecho $LOG_V3 "Skipping link network ${local_ip}!"
                 continue
             fi
 
             if [ "$nfs_ip" == "$local_ip" ]; then
-                vecho "Skipping private endpoint IP ${nfs_ip}!"
+                vecho $LOG_V3 "Skipping private endpoint IP ${nfs_ip}!"
                 continue
             fi
 
             is_present_in_iptables=$(echo "$iptable_entries" | grep -c "\<${local_ip}\>")
             if [ $is_present_in_iptables -ne 0 ]; then
-                vecho "$local_ip is already present in iptables!"
+                vecho $LOG_V3 "$local_ip is already present in iptables!"
                 continue
             fi
 
@@ -437,11 +440,11 @@ search_free_local_ip_with_prefix()
             #       we will incorrectly treat it as non-exixtent.
             #
             if is_pinging $local_ip; then
-                vecho "Skipping $local_ip as it appears to be in use on the network!"
+                vecho $LOG_V3 "Skipping $local_ip as it appears to be in use on the network!"
                 continue
             fi
 
-            vecho "Using local IP ($local_ip) for aznfs."
+            vecho $LOG_V3 "Using local IP ($local_ip) for aznfs."
             break
         done
 
@@ -482,7 +485,7 @@ search_free_local_ip_with_prefix()
 get_free_local_ip()
 {
     for ip_prefix in $IP_PREFIXES; do
-        vecho "Trying IP prefix ${ip_prefix}."
+        vecho $LOG_V3 "Trying IP prefix ${ip_prefix}."
         if search_free_local_ip_with_prefix "$ip_prefix"; then
             return 0
         fi
@@ -492,10 +495,10 @@ get_free_local_ip()
     # If the above loop is not able to find a free local IP using optimized way,
     # do a linear search to get the free local IP.
     #
-    vecho "Falling back to linear search for free ip!"
+    vecho $LOG_V3 "Falling back to linear search for free ip!"
     OPTIMIZE_GET_FREE_LOCAL_IP=false
     for ip_prefix in $IP_PREFIXES; do
-        vecho "Trying IP prefix ${ip_prefix}."
+        vecho $LOG_V3 "Trying IP prefix ${ip_prefix}."
         if search_free_local_ip_with_prefix "$ip_prefix"; then
             return 0
         fi
@@ -549,15 +552,15 @@ fi
 
 # MOUNTMAPv3 file must have been created by aznfswatchdog service.
 if [ ! -f "$MOUNTMAPv3" ]; then
-    eecho "[FATAL] ${MOUNTMAPv3} not found!"
+    eecho $LOG_V3 "[FATAL] ${MOUNTMAPv3} not found!"
     
     if systemd_is_init; then
-        pecho "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
+        pecho $LOG_V3 "Try restarting the aznfswatchdog service using 'systemctl start aznfswatchdog' and then retry the mount command."
     else
-        eecho "aznfswatchdog service not running, please make sure it's running and try again!"
+        eecho $LOG_V3 "aznfswatchdog service not running, please make sure it's running and try again!"
     fi
     
-    pecho "If the problem persists, contact Microsoft support."
+    pecho $LOG_V3 "If the problem persists, contact Microsoft support."
     exit 1
 fi
 
@@ -566,11 +569,11 @@ nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")
 status=$?
 if [ $status -ne 0 ]; then
     if [ $status -eq 2 ]; then
-        vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
+        vecho $LOG_V3 "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
     else
         echo "$nfs_ip"
-        eecho "Cannot resolve IP address for ${nfs_host}!"
-        eecho "Mount failed!"
+        eecho $LOG_V3 "Cannot resolve IP address for ${nfs_host}!"
+        eecho $LOG_V3 "Mount failed!"
         exit 1
     fi
 fi
@@ -580,7 +583,7 @@ fi
 #
 if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
     if ! check_nconnect; then
-        eecho "Mount failed!"
+        eecho $LOG_V3 "Mount failed!"
         exit 1
     fi
 fi
@@ -614,23 +617,23 @@ flock -u $fd
 exec {fd}<&-
 
 if [ "$account_limit_exceeded" == "1" ]; then
-    eecho "Mounts to target IP $nfs_ip ($nfs_host) already at max limit ($MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT)!"
-    eecho "Mount failed!"
+    eecho $LOG_V3 "Mounts to target IP $nfs_ip ($nfs_host) already at max limit ($MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT)!"
+    eecho $LOG_V3 "Mount failed!"
     exit 1
 fi
 
 if [ $ret -ne 0 ]; then
     if [ -z "$AZNFS_IP_PREFIXES" ]; then
-        eecho "Could not find a free local IP to use for aznfs using DEFAULT_AZNFS_IP_PREFIXES=${DEFAULT_AZNFS_IP_PREFIXES}!"
-        eecho "Set AZNFS_IP_PREFIXES env variable correctly to provide free addresses for use by aznfs!"
+        eecho $LOG_V3 "Could not find a free local IP to use for aznfs using DEFAULT_AZNFS_IP_PREFIXES=${DEFAULT_AZNFS_IP_PREFIXES}!"
+        eecho $LOG_V3 "Set AZNFS_IP_PREFIXES env variable correctly to provide free addresses for use by aznfs!"
     else
-        eecho "Could not find a free local IP to use for aznfs using AZNFS_IP_PREFIXES=${AZNFS_IP_PREFIXES}!"
-        eecho "Ensure AZNFS_IP_PREFIXES env variable is set properly!"
+        eecho $LOG_V3 "Could not find a free local IP to use for aznfs using AZNFS_IP_PREFIXES=${AZNFS_IP_PREFIXES}!"
+        eecho $LOG_V3 "Ensure AZNFS_IP_PREFIXES env variable is set properly!"
     fi
     exit 1
 fi
 
-vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
+vecho $LOG_V3 "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
 
 #
 # AZNFS uses fixed port 2048 for mount and nfs.
@@ -653,11 +656,11 @@ mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}
 mount_status=$?
 
 if [ -n "$mount_output" ]; then
-    pecho "$mount_output"
+    pecho $LOG_V3 "$mount_output"
 fi
 
 if [ $mount_status -ne 0 ]; then
-    eecho "Mount failed!"
+    eecho $LOG_V3 "Mount failed!"
     #
     # Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
     # will do it if it's unused (this mount was the one to create it).
@@ -665,4 +668,4 @@ if [ $mount_status -ne 0 ]; then
     exit 1
 fi
 
-vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+vecho $LOG_V3 "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"

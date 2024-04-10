@@ -9,6 +9,9 @@
 
 MOUNT_OPTIONS=$1
 OPTIONS=$2
+nfs_host=$3
+nfs_dir=$4
+mount_point=$5
 
 STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
 STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
@@ -26,24 +29,24 @@ find_next_available_port_and_start_stunnel()
         # get the next available port
         available_port=$(get_next_available_port)
         if [ $? -ne 0 ]; then
-            eecho "Failed to get the next available port for nfsv4.1 mount."
+            eecho $LOG_V4 "Failed to get the next available port for nfsv4.1 mount."
             return 1
         fi
-        vecho "Next Available Port: '$available_port'"
+        vecho $LOG_V4 "Next Available Port: '$available_port'"
 
         if [ -z "$available_port" ]; then
-            eecho "Running out of ports. For Nfsv4.1, stunnel uses port range from $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+            eecho $LOG_V4 "Running out of ports. For Nfsv4.1, stunnel uses port range from $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
             return 1
         fi
 
         used_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
-        vecho "used port: '$used_port'"
+        vecho $LOG_V4 "used port: '$used_port'"
 
         chattr -f -i $stunnel_conf_file
 
         sed -i "s/$used_port/$available_port/" $stunnel_conf_file
         if [ $? -ne 0 ]; then
-            eecho "Failed to replace the port in $stunnel_conf_file."
+            eecho $LOG_V4 "Failed to replace the port in $stunnel_conf_file."
             chattr -f +i $stunnel_conf_file
             return 1
         fi
@@ -56,11 +59,11 @@ find_next_available_port_and_start_stunnel()
         if [ -n "$stunnel_status" ]; then
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$new_used_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
-                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                eecho $LOG_V4 "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
                 return 1
             fi
         else
-	        vecho "Found new port '$new_used_port' and restarted stunnel."
+	        vecho $LOG_V4 "Found new port '$new_used_port' and restarted stunnel."
 	        break
         fi
     done
@@ -87,7 +90,7 @@ install_CA_cert()
 {
     wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O /usr/local/share/ca-certificates/DigiCert_Global_Root_G2.crt
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem !"
+        eecho $LOG_V4 "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem !"
         return 1
     fi
 
@@ -104,11 +107,11 @@ add_stunnel_configuration()
 
 
     if [ ! -f $STUNNEL_CAFILE ]; then
-        vecho "CA root cert is missing for stunnel configuration. Installing DigiCert_Global_Root_G2 certificate."
+        vecho $LOG_V4 "CA root cert is missing for stunnel configuration. Installing DigiCert_Global_Root_G2 certificate."
         install_CA_cert
         if [ $? -ne 0 ]; then
             chattr -f +i $stunnel_conf_file
-            eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+            eecho $LOG_V4 "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
             return 1
         fi
     fi
@@ -116,14 +119,14 @@ add_stunnel_configuration()
     echo "CAFile = $STUNNEL_CAFILE" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add CAFile path to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add CAFile path to $stunnel_conf_file!"
         return 1
     fi
 
     echo "verifyChain = yes" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add verifyChain option to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add verifyChain option to $stunnel_conf_file!"
         return 1
     fi
 
@@ -132,7 +135,7 @@ add_stunnel_configuration()
     echo "checkHost = xtest-superadmin.int.rdst-internal.net" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add checkHost option to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add checkHost option to $stunnel_conf_file!"
         return 1
     fi
 
@@ -140,14 +143,14 @@ add_stunnel_configuration()
     echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add sslVersion option to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add sslVersion option to $stunnel_conf_file!"
         return 1
     fi
 
     echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add debug option to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add debug option to $stunnel_conf_file!"
         return 1
     fi
 
@@ -155,7 +158,7 @@ add_stunnel_configuration()
     echo "output = $stunnel_log_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add log file path to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add log file path to $stunnel_conf_file!"
         return 1
     fi
 
@@ -163,7 +166,7 @@ add_stunnel_configuration()
     echo "pid = $stunnel_pid_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add pid file path to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add pid file path to $stunnel_conf_file!"
         return 1
     fi
 
@@ -172,28 +175,28 @@ add_stunnel_configuration()
     echo "[$nfs_host]" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add $nfs_host service/entry name to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add $nfs_host service/entry name to $stunnel_conf_file!"
         return 1
     fi
 
     echo "client = yes" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to 'client = yes' to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to 'client = yes' to $stunnel_conf_file!"
         return 1
     fi
 
     echo "accept = $LOCALHOST:$available_port" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add 'accept' info to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add 'accept' info to $stunnel_conf_file!"
         return 1
     fi
 
     echo "connect = $nfs_host:$CONNECT_PORT" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add 'connect' info to $stunnel_conf_file!"
+        eecho $LOG_V4 "Failed to add 'connect' info to $stunnel_conf_file!"
         return 1
     fi
 
@@ -209,21 +212,21 @@ tls_nfsv4_files_share_mount()
     local container
     local extra
 
-    vecho "nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+    vecho $LOG_V4 "nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
     IFS=/ read _ storageaccount container extra <<< "$nfs_dir"
 
     # Note the available port
     available_port=$(get_next_available_port)
     if [ $? -ne 0 ]; then
-        eecho "Failed to get the available port for nfsv4.1 mount."
+        eecho $LOG_V4 "Failed to get the available port for nfsv4.1 mount."
         exit 1
     fi
 
-    vecho "Available Port: $available_port"
+    vecho $LOG_V4 "Available Port: $available_port"
 
     if [ -z "$available_port" ]; then
-        eecho "Running out of ports. Nfsv4.1 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+        eecho $LOG_V4 "Running out of ports. Nfsv4.1 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
         exit 1
     fi
 
@@ -238,7 +241,7 @@ tls_nfsv4_files_share_mount()
     if [ "$EntryExistinMountMap" == "false" ]; then
         touch $stunnel_conf_file
         if [ $? -ne 0 ]; then
-            eecho "[FATAL] Not able to create '${stunnel_conf_file}'!"
+            eecho $LOG_V4 "[FATAL] Not able to create '${stunnel_conf_file}'!"
             exit 1
         fi
 
@@ -251,7 +254,7 @@ tls_nfsv4_files_share_mount()
         add_stunnel_configuration_status=$?
 
         if [ $add_stunnel_configuration_status -ne 0 ]; then
-            eecho "Failed to add stunnel configuration to $stunnel_conf_file!"
+            eecho $LOG_V4 "Failed to add stunnel configuration to $stunnel_conf_file!"
             chattr -i -f $stunnel_conf_file
             rm $stunnel_conf_file
             exit 1
@@ -262,7 +265,7 @@ tls_nfsv4_files_share_mount()
         if [ -n "$stunnel_status" ]; then
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
-                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                eecho $LOG_V4 "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
                 chattr -i -f $stunnel_conf_file
                 rm $stunnel_conf_file
                 exit 1
@@ -270,7 +273,7 @@ tls_nfsv4_files_share_mount()
                 find_next_available_port_and_start_stunnel "$stunnel_conf_file"
                 is_stunnel_running=$?
                 if [ $is_stunnel_running -ne 0 ]; then
-                    eecho "Failed to get the next available port and start stunnel."
+                    eecho $LOG_V4 "Failed to get the next available port and start stunnel."
                     chattr -i -f $stunnel_conf_file
                     rm $stunnel_conf_file
                     exit 1
@@ -280,7 +283,7 @@ tls_nfsv4_files_share_mount()
 
         checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
         if [ $? -ne 0 ]; then
-            eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
+            eecho $LOG_V4 "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
             chattr -i -f $stunnel_conf_file
             rm $stunnel_conf_file
             exit 1
@@ -291,7 +294,7 @@ tls_nfsv4_files_share_mount()
         echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAPv4
-            eecho "[$mountmap_entry] failed to add!"
+            eecho $LOG_V4 "[$mountmap_entry] failed to add!"
             chattr -i -f $stunnel_conf_file
             rm $stunnel_conf_file
             exit 1
@@ -304,25 +307,25 @@ tls_nfsv4_files_share_mount()
         # Check if stunnel_pid_file exist for storageaccount
         stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount.pid" | cut -d ";" -f4`
         if [ ! -f $stunnel_pid_file ]; then
-            eecho "[FATAL] '${stunnel_pid_file}' does not exist!"
+            eecho $LOG_V4 "[FATAL] '${stunnel_pid_file}' does not exist!"
             exit 1
         fi
 
         is_stunnel_running=$(netstat -anp | grep stunnel | grep `cat $stunnel_pid_file`)
         if [ -z "$is_stunnel_running" ]; then
-            vecho "stunnel is not running! Restarting the stunnel"
+            vecho $LOG_V4 "stunnel is not running! Restarting the stunnel"
 
             stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
             if [ -n "$stunnel_status" ]; then
-                is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
+                is_binding_error=$(echo $LOG_V4 $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
                 if [ -z "$is_binding_error" ]; then
-                    eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                    eecho $LOG_V4 "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
                     exit 1
                 else
                     find_next_available_port_and_start_stunnel "$stunnel_conf_file"
                     is_stunnel_running=$?
                     if [ $is_stunnel_running -ne 0 ]; then
-                        eecho "Failed to get the next available port and start stunnel."
+                        eecho $LOG_V4 "Failed to get the next available port and start stunnel."
                         exit 1
                     fi
                 fi
@@ -330,19 +333,19 @@ tls_nfsv4_files_share_mount()
         fi
 
         available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
-        vecho "Local Port to use: $available_port"
+        vecho $LOG_V4 "Local Port to use: $available_port"
     fi
 
     mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$available_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
 
     if [ -n "$mount_output" ]; then
-        pecho "$mount_output"
-        vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
+        pecho $LOG_V4 "$mount_output"
+        vecho $LOG_V4 "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
     fi
 
     if [ $mount_status -ne 0 ]; then
-        eecho "Mount failed!"
+        eecho $LOG_V4 "Mount failed!"
         exit 1
     fi
 }
@@ -352,32 +355,32 @@ if ! ensure_aznfswatchdog "aznfswatchdogv4"; then
     exit 1
 fi
 
-vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+vecho $LOG_V4 "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
 # MOUNTMAPv4 file must have been created by aznfswatchdog service.
 if [ ! -f $MOUNTMAPv4 ]; then
     touch $MOUNTMAPv4
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to create '${MOUNTMAPv4}'!"
+        eecho $LOG_V4 "[FATAL] Not able to create '${MOUNTMAPv4}'!"
         exit 1
     fi
 fi
 
 if ! chattr -f +i $MOUNTMAPv4; then
-    wecho "chattr does not work for ${MOUNTMAPv4}!"
+    wecho $LOG_V4 "chattr does not work for ${MOUNTMAPv4}!"
 fi
 
 if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
-    vecho "notls option is enabled. Mount nfs share without TLS."
+    vecho $LOG_V4 "notls option is enabled. Mount nfs share without TLS."
 
     # If a mount to the same endpoint exists that is using TLS, then we cannot mount without TLS
-    # to the same endpoint as they use the same connections channel.
+    # to the same endpoint as they use the same connection.
 
     # Check if the mount to the same endpoint exists that is using TLS.
     mountmap_entry=$(grep -m1 "^${nfs_host};" $MOUNTMAPv4)
     if [ -n "$mountmap_entry" ]; then
-        eecho "Mount to the same endpoint ${nfs_host} exists that is using TLS."
-        eecho "Cannot mount without TLS to the same endpoint as they use the same connections channel."
+        eecho $LOG_V4 "Mount to the same endpoint ${nfs_host} exists that is using TLS."
+        eecho $LOG_V4 "Cannot mount without TLS to the same endpoint as they use the same connection."
         exit 1
     fi
 
@@ -392,18 +395,16 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     mount_status=$?
 
     if [ -n "$mount_output" ]; then
-        pecho "$mount_output"
-        vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
+        pecho $LOG_V4 "$mount_output"
+        vecho $LOG_V4 "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
     fi
 
     if [ $mount_status -ne 0 ]; then
-        eecho "Mount failed!"
+        eecho $LOG_V4 "Mount failed!"
         exit 1
     fi
 else
-    vecho "Mount nfs share with TLS."
+    vecho $LOG_V4 "Mount nfs share with TLS."
 
     tls_nfsv4_files_share_mount
 fi
-
-vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"

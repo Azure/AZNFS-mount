@@ -464,7 +464,7 @@ if [ -z "$nfs_dir" ]; then
 fi
 
 if [ "$nfs_vers" == "4.1" ]; then
-    $OPTDIR/nfsv4mountscript.sh
+    $OPTDIR/nfsv4mountscript.sh "$MOUNT_OPTIONS" "$OPTIONS" "$nfs_host" "$nfs_dir" "$mount_point"
 else
-    $OPTDIR/nfsv3mountscript.sh
+    $OPTDIR/nfsv3mountscript.sh "$MOUNT_OPTIONS" "$OPTIONS" "$nfs_host" "$nfs_dir" "$mount_point"
 fi
