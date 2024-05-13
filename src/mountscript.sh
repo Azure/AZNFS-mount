@@ -773,16 +773,37 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
 fi
 
+# Do the pseudo mount.
+mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/GUID/6af5a6a4-7fd8-48f6-83e7-7d5757d5d73f" "$mount_point" 2>&1)
+mount_status=$?
+
+if [ -n "$mount_output" ]; then
+    pecho "[pseudo] $mount_output"
+fi
+
+if [ $mount_status -ne 0 ]; then
+    eecho "[pseudo] Mount failed!"
+    #
+    # Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
+    # will do it if it's unused (this mount was the one to create it).
+    #
+else
+    vecho "[pseudo] Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+
+    umount "$mount_point"
+fi
+
+
 # Do the actual mount.
 mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
 mount_status=$?
 
 if [ -n "$mount_output" ]; then
-    pecho "$mount_output"
+    pecho "[actual] $mount_output"
 fi
 
 if [ $mount_status -ne 0 ]; then
-    eecho "Mount failed!"
+    eecho "[actual] Mount failed!"
     #
     # Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
     # will do it if it's unused (this mount was the one to create it).
@@ -790,4 +811,4 @@ if [ $mount_status -ne 0 ]; then
     exit 1
 fi
 
-vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+vecho "[actual] Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
