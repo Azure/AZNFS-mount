@@ -661,25 +661,26 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-if ! is_valid_blob_fqdn "$nfs_host"; then
-    eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
-    eecho "Must be of the form 'account.blob.core.windows.net'!"
-    exit 1
-fi
+# if ! is_valid_blob_fqdn "$nfs_host"; then
+#     eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
+#     eecho "Must be of the form 'account.blob.core.windows.net'!"
+#     exit 1
+# fi
+nfs_ip=$nfs_host
 
 # Resolve the IP address for the NFS host
-nfs_ip=$(resolve_ipv4_with_preference_to_mountmap "$nfs_host")
-status=$?
-if [ $status -ne 0 ]; then
-    if [ $status -eq 2 ]; then
-        vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
-    else
-        echo "$nfs_ip"
-        eecho "Cannot resolve IP address for ${nfs_host}!"
-        eecho "Mount failed!"
-        exit 1
-    fi
-fi
+# nfs_ip=$(resolve_ipv4_with_preference_to_mountmap "$nfs_host")
+# status=$?
+# if [ $status -ne 0 ]; then
+#     if [ $status -eq 2 ]; then
+#         vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
+#     else
+#         echo "$nfs_ip"
+#         eecho "Cannot resolve IP address for ${nfs_host}!"
+#         eecho "Mount failed!"
+#         exit 1
+#     fi
+# fi
 
 nfs_dir=$(get_dir_from_share "$1")
 if [ $? -ne 0 ]; then
