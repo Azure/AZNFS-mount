@@ -793,6 +793,7 @@ else
     umount "$mount_point"
 fi
 
+sleep 10
 
 # Do the actual mount.
 mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
