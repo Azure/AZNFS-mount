@@ -774,7 +774,7 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
 fi
 
 # Do the pseudo mount.
-mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/GUID/6af5a6a4-7fd8-48f6-83e7-7d5757d5d73f" "$mount_point" 2>&1)
+mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/6af5a6a4-7fd8-48f6-83e7-7d5757d5d73f" "$mount_point" 2>&1)
 mount_status=$?
 
 if [ -n "$mount_output" ]; then
@@ -792,8 +792,6 @@ else
 
     umount "$mount_point"
 fi
-
-sleep 10
 
 # Do the actual mount.
 mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
