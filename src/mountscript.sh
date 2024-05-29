@@ -773,24 +773,24 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
 fi
 
-# Do the pseudo mount.
-mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/6af5a6a4-7fd8-48f6-83e7-7d5757d5d73f" "$mount_point" 2>&1)
+#
+# Do the pseudo mount (which we eventually want to send as a fingerprint for mount helper).
+# This request fails with server access denied when server side changes are enabled, else dir not found.
+# error from the server. Pls do not touch/change this GUID as this might cause issues while identification on
+# server side. We proceed normally if this call fails.
+#
+mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/80a18d5c-9553-4c64-88dd-d7553c6b3beb" "$mount_point" 2>&1)
 mount_status=$?
 
 if [ -n "$mount_output" ]; then
-    pecho "[pseudo] $mount_output"
+    vecho "$mount_output"
 fi
 
+# Check if the mount operation failed (expected behavior).
 if [ $mount_status -ne 0 ]; then
-    eecho "[pseudo] Mount failed!"
-    #
-    # Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
-    # will do it if it's unused (this mount was the one to create it).
-    #
+    vecho "Gatepass mount failed, as expected!"
 else
-    vecho "[pseudo] Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
-
-    umount "$mount_point"
+    exit 1
 fi
 
 # Do the actual mount.
@@ -798,11 +798,11 @@ mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}
 mount_status=$?
 
 if [ -n "$mount_output" ]; then
-    pecho "[actual] $mount_output"
+    pecho "$mount_output"
 fi
 
 if [ $mount_status -ne 0 ]; then
-    eecho "[actual] Mount failed!"
+    eecho "Mount failed!"
     #
     # Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
     # will do it if it's unused (this mount was the one to create it).
@@ -810,4 +810,4 @@ if [ $mount_status -ne 0 ]; then
     exit 1
 fi
 
-vecho "[actual] Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
