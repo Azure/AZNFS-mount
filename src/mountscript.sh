@@ -794,7 +794,8 @@ fi
 # Exit with an error code if it succeeded, which is unexpected.
 #
 if [ $mount_status -eq 0 ]; then
-    eecho "[Gatepass mount] Unexpected success!"
+    vecho "[Gatepass mount] Unexpected success!"
+    eecho "Mount failed!"
     exit 1
 fi
 
