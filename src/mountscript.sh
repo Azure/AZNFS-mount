@@ -226,7 +226,8 @@ fix_mount_options()
         MOUNT_OPTIONS="$MOUNT_OPTIONS,retrans=6"
     else
         value="${BASH_REMATCH[1]}"
-        if [ $value != "6" ]; then
+        if [ $value -lt 6 ]; then
+            pecho "Suboptimal retrans=$value mount option, setting retrans=6!"
             MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<retrans\>=$value/retrans=6/g")
         fi
     fi
