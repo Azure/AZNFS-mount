@@ -786,18 +786,15 @@ mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}
 mount_status=$?
 
 if [ -n "$mount_output" ]; then
-    vecho "$mount_output"
+    vecho "[Gatepass mount] $mount_output"
 fi
 
 #
-# Check if the mount operation failed (expected behavior).
+# Ensure that gatepass mount operation failed (expected behavior).
+# Exit with an error code if it succeeded, which is unexpected.
 #
-if [ $mount_status -ne 0 ]; then
-    vecho "Gatepass mount failed, as expected!"
-else
-    #
-    # Exit with an error code if the mount operation succeeded, which is unexpected.
-    #
+if [ $mount_status -eq 0 ]; then
+    eecho "[Gatepass mount] Unexpected success!"
     exit 1
 fi
 
