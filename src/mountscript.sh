@@ -36,6 +36,9 @@ AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 #
 AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
 
+# Set the fingerprint GUID as an environment variable with a default value.
+AZNFS_FINGERPRINT="${AZNFS_FINGERPRINT:-80a18d5c-9553-4c64-88dd-d7553c6b3beb}"
+
 #
 # Maximum number of accounts that can be mounted from the same tenant/cluster.
 # Any number of containers on these many accounts can be mounted.
@@ -771,6 +774,29 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
         MOUNT_OPTIONS="$MOUNT_OPTIONS,mountport=$AZNFS_PORT"
     fi
     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
+fi
+
+#
+# Perform a pseudo mount to generate a gatepass for the actual mount call.
+# This request is expected to fail with "server access denied" if server-side changes are enabled,
+# or with "no such file or directory" if not. Failure of this call is expected behavior, 
+# and we proceed normally when it occurs.
+#
+mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
+mount_status=$?
+
+if [ -n "$mount_output" ]; then
+    vecho "[Gatepass mount] $mount_output"
+fi
+
+#
+# Ensure that gatepass mount operation failed (expected behavior).
+# Exit with an error code if it succeeded, which is unexpected.
+#
+if [ $mount_status -eq 0 ]; then
+    vecho "[Gatepass mount] Unexpected success!"
+    eecho "Mount failed!"
+    exit 1
 fi
 
 # Do the actual mount.
