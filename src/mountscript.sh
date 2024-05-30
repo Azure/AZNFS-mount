@@ -101,43 +101,58 @@ check_nconnect()
 
 #
 # Help fix/limit the dirty bytes config of user's machine.
+# This is needed on machines with huge amount of RAM which causes the default
+# dirty settings to accumulate lot of dirty pages. When lot of dirty pages are
+# then flushed to the NFS server, it may cause slowness due to some writes
+# timing out. To avoid this we set the dirty config to optimal values.
 #
 fix_dirty_bytes_config()
 {
     # Constants for desired settings.
-    desired_dirty_bytes=$((8 * 1024 * 1024 * 1024))  # 8 GB in bytes
-    desired_dirty_background_bytes=$((4 * 1024 * 1024 * 1024))  # 4 GB in bytes
-
-    # Get total memory in bytes.
-    total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-    total_mem_bytes=$((total_mem_kb * 1024))
+    local desired_dirty_bytes=$((8 * 1024 * 1024 * 1024))  # 8 GB in bytes
+    local desired_dirty_background_bytes=$((4 * 1024 * 1024 * 1024))  # 4 GB in bytes
 
     # Get current settings.
-    current_dirty_bytes=$(cat /proc/sys/vm/dirty_bytes)
-    current_dirty_background_bytes=$(cat /proc/sys/vm/dirty_background_bytes)
+    local current_dirty_bytes=$(cat /proc/sys/vm/dirty_bytes 2>/dev/null)
+    local current_dirty_background_bytes=$(cat /proc/sys/vm/dirty_background_bytes 2>/dev/null)
 
-    # If current dirty bytes are 0, calculate them from the ratio
-    if [ "$current_dirty_bytes" -eq 0 ]; then
-        current_dirty_ratio=$(cat /proc/sys/vm/dirty_ratio)
-        current_dirty_background_ratio=$(cat /proc/sys/vm/dirty_background_ratio)
+    # Should not happen but added for robustness.
+    if [ -z "$current_dirty_bytes" -o -z "$current_dirty_background_bytes" ]; then
+        wecho "current_dirty_bytes=$current_dirty_bytes"
+        wecho "current_dirty_background_bytes=$current_dirty_background_bytes"
+        return
+    fi
+
+    # If current dirty bytes are 0, calculate them from the ratio configs.
+    if [ $current_dirty_background_bytes -eq 0 ]; then
+        # Get total memory in bytes.
+        local total_mem_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        local total_mem_bytes=$((total_mem_KB * 1024))
+
+        local current_dirty_ratio=$(cat /proc/sys/vm/dirty_ratio 2>/dev/null)
+        local current_dirty_background_ratio=$(cat /proc/sys/vm/dirty_background_ratio 2>/dev/null)
+
+        # Should not happen but added for robustness.
+        if [ -z "$current_dirty_ratio" -o \
+             -z "$current_dirty_background_ratio" -o \
+             "$current_dirty_ratio" == "0" -o \
+             "$current_dirty_background_ratio" == "0" ]; then
+            wecho "current_dirty_ratio=$current_dirty_ratio"
+            wecho "current_dirty_background_ratio=$current_dirty_background_ratio"
+            return
+        fi
 
         current_dirty_bytes=$((total_mem_bytes * current_dirty_ratio / 100))
         current_dirty_background_bytes=$((total_mem_bytes * current_dirty_background_ratio / 100))
     fi
 
-    # Set dirty_bytes if it's not 0 and appropriate.
-    if [ "$current_dirty_bytes" -ne 0 ]; then
-        if [ "$desired_dirty_bytes" -lt "$total_mem_bytes" ]; then
-            echo $desired_dirty_bytes > /proc/sys/vm/dirty_bytes
-            echo $desired_dirty_background_bytes > /proc/sys/vm/dirty_background_bytes
-            pecho "Set /proc/sys/vm/dirty_bytes to $desired_dirty_bytes bytes"
-            pecho "Set /proc/sys/vm/dirty_background_bytes to $desired_dirty_background_bytes bytes"
-        else
-            echo $current_dirty_bytes > /proc/sys/vm/dirty_bytes
-            echo $current_dirty_background_bytes > /proc/sys/vm/dirty_background_bytes
-            pecho "Kept /proc/sys/vm/dirty_bytes at $current_dirty_bytes bytes"
-            pecho "Kept /proc/sys/vm/dirty_background_bytes at $current_dirty_background_bytes bytes"
-        fi
+    # If current dirty byte settings are higher than desired, set to desired.
+    if [ $desired_dirty_background_bytes -lt $current_dirty_background_bytes ]; then
+        pecho "Setting /proc/sys/vm/dirty_bytes to $desired_dirty_bytes bytes"
+        echo $desired_dirty_bytes > /proc/sys/vm/dirty_bytes
+
+        pecho "Setting /proc/sys/vm/dirty_background_bytes to $desired_dirty_background_bytes bytes"
+        echo $desired_dirty_background_bytes > /proc/sys/vm/dirty_background_bytes
     fi
 }
 
