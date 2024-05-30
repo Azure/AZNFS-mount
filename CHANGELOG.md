@@ -1,3 +1,9 @@
+## [2.0.5]- May 2024
+- [AZNFS-mount #117](https://github.com/Azure/AZNFS-mount/pull/117)
+  (NFSv3) Added support to manage and limit the dirty bytes configuration on the user's machine..
+- [AZNFS-mount #116](https://github.com/Azure/AZNFS-mount/pull/116)
+  (NFSv3) Added support in mount-helper for AZNFS fingerprinting.
+
 ## [2.0.4]- January 2024
 - [AZNFS-mount #110](https://github.com/Azure/AZNFS-mount/pull/110)
   (NFSv3) Fixed a bug where proxy IP was being incorrectly computed in case of clash with an existing address from the host.
