@@ -26,6 +26,9 @@ AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
 # Default to fixing mount options passed in to help the user.
 AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 
+# Default to fixing dirty bytes config to help the user.
+AZNFS_FIX_DIRTY_BYTES_CONFIG="${AZNFS_FIX_DIRTY_BYTES_CONFIG:-1}"
+
 #
 # Use noresvport mount option to allow using non-reserve ports by client.
 # This allows much higher number of local ports to be used by NFS client and
@@ -97,9 +100,9 @@ check_nconnect()
 }
 
 #
-# Help fix the dirty ratio config user's machine.
+# Help fix/limit the dirty bytes config of user's machine.
 #
-fix_dirty_ratio_config()
+fix_dirty_bytes_config()
 {
     # Constants for desired settings.
     desired_dirty_bytes=$((8 * 1024 * 1024 * 1024))  # 8 GB in bytes
@@ -774,10 +777,10 @@ if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
 fi
 
 #
-# Fix dirty ratio if needed.
+# Fix dirty bytes config if needed.
 #
-if [ "$AZNFS_FIX_DIRTY_RATIO_CONFIG" == "1" ]; then
-    fix_dirty_ratio_config
+if [ "$AZNFS_FIX_DIRTY_BYTES_CONFIG" == "1" ]; then
+    fix_dirty_bytes_config
 fi
 
 #
