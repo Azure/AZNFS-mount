@@ -66,6 +66,16 @@ PID=""
 OPTIMIZE_GET_FREE_LOCAL_IP=true
 
 #
+# True if client has asked for verbose logs using '-v' or '--verbose' with mount command.
+#
+VERBOSE_ENABLED=false
+
+#
+# True if client has asked to use port 2047 using 'port=2047' in mount options.
+#
+USING_PORT_2047=false
+
+#
 # Check if the given string is a valid blob FQDN (<accountname>.blob.core.windows.net).
 #
 is_valid_blob_fqdn()
@@ -83,6 +93,12 @@ check_nconnect()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         value="${BASH_REMATCH[1]}"
         if [ $value -gt 1 ]; then
+            if [ $USING_PORT_2047 == true ]; then
+                pecho "No need to use nconnect with port 2047, setting nconnect=0!"
+                MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=0/g")
+                return 0
+            fi
+
             modprobe sunrpc
             if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
                 eecho "nconnect option needs NFS client with Azure nconnect support!"
@@ -92,9 +108,14 @@ check_nconnect()
             # Supported, enable if not enabled.
             enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
             if ! [[ "$enabled" =~ [yY] ]]; then
-                pecho "Azure nconnect not enabled, enabling!"
+                vvecho "Azure nconnect not enabled, enabling!"
                 echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
             fi
+        fi
+
+        if [ $value -gt 4 ]; then
+            pecho "Suboptimal nconnect=$value mount option, setting nconnect=4!"
+            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=4/g")
         fi
     fi
 }
@@ -236,6 +257,14 @@ fix_mount_options()
         matchstr="\<resvport\>|\<noresvport\>"
         if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
             MOUNT_OPTIONS="$MOUNT_OPTIONS,noresvport"
+        fi
+    fi
+
+    matchstr="\<port\>=([0-9]+)"
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        value="${BASH_REMATCH[1]}"
+        if [ "$value" == "2047" ]; then
+            USING_PORT_2047=true
         fi
     fi
 
@@ -775,9 +804,15 @@ mount_point="$2"
 
 OPTIONS=
 MOUNT_OPTIONS=
-VERBOSE_ENABLED=false
 
 parse_arguments $*
+
+#
+# Fix MOUNT_OPTIONS if needed.
+#
+if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
+    fix_mount_options
+fi
 
 #
 # Check azure nconnect flag.
@@ -787,13 +822,6 @@ if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
         eecho "Mount failed!"
         exit 1
     fi
-fi
-
-#
-# Fix MOUNT_OPTIONS if needed.
-#
-if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
-    fix_mount_options
 fi
 
 #
