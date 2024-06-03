@@ -73,7 +73,7 @@ eecho()
 }
 
 #
-# Verbose echo, no-op unless AZNFS_VERBOSE env variable is set.
+# Verbose echo, only logs into LOGFILE unless AZNFS_VERBOSE env variable is set.
 #
 vecho()
 {
@@ -81,6 +81,26 @@ vecho()
 
     # Unless AZNFS_VERBOSE flag is set, do not echo to console.
     if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
+        (
+            flock -e 999
+            echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
+        ) 999<$LOGFILE
+
+        return
+    fi
+
+    _log $color "${*}"
+}
+
+#
+# Verbose echo, only logs into LOGFILE unless '-v' or '--verbose' option is provided.
+#
+vvecho()
+{
+    color=$NORMAL
+
+    # Unless VERBOSE_ENABLED flag is set to true, do not echo to console.
+    if [ "$VERBOSE_ENABLED" == false ]; then
         (
             flock -e 999
             echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE

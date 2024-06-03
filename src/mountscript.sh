@@ -174,13 +174,13 @@ fix_mount_options()
 
     matchstr="\<nolock\>"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding nolock mount option!"
+        vvecho "Adding nolock mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,nolock"
     fi
 
     matchstr="\<proto\>=([^,]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding proto=tcp mount option!"
+        vvecho "Adding proto=tcp mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,proto=tcp"
     else
         value="${BASH_REMATCH[1]}"
@@ -192,7 +192,7 @@ fix_mount_options()
 
     matchstr="\<vers\>=([0-9]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding vers=3 mount option!"
+        vvecho "Adding vers=3 mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,vers=3"
     else
         value="${BASH_REMATCH[1]}"
@@ -222,7 +222,7 @@ fix_mount_options()
 
     matchstr="\<retrans\>=([0-9]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding retrans=6 mount option!"
+        vvecho "Adding retrans=6 mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,retrans=6"
     else
         value="${BASH_REMATCH[1]}"
@@ -653,6 +653,9 @@ parse_arguments()
         else
             OPTIONS="$OPTIONS $arg"
         fi
+
+        if [ "$arg" == "-v" || "$arg" == "--verbose" ]
+            VERBOSE_ENABLED=true
     done
 }
 
@@ -709,7 +712,7 @@ resolve_ipv4_with_preference_to_mountmap()
 }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
-vecho "Got arguments: [$*]"
+vvecho "Got arguments: [$*]"
 
 # Check if aznfswatchdog service is running.
 if ! ensure_aznfswatchdog; then
@@ -772,6 +775,7 @@ mount_point="$2"
 
 OPTIONS=
 MOUNT_OPTIONS=
+VERBOSE_ENABLED=false
 
 parse_arguments $*
 
@@ -895,4 +899,4 @@ if [ $mount_status -ne 0 ]; then
     exit 1
 fi
 
-vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
