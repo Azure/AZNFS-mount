@@ -98,7 +98,7 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=4.1,notls <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-- Logs generated from AZNFS will be in `/opt/microsoft/aznfs/aznfs.log`.
+- Logs generated from AZNFS will be in `/opt/microsoft/aznfs/data/aznfs.log`.
 
 ## Implementation Details
 

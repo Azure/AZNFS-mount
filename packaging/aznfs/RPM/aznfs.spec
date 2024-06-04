@@ -131,6 +131,7 @@ chmod 0755 /opt/microsoft/aznfs/data
 
 # Create log directory under /etc/stunnel to store stunnel logs
 mkdir -p /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
+chmod 0644 /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
 
 # In case of upgrade.
 if [ $1 == 2 ]; then

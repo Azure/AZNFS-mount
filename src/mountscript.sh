@@ -5,6 +5,8 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
+AZNFS_VERSION="unknown"
+
 #
 # Load common aznfs helpers.
 #
@@ -350,15 +352,11 @@ get_version_from_mount_options()
     local nfs_minorvers=""
 
     #
-    # v3 team adds vers=3 option if version is missing in mount command.
-    # Hence, to avoid any breaking changes for v3,
-    # defaulting vers=3 if the version is not given.
+    # Check if version is missing in mount command.
     #
     if [ -z "$mount_options" ] || [[ ! "$mount_options" == *"$ver_string"* ]]; then
-        pecho "Adding default vers=3 mount option!"
-        mount_options="$mount_options,vers=3"
-        echo "3"
-        return
+        eecho "Missing version in mount options. Example: 'vers=3'."
+        exit 1
     fi
 
     IFS=','
@@ -433,8 +431,11 @@ fi
 
 if [ $nfs_vers == "4.1" ]; then
     AZ_PREFIX="file"
-else
+elif [ $nfs_vers == "3" ]; then
     AZ_PREFIX="blob"
+else
+    eecho "NFS version is not supported by mount helper: $nfs_vers!"
+    exit 1
 fi
 
 nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
