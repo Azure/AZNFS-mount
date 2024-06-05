@@ -1,5 +1,7 @@
 # AZNFS Mount Helper
 
+The mount helper discussed here is designed to work seamlessly with both NFSv3 and NFSv4 protocols. Its functionality spans across use cases that ensure robust handling of endpoint IP address changes for Azure Blob NFSv3 mounts and provision of a secure communication channel for Azure File NFSv4 mounts:
+
 > **Mount helper use case for correctly handling endpoint IP address changes for Azure Blob NFSv3 mounts.**
 
 Azure Blob NFSv3 is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability
@@ -31,7 +33,7 @@ process for each storage account. The stunnel client process listens on a local 
 nfs client traffic to the 2049 port where NFS server is listening on.
 
 User has to install AZNFS package and mount the NFSv4 shares using `-t aznfs` flag. During the mounting process, user can decide if
-they want to mount shares with TLS encryption or without it using `notls` option.
+they want to mount shares with TLS encryption or without it using `notls` option. For a given endpoint, all the mounts should either use TLS encryption or clear-text using `notls` option as they share the same connection.
 
 The AZNFS package runs a background job called **aznfswatchdog**. It ensures that stunnel processes are running for each storage account
 and cleanup after all shares from the storage account are unmounted. If for some reason a stunnel process is terminated unexpectedly,
@@ -90,7 +92,7 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=4.1 <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-   For air-gapped environments, ensure that the environment variable "AzureEndpointOverride" is set to the appropriate endpoint before running the mount command:
+   For isolated environments, ensure that the environment variable "AzureEndpointOverride" is set to the appropriate endpoint before running the mount command:
 	```
 	export AzureEndpointOverride=".example.end.point"
 	```

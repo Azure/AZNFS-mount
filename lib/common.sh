@@ -680,17 +680,8 @@ if [ ! -f $LOGFILE ]; then
     fi
 fi
 
-if [ ! -f $MOUNTMAPv3 ]; then
-    touch $MOUNTMAPv3
-    if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to create '${MOUNTMAPv3}'!"
-        exit 1
-    fi
-    chattr -f +i $MOUNTMAPv3
-fi
-
-# Create NFSv4 mount map file
-touch_mountmapv4
+# Create mount map file
+create_mountmap_file
 
 ulimitfd=$(ulimit -n 2>/dev/null)
 if [ -n "$ulimitfd" -a $ulimitfd -lt 131072 ]; then

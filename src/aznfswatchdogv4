@@ -169,7 +169,7 @@ process_nfsv4_mounts()
         # it around.
         #
         if ! echo "$findmnt" | grep "$accept_port" >/dev/null; then
-            pecho "${} No mounted shares for host $l_host, deleting from ${MOUNTMAPv4} [$line]."
+            pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv4} [$line]."
 
             cleanup_stunnel_files $l_conf $l_log $l_pid
 

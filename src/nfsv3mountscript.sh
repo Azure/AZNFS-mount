@@ -31,6 +31,9 @@ AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
 # Default to fixing mount options passed in to help the user.
 AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 
+# Default to fixing dirty bytes config to help the user.
+AZNFS_FIX_DIRTY_BYTES_CONFIG="${AZNFS_FIX_DIRTY_BYTES_CONFIG:-1}"
+
 #
 # Use noresvport mount option to allow using non-reserve ports by client.
 # This allows much higher number of local ports to be used by NFS client and
@@ -40,6 +43,9 @@ AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 # if noresvport option is used. This does not work will with the DRC cache.
 #
 AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
+
+# Set the fingerprint GUID as an environment variable with a default value.
+AZNFS_FINGERPRINT="${AZNFS_FINGERPRINT:-80a18d5c-9553-4c64-88dd-d7553c6b3beb}"
 
 #
 # Maximum number of accounts that can be mounted from the same tenant/cluster.
@@ -87,6 +93,63 @@ check_nconnect()
                 echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
             fi
         fi
+    fi
+}
+
+#
+# Help fix/limit the dirty bytes config of user's machine.
+# This is needed on machines with huge amount of RAM which causes the default
+# dirty settings to accumulate lot of dirty pages. When lot of dirty pages are
+# then flushed to the NFS server, it may cause slowness due to some writes
+# timing out. To avoid this we set the dirty config to optimal values.
+#
+fix_dirty_bytes_config()
+{
+    # Constants for desired settings.
+    local desired_dirty_bytes=$((8 * 1024 * 1024 * 1024))  # 8 GB in bytes
+    local desired_dirty_background_bytes=$((4 * 1024 * 1024 * 1024))  # 4 GB in bytes
+
+    # Get current settings.
+    local current_dirty_bytes=$(cat /proc/sys/vm/dirty_bytes 2>/dev/null)
+    local current_dirty_background_bytes=$(cat /proc/sys/vm/dirty_background_bytes 2>/dev/null)
+
+    # Should not happen but added for robustness.
+    if [ -z "$current_dirty_bytes" -o -z "$current_dirty_background_bytes" ]; then
+        wecho "current_dirty_bytes=$current_dirty_bytes"
+        wecho "current_dirty_background_bytes=$current_dirty_background_bytes"
+        return
+    fi
+
+    # If current dirty bytes are 0, calculate them from the ratio configs.
+    if [ $current_dirty_background_bytes -eq 0 ]; then
+        # Get total memory in bytes.
+        local total_mem_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        local total_mem_bytes=$((total_mem_KB * 1024))
+
+        local current_dirty_ratio=$(cat /proc/sys/vm/dirty_ratio 2>/dev/null)
+        local current_dirty_background_ratio=$(cat /proc/sys/vm/dirty_background_ratio 2>/dev/null)
+
+        # Should not happen but added for robustness.
+        if [ -z "$current_dirty_ratio" -o \
+             -z "$current_dirty_background_ratio" -o \
+             "$current_dirty_ratio" == "0" -o \
+             "$current_dirty_background_ratio" == "0" ]; then
+            wecho "current_dirty_ratio=$current_dirty_ratio"
+            wecho "current_dirty_background_ratio=$current_dirty_background_ratio"
+            return
+        fi
+
+        current_dirty_bytes=$((total_mem_bytes * current_dirty_ratio / 100))
+        current_dirty_background_bytes=$((total_mem_bytes * current_dirty_background_ratio / 100))
+    fi
+
+    # If current dirty byte settings are higher than desired, set to desired.
+    if [ $desired_dirty_background_bytes -lt $current_dirty_background_bytes ]; then
+        pecho "Setting /proc/sys/vm/dirty_bytes to $desired_dirty_bytes bytes"
+        echo $desired_dirty_bytes > /proc/sys/vm/dirty_bytes
+
+        pecho "Setting /proc/sys/vm/dirty_background_bytes to $desired_dirty_background_bytes bytes"
+        echo $desired_dirty_background_bytes > /proc/sys/vm/dirty_background_bytes
     fi
 }
 
@@ -151,6 +214,18 @@ fix_mount_options()
         if [ $value -ne 1048576 ]; then
             pecho "Suboptimal wsize=$value mount option, setting wsize=1048576!"
             MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<wsize\>=$value/wsize=1048576/g")
+        fi
+    fi
+
+    matchstr="\<retrans\>=([0-9]+)"
+    if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        pecho "Adding retrans=6 mount option!"
+        MOUNT_OPTIONS="$MOUNT_OPTIONS,retrans=6"
+    else
+        value="${BASH_REMATCH[1]}"
+        if [ $value -lt 6 ]; then
+            pecho "Suboptimal retrans=$value mount option, setting retrans=6!"
+            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<retrans\>=$value/retrans=6/g")
         fi
     fi
 
@@ -598,6 +673,13 @@ if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
 fi
 
 #
+# Fix dirty bytes config if needed.
+#
+if [ "$AZNFS_FIX_DIRTY_BYTES_CONFIG" == "1" ]; then
+    fix_dirty_bytes_config
+fi
+
+#
 # Get proxy IP to use for this nfs_ip.
 # It'll ensure an appropriate entry is added to MOUNTMAPv3 if not already added,
 # and an appropriate iptable DNAT rule is added.
@@ -651,6 +733,29 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
         MOUNT_OPTIONS="$MOUNT_OPTIONS,mountport=$AZNFS_PORT"
     fi
     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
+fi
+
+#
+# Perform a pseudo mount to generate a gatepass for the actual mount call.
+# This request is expected to fail with "server access denied" if server-side changes are enabled,
+# or with "no such file or directory" if not. Failure of this call is expected behavior, 
+# and we proceed normally when it occurs.
+#
+mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
+mount_status=$?
+
+if [ -n "$mount_output" ]; then
+    vecho "[Gatepass mount] $mount_output"
+fi
+
+#
+# Ensure that gatepass mount operation failed (expected behavior).
+# Exit with an error code if it succeeded, which is unexpected.
+#
+if [ $mount_status -eq 0 ]; then
+    vecho "[Gatepass mount] Unexpected success!"
+    eecho "Mount failed!"
+    exit 1
 fi
 
 # Do the actual mount.

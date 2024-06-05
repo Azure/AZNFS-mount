@@ -448,7 +448,7 @@ fi
 if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
     eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
     eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
-    eecho "For air-gapped environments, must set the environment variable AzureEndpointOverride to the appropriate endpoint!"
+    eecho "For isolated environments, must set the environment variable AzureEndpointOverride to the appropriate endpoint!
     exit 1
 fi
 
