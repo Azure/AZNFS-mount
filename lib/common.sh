@@ -99,8 +99,8 @@ vvecho()
 {
     color=$NORMAL
 
-    # Unless VERBOSE_ENABLED flag is set to true, do not echo to console.
-    if [ "$VERBOSE_ENABLED" == false ]; then
+    # Unless VERBOSE_MOUNT flag is set to true, do not echo to console.
+    if [ "$VERBOSE_MOUNT" == false ]; then
         (
             flock -e 999
             echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
