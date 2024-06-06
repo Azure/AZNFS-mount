@@ -734,7 +734,7 @@ parse_arguments()
         else
             OPTIONS="$OPTIONS $arg"
 
-            if [ "$arg" == "-v" || "$arg" == "--verbose" ]; then
+            if [[ "$arg" == "-v" || "$arg" == "--verbose" ]]; then
                 VERBOSE_MOUNT=true
             fi
         fi
