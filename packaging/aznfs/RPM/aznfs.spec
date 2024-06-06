@@ -4,7 +4,7 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
@@ -53,7 +53,7 @@ if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
         systemctl stop aznfswatchdog
         systemctl disable aznfswatchdog
 
-		systemctl stop aznfswatchdogv4
+        systemctl stop aznfswatchdogv4
         systemctl disable aznfswatchdogv4
 
         echo "Stopped aznfswatchdog services"
@@ -169,13 +169,13 @@ fi
 if [ ! -f "$FLAG_FILE" ]; then
         user_consent_for_auto_update
 
-		# Start watchdog service for NFSv3
+        # Start watchdog service for NFSv3
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
 
-		# Start watchdog service for NFSv4
-		systemctl daemon-reload
+        # Start watchdog service for NFSv4
+        systemctl daemon-reload
         systemctl enable aznfswatchdogv4
         systemctl start aznfswatchdogv4
 else
@@ -216,7 +216,7 @@ if [ $1 == 0 ]; then
 				echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
 				echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
 				echo "To fix this, run the below command to install dependencies:"
-				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME stunnel"
+				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME stunnel net-tools"
 				echo "*******************************************************************"
 				echo
 			fi

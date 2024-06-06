@@ -569,6 +569,22 @@ ensure_iptable_entry()
     fi
 }
 
+#
+# We only use lowercase single word names for distro id:
+# ubuntu, centos, redhat, sles.
+#
+canonicalize_distro_id()
+{
+    local distro_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+    # Use sles for SUSE/SLES.
+    if [ "$distro_lower" == "suse" ]; then
+        distro_lower="sles"
+    fi
+
+    echo "$distro_lower"
+}
+
 log_version_info()
 {
     if [ -f /etc/centos-release ]; then

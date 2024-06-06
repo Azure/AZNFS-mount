@@ -303,22 +303,6 @@ run_daily_once()
 }
 
 #
-# We only use lowercase single word names for distro id:
-# ubuntu, centos, redhat, sles.
-#
-canonicalize_distro_id()
-{
-    local distro_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
-
-    # Use sles for SUSE/SLES.
-    if [ "$distro_lower" == "suse" ]; then
-        distro_lower="sles"
-    fi
-
-    echo "$distro_lower"
-}
-
-#
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
 # addresses possibly as a result of migration.
 #
@@ -578,4 +562,3 @@ while :; do
     sleep $MONITOR_INTERVAL_SECS
     process_nfsv3_mounts
 done
-
