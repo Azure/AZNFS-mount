@@ -127,14 +127,14 @@ check_nconnect()
             # azure nconnect support if enabled.
             #
             if [ $USING_PORT_2047 == false ]; then
-                if has_2047_nconnect_mounts; then
-                    eecho "One or more mounts to port 2047 are using nconnect."
-                    eecho "Cannot mix port 2048 and 2047 nconnect mounts, unmount those and try mounting again!"
+                if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
+                    eecho "nconnect option needs NFS client with Azure nconnect support!"
                     return 1
                 fi
 
-                if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
-                    eecho "nconnect option needs NFS client with Azure nconnect support!"
+                if has_2047_nconnect_mounts; then
+                    eecho "One or more mounts to port 2047 are using nconnect."
+                    eecho "Cannot mix port 2048 and 2047 nconnect mounts, unmount those and try mounting again!"
                     return 1
                 fi
 
