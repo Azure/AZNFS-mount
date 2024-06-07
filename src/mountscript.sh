@@ -164,7 +164,7 @@ check_nconnect()
                 # nconnect, limit to optimal value 4.
                 #
                 if [ $value -gt 4 ]; then
-                    vvecho "Suboptimal nconnect value $value, forcing nconnect=4!"
+                    pecho "Suboptimal nconnect value $value, forcing nconnect=4!"
                     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=4/g")
                 fi
             fi
