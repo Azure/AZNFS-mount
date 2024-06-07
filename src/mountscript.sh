@@ -794,7 +794,7 @@ resolve_ipv4_with_preference_to_mountmap()
 }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
-vvecho "Got arguments: [$*]"
+vecho "Got arguments: [$*]"
 
 # Check if aznfswatchdog service is running.
 if ! ensure_aznfswatchdog; then
