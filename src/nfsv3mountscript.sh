@@ -71,8 +71,36 @@ PID=""
 OPTIMIZE_GET_FREE_LOCAL_IP=true
 
 #
-# Check if nconnect mount option can be used. If not bail out failing the mount,
+# True if user has asked to use port 2047 using 'port=2047' mount option.
+# This signifies server side nconnect which has some special needs.
+#
+USING_PORT_2047=false
+
+#
+# Check if any nconnect mount exists for port 2048.
+#
+has_2048_nconnect_mounts()
+{
+    local findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs | egrep "\<port=2048\>" | egrep "\<nconnect=")
+
+    [ -n "$findmnt" ]
+}
+
+#
+# Check if any nconnect mount exists for port 2047.
+#
+has_2047_nconnect_mounts()
+{
+    local findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs | egrep "\<port=2047\>" | egrep "\<nconnect=")
+
+    [ -n "$findmnt" ]
+}
+
+#
+# If server side nconnect is not used, check if azure nconnect is supported. If not bail out failing the mount,
 # else if NFS client supports Azure nconnect but it's not enabled, enable it.
+#
+# If server side nconnect is used, disable azure nconnect.
 #
 check_nconnect()
 {
@@ -80,17 +108,57 @@ check_nconnect()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         value="${BASH_REMATCH[1]}"
         if [ $value -gt 1 ]; then
-            modprobe sunrpc
-            if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
-                eecho "nconnect option needs NFS client with Azure nconnect support!"
-                return 1
+            # Load sunrpc module if not already loaded.
+            if [ ! -d /sys/module/sunrpc/ ]; then
+                modprobe sunrpc
             fi
 
-            # Supported, enable if not enabled.
-            enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
-            if ! [[ "$enabled" =~ [yY] ]]; then
-                pecho "Azure nconnect not enabled, enabling!"
-                echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
+            #
+            # W/o server side nconnect, we need the azure nconnect support,
+            # turn it on. OTOH, if Server side nconnect is being used turn off
+            # azure nconnect support if enabled.
+            #
+            if [ $USING_PORT_2047 == false ]; then
+                if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
+                    eecho "nconnect option needs NFS client with Azure nconnect support!"
+                    return 1
+                fi
+
+                if has_2047_nconnect_mounts; then
+                    eecho "One or more mounts to port 2047 are using nconnect."
+                    eecho "Cannot mix port 2048 and 2047 nconnect mounts, unmount those and try mounting again!"
+                    return 1
+                fi
+
+                # Supported, enable if not enabled.
+                enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
+                if ! [[ "$enabled" =~ [yY] ]]; then
+                    vvecho "Azure nconnect not enabled, enabling!"
+                    echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
+                fi
+            else
+                if has_2048_nconnect_mounts; then
+                    eecho "One or more mounts to port 2048 are using nconnect."
+                    eecho "Cannot mix port 2048 and 2047 nconnect mounts, unmount those and try mounting again!"
+                    return 1
+                fi
+
+                if [ -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
+                    enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
+                    if [[ "$enabled" =~ [yY] ]]; then
+                        vvecho "Azure nconnect enabled, disabling!"
+                        echo N > /sys/module/sunrpc/parameters/enable_azure_nconnect
+                    fi
+                fi
+
+                #
+                # Higher nconnect values don't work well for server side
+                # nconnect, limit to optimal value 4.
+                #
+                if [ $value -gt 4 ]; then
+                    pecho "Suboptimal nconnect value $value, forcing nconnect=4!"
+                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=4/g")
+                fi
             fi
         fi
     fi
@@ -145,10 +213,10 @@ fix_dirty_bytes_config()
 
     # If current dirty byte settings are higher than desired, set to desired.
     if [ $desired_dirty_background_bytes -lt $current_dirty_background_bytes ]; then
-        pecho "Setting /proc/sys/vm/dirty_bytes to $desired_dirty_bytes bytes"
+        vvecho "Setting /proc/sys/vm/dirty_bytes to $desired_dirty_bytes bytes"
         echo $desired_dirty_bytes > /proc/sys/vm/dirty_bytes
 
-        pecho "Setting /proc/sys/vm/dirty_background_bytes to $desired_dirty_background_bytes bytes"
+        vvecho "Setting /proc/sys/vm/dirty_background_bytes to $desired_dirty_background_bytes bytes"
         echo $desired_dirty_background_bytes > /proc/sys/vm/dirty_background_bytes
     fi
 }
@@ -171,13 +239,13 @@ fix_mount_options()
 
     matchstr="\<nolock\>"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding nolock mount option!"
+        vvecho "Adding nolock mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,nolock"
     fi
 
     matchstr="\<proto\>=([^,]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding proto=tcp mount option!"
+        vvecho "Adding proto=tcp mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,proto=tcp"
     else
         value="${BASH_REMATCH[1]}"
@@ -189,7 +257,7 @@ fix_mount_options()
 
     matchstr="\<vers\>=([0-9]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding vers=3 mount option!"
+        vvecho "Adding vers=3 mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,vers=3"
     else
         value="${BASH_REMATCH[1]}"
@@ -219,7 +287,7 @@ fix_mount_options()
 
     matchstr="\<retrans\>=([0-9]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        pecho "Adding retrans=6 mount option!"
+        vvecho "Adding retrans=6 mount option!"
         MOUNT_OPTIONS="$MOUNT_OPTIONS,retrans=6"
     else
         value="${BASH_REMATCH[1]}"
@@ -233,6 +301,14 @@ fix_mount_options()
         matchstr="\<resvport\>|\<noresvport\>"
         if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
             MOUNT_OPTIONS="$MOUNT_OPTIONS,noresvport"
+        fi
+    fi
+
+    matchstr="\<port\>=([0-9]+)"
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        value="${BASH_REMATCH[1]}"
+        if [ "$value" == "2047" ]; then
+            USING_PORT_2047=true
         fi
     fi
 
@@ -656,6 +732,13 @@ if [ $status -ne 0 ]; then
 fi
 
 #
+# Fix MOUNT_OPTIONS if needed.
+#
+if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
+    fix_mount_options
+fi
+
+#
 # Check azure nconnect flag.
 #
 if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
@@ -663,13 +746,6 @@ if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
         eecho "Mount failed!"
         exit 1
     fi
-fi
-
-#
-# Fix MOUNT_OPTIONS if needed.
-#
-if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
-    fix_mount_options
 fi
 
 #
@@ -775,4 +851,4 @@ if [ $mount_status -ne 0 ]; then
     exit 1
 fi
 
-vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"

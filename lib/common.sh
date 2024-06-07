@@ -100,7 +100,6 @@ eecho()
 vecho()
 {
     color=$NORMAL
-    version=$1
 
     # Unless AZNFS_VERBOSE flag is set, do not echo to console.
     if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
@@ -126,7 +125,7 @@ vvecho()
     if [ "$VERBOSE_MOUNT" == false ]; then
         (
             flock -e 999
-            echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
+            echo -e "${prefix}: $(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
         ) 999<$LOGFILE
 
         return
