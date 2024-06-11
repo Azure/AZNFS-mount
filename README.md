@@ -26,7 +26,7 @@ create a DNAT rule to route the traffic from the chosen private IP to original e
 > **Mount helper use case for a secure communication channel for Azure File NFSv4 mounts.**
 
 The mount helper can be used to provide a secure communication channel for NFSv4 traffic. This is achieved by implementing TLS encryption for
-NFS traffic.
+NFS traffic using stunnel. Stunnel is a proxy designed to add TLS encryption functionality to existing services: [https://www.stunnel.org/](https://www.stunnel.org/)
 
 The aznfs mount helper will be used to mount the NFS shares with TLS support. The mount helper initializes dedicated stunnel client
 process for each storage account. The stunnel client process listens on a local port for inbound traffic, and then stunnel redirects
@@ -92,9 +92,9 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=4.1 <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-   For isolated environments, ensure that the environment variable "AzureEndpointOverride" is set to the appropriate endpoint before running the mount command:
+   For isolated environments, ensure that the environment variable "AZURE_ENDPOINT_OVERRIDE" is set to the appropriate endpoint before running the mount command:
 	```
-	export AzureEndpointOverride=".example.end.point"
+	export AZURE_ENDPOINT_OVERRIDE="example.end.point"
 	```
 - Mount Azure File NFSv4 share without TLS:
 	```

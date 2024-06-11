@@ -51,5 +51,5 @@ if [ ! -f "$flag_file" ]; then
 	systemctl stop aznfswatchdogv4
 	systemctl disable aznfswatchdogv4
 
-	echo "Stopped aznfswatchdog services"
+	echo "Stopped aznfs watchdog service"
 fi

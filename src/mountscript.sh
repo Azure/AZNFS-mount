@@ -21,39 +21,17 @@ VERBOSE_MOUNT=false
 #
 is_valid_fqdn()
 {
-    # If AzureEndpointOverride environment variable is set, use it to verify FQDN
-    if [[ -n "$AzureEndpointOverride" ]]; then
-        ModifiedEndPoint = $(echo $AzureEndpointOverride |  sed 's/\./\\./g')
-        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core+$ModifiedEndPoint$ ]]
+    # If AZURE_ENDPOINT_OVERRIDE environment variable is set, use it to verify FQDN
+    if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
+        modified_endpoint=$(echo $AZURE_ENDPOINT_OVERRIDE |  sed 's/\./\\./g')
+        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.$modified_endpoint$ ]]
     else
         [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.(windows\.net|usgovcloudapi\.net|chinacloudapi\.cn)$ ]]
     fi
 }
 
 #
-# Check if mounting this new share will exceed the "max accounts mountable per tenant" limit.
-#
-check_account_count()
-{
-    #
-    # nfs_ip MUST be set before calling this function.
-    #
-    local num=$(grep -c " ${nfs_ip}$" $MOUNTMAP)
-    if [ $num -ge $MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT ]; then
-        #
-        # If this is not a new account it will reuse the existing entry and not
-        # cause a new entry to be added to MOUNTMAP, in that case allow the mount.
-        #
-        if ! grep -q "^${nfs_host} " $MOUNTMAP; then
-            return 1
-        fi
-    fi
-
-    return 0
-}
-
-#
-# Get blob endpoint from account.blob.core.windows.net:/account/container.
+# Get endpoint from account.blob/file.core.windows.net:/account/container.
 #
 get_host_from_share()
 {
@@ -101,8 +79,8 @@ get_version_from_mount_options()
 {
     local mount_options="$MOUNT_OPTIONS"
     local ver_string="vers="
-    local minor_ver_string="minorversion"
-    local nfs_ver=""
+    local minor_ver_string="minorversion="
+    local nfs_vers=""
     local nfs_minorvers=""
 
     #
@@ -119,7 +97,7 @@ get_version_from_mount_options()
     for option in "${options_arr[@]}";
     do
         if [[ "$option" == *"$ver_string"* ]]; then
-            nfs_ver=$(echo $option | cut -d= -f2)
+            nfs_vers=$(echo $option | cut -d= -f2)
         fi
 
         if [[ "$option" == *"$minor_ver_string"* ]]; then
@@ -128,9 +106,9 @@ get_version_from_mount_options()
     done
 
     if [ -z "$nfs_minorvers" ]; then
-        echo "$nfs_ver"
+        echo "$nfs_vers"
     else
-        echo "$nfs_ver.$nfs_minorvers"
+        echo "$nfs_vers.$nfs_minorvers"
     fi
 }
 
@@ -179,13 +157,12 @@ parse_arguments $*
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
-    echo "$nfs_vers"
     exit 1
 fi
 
-if [ $nfs_vers == "4.1" ]; then
+if [ "$nfs_vers" == "4.1" ]; then
     AZ_PREFIX="file"
-elif [ $nfs_vers == "3" ]; then
+elif [ "$nfs_vers" == "3" ]; then
     AZ_PREFIX="blob"
 else
     eecho "NFS version is not supported by mount helper: $nfs_vers!"
@@ -194,7 +171,6 @@ fi
 
 nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
-    echo "$nfs_host"
     exit 1
 fi
 
@@ -202,13 +178,12 @@ fi
 if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
     eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
     eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
-    eecho "For isolated environments, must set the environment variable AzureEndpointOverride to the appropriate endpoint!"
+    eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint!"
     exit 1
 fi
 
 nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
-    echo "$nfs_dir"
     exit 1
 fi
 

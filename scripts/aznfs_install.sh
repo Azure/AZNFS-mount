@@ -171,7 +171,7 @@ perform_aznfs_update()
             exit 1
         fi
         secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER."
-        pecho "Restarting watchdog services to apply changes..."
+        pecho "Restarting aznfs watchdog service to apply changes..."
         systemctl daemon-reload
         systemctl restart aznfswatchdog
         systemctl restart aznfswatchdogv4
@@ -275,7 +275,7 @@ ensure_pkg()
     local pkg="$1"
     local distro="$distro_id"
 
-    if [ "$distro" == "ubuntu" ]; then
+    if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
         if ! $apt_update_done; then
             apt -y update
             if [ $? -ne 0 ]; then

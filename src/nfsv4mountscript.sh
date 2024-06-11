@@ -15,13 +15,34 @@ nfs_dir=$4
 mount_point=$5
 
 STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
-STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
 NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 DEBUG_LEVEL="info"
 
+# Certificates related variables.
+CERT_PATH=
+CERT_UPDATE_COMMAND=
+STUNNEL_CAFILE=
+
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
 CONNECT_PORT=2049
+
+get_next_available_port()
+{
+    for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
+    do
+        is_port_available=`netstat -tuapn | grep "$LOCALHOST:$port "`
+        if [ -z "$is_port_available" ]; then
+            break
+        fi
+    done
+
+    if [ $port -le $NFSV4_PORT_RANGE_END ]; then
+        echo "$port"
+    else
+        echo ""
+    fi
+}
 
 find_next_available_port_and_start_stunnel()
 {
@@ -70,32 +91,38 @@ find_next_available_port_and_start_stunnel()
     done
 }
 
-get_next_available_port()
+get_cert_path_based_and_command()
 {
-    for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
-    do
-        is_port_available=`netstat -tuapn | grep "$LOCALHOST:$port "`
-        if [ -z "$is_port_available" ]; then
-            break
-        fi
-    done
-
-    if [ $port -le $NFSV4_PORT_RANGE_END ]; then
-        echo "$port"
+    # Check if we're on a Debian-based distribution
+    if command -v apt-get &> /dev/null; then
+        CERT_PATH="/usr/local/share/ca-certificates"
+        CERT_UPDATE_COMMAND="update-ca-certificates"
+        STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
+    # Check if we're on a Red Hat-based distribution
+    elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+        CERT_PATH="/etc/pki/ca-trust/source/anchors"
+        CERT_UPDATE_COMMAND="update-ca-trust extract"
+        STUNNEL_CAFILE="${CERT_PATH}/DigiCert_Global_Root_G2.crt"
+    # Check if we're on a SUSE-based distribution
+    elif command -v zypper &> /dev/null; then
+        CERT_PATH="/etc/pki/trust/anchors"
+        CERT_UPDATE_COMMAND="update-ca-certificates"
+        STUNNEL_CAFILE="${CERT_PATH}/DigiCert_Global_Root_G2.crt"
     else
-        echo ""
+        eecho "[FATAL] Unsupported distribution!"
+        return 1
     fi
 }
 
 install_CA_cert()
 {
-    wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O /usr/local/share/ca-certificates/DigiCert_Global_Root_G2.crt
+    wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O ${CERT_PATH}/DigiCert_Global_Root_G2.crt
     if [ $? -ne 0 ]; then
         eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem !"
         return 1
     fi
 
-    update-ca-certificates
+    $CERT_UPDATE_COMMAND
 }
 
 #
@@ -106,6 +133,9 @@ add_stunnel_configuration()
     local storageaccount=$1
     chattr -f -i $stunnel_conf_file
 
+    if ! get_cert_path_based_and_command; then
+        return 1
+    fi
 
     if [ ! -f $STUNNEL_CAFILE ]; then
         vecho "CA root cert is missing for stunnel configuration. Installing DigiCert_Global_Root_G2 certificate."

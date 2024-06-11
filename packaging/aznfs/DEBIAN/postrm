@@ -11,5 +11,5 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	chattr -f -i /opt/microsoft/aznfs/data/mountmapv4
 	rm -rf /opt/microsoft/aznfs
 	chattr -f -i /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
-	rm -rf /etc/stunnel/microsoft/aznfs/nfsv4_fileShare
+	rm -rf /etc/stunnel/microsoft
 fi

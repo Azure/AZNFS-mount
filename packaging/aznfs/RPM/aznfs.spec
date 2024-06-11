@@ -56,7 +56,7 @@ if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
         systemctl stop aznfswatchdogv4
         systemctl disable aznfswatchdogv4
 
-        echo "Stopped aznfswatchdog services"
+        echo "Stopped aznfs watchdog service"
 fi
 
 
@@ -241,5 +241,5 @@ if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmapv4
 	rm -rf /opt/microsoft/aznfs
 	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
-	rm -rf /etc/stunnel/microsoft/aznfs/nfsv4_fileShare
+	rm -rf /etc/stunnel/microsoft
 fi
