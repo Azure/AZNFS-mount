@@ -5,11 +5,6 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-# Are we running inside the AKS?
-AKS_USER="false"
-
-RELEASE_NUMBER_FOR_AKS=x.y.z
-
 # How often do we check for change in FQDN->IP?
 IP_CHANGE_DETECTION_FREQUENCY=60
 

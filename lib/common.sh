@@ -40,6 +40,11 @@ else
     prefix="[v${AZNFS_VERSION}] "
 fi
 
+# Are we running inside the AKS?
+AKS_USER="false"
+
+RELEASE_NUMBER_FOR_AKS=x.y.z
+
 #
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob and nfs file endpoints.
