@@ -236,9 +236,8 @@ process_nfsv4_mounts()
     done
 }
 
-AZNFS_VERSION=4
-
 # Load common aznfs helpers.
+AZNFS_VERSION=4
 . /opt/microsoft/aznfs/common.sh
 
 vecho "Starting aznfswatchdog for NFSv4..."

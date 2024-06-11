@@ -174,7 +174,6 @@ perform_aznfs_update()
         pecho "Restarting watchdog services to apply changes..."
         systemctl daemon-reload
         systemctl restart aznfswatchdog
-        systemctl daemon-reload
         systemctl restart aznfswatchdogv4
 
     elif [ "$RUN_MODE" == "manual-update" ]; then

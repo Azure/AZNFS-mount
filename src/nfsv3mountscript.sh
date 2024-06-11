@@ -2,11 +2,10 @@
 # NfSv3 logic for mount helper
 #
 
-AZNFS_VERSION=3
-
 #
 # Load common aznfs helpers.
 #
+AZNFS_VERSION=3
 . /opt/microsoft/aznfs/common.sh
 
 MOUNT_OPTIONS=$1

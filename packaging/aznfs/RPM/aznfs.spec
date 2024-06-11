@@ -175,7 +175,6 @@ if [ ! -f "$FLAG_FILE" ]; then
         systemctl start aznfswatchdog
 
         # Start watchdog service for NFSv4
-        systemctl daemon-reload
         systemctl enable aznfswatchdogv4
         systemctl start aznfswatchdogv4
 else
@@ -201,8 +200,8 @@ NORMAL="\e[0m"
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
 	existing_mounts_v3=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	existing_mountsv4=$(cat /opt/microsoft/aznfs/data/mountmapv4 2>/dev/null | egrep '^\S+' | wc -l)
-	if [ $existing_mounts_v3 -ne 0 -o $existing_mountsv4 -ne 0 ]; then
+	existing_mounts_v4=$(cat /opt/microsoft/aznfs/data/mountmapv4 2>/dev/null | egrep '^\S+' | wc -l)
+	if [ $existing_mounts_v3 -ne 0 -o $existing_mounts_v4 -ne 0 ]; then
 		echo
 		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
 		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty

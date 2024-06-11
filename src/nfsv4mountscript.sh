@@ -2,11 +2,10 @@
 # NfSv4 logic for mount helper
 #
 
-AZNFS_VERSION=4
-
 #
 # Load common aznfs helpers.
 #
+AZNFS_VERSION=4
 . /opt/microsoft/aznfs/common.sh
 
 MOUNT_OPTIONS=$1
@@ -360,12 +359,17 @@ fi
 vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
 # MOUNTMAPv4 file must have been created by aznfswatchdog service.
-if [ ! -f $MOUNTMAPv4 ]; then
-    touch $MOUNTMAPv4
-    if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to create '${MOUNTMAPv4}'!"
-        exit 1
+if [ ! -f "$MOUNTMAPv4" ]; then
+    eecho "[FATAL] ${MOUNTMAPv4} not found!"
+
+    if systemd_is_init; then
+        pecho "Try restarting the aznfswatchdogv4 service using 'systemctl start aznfswatchdogv4' and then retry the mount command."
+    else
+        eecho "aznfswatchdogv4 service not running, please make sure it's running and try again!"
     fi
+
+    pecho "If the problem persists, contact Microsoft support."
+    exit 1
 fi
 
 if ! chattr -f +i $MOUNTMAPv4; then

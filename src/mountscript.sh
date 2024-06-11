@@ -5,11 +5,10 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-AZNFS_VERSION="unknown"
-
 #
 # Load common aznfs helpers.
 #
+AZNFS_VERSION="unknown"
 . /opt/microsoft/aznfs/common.sh
 
 #

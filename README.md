@@ -26,7 +26,7 @@ create a DNAT rule to route the traffic from the chosen private IP to original e
 > **Mount helper use case for a secure communication channel for Azure File NFSv4 mounts.**
 
 The mount helper can be used to provide a secure communication channel for NFSv4 traffic. This is achieved by implementing TLS encryption for
-NFS traffic and leveraging the Security Support Provider Interface (SSPI) for secure communication.
+NFS traffic.
 
 The aznfs mount helper will be used to mount the NFS shares with TLS support. The mount helper initializes dedicated stunnel client
 process for each storage account. The stunnel client process listens on a local port for inbound traffic, and then stunnel redirects

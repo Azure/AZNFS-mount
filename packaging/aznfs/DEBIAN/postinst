@@ -118,7 +118,6 @@ if [ ! -f "$FLAG_FILE" ]; then
         systemctl start aznfswatchdog
 
         # Start the watchdog service for NFSv4
-        systemctl daemon-reload
         systemctl enable aznfswatchdogv4
         systemctl start aznfswatchdogv4
 else

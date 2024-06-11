@@ -54,7 +54,7 @@ _log()
     echo -e "${color}${msg}${NORMAL}"
     (
         flock -e 999
-        echo -e "${prefix}: $(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}" >> $LOGFILE
+        echo -e "${prefix}$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}" >> $LOGFILE
     ) 999<$LOGFILE
 }
 
@@ -105,7 +105,7 @@ vecho()
     if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
         (
             flock -e 999
-            echo -e "${prefix}: $(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
+            echo -e "${prefix}$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
         ) 999<$LOGFILE
 
         return
@@ -125,7 +125,7 @@ vvecho()
     if [ "$VERBOSE_MOUNT" == false ]; then
         (
             flock -e 999
-            echo -e "${prefix}: $(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
+            echo -e "${prefix}$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
         ) 999<$LOGFILE
 
         return
@@ -358,7 +358,7 @@ create_mountmap_file()
         touch ${!mountmap_filename}
         if [ $? -ne 0 ]; then
             eecho "[FATAL] Not able to create '${!mountmap_filename}'!"
-            exit 1
+            return 1
         fi
         chattr -f +i ${!mountmap_filename}
     fi
@@ -696,7 +696,9 @@ if [ ! -f $LOGFILE ]; then
 fi
 
 # Create mount map file
-create_mountmap_file
+if ! create_mountmap_file; then
+    exit 1
+fi
 
 ulimitfd=$(ulimit -n 2>/dev/null)
 if [ -n "$ulimitfd" -a $ulimitfd -lt 131072 ]; then

@@ -47,9 +47,8 @@ next_ip_change_detection_epoch=0
 #
 next_daily_run_epoch=$(expr $(date +%s) + 60)
 
-AZNFS_VERSION=3
-
 # Load common aznfs helpers.
+AZNFS_VERSION=3
 . /opt/microsoft/aznfs/common.sh
 
 # Create /opt/microsoft/aznfs/data/randbytes if not already created.
