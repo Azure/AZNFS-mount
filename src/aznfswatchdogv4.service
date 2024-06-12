@@ -1,15 +1,20 @@
-#!/bin/bash
-
 # --------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
-	chattr -f -i /opt/microsoft/aznfs/data/mountmap
-	chattr -f -i /opt/microsoft/aznfs/data/randbytes
-	chattr -f -i /opt/microsoft/aznfs/data/mountmapv4
-	rm -rf /opt/microsoft/aznfs
-	chattr -f -i /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
-	rm -rf /etc/stunnel/microsoft
-fi
+[Unit]
+Description= aznfs watchdog for NFSv4 mounts
+  
+Before=
+After=
+
+[Service]
+User=root
+
+ExecStart=/usr/sbin/aznfswatchdogv4
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=nfs-client.target

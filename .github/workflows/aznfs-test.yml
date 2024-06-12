@@ -38,7 +38,10 @@ jobs:
         run: |
           declare -a files_to_check=(
             "/src/aznfswatchdog"
+            "/src/aznfswatchdogv4"
             "/src/mountscript.sh"
+            "/src/nfsv3mountscript.sh"
+            "/src/nfsv4mountscript.sh"
             "/lib/common.sh"
             "/scripts/aznfs_install.sh"
             "/testing/testscript.sh"

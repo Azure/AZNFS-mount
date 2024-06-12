@@ -11,11 +11,12 @@ RED="\e[2;31m"
 NORMAL="\e[0m"
 
 if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
-	# Verify if any existing mounts are there, warn the user about this.
-	existing_mounts=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	if [ $existing_mounts -ne 0 ]; then
+	# Verify if any v3 or v4.1 existing mounts are there, warn the user about this.
+	existing_mounts_v3=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
+	existing_mounts_v4=$(cat /opt/microsoft/aznfs/data/mountmapv4 2>/dev/null | egrep '^\S+' | wc -l)
+	if [ $existing_mounts_v3 -ne 0 -o $existing_mounts_v4 -ne 0 ]; then
 		echo
-		echo -e "${RED}There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!"
+		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!"
 		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} "
 		read -n 1 result
 		echo
@@ -30,7 +31,7 @@ flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 if [ -f "$flag_file" ]; then
 	# Get the PID of aznfswatchdog.
-	pid_aznfswatchdog=$(pgrep aznfswatchdog)
+	pid_aznfswatchdog=$(pgrep -x aznfswatchdog)
 	
 	# Read the PID from the flag file.
 	pid_aznfswatchdog_in_flagfile=$(cat $flag_file)
@@ -46,5 +47,9 @@ if [ ! -f "$flag_file" ]; then
 	# Stop aznfswatchdog service and clean it.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
-	echo "Stopped aznfswatchdog service"
+
+	systemctl stop aznfswatchdogv4
+	systemctl disable aznfswatchdogv4
+
+	echo "Stopped aznfs watchdog service"
 fi

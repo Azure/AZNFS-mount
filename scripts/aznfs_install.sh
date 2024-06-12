@@ -171,9 +171,10 @@ perform_aznfs_update()
             exit 1
         fi
         secho "Successfully updated AZNFS version $current_version to $RELEASE_NUMBER."
-        pecho "Restarting aznfswatchdog to apply changes..."
+        pecho "Restarting aznfs watchdog service to apply changes..."
         systemctl daemon-reload
         systemctl restart aznfswatchdog
+        systemctl restart aznfswatchdogv4
 
     elif [ "$RUN_MODE" == "manual-update" ]; then
         # Choosing the appropriate installation options based on distro.
@@ -208,7 +209,7 @@ check_aznfs_update()
         # Compare the current version with the latest release.
         if is_new_version_available "$current_version" "$RELEASE_NUMBER"; then
             # Get the PID of aznfswatchdog.
-            pid_aznfswatchdog=$(pgrep aznfswatchdog)
+            pid_aznfswatchdog=$(pgrep -x aznfswatchdog)
             if [ -n "$pid_aznfswatchdog" ]; then
                 # Create a flag file with the PID to indicate that an update is in progress.
                 echo "$pid_aznfswatchdog" > "$FLAG_FILE"
@@ -274,7 +275,7 @@ ensure_pkg()
     local pkg="$1"
     local distro="$distro_id"
 
-    if [ "$distro" == "ubuntu" ]; then
+    if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
         if ! $apt_update_done; then
             apt -y update
             if [ $? -ne 0 ]; then
