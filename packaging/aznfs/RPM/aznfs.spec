@@ -1,13 +1,13 @@
 Name: AZNFS_PACKAGE_NAME
 Version: x.y.z
 Release: 1
-Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
+Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt
 
 %description
-Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
+Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
 
 %prep
 mkdir -p ${STG_DIR}/RPM_DIR/root/rpmbuild/SOURCES/
@@ -15,15 +15,11 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 
 %files
 /usr/sbin/aznfswatchdog
-/usr/sbin/aznfswatchdogv4
 /sbin/mount.aznfs
 /opt/microsoft/aznfs/common.sh
 /opt/microsoft/aznfs/mountscript.sh
-/opt/microsoft/aznfs/nfsv3mountscript.sh
-/opt/microsoft/aznfs/nfsv4mountscript.sh
 /opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
-/lib/systemd/system/aznfswatchdogv4.service
 
 %pre
 init="$(ps -q 1 -o comm=)"
@@ -36,7 +32,7 @@ flag_file="/tmp/.update_in_progress_from_watchdog.flag"
 
 if [ -f "$flag_file" ]; then
 	# Get the PID of aznfswatchdog.
-	aznfswatchdog_pid=$(pgrep -x aznfswatchdog)
+	aznfswatchdog_pid=$(pgrep aznfswatchdog)
 	
 	# Read the PID from the flag file.
 	aznfswatchdog_pid_inside_flag=$(cat "$flag_file")
@@ -52,11 +48,7 @@ fi
 if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
         systemctl stop aznfswatchdog
         systemctl disable aznfswatchdog
-
-        systemctl stop aznfswatchdogv4
-        systemctl disable aznfswatchdogv4
-
-        echo "Stopped aznfs watchdog service"
+        echo "Stopped aznfswatchdog service"
 fi
 
 
@@ -115,10 +107,7 @@ EOF
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
-chmod 0755 /usr/sbin/aznfswatchdogv4
 chmod 0755 /opt/microsoft/aznfs/mountscript.sh
-chmod 0755 /opt/microsoft/aznfs/nfsv3mountscript.sh
-chmod 0755 /opt/microsoft/aznfs/nfsv4mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
 
@@ -128,10 +117,6 @@ chmod 4755 /sbin/mount.aznfs
 # Create data directory for holding mountmap and log file. 
 mkdir -p /opt/microsoft/aznfs/data
 chmod 0755 /opt/microsoft/aznfs/data
-
-# Create log directory under /etc/stunnel to store stunnel logs
-mkdir -p /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
-chmod 0644 /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs
 
 # In case of upgrade.
 if [ $1 == 2 ]; then
@@ -169,14 +154,9 @@ fi
 if [ ! -f "$FLAG_FILE" ]; then
         user_consent_for_auto_update
 
-        # Start watchdog service for NFSv3
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
-
-        # Start watchdog service for NFSv4
-        systemctl enable aznfswatchdogv4
-        systemctl start aznfswatchdogv4
 else
         # Clean up the update in progress flag file.
         rm -f "$FLAG_FILE"
@@ -199,11 +179,10 @@ RED="\e[2;31m"
 NORMAL="\e[0m"
 if [ $1 == 0 ]; then
 	# Verify if any existing mounts are there, warn the user about this.
-	existing_mounts_v3=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
-	existing_mounts_v4=$(cat /opt/microsoft/aznfs/data/mountmapv4 2>/dev/null | egrep '^\S+' | wc -l)
-	if [ $existing_mounts_v3 -ne 0 -o $existing_mounts_v4 -ne 0 ]; then
+	existing_mounts=$(cat /opt/microsoft/aznfs/data/mountmap 2>/dev/null | egrep '^\S+' | wc -l)
+	if [ $existing_mounts -ne 0 ]; then 
 		echo
-		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
+		echo -e "${RED}There are existing Azure Blob NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
 		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
 		read -n 1 result < /dev/tty
 		echo
@@ -215,7 +194,7 @@ if [ $1 == 0 ]; then
 				echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
 				echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
 				echo "To fix this, run the below command to install dependencies:"
-				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME stunnel net-tools"
+				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME"
 				echo "*******************************************************************"
 				echo
 			fi
@@ -226,10 +205,6 @@ if [ $1 == 0 ]; then
 	# Stop aznfswatchdog in case of removing the package.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
-
-	systemctl stop aznfswatchdogv4
-	systemctl disable aznfswatchdogv4
-
 	echo "Stopped aznfswatchdog service"
 fi
 
@@ -238,8 +213,5 @@ fi
 if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
-	chattr -i -f /opt/microsoft/aznfs/data/mountmapv4
 	rm -rf /opt/microsoft/aznfs
-	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
-	rm -rf /etc/stunnel/microsoft
 fi

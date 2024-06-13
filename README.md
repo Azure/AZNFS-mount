@@ -1,10 +1,8 @@
 # AZNFS Mount Helper
 
-The mount helper discussed here is designed to work seamlessly with both NFSv3 and NFSv4 protocols. Its functionality spans across use cases that ensure robust handling of endpoint IP address changes for Azure Blob NFSv3 mounts and provision of a secure communication channel for Azure File NFSv4 mounts:
+> **Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts.**
 
-> **Mount helper use case for correctly handling endpoint IP address changes for Azure Blob NFSv3 mounts.**
-
-Azure Blob NFSv3 is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability
+Azure Blob NFS is a highly available clustered NFSv3 server for providing NFSv3 access to Azure Blobs. To maintain availability
 in case of infrequent-but-likely events like hardware failures, hardware decommissioning, etc, the endpoint IP of the Azure Blob
 NFS endpoint may change. This change in IP is mostly transparent to applications because the DNS records are updated such that the
 Azure Blob NFS FQDN always resolves to the updated IP. This works fine for new mounts as they will automatically connect to the new IP,
@@ -22,23 +20,6 @@ aznfswatchdog will update the DNAT rules appropriately.
 
 This package picks a free private IP which is not in use by user's machine and mount the NFSv3 share using that IP and
 create a DNAT rule to route the traffic from the chosen private IP to original endpoint IP.
-
-> **Mount helper use case for a secure communication channel for Azure File NFSv4 mounts.**
-
-The mount helper can be used to provide a secure communication channel for NFSv4 traffic. This is achieved by implementing TLS encryption for
-NFS traffic using stunnel. Stunnel is a proxy designed to add TLS encryption functionality to existing services: [https://www.stunnel.org/](https://www.stunnel.org/)
-
-The aznfs mount helper will be used to mount the NFS shares with TLS support. The mount helper initializes dedicated stunnel client
-process for each storage account. The stunnel client process listens on a local port for inbound traffic, and then stunnel redirects
-nfs client traffic to the 2049 port where NFS server is listening on.
-
-User has to install AZNFS package and mount the NFSv4 shares using `-t aznfs` flag. During the mounting process, user can decide if
-they want to mount shares with TLS encryption or without it using `notls` option. For a given endpoint, all the mounts should either use TLS encryption or clear-text using `notls` option as they share the same connection.
-
-The AZNFS package runs a background job called **aznfswatchdog**. It ensures that stunnel processes are running for each storage account
-and cleanup after all shares from the storage account are unmounted. If for some reason a stunnel process is terminated unexpectedly,
-the watchdog process restarts it.
-
 
 ## Supported Distros
 
@@ -84,23 +65,11 @@ AZNFS is supported on following Linux distros:
 
 ## Usage Instructions
 
-- Mount the Azure Blob NFSv3 share using following command:
+- Mount the Azure Blob NFS share using following command:
 	```
 	sudo mount -t aznfs -o vers=3 <account-name>.blob.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-- Mount the Azure File NFSv4 share using following command:
-	```
-	sudo mount -t aznfs -o vers=4.1 <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
-	```
-   For isolated environments, ensure that the environment variable "AZURE_ENDPOINT_OVERRIDE" is set to the appropriate endpoint before running the mount command:
-	```
-	export AZURE_ENDPOINT_OVERRIDE="example.end.point"
-	```
-- Mount Azure File NFSv4 share without TLS:
-	```
-	sudo mount -t aznfs -o vers=4.1,notls <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
-	```
-- Logs generated from AZNFS will be in `/opt/microsoft/aznfs/data/aznfs.log`.
+- Logs generated from AZNFS can be found in `/opt/microsoft/aznfs/data/aznfs.log`.
 
 ## Implementation Details
 
