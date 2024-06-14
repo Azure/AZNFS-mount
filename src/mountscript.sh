@@ -81,7 +81,13 @@ USING_PORT_2047=false
 #
 is_valid_blob_fqdn()
 {
-    [[ $1 =~ ^([a-z0-9]{3,24})(.z[0-9]+)?(.privatelink)?.blob(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$ ]]
+    # If AZURE_ENDPOINT_OVERRIDE environment variable is set, use it to verify FQDN
+    if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
+        modified_endpoint=$(echo $AZURE_ENDPOINT_OVERRIDE |  sed 's/\./\\./g')
+        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.blob(\.preprod)?\.core\.$modified_endpoint$ ]]
+    else
+        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.blob(\.preprod)?\.core\.(windows\.net|usgovcloudapi\.net|chinacloudapi\.cn)$ ]]
+    fi
 }
 
 #
