@@ -27,9 +27,9 @@ jobs:
     name: Verify Branch Name 
     runs-on: ubuntu-latest
     steps:
-    - if "!startsWith(github.event.inputs.branch, 'release/aznfs')"
+    - if !startsWith(${{ github.event.inputs.branch }}, 'release/aznfs')
       run: |
-        echo "This workflow can be run only for relase/aznfs* brnach!"
+        echo "This workflow can be run only for release/aznfs* branch!"
         exit 1
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
