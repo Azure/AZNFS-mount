@@ -3,7 +3,7 @@ Version: x.y.z
 Priority: required
 Architecture: amd64
 Origin: Microsoft
-Maintainer: Azure Storage XNFS Team <aznfs@microsoft.com>
+Maintainer: Azure Storage XNFSv3 IDC Team <xnfsv3devsidc@microsoft.com>
 Homepage: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Description: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
-Depends: bash, procps, conntrack, iptables, bind9-host, iproute2, util-linux, nfs-common, netcat, sysvinit-utils, whiptail, stunnel4, net-tools
+Description: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts
+Depends: bash, procps, conntrack, iptables, bind9-host, iproute2, util-linux, nfs-common, netcat, sysvinit-utils, whiptail
