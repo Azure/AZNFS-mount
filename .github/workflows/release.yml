@@ -36,6 +36,7 @@ jobs:
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
     runs-on: ubuntu-latest
+    needs: verify_branch_name
     steps:
     - name: Check Version Number
       shell: bash
