@@ -12,11 +12,11 @@ name: Create Official Release
 on:
   workflow_dispatch:
     inputs:
-      versionName:
-        description: 'Version Name'
-        required: true
       branch:
         description: 'Branch Name'
+        required: true
+      versionName:
+        description: 'Version Name'
         required: true
 
 permissions:
@@ -27,9 +27,11 @@ jobs:
     name: Verify Branch Name 
     runs-on: ubuntu-latest
     steps:
-    - if: "!startsWith(${{ github.event.inputs.branch }}, 'release/aznfs')"
+    - if: "!startsWith(github.event.inputs.branch, 'release/aznfs')"
       run: |
         echo "This workflow can be run only for release/aznfs* branch!"
+        echo "Branch Name: ${{ github.event.inputs.branch }}"
+        echo "Version: ${{ github.event.inputs.versionName }}"
         exit 1
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
