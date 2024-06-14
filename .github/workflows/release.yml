@@ -15,11 +15,22 @@ on:
       versionName:
         description: 'Version Name'
         required: true
+      branch:
+        description: 'Branch Name'
+        required: true
 
 permissions:
   contents: write
 
 jobs:
+  verify_branch_name:
+    name: Verify Branch Name 
+    runs-on: ubuntu-latest
+    steps:
+    - if "!startsWith(github.event.inputs.branch, 'release/aznfs')"
+      run: |
+        echo "This workflow can be run only for relase/aznfs* brnach!"
+        exit 1
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
     runs-on: ubuntu-latest
