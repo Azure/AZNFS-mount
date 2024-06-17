@@ -829,7 +829,12 @@ fi
 
 if ! is_valid_blob_fqdn "$nfs_host"; then
     eecho "Not a valid Azure Blob NFS endpoint: ${nfs_host}!"
-    eecho "Must be of the form 'account.blob.core.windows.net'!"
+    if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
+        eecho "Must be of the form 'account.blob.core.$AZURE_ENDPOINT_OVERRIDE'!"
+    else
+        eecho "Must be of the form 'account.blob.core.windows.net'!"
+    fi
+    eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint suffix!"
     exit 1
 fi
 
