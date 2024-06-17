@@ -834,7 +834,7 @@ if ! is_valid_blob_fqdn "$nfs_host"; then
     else
         eecho "Must be of the form 'account.blob.core.windows.net'!"
     fi
-    eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint!"
+    eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint suffix!"
     exit 1
 fi
 
