@@ -177,8 +177,12 @@ fi
 # TODO: Comment out below code for devfabric. 'is_valid_fqdn' will fail on devfabric.
 if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
     eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
-    eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
-    eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint!"
+    if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
+        eecho "Must be of the form 'account.$AZ_PREFIX.core.$AZURE_ENDPOINT_OVERRIDE'!"
+    else
+        eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
+    fi
+    eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint suffix!"
     exit 1
 fi
 
