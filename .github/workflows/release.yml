@@ -20,9 +20,27 @@ permissions:
   contents: write
 
 jobs:
+  verify_branch_name:
+    name: Verify Branch Name
+    runs-on: ubuntu-latest
+    steps:
+    - name: Extract Branch Name
+      run: | 
+        echo "branch_name=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
+    - name: Print Branch Name
+      run: |
+        echo "Release workflow will run for branch ${{ env.branch_name }}"
+    - name: Verify Branch Name
+      if: "!startsWith(env.branch_name, 'release/aznfs')"
+      run: |
+        echo "This workflow can be run only for release/aznfs* branch!"
+        echo "Branch Name: ${{ env.branch_name }}"
+        echo "Version: ${{ github.event.inputs.versionName }}"
+        exit 1
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
     runs-on: ubuntu-latest
+    needs: verify_branch_name
     steps:
     - name: Check Version Number
       shell: bash
