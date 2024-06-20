@@ -138,7 +138,7 @@ parse_arguments()
             OPTIONS="$OPTIONS $arg"
 
             if [[ "$arg" == "-v" || "$arg" == "--verbose" ]]; then
-                VERBOSE_MOUNT=true
+                export VERBOSE_MOUNT=true
             fi
         fi
     done
