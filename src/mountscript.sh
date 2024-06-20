@@ -14,7 +14,7 @@ AZNFS_VERSION="unknown"
 #
 # True if user has asked for verbose logs using '-v' or '--verbose' with mount command.
 #
-VERBOSE_MOUNT=false
+export VERBOSE_MOUNT=false
 
 #
 # Check if the given string is a valid blob/file FQDN (<accountname>.<blob/file>.core.windows.net).
@@ -138,7 +138,7 @@ parse_arguments()
             OPTIONS="$OPTIONS $arg"
 
             if [[ "$arg" == "-v" || "$arg" == "--verbose" ]]; then
-                VERBOSE_MOUNT=true
+                export VERBOSE_MOUNT=true
             fi
         fi
     done
