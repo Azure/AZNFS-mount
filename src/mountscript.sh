@@ -125,7 +125,7 @@ parse_arguments()
     OPTIONS=
     MOUNT_OPTIONS=
 
-    for arg in $*; do
+    for arg in "$@"; do
         if [ "$arg" == "-o" ]; then
             next_arg_is_mount_options=true
             continue
@@ -153,7 +153,7 @@ OPTIONS=
 MOUNT_OPTIONS=
 AZ_PREFIX=
 
-parse_arguments $*
+parse_arguments "$@"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
