@@ -125,7 +125,7 @@ parse_arguments()
     OPTIONS=
     MOUNT_OPTIONS=
 
-    for arg in $*; do
+    for arg in "$@"; do
         if [ "$arg" == "-o" ]; then
             next_arg_is_mount_options=true
             continue
