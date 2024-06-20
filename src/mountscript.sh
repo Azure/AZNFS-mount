@@ -153,7 +153,7 @@ OPTIONS=
 MOUNT_OPTIONS=
 AZ_PREFIX=
 
-parse_arguments $*
+parse_arguments "$@"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
