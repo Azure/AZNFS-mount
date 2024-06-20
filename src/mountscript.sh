@@ -14,7 +14,7 @@ AZNFS_VERSION="unknown"
 #
 # True if user has asked for verbose logs using '-v' or '--verbose' with mount command.
 #
-VERBOSE_MOUNT=false
+export VERBOSE_MOUNT=false
 
 #
 # Check if the given string is a valid blob/file FQDN (<accountname>.<blob/file>.core.windows.net).
