@@ -46,7 +46,7 @@ AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
 # Set the fingerprint GUID as an environment variable with a default value.
 AZNFS_FINGERPRINT="${AZNFS_FINGERPRINT:-80a18d5c-9553-4c64-88dd-d7553c6b3beb}"
 
-AZNFS_MAX_MOUNT_RETIRES="${AZNFS_MAX_MOUNT_RETIRES:-3}"
+AZNFS_MAX_MOUNT_RETRIES="${AZNFS_MAX_MOUNT_RETRIES:-3}"
 
 #
 # Maximum number of accounts that can be mounted from the same tenant/cluster.
@@ -858,7 +858,7 @@ while [ $retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
 
     if [ $mount_status -eq 0 ]; then
         vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
-        exit 0
+        exit 0  # Nothing in this script will run after this point.
     else
         retry_attempt=$((retry_attempt + 1))
         if [ $retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; then
