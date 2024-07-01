@@ -46,6 +46,8 @@ AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
 # Set the fingerprint GUID as an environment variable with a default value.
 AZNFS_FINGERPRINT="${AZNFS_FINGERPRINT:-80a18d5c-9553-4c64-88dd-d7553c6b3beb}"
 
+AZNFS_MAX_MOUNT_RETIRES="${AZNFS_MAX_MOUNT_RETIRES:-3}"
+
 #
 # Maximum number of accounts that can be mounted from the same tenant/cluster.
 # Any number of containers on these many accounts can be mounted.
@@ -697,6 +699,42 @@ get_local_ip_for_fqdn()
         get_free_local_ip
 }
 
+# Perform a pseudo mount to generate a gatepass for the actual mount call.
+# This request is expected to fail with "server access denied" if server-side changes are enabled,
+# or with "no such file or directory" if not. Failure of this call is expected behavior, 
+# and we proceed normally when it occurs.
+gatepass_mount()
+{
+    mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
+    mount_status=$?
+
+    if [ -n "$mount_output" ]; then
+        vecho "[Gatepass mount] $mount_output"
+    fi
+
+    #
+    # Ensure that gatepass mount operation failed (expected behavior).
+    # Exit with an error code if it succeeded, which is unexpected.
+    #
+    if [ $mount_status -eq 0 ]; then
+        vecho "[Gatepass mount] Unexpected success!"
+        eecho "Mount failed!"
+        exit 1
+    fi
+}
+
+actual_mount()
+{
+    mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
+    mount_status=$?
+
+    if [ -n "$mount_output" ]; then
+        pecho "$mount_output"
+    fi
+
+    return $mount_status
+}
+
 # Check if aznfswatchdog service is running.
 if ! ensure_aznfswatchdog "aznfswatchdog"; then
     exit 1
@@ -810,44 +848,28 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
 fi
 
+retry_attempt=0
+
+while [ $retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
+    gatepass_mount
+    
+    actual_mount
+    mount_status=$?
+
+    if [ $mount_status -eq 0 ]; then
+        vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+        exit 0
+    else
+        retry_attempt=$((retry_attempt + 1))
+        if [ $retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; then
+            vecho "Mount failed! Retrying mount... Attempt $retry_attempt of $AZNFS_MAX_MOUNT_RETRIES."
+        fi
+    fi
+done
+
 #
-# Perform a pseudo mount to generate a gatepass for the actual mount call.
-# This request is expected to fail with "server access denied" if server-side changes are enabled,
-# or with "no such file or directory" if not. Failure of this call is expected behavior, 
-# and we proceed normally when it occurs.
+# Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
+# will do it if it's unused (this mount was the one to create it).
 #
-mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
-mount_status=$?
-
-if [ -n "$mount_output" ]; then
-    vecho "[Gatepass mount] $mount_output"
-fi
-
-#
-# Ensure that gatepass mount operation failed (expected behavior).
-# Exit with an error code if it succeeded, which is unexpected.
-#
-if [ $mount_status -eq 0 ]; then
-    vecho "[Gatepass mount] Unexpected success!"
-    eecho "Mount failed!"
-    exit 1
-fi
-
-# Do the actual mount.
-mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
-mount_status=$?
-
-if [ -n "$mount_output" ]; then
-    pecho "$mount_output"
-fi
-
-if [ $mount_status -ne 0 ]; then
-    eecho "Mount failed!"
-    #
-    # Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
-    # will do it if it's unused (this mount was the one to create it).
-    #
-    exit 1
-fi
-
-vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+eecho "Mount failed!"
+exit 1
