@@ -46,6 +46,11 @@ AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
 # Set the fingerprint GUID as an environment variable with a default value.
 AZNFS_FINGERPRINT="${AZNFS_FINGERPRINT:-80a18d5c-9553-4c64-88dd-d7553c6b3beb}"
 
+#
+# Default to maximum number of mount retries in case of server-side returns failure.
+# Retries make the mount process more robust. Currently, we don't distinguish between 
+# access denied failure due to intermittent issues or genuine mount failures. We retry anyways.
+#
 AZNFS_MAX_MOUNT_RETRIES="${AZNFS_MAX_MOUNT_RETRIES:-3}"
 
 #
@@ -848,9 +853,9 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
 fi
 
-retry_attempt=0
+mount_retry_attempt=0
 
-while [ $retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
+while [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
     gatepass_mount
     
     actual_mount
@@ -860,9 +865,9 @@ while [ $retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
         vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
         exit 0  # Nothing in this script will run after this point.
     else
-        retry_attempt=$((retry_attempt + 1))
-        if [ $retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; then
-            vecho "Mount failed! Retrying mount... Attempt $retry_attempt of $AZNFS_MAX_MOUNT_RETRIES."
+        mount_retry_attempt=$((mount_retry_attempt + 1))
+        if [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; then
+            vecho "Mount failed! Retrying mount... Attempt $mount_retry_attempt of $AZNFS_MAX_MOUNT_RETRIES."
         fi
     fi
 done
