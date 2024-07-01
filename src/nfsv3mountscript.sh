@@ -704,10 +704,12 @@ get_local_ip_for_fqdn()
         get_free_local_ip
 }
 
+#
 # Perform a pseudo mount to generate a gatepass for the actual mount call.
 # This request is expected to fail with "server access denied" if server-side changes are enabled,
 # or with "no such file or directory" if not. Failure of this call is expected behavior, 
 # and we proceed normally when it occurs.
+#
 gatepass_mount()
 {
     mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
@@ -867,7 +869,7 @@ while [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
     else
         mount_retry_attempt=$((mount_retry_attempt + 1))
         if [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; then
-            vecho "Mount failed! Retrying mount... Attempt $mount_retry_attempt of $AZNFS_MAX_MOUNT_RETRIES."
+            vvecho "Mount failed! Retrying mount (attempt $mount_retry_attempt of $AZNFS_MAX_MOUNT_RETRIES)"
         fi
     fi
 done
