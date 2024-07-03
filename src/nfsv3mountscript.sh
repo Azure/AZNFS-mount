@@ -33,6 +33,9 @@ AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 # Default to fixing dirty bytes config to help the user.
 AZNFS_FIX_DIRTY_BYTES_CONFIG="${AZNFS_FIX_DIRTY_BYTES_CONFIG:-1}"
 
+# Default to fixing read ahead config to help increase large file read throughput.
+AZNFS_FIX_READ_AHEAD_CONFIG="${AZNFS_FIX_READ_AHEAD_CONFIG:-0}"
+
 #
 # Use noresvport mount option to allow using non-reserve ports by client.
 # This allows much higher number of local ports to be used by NFS client and
@@ -225,6 +228,17 @@ fix_dirty_bytes_config()
         vvecho "Setting /proc/sys/vm/dirty_background_bytes to $desired_dirty_background_bytes bytes"
         echo $desired_dirty_background_bytes > /proc/sys/vm/dirty_background_bytes
     fi
+}
+
+#
+# To Improve read ahead size to increase large file read throughput.
+#
+fix_read_ahead_config() 
+{
+    desired_read_ahead_value=16384
+    bdi_device_id=$(stat -c "%d" $mount_point)
+    echo $desired_read_ahead_value > /sys/class/bdi/0:$bdi_device_id/read_ahead_kb
+    vvecho "Read ahead size set to $read_ahead_value KB for device ID $bdi_device_id"
 }
 
 #
@@ -800,6 +814,13 @@ if [ "$AZNFS_FIX_DIRTY_BYTES_CONFIG" == "1" ]; then
 fi
 
 #
+# Fix read ahead config if needed.
+#
+if [ "$AZNFS_FIX_READ_AHEAD_CONFIG" == "1" ]; then
+    fix_read_ahead_config
+fi
+
+#
 # Get proxy IP to use for this nfs_ip.
 # It'll ensure an appropriate entry is added to MOUNTMAPv3 if not already added,
 # and an appropriate iptable DNAT rule is added.
@@ -867,6 +888,11 @@ while [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
         vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
         exit 0  # Nothing in this script will run after this point.
     else
+        if echo "$mount_output" | grep -q "reason given by server: No such file or directory"; then
+            vvecho "Mount failed due to 'No such file or directory' error. Not retrying."
+            break
+        fi
+
         mount_retry_attempt=$((mount_retry_attempt + 1))
         if [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; then
             vvecho "Mount failed! Retrying mount (attempt $mount_retry_attempt of $AZNFS_MAX_MOUNT_RETRIES)"
