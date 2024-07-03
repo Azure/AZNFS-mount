@@ -237,7 +237,7 @@ fix_read_ahead_config()
 {
     desired_read_ahead_value=16384
 
-    # Get the block device ID of the mount point.
+    # Get the block device identifier of the mount point.
     block_device_id=$(stat -c "%d" "$mount_point" 2>/dev/null)
     if [ $? -ne 0 ]; then
         vvecho "Failed to get device ID for mount point $mount_point."
@@ -246,14 +246,11 @@ fix_read_ahead_config()
 
     # Path to the read_ahead_kb file.
     read_ahead_path="/sys/class/bdi/0:$block_device_id/read_ahead_kb"
-
-    # Check if the path exists.
     if [ ! -e "$read_ahead_path" ]; then
         vvecho "The path $read_ahead_path does not exist."
         return
     fi
 
-    # Get the current read ahead value.
     current_read_ahead_value=$(cat "$read_ahead_path")
     if [ $? -ne 0 ]; then
         vvecho "Failed to read current read ahead value."
