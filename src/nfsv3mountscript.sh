@@ -271,9 +271,6 @@ fix_read_ahead_config()
     else
         vvecho "Current read ahead size ($current_read_ahead_value KB) is already greater than or equal to the desired value ($desired_read_ahead_value KB). No update needed."
     fi
-
-    # echo $desired_read_ahead_value > /sys/class/bdi/0:$(stat -c "%d" $mount_point)/read_ahead_kb
-    # vvecho "Read ahead size set to $read_ahead_value KB for device ID $bdi_device_id"
 }
 
 #
