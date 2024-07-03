@@ -241,7 +241,7 @@ fix_read_ahead_config()
     block_device_id=$(stat -c "%d" "$mount_point" 2>/dev/null)
     if [ $? -ne 0 ]; then
         vvecho "Failed to get device ID for mount point $mount_point."
-        return 1
+        return
     fi
 
     # Path to the read_ahead_kb file.
@@ -250,14 +250,14 @@ fix_read_ahead_config()
     # Check if the path exists.
     if [ ! -e "$read_ahead_path" ]; then
         vvecho "The path $read_ahead_path does not exist."
-        return 1
+        return
     fi
 
     # Get the current read ahead value.
     current_read_ahead_value=$(cat "$read_ahead_path")
     if [ $? -ne 0 ]; then
         vvecho "Failed to read current read ahead value."
-        return 1
+        return
     fi
 
     # Compare and update the read ahead value if the desired value is greater.
@@ -265,9 +265,9 @@ fix_read_ahead_config()
         echo "$desired_read_ahead_value" > "$read_ahead_path"
         if [ $? -ne 0 ]; then
             vvecho "Failed to set read ahead size."
-            return 1
+            return
         fi
-        vvecho "Read ahead size set to $desired_read_ahead_value KB for device ID $block_device_id"
+        vvecho "Read ahead size set to $desired_read_ahead_value KB."
     else
         vvecho "Current read ahead size ($current_read_ahead_value KB) is already greater than or equal to the desired value ($desired_read_ahead_value KB). No update needed."
     fi
@@ -848,12 +848,6 @@ if [ "$AZNFS_FIX_DIRTY_BYTES_CONFIG" == "1" ]; then
     fix_dirty_bytes_config
 fi
 
-#
-# Fix read ahead config if needed.
-#
-if [ "$AZNFS_FIX_READ_AHEAD_CONFIG" == "1" ]; then
-    fix_read_ahead_config
-fi
 
 #
 # Get proxy IP to use for this nfs_ip.
@@ -921,6 +915,13 @@ while [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
 
     if [ $mount_status -eq 0 ]; then
         vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+        
+        #
+        # Fix read ahead config if needed.
+        #
+        if [ "$AZNFS_FIX_READ_AHEAD_CONFIG" == "1" ]; then
+            fix_read_ahead_config
+        fi
         exit 0  # Nothing in this script will run after this point.
     else
         if echo "$mount_output" | grep -q "reason given by server: No such file or directory"; then
