@@ -34,7 +34,7 @@ AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 AZNFS_FIX_DIRTY_BYTES_CONFIG="${AZNFS_FIX_DIRTY_BYTES_CONFIG:-1}"
 
 # Default to fixing read ahead config to help increase large file read throughput.
-AZNFS_FIX_READ_AHEAD_CONFIG="${AZNFS_FIX_READ_AHEAD_CONFIG:-0}"
+AZNFS_FIX_READ_AHEAD_CONFIG="${AZNFS_FIX_READ_AHEAD_CONFIG:-1}"
 
 #
 # Use noresvport mount option to allow using non-reserve ports by client.
@@ -236,9 +236,44 @@ fix_dirty_bytes_config()
 fix_read_ahead_config() 
 {
     desired_read_ahead_value=16384
-    bdi_device_id=$(stat -c "%d" $mount_point)
-    echo $desired_read_ahead_value > /sys/class/bdi/0:$bdi_device_id/read_ahead_kb
-    vvecho "Read ahead size set to $read_ahead_value KB for device ID $bdi_device_id"
+
+    # Get the block device ID of the mount point.
+    block_device_id=$(stat -c "%d" "$mount_point" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        vvecho "Failed to get device ID for mount point $mount_point."
+        return 1
+    fi
+
+    # Path to the read_ahead_kb file.
+    read_ahead_path="/sys/class/bdi/0:$block_device_id/read_ahead_kb"
+
+    # Check if the path exists.
+    if [ ! -e "$read_ahead_path" ]; then
+        vvecho "The path $read_ahead_path does not exist."
+        return 1
+    fi
+
+    # Get the current read ahead value.
+    current_read_ahead_value=$(cat "$read_ahead_path")
+    if [ $? -ne 0 ]; then
+        vvecho "Failed to read current read ahead value."
+        return 1
+    fi
+
+    # Compare and update the read ahead value if the desired value is greater.
+    if [ "$current_read_ahead_value" -lt "$desired_read_ahead_value" ]; then
+        echo "$desired_read_ahead_value" > "$read_ahead_path"
+        if [ $? -ne 0 ]; then
+            vvecho "Failed to set read ahead size."
+            return 1
+        fi
+        vvecho "Read ahead size set to $desired_read_ahead_value KB for device ID $block_device_id"
+    else
+        vvecho "Current read ahead size ($current_read_ahead_value KB) is already greater than or equal to the desired value ($desired_read_ahead_value KB). No update needed."
+    fi
+
+    # echo $desired_read_ahead_value > /sys/class/bdi/0:$(stat -c "%d" $mount_point)/read_ahead_kb
+    # vvecho "Read ahead size set to $read_ahead_value KB for device ID $bdi_device_id"
 }
 
 #
