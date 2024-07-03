@@ -264,12 +264,12 @@ fix_read_ahead_config()
     if [ "$current_read_ahead_value" -lt "$desired_read_ahead_value" ]; then
         echo "$desired_read_ahead_value" > "$read_ahead_path"
         if [ $? -ne 0 ]; then
-            vvecho "Failed to set read ahead size."
+            vvecho "Failed to set read ahead size for $mount_point."
             return
         fi
-        vvecho "Read ahead size set to $desired_read_ahead_value KB."
+        vvecho "Read ahead size for $mount_point set to $desired_read_ahead_value KB."
     else
-        vvecho "Current read ahead size ($current_read_ahead_value KB) is already greater than or equal to the desired value ($desired_read_ahead_value KB). No update needed."
+        vvecho "Current read ahead size ($current_read_ahead_value KB) for $mount_point is already greater than or equal to the desired value ($desired_read_ahead_value KB). No update needed."
     fi
 }
 
