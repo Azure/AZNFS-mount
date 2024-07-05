@@ -29,6 +29,9 @@ AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 # Default to fixing dirty bytes config to help the user.
 AZNFS_FIX_DIRTY_BYTES_CONFIG="${AZNFS_FIX_DIRTY_BYTES_CONFIG:-1}"
 
+# Read ahead size in KB defaults to 16384.
+AZNFS_READ_AHEAD_KB="${AZNFS_READ_AHEAD_KB:-16384}"
+
 #
 # Use noresvport mount option to allow using non-reserve ports by client.
 # This allows much higher number of local ports to be used by NFS client and
@@ -41,6 +44,13 @@ AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
 
 # Set the fingerprint GUID as an environment variable with a default value.
 AZNFS_FINGERPRINT="${AZNFS_FINGERPRINT:-80a18d5c-9553-4c64-88dd-d7553c6b3beb}"
+
+#
+# Default to maximum number of mount retries in case of server-side returns failure.
+# Retries make the mount process more robust. Currently, we don't distinguish between 
+# access denied failure due to intermittent issues or genuine mount failures. We retry anyways.
+#
+AZNFS_MAX_MOUNT_RETRIES="${AZNFS_MAX_MOUNT_RETRIES:-3}"
 
 #
 # Maximum number of accounts that can be mounted from the same tenant/cluster.
@@ -232,6 +242,44 @@ fix_dirty_bytes_config()
 
         vvecho "Setting /proc/sys/vm/dirty_background_bytes to $desired_dirty_background_bytes bytes"
         echo $desired_dirty_background_bytes > /proc/sys/vm/dirty_background_bytes
+    fi
+}
+
+#
+# To Improve read ahead size to increase large file read throughput.
+#
+fix_read_ahead_config() 
+{
+    # Get the block device identifier of the mount point.
+    block_device_id=$(stat -c "%d" "$mount_point" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        wecho "Failed to get device ID for mount point $mount_point. Cannot set read ahead."
+        return
+    fi
+
+    # Path to the read_ahead_kb file.
+    read_ahead_path="/sys/class/bdi/0:$block_device_id/read_ahead_kb"
+    if [ ! -e "$read_ahead_path" ]; then
+        wecho "The path $read_ahead_path does not exist. Cannot set read ahead."
+        return
+    fi
+
+    current_read_ahead_value_kb=$(cat "$read_ahead_path")
+    if [ $? -ne 0 ]; then
+        wecho "Failed to read current read ahead value. Cannot set read ahead."
+        return
+    fi
+
+    # Compare and update the read ahead value if the desired value is greater.
+    if [ "$current_read_ahead_value_kb" -lt "$AZNFS_READ_AHEAD_KB" ]; then
+        echo "$AZNFS_READ_AHEAD_KB" > "$read_ahead_path"
+        if [ $? -ne 0 ]; then
+            wecho "Failed to set read ahead size for $mount_point."
+            return
+        fi
+        vvecho "Read ahead size for $mount_point set to $AZNFS_READ_AHEAD_KB KB!"
+    else
+        vvecho "Current read ahead size ($current_read_ahead_value_kb KB) for $mount_point is already greater than or equal to the desired value ($AZNFS_READ_AHEAD_KB KB), no update needed!"
     fi
 }
 
@@ -716,6 +764,44 @@ get_local_ip_for_fqdn()
 }
 
 #
+# Perform a pseudo mount to generate a gatepass for the actual mount call.
+# This request is expected to fail with "server access denied" if server-side changes are enabled,
+# or with "no such file or directory" if not. Failure of this call is expected behavior, 
+# and we proceed normally when it occurs.
+#
+gatepass_mount()
+{
+    mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
+    mount_status=$?
+
+    if [ -n "$mount_output" ]; then
+        vecho "[Gatepass mount] $mount_output"
+    fi
+
+    #
+    # Ensure that gatepass mount operation failed (expected behavior).
+    # Exit with an error code if it succeeded, which is unexpected.
+    #
+    if [ $mount_status -eq 0 ]; then
+        vecho "[Gatepass mount] Unexpected success!"
+        eecho "Mount failed!"
+        exit 1
+    fi
+}
+
+actual_mount()
+{
+    mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
+    mount_status=$?
+
+    if [ -n "$mount_output" ]; then
+        pecho "$mount_output"
+    fi
+
+    return $mount_status
+}
+
+#
 # Parse mount options from the mount command executed by the user.
 #
 parse_arguments()
@@ -951,44 +1037,38 @@ if [ -z "$AZNFS_PMAP_PROBE" -o "$AZNFS_PMAP_PROBE" == "0" ]; then
     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/^,//g")
 fi
 
+mount_retry_attempt=0
+
+while [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
+    gatepass_mount
+    
+    actual_mount
+    mount_status=$?
+
+    if [ $mount_status -eq 0 ]; then
+        vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+        
+        #
+        # Fix read ahead config if needed.
+        #
+        fix_read_ahead_config
+
+        exit 0  # Nothing in this script will run after this point.
+    else
+        if echo "$mount_output" | grep -q "reason given by server: No such file or directory"; then
+            break
+        fi
+
+        mount_retry_attempt=$((mount_retry_attempt + 1))
+        if [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; then
+            vvecho "Mount failed! Retrying mount (attempt $mount_retry_attempt of $AZNFS_MAX_MOUNT_RETRIES)"
+        fi
+    fi
+done
+
 #
-# Perform a pseudo mount to generate a gatepass for the actual mount call.
-# This request is expected to fail with "server access denied" if server-side changes are enabled,
-# or with "no such file or directory" if not. Failure of this call is expected behavior, 
-# and we proceed normally when it occurs.
+# Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
+# will do it if it's unused (this mount was the one to create it).
 #
-mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
-mount_status=$?
-
-if [ -n "$mount_output" ]; then
-    vecho "[Gatepass mount] $mount_output"
-fi
-
-#
-# Ensure that gatepass mount operation failed (expected behavior).
-# Exit with an error code if it succeeded, which is unexpected.
-#
-if [ $mount_status -eq 0 ]; then
-    vecho "[Gatepass mount] Unexpected success!"
-    eecho "Mount failed!"
-    exit 1
-fi
-
-# Do the actual mount.
-mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
-mount_status=$?
-
-if [ -n "$mount_output" ]; then
-    pecho "$mount_output"
-fi
-
-if [ $mount_status -ne 0 ]; then
-    eecho "Mount failed!"
-    #
-    # Don't bother clearing up the mountmap and/or iptable rule, aznfswatchdog
-    # will do it if it's unused (this mount was the one to create it).
-    #
-    exit 1
-fi
-
-vvecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point using proxy IP $LOCAL_IP and endpoint IP $nfs_ip"
+eecho "Mount failed!"
+exit 1
