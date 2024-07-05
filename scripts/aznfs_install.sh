@@ -155,7 +155,7 @@ perform_aznfs_update()
     # and show in logs only in case of error while installation. 
     # For users manual-update, we needn't capture the output seperately and let it out on terminal to avoid
     # issues with dialog box showing up.
-    # ***********************
+    # ******************************************
     #
     if [ "$RUN_MODE" == "auto-update" ]; then
         if [ "$install_cmd" == "zypper" ]; then
