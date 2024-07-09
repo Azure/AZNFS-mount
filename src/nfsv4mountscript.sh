@@ -161,14 +161,14 @@ add_stunnel_configuration()
         return 1
     fi
 
-    # TODO: checkHost value could be different for prod tenants.
-    # So need to change this value in future.
-    echo "checkHost = xtest-superadmin.int.rdst-internal.net" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add checkHost option to $stunnel_conf_file!"
-        return 1
-    fi
+    # # TODO: checkHost value could be different for prod tenants.
+    # # So need to change this value in future.
+    # echo "checkHost = xtest-superadmin.int.rdst-internal.net" >> $stunnel_conf_file
+    # if [ $? -ne 0 ]; then
+    #     chattr -f +i $stunnel_conf_file
+    #     eecho "Failed to add checkHost option to $stunnel_conf_file!"
+    #     return 1
+    # fi
 
     # TODO: Change to TLSv1.3 once we have TLSv1.3 version enabled.
     echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
