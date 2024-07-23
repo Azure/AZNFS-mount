@@ -245,6 +245,20 @@ fix_dirty_bytes_config()
     fi
 }
 
+# Function to extract minor number from combined device ID.
+get_minor()
+{
+    local dev_id=$1
+    echo $(( (dev_id & 0xff) | ((dev_id >> 12) & ~0xff) ))
+}
+
+# Function to extract major number from combined device ID.
+get_major()
+{
+    local dev_id=$1
+    echo $(( ((dev_id >> 8) & 0xfff) | ((dev_id >> 32) & ~0xfff) ))
+}
+
 #
 # To Improve read ahead size to increase large file read throughput.
 #
@@ -258,7 +272,9 @@ fix_read_ahead_config()
     fi
 
     # Path to the read_ahead_kb file.
-    read_ahead_path="/sys/class/bdi/0:$block_device_id/read_ahead_kb"
+    major=$(get_major $block_device_id)
+    minor=$(get_minor $block_device_id)
+    read_ahead_path="/sys/class/bdi/$major:$minor/read_ahead_kb"
     if [ ! -e "$read_ahead_path" ]; then
         wecho "The path $read_ahead_path does not exist. Cannot set read ahead."
         return
