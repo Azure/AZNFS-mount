@@ -1,6 +1,22 @@
+## [2.0.9]- July 2024
+- [AZNFS-mount #136](https://github.com/Azure/AZNFS-mount/pull/136)
+  (NFSv3) Resolved the minor and major device numbers from the combined device ID received from the stat call to update the read-ahead configuration.
+
+## [2.0.8]- July 2024
+- [AZNFS-mount #134](https://github.com/Azure/AZNFS-mount/pull/134)
+  (NFSv3) Implemented changes to support retry mount and adjusted read-ahead configuration for improved read throughput.
+
+## [2.0.7]- June 2024
+- [AZNFS-mount #122](https://github.com/Azure/AZNFS-mount/pull/122)
+  (NFSv3) Added support for isolated environments in FQDN using the AZURE_ENDPOINT_OVERRIDE environment variable.
+
+## [2.0.6]- June 2024
+- [AZNFS-mount #120](https://github.com/Azure/AZNFS-mount/pull/120)
+  (NFSv3) Enhanced mount script logs to utilize the -v or --verbose option.
+
 ## [2.0.5]- May 2024
 - [AZNFS-mount #117](https://github.com/Azure/AZNFS-mount/pull/117)
-  (NFSv3) Added support to manage and limit the dirty bytes configuration on the user's machine..
+  (NFSv3) Added support to manage and limit the dirty bytes configuration on the user's machine.
 - [AZNFS-mount #116](https://github.com/Azure/AZNFS-mount/pull/116)
   (NFSv3) Added support in mount-helper for AZNFS fingerprinting.
 
