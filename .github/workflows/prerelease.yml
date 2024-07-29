@@ -42,7 +42,8 @@ jobs:
       with:
         ref: ${{ github.ref }}
     - name: Print Git Ref
-      run: echo "Git Ref: ${{ github.ref }}"
+      run: |
+        echo "Git Ref: ${{ github.ref }}"
     - name: Run Package.sh
       shell: bash
       run: |
