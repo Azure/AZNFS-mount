@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #
 # NfSv3 logic for mount helper
 #
