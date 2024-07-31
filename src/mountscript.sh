@@ -78,7 +78,7 @@ get_dir_from_share()
 
     if [ $is_bad_share_name == "true" ]; then
         eecho "Bad share name: ${hostshare}."
-        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container'."
+        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
         return 1
     fi
 
