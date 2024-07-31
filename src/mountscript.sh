@@ -41,7 +41,17 @@ get_host_from_share()
 
     if [ -z "$host" -o -z "$share" ]; then
         eecho "Bad share name: ${hostshare}."
-        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container'."
+        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
+        return 1
+    fi
+
+    # Split host by "."
+    IFS=. read account hostprefix rest <<< "$host"
+
+    # Check if the prefix matches the expected azprefix
+    if [ "$hostprefix" != "$azprefix" ]; then
+        eecho "Bad share name: ${hostshare}."
+        eecho "Share must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
         return 1
     fi
 
@@ -157,6 +167,8 @@ parse_arguments "$@"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
+    eecho "$nfs_vers"
+    eecho "Mount failed!"
     exit 1
 fi
 
@@ -171,6 +183,8 @@ fi
 
 nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
+    eecho "$nfs_host"
+    eecho "Mount failed!"
     exit 1
 fi
 
@@ -188,12 +202,15 @@ fi
 
 nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
+    eecho "$nfs_dir"
+    eecho "Mount failed!"
     exit 1
 fi
 
 if [ -z "$nfs_dir" ]; then
     eecho "Bad share name: ${1}!"
-    eecho "Share to be mounted must be of the form 'account.$AZ_PREFIX.core.windows.net:/account/container'!"
+    eecho "Share to be mounted must be of the form 'account.$AZ_PREFIX.core.windows.net:/account/container' for vers=$nfs_vers."
+    eecho "Mount failed!"
     exit 1
 fi
 
