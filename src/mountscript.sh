@@ -167,7 +167,7 @@ parse_arguments "$@"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
-    eecho "$nfs_vers"
+    echo "$nfs_vers"
     eecho "Mount failed!"
     exit 1
 fi
@@ -183,7 +183,7 @@ fi
 
 nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
-    eecho "$nfs_host"
+    echo "$nfs_host"
     eecho "Mount failed!"
     exit 1
 fi
@@ -202,7 +202,7 @@ fi
 
 nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
-    eecho "$nfs_dir"
+    echo "$nfs_dir"
     eecho "Mount failed!"
     exit 1
 fi
