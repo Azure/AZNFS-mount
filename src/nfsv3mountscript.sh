@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #
 # NfSv3 logic for mount helper
 #
@@ -931,7 +933,7 @@ while [ $mount_retry_attempt -le $AZNFS_MAX_MOUNT_RETRIES ]; do
 
         exit 0  # Nothing in this script will run after this point.
     else
-        if echo "$mount_output" | grep -q "reason given by server: No such file or directory"; then
+        if echo "$mount_output" | grep -Eq "reason given by server: No such file or directory|mount point $mount_point does not exist"; then
             break
         fi
 
