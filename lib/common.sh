@@ -31,6 +31,9 @@ HOSTNAME=$(hostname)
 
 LOCALHOST="127.0.0.1"
 
+# Command to use for getting socket statistics - netstat or ss
+NETSTATCOMMAND=""
+
 if [ -z "$AZNFS_VERSION" ]; then
     echo '*** AZNFS_VERSION must be defined before including common.sh ***'
     exit 1
@@ -686,6 +689,11 @@ verify_iptable_entry()
 # On some distros mount program doesn't pass correct PATH variable.
 export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+if command -v netstat &> /dev/null; then
+    NETSTATCOMMAND="netstat"
+elif command -v ss &> /dev/null; then
+    NETSTATCOMMAND="ss"
+fi
 
 if [ ! -d $OPTDIRDATA ]; then
     eecho "[FATAL] '${OPTDIRDATA}' is not present, cannot continue!"
