@@ -24,6 +24,9 @@ CERT_PATH=
 CERT_UPDATE_COMMAND=
 STUNNEL_CAFILE=
 
+# Temporary mountmap file used to overwrite mountmap file.
+TMP_MOUNTMAPv4="/tmp/mountmapv4.tmp"
+
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
 CONNECT_PORT=2049
 
@@ -31,7 +34,7 @@ get_next_available_port()
 {
     for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
     do
-        is_port_available=`netstat -tuapn | grep "$LOCALHOST:$port "`
+        is_port_available=`$NETSTATCOMMAND -tuapn | grep "$LOCALHOST:$port "`
         if [ -z "$is_port_available" ]; then
             break
         fi
@@ -81,7 +84,7 @@ find_next_available_port_and_start_stunnel()
         if [ -n "$stunnel_status" ]; then
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$new_used_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
-                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                eecho "[FATAL] Not able to start stunnel process after finding available port for '${stunnel_conf_file}'!"
                 return 1
             fi
         else
@@ -125,6 +128,28 @@ install_CA_cert()
     $CERT_UPDATE_COMMAND
 }
 
+get_check_host_value()
+{
+    local hostname=$1
+    local check_host_value="*.file.core.windows.net"
+
+    declare -A certs
+    certs=(
+        ["preprod.core.windows.net$"]="*.file.preprod.core.windows.net"
+        ["chinacloudapi.cn$"]="*.file.core.usgovcloudapi.net"
+        ["usgovcloudapi.net$"]="*.file.core.chinacloudapi.cn"
+    )
+
+    for cert in "${!certs[@]}"; do
+        if [[ "$hostname" =~ $cert ]]; then
+                check_host_value="${certs[$cert]}"
+                break
+        fi
+    done
+
+    echo $check_host_value
+}
+
 #
 # Add stunnel configuration in stunnel_<storageaccount>.conf file.
 #
@@ -163,7 +188,8 @@ add_stunnel_configuration()
 
     # TODO: checkHost value could be different for prod tenants.
     # So need to change this value in future.
-    echo "checkHost = xtest-superadmin.int.rdst-internal.net" >> $stunnel_conf_file
+    stunnel_check_host=$(get_check_host_value "$nfs_host")
+    echo "checkHost = $stunnel_check_host" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add checkHost option to $stunnel_conf_file!"
@@ -267,6 +293,39 @@ tls_nfsv4_files_share_mount()
 
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
+    else
+        # Check if the stunnel_conf_file already exist for the storageaccount.
+        # We need to acquire lock on both config file and mountmap since the watchdog can also update them.
+        if exec {fd1}<$stunnel_conf_file; then
+            flock -e $fd1
+            # If config file exist, update the mountmap status to waiting.
+            if [ -e $stunnel_conf_file ]; then
+                # update mountmep status to waiting
+                exec {fd2}<$MOUNTMAPv4
+                flock -e $fd2
+                local existing_mountmap_entry=$(grep -m1 "$stunnel_conf_file" $MOUNTMAPv4)
+                if [ -n "$existing_mountmap_entry" ]; then
+                    chattr -f -i $MOUNTMAPv4
+                    # Update the status to waiting - If the mount on this share has failed but we haven't cleaned up the files yet, we should still update the status
+                    # to waiting and reuse the mountmap entry and stunnel files.
+                    # Since we are locking the mountmap file, we can't safely update the status to waiting using sed, we should overwrite
+                    # the file instead.
+                    vecho "Stunnel config file already exist. Updating mountmap status to waiting on $MOUNTMAPv4 for entry $existing_mountmap_entry."
+                    sed "\#$stunnel_conf_file;#s#\(;mounted\|;failed\)\$#;waiting#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
+                    cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
+                    rm $TMP_MOUNTMAPv4
+                    chattr -f +i $MOUNTMAPv4
+                fi
+                flock -u $fd2
+                exec {fd2}<&-
+            else
+                EntryExistinMountMap="false"
+            fi
+            flock -u $fd1
+            exec {fd1}<&-
+        else
+            EntryExistinMountMap="false"
+        fi
     fi
 
     if [ "$EntryExistinMountMap" == "false" ]; then
@@ -301,6 +360,7 @@ tls_nfsv4_files_share_mount()
                 rm $stunnel_conf_file
                 exit 1
             else
+                vecho "Stunnel: Address ($LOCALHOST:$available_port) already in use. Find next available port and start stunnel."
                 find_next_available_port_and_start_stunnel "$stunnel_conf_file"
                 is_stunnel_running=$?
                 if [ $is_stunnel_running -ne 0 ]; then
@@ -320,12 +380,18 @@ tls_nfsv4_files_share_mount()
             exit 1
         fi
 
+        # We keep track of the state in the mountmap file to prevent watchdog from removing the entry before the mount is complete.
+        # Waiting: mountmap entry is added but mount command is not executed yet. Watchdog can ignore this entry.
+        # Mounted: mount command is executed successfully. If the mount is unmounted, watchdog can remove this entry.
+        # Failed: mount command failed. Watchdog can remove this entry.
+
         local mountmap_entry="$nfs_host;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash"
+        local mountmap_entry_with_waiting_state="${mountmap_entry};waiting"
         chattr -f -i $MOUNTMAPv4
-        echo "$mountmap_entry" >> $MOUNTMAPv4
+        echo "$mountmap_entry_with_waiting_state" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAPv4
-            eecho "[$mountmap_entry] failed to add!"
+            eecho "[$mountmap_entry_with_waiting_state] failed to add!"
             chattr -i -f $stunnel_conf_file
             rm $stunnel_conf_file
             exit 1
@@ -334,6 +400,7 @@ tls_nfsv4_files_share_mount()
 
     else
         # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount.
+        vecho "Stunnel config file already exist for $storageaccount: $stunnel_conf_file"
 
         # Check if stunnel_pid_file exist for storageaccount
         stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount.pid" | cut -d ";" -f4`
@@ -342,7 +409,7 @@ tls_nfsv4_files_share_mount()
             exit 1
         fi
 
-        is_stunnel_running=$(netstat -anp | grep stunnel | grep `cat $stunnel_pid_file`)
+        is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $stunnel_pid_file`)
         if [ -z "$is_stunnel_running" ]; then
             vecho "stunnel is not running! Restarting the stunnel"
 
@@ -353,6 +420,7 @@ tls_nfsv4_files_share_mount()
                     eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
                     exit 1
                 else
+                    vecho "Stunnel: Address ($LOCALHOST:$available_port) already in use. Find next available port and start stunnel."
                     find_next_available_port_and_start_stunnel "$stunnel_conf_file"
                     is_stunnel_running=$?
                     if [ $is_stunnel_running -ne 0 ]; then
@@ -361,23 +429,48 @@ tls_nfsv4_files_share_mount()
                     fi
                 fi
             fi
+        else
+            vecho "Stunnel process is already running for $nfs_host."
         fi
 
         available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
         vecho "Local Port to use: $available_port"
     fi
 
+    vecho "Stunnel process is running for $nfs_host on accept port $available_port."
+
+    vecho "Running the mount command: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
     mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$available_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
 
     if [ -n "$mount_output" ]; then
         pecho "$mount_output"
-        vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
     fi
 
+    # Lock the mountmap file and update the status of the mount entry.
+    exec {fd2}<$MOUNTMAPv4
+    flock -e $fd2
+    chattr -f -i $MOUNTMAPv4
     if [ $mount_status -ne 0 ]; then
+        # If the status is not waiting then we should not mark it as failed - it means there are other mounts on the same share.
+        vecho "Updating mountmap status to failed."
+        sed "\#$stunnel_conf_file;#s#;waiting\$#;failed#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
+        cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
+        rm $TMP_MOUNTMAPv4
+        chattr -f +i $MOUNTMAPv4
+        flock -u $fd2
+        exec {fd2}<&-
         eecho "Mount failed!"
         exit 1
+    else
+        vecho "Updating mountmap status to mounted."
+        sed "\#$stunnel_conf_file;#s#;waiting\$#;mounted#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
+        cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
+        rm $TMP_MOUNTMAPv4
+        chattr -f +i $MOUNTMAPv4
+        flock -u $fd2
+        exec {fd2}<&-
+        vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
     fi
 }
 
@@ -432,15 +525,22 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
 
     if [ -n "$mount_output" ]; then
         pecho "$mount_output"
-        vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
+        vecho "Mount: ${nfs_host}:${nfs_dir} on $mount_point"
     fi
 
     if [ $mount_status -ne 0 ]; then
         eecho "Mount failed!"
         exit 1
+    else
+        vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
     fi
 else
     vecho "Mount nfs share with TLS."
+
+    if [ -z "$NETSTATCOMMAND" ]; then
+        eecho "No socket statistics command (netstat or ss) found! Cannot proceed with TLS mount."
+        exit 1
+    fi
 
     # Check if the mount to the same endpoint exists that is using clear text (without TLS).
     findmnt=$(findmnt | grep nfs4 | grep -v $LOCALHOST 2>&1)

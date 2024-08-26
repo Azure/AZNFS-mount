@@ -87,8 +87,7 @@ get_version_from_mount_options()
     # Check if version is missing in mount command.
     #
     if [ -z "$mount_options" ] || [[ ! "$mount_options" == *"$ver_string"* ]]; then
-        eecho "Missing version in mount options. Example: 'vers=3'."
-        exit 1
+        return 1
     fi
 
     IFS=','
@@ -157,6 +156,7 @@ parse_arguments "$@"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
+    eecho "Missing version in mount options. Example: 'vers=3'."
     exit 1
 fi
 
