@@ -130,7 +130,7 @@ perform_aznfs_update()
         package_name=${AZNFS_RELEASE}_amd64.deb
     elif [ "$install_cmd" == "zypper" ]; then
         AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
-        package_name=${AZNFS_RELEASE_SUSE}.x86_64.rpmm
+        package_name=${AZNFS_RELEASE_SUSE}.x86_64.rpm
     else
         if [ "$distro_id" == "mariner" ]; then
             AZNFS_RELEASE="aznfs_mariner-${RELEASE_NUMBER}-1"

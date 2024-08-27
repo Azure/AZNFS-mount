@@ -57,6 +57,7 @@ jobs:
           ${{ github.workspace }}/deb/aznfs-${{ github.event.inputs.versionName }}-1_amd64.deb
           ${{ github.workspace }}/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace }}/suse/root/rpmbuild/RPMS/x86_64/aznfs_sles-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace }}/mariner/root/rpmbuild/RPMS/x86_64/aznfs_mariner-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace }}/scripts/aznfs_install.sh
           ${{ github.workspace }}/tarball/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.tar.gz
           ${{ github.workspace }}/tarball/aznfs-${{ github.event.inputs.versionName }}-1.arm64.tar.gz
