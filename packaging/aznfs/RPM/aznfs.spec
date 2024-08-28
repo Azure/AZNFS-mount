@@ -36,9 +36,9 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-if grep -i "mariner" /etc/os-release > /dev/null 2>&1; then
+if grep -qi "mariner" /etc/os-release; then
 	# Check if stunnel is not already installed.
-	if ! command -v stunnel > /dev/null 2>&1; then
+	if ! command -v stunnel > /dev/null; then
 		# Install stunnel from source on Mariner.
 		wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
 		if [ $? -ne 0 ]; then
@@ -68,7 +68,7 @@ if grep -i "mariner" /etc/os-release > /dev/null 2>&1; then
 
 		make
 		if [ $? -ne 0 ]; then
-			echo "Failed to compile stunnle. Please install stunnel and try again."
+			echo "Failed to build stunnel. Please install stunnel and try again."
 			cd -
 			rm -rf /tmp/$stunnel_dir
 			rm -f /tmp/stunnel-latest.tar.gz
@@ -77,7 +77,7 @@ if grep -i "mariner" /etc/os-release > /dev/null 2>&1; then
 
 		make install
 		if [ $? -ne 0 ]; then
-			echo "Failed to install stunnle. Please install stunnel and try again."
+			echo "Failed to install stunnel. Please install stunnel and try again."
 			cd -
 			rm -rf /tmp/$stunnel_dir
 			rm -f /tmp/stunnel-latest.tar.gz
