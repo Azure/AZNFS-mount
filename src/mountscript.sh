@@ -40,8 +40,8 @@ get_host_from_share()
     IFS=: read host share <<< "$hostshare"
 
     if [ -z "$host" -o -z "$share" ]; then
-        eecho "Bad share name: ${hostshare}."
-        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
+        echo "Bad share name: ${hostshare}."
+        echo "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
         return 1
     fi
 
@@ -50,8 +50,8 @@ get_host_from_share()
 
     # Check if the prefix matches the expected azprefix
     if [ "$hostprefix" != "$azprefix" ]; then
-        eecho "Bad share name: ${hostshare}."
-        eecho "Share must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
+        echo "Bad share name: ${hostshare}."
+        echo "Share must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
         return 1
     fi
 
@@ -77,8 +77,8 @@ get_dir_from_share()
     fi
 
     if [ $is_bad_share_name == "true" ]; then
-        eecho "Bad share name: ${hostshare}."
-        eecho "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
+        echo "Bad share name: ${hostshare}."
+        echo "Share to be mounted must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers."
         return 1
     fi
 
@@ -97,7 +97,7 @@ get_version_from_mount_options()
     # Check if version is missing in mount command.
     #
     if [ -z "$mount_options" ] || [[ ! "$mount_options" == *"$ver_string"* ]]; then
-        eecho "Missing version in mount options. Example: 'vers=3'."
+        echo "Missing version in mount options. Example: 'vers=3'."
         exit 1
     fi
 
@@ -167,7 +167,7 @@ parse_arguments "$@"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
-    echo "$nfs_vers"
+    eecho "$nfs_vers"
     eecho "Mount failed!"
     exit 1
 fi
@@ -183,7 +183,7 @@ fi
 
 nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
-    echo "$nfs_host"
+    eecho "$nfs_host"
     eecho "Mount failed!"
     exit 1
 fi
@@ -202,7 +202,7 @@ fi
 
 nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
 if [ $? -ne 0 ]; then
-    echo "$nfs_dir"
+    eecho "$nfs_dir"
     eecho "Mount failed!"
     exit 1
 fi
