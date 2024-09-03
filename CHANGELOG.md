@@ -1,3 +1,7 @@
+## [2.0.10]- July 2024
+- [AZNFS-mount #138](https://github.com/Azure/AZNFS-mount/pull/138)
+  (NFSv3) Fixed artifacts to correctly reflect the source code from the specified branch instead of the default main branch.
+
 ## [2.0.9]- July 2024
 - [AZNFS-mount #136](https://github.com/Azure/AZNFS-mount/pull/136)
   (NFSv3) Resolved the minor and major device numbers from the combined device ID received from the stat call to update the read-ahead configuration.
