@@ -32,6 +32,11 @@ TMP_MOUNTMAPv4="/tmp/mountmapv4.tmp"
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
 CONNECT_PORT=2049
 
+# Default timeout for mount command to complete in seconds.
+# If the mount command does not complete within this time, the mount is considered failed.
+# https://linux.die.net/man/5/nfs
+MOUNT_TIMEOUT_IN_SECONDS=180
+
 get_next_available_port()
 {
     for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
@@ -313,7 +318,11 @@ tls_nfsv4_files_share_mount()
                     # Since we are locking the mountmap file, we can't safely update the status to waiting using sed, we should overwrite
                     # the file instead.
                     vecho "Stunnel config file already exist. Updating mountmap status to waiting on $MOUNTMAPv4 for entry $existing_mountmap_entry."
-                    sed "\#$stunnel_conf_file;#s#\(;mounted\|;failed\)\$#;waiting#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
+                    current_timestamp=$(date +%s)
+                    mount_timeout=$(($current_timestamp + $MOUNT_TIMEOUT_IN_SECONDS))
+                    sed "\#$stunnel_conf_file;#s#\(;mounted\|;failed\)#;waiting#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
+                    # Add mount timeout to the mountmap entry. Used when aznfsWatchdog is cleaning up the mountmap file.
+                    sed -i "\#$stunnel_conf_file;#s#\(.*;\)\([^;]*\)\$#\1$mount_timeout#" $TMP_MOUNTMAPv4
                     cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
                     rm $TMP_MOUNTMAPv4
                     chattr -f +i $MOUNTMAPv4
@@ -382,18 +391,21 @@ tls_nfsv4_files_share_mount()
             exit 1
         fi
 
+        # Add mount timestamp to the mountmap entry. Used when aznfsWatchdog is cleaning up the mountmap file.
+        current_timestamp=$(date +%s)
+        mount_timeout=$(($current_timestamp + $MOUNT_TIMEOUT_IN_SECONDS))
+
         # We keep track of the state in the mountmap file to prevent watchdog from removing the entry before the mount is complete.
         # Waiting: mountmap entry is added but mount command is not executed yet. Watchdog can ignore this entry.
         # Mounted: mount command is executed successfully. If the mount is unmounted, watchdog can remove this entry.
         # Failed: mount command failed. Watchdog can remove this entry.
 
-        local mountmap_entry="$nfs_host;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash"
-        local mountmap_entry_with_waiting_state="${mountmap_entry};waiting"
+        local mountmap_entry="$nfs_host;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
         chattr -f -i $MOUNTMAPv4
-        echo "$mountmap_entry_with_waiting_state" >> $MOUNTMAPv4
+        echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAPv4
-            eecho "[$mountmap_entry_with_waiting_state] failed to add!"
+            eecho "[$mountmap_entry] failed to add!"
             chattr -i -f $stunnel_conf_file
             rm $stunnel_conf_file
             exit 1
@@ -456,7 +468,7 @@ tls_nfsv4_files_share_mount()
     if [ $mount_status -ne 0 ]; then
         # If the status is not waiting then we should not mark it as failed - it means there are other mounts on the same share.
         vecho "Updating mountmap status to failed."
-        sed "\#$stunnel_conf_file;#s#;waiting\$#;failed#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
+        sed "\#$stunnel_conf_file;#s#;waiting#;failed#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
         cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
         rm $TMP_MOUNTMAPv4
         chattr -f +i $MOUNTMAPv4
@@ -466,7 +478,7 @@ tls_nfsv4_files_share_mount()
         exit 1
     else
         vecho "Updating mountmap status to mounted."
-        sed "\#$stunnel_conf_file;#s#;waiting\$#;mounted#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
+        sed "\#$stunnel_conf_file;#s#;waiting#;mounted#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
         cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
         rm $TMP_MOUNTMAPv4
         chattr -f +i $MOUNTMAPv4
