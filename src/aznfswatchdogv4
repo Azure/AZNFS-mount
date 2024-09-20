@@ -153,9 +153,9 @@ process_nfsv4_mounts()
 
         #
         # MOUNTMAPv4 line is of the form:
-        # account.file.preprod.core.windows.net;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>
+        # account.file.preprod.core.windows.net;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>
         #
-        IFS=";" read l_host l_conf l_log l_pid l_checksumhash l_status l_timestamp <<< "$line"
+        IFS=";" read l_host l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
 
         if [ -z "$l_host" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
@@ -171,10 +171,10 @@ process_nfsv4_mounts()
         # Skip if the status is waiting, which means the mountscript is still processing the mount.
         if [ "$l_status" == "waiting" ]; then
             # vecho "Skipping entry with status 'waiting': [$line]"
-            if [[ $l_timestamp -ge $(date +%s) ]]; then
-                # Timestamp is in future, skip this entry.
+            if [[ $l_timeout -ge $(date +%s) ]]; then
+                # Timeout is in future, skip this entry.
                 # If a mount entry stays in the 'waiting' state for a long time (grater than the mount timeout), it's safe to clean it up.
-                # vecho "Timestamp is in future, skipping entry with status 'waiting': [$line]"
+                # vecho "Timeout is in future, skipping entry with status 'waiting': [$line]"
                 continue
             fi
         fi

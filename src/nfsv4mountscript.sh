@@ -191,8 +191,6 @@ add_stunnel_configuration()
         return 1
     fi
 
-    # TODO: checkHost value could be different for prod tenants.
-    # So need to change this value in future.
     stunnel_check_host=$(get_check_host_value "$nfs_host")
     echo "checkHost = $stunnel_check_host" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
@@ -324,6 +322,11 @@ tls_nfsv4_files_share_mount()
                     cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
                     rm $TMP_MOUNTMAPv4
                     chattr -f +i $MOUNTMAPv4
+                else
+                    # We should always have the mountmap entry for the stunnel_conf_file.
+                    # TODO: Double check if we need to handle this case.
+                    eecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
+                    exit 1
                 fi
                 flock -u $fd2
                 exec {fd2}<&-
@@ -389,7 +392,7 @@ tls_nfsv4_files_share_mount()
             exit 1
         fi
 
-        # Add mount timestamp to the mountmap entry. Used when aznfsWatchdog is cleaning up the mountmap file.
+        # Add mount timeout to the mountmap entry. Used when aznfsWatchdog is cleaning up the mountmap file.
         current_timestamp=$(date +%s)
         mount_timeout=$(($current_timestamp + $MOUNT_TIMEOUT_IN_SECONDS))
 
@@ -414,14 +417,15 @@ tls_nfsv4_files_share_mount()
         # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount.
         vecho "Stunnel config file already exist for $storageaccount: $stunnel_conf_file"
 
-        # Check if stunnel_pid_file exist for storageaccount
+        # It's possible that the stunnel process is not running for the storageaccount.
+        is_stunnel_running=
+
+        # Check if stunnel_pid_file exist for storageaccount and stunnel process is running.
         stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount.pid" | cut -d ";" -f4`
-        if [ ! -f $stunnel_pid_file ]; then
-            eecho "[FATAL] '${stunnel_pid_file}' does not exist!"
-            exit 1
+        if [ -f $stunnel_pid_file ]; then
+            is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $stunnel_pid_file`)
         fi
 
-        is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $stunnel_pid_file`)
         if [ -z "$is_stunnel_running" ]; then
             vecho "stunnel is not running! Restarting the stunnel"
 
