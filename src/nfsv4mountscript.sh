@@ -380,6 +380,8 @@ tls_nfsv4_files_share_mount()
             exit 1
         fi
 
+        vecho "Added stunnel configuration to $stunnel_conf_file."
+
         # start the stunnel process
         current_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
         vecho "Starting the stunnel on port $current_port"
