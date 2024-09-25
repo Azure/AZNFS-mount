@@ -87,6 +87,7 @@ find_next_available_port_and_start_stunnel()
         new_used_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
 
         # start the stunnel process
+        vecho "Starting the stunnel on new port $new_used_port."
         stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
         if [ -n "$stunnel_status" ]; then
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$new_used_port: Address already in use")
@@ -292,9 +293,19 @@ tls_nfsv4_files_share_mount()
         exit 1
     fi
 
+    exec {fd2}<$MOUNTMAPv4
+    flock -e $fd2
+
     EntryExistinMountMap="true"
 
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount.conf"
+
+    trap 'cleanup' EXIT
+
+    cleanup() {
+        flock -u $fd2
+        exec {fd2}<&-
+    }
 
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
@@ -303,11 +314,9 @@ tls_nfsv4_files_share_mount()
         # We need to acquire lock on both config file and mountmap since the watchdog can also update them.
         if exec {fd1}<$stunnel_conf_file; then
             flock -e $fd1
-            # If config file exist, update the mountmap status to waiting.
+            # If config file exists, update the mountmap status to waiting.
             if [ -e $stunnel_conf_file ]; then
                 # update mountmep status to waiting
-                exec {fd2}<$MOUNTMAPv4
-                flock -e $fd2
                 local existing_mountmap_entry=$(grep -m1 "$stunnel_conf_file" $MOUNTMAPv4)
                 if [ -n "$existing_mountmap_entry" ]; then
                     chattr -f -i $MOUNTMAPv4
@@ -326,12 +335,19 @@ tls_nfsv4_files_share_mount()
                     chattr -f +i $MOUNTMAPv4
                 else
                     # We should always have the mountmap entry for the stunnel_conf_file.
-                    # TODO: Double check if we need to handle this case.
+                    # If we kill the watchdog process right after unmount (can happen on reboot), watchdog might have cleaned up the mountmap entry
+                    # but not the stunnel_conf_file. In this case, we should remove the stunnel_conf_file and create a new one.
                     eecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
-                    exit 1
+                    accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
+                    pecho "killing stunnle process with pid: $pid on port: $accept_port"
+                    kill -9 $pid
+                    if [ $? -ne 0 ]; then
+                        eecho "[FATAL] Unable to kill stunnel process $pid!"
+                    fi
+                    chattr -i -f $stunnel_conf_file
+                    rm $stunnel_conf_file
+                    EntryExistinMountMap="false"
                 fi
-                flock -u $fd2
-                exec {fd2}<&-
             else
                 EntryExistinMountMap="false"
             fi
@@ -365,11 +381,14 @@ tls_nfsv4_files_share_mount()
         fi
 
         # start the stunnel process
+        current_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+        vecho "Starting the stunnel on port $current_port"
+
         stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
         if [ -n "$stunnel_status" ]; then
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
-                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'"
                 chattr -i -f $stunnel_conf_file
                 rm $stunnel_conf_file
                 exit 1
@@ -429,7 +448,8 @@ tls_nfsv4_files_share_mount()
         fi
 
         if [ -z "$is_stunnel_running" ]; then
-            vecho "stunnel is not running! Restarting the stunnel"
+            current_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+            vecho "stunnel is not running! Restarting the stunnel on port $current_port"
 
             stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
             if [ -n "$stunnel_status" ]; then
@@ -438,6 +458,7 @@ tls_nfsv4_files_share_mount()
                     eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
                     exit 1
                 else
+                    checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
                     vecho "Stunnel: Address ($LOCALHOST:$available_port) already in use. Find next available port and start stunnel."
                     find_next_available_port_and_start_stunnel "$stunnel_conf_file"
                     is_stunnel_running=$?
@@ -445,6 +466,16 @@ tls_nfsv4_files_share_mount()
                         eecho "Failed to get the next available port and start stunnel."
                         exit 1
                     fi
+                    # If we have updated the port in stunnel config file, we also need to update the checksum hash in mountmap file.
+                    new_checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
+                    chattr -f -i $MOUNTMAPv4
+                    # Since we are locking the mountmap file, we can't safely update it using sed, we should overwrite
+                    # the file instead.
+                    vecho "Updating the checksum hash on $MOUNTMAPv4 from $checksumHash to $new_checksumHash."
+                    sed -i "s/$checksumHash/$new_checksumHash/" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
+                    cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
+                    rm $TMP_MOUNTMAPv4
+                    chattr -f +i $MOUNTMAPv4
                 fi
             fi
         else
@@ -454,6 +485,10 @@ tls_nfsv4_files_share_mount()
         available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
         vecho "Local Port to use: $available_port"
     fi
+
+    # Unlock the mountmap file.
+    flock -u $fd2
+    exec {fd2}<&-
 
     vecho "Stunnel process is running for $nfs_host on accept port $available_port."
 
@@ -476,8 +511,6 @@ tls_nfsv4_files_share_mount()
         cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
         rm $TMP_MOUNTMAPv4
         chattr -f +i $MOUNTMAPv4
-        flock -u $fd2
-        exec {fd2}<&-
         eecho "Mount failed!"
         exit 1
     else
@@ -486,8 +519,6 @@ tls_nfsv4_files_share_mount()
         cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
         rm $TMP_MOUNTMAPv4
         chattr -f +i $MOUNTMAPv4
-        flock -u $fd2
-        exec {fd2}<&-
         vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
     fi
 }
@@ -499,7 +530,7 @@ fi
 
 vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
-# MOUNTMAPv4 file must have been created by aznfswatchdog service.
+# MOUNTMAPv4 file must have been created by aznfswatchdog service. It's created in common.sh.
 if [ ! -f "$MOUNTMAPv4" ]; then
     eecho "[FATAL] ${MOUNTMAPv4} not found!"
 
