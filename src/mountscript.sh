@@ -156,7 +156,7 @@ parse_arguments "$@"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
-    eecho "Missing version in mount options. Example: 'vers=3'."
+    eecho "Missing version in mount options. Example: 'vers=3' or 'vers=4.1'."
     exit 1
 fi
 

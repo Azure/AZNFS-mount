@@ -686,6 +686,29 @@ verify_iptable_entry()
     fi
 }
 
+# Find CheckHost value for stunnel configuration based on storage account hostname.
+get_check_host_value()
+{
+    local hostname=$1
+    local check_host_value="*.file.core.windows.net"
+
+    declare -A certs
+    certs=(
+        ["preprod.core.windows.net$"]="*.file.preprod.core.windows.net"
+        ["chinacloudapi.cn$"]="*.file.core.usgovcloudapi.net"
+        ["usgovcloudapi.net$"]="*.file.core.chinacloudapi.cn"
+    )
+
+    for cert in "${!certs[@]}"; do
+        if [[ "$hostname" =~ $cert ]]; then
+                check_host_value="${certs[$cert]}"
+                break
+        fi
+    done
+
+    echo $check_host_value
+}
+
 # On some distros mount program doesn't pass correct PATH variable.
 export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 

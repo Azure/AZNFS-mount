@@ -134,28 +134,6 @@ install_CA_cert()
     $CERT_UPDATE_COMMAND
 }
 
-get_check_host_value()
-{
-    local hostname=$1
-    local check_host_value="*.file.core.windows.net"
-
-    declare -A certs
-    certs=(
-        ["preprod.core.windows.net$"]="*.file.preprod.core.windows.net"
-        ["chinacloudapi.cn$"]="*.file.core.usgovcloudapi.net"
-        ["usgovcloudapi.net$"]="*.file.core.chinacloudapi.cn"
-    )
-
-    for cert in "${!certs[@]}"; do
-        if [[ "$hostname" =~ $cert ]]; then
-                check_host_value="${certs[$cert]}"
-                break
-        fi
-    done
-
-    echo $check_host_value
-}
-
 #
 # Add stunnel configuration in stunnel_<storageaccount>.conf file.
 #
@@ -262,8 +240,8 @@ add_stunnel_configuration()
     fi
 
     # For Mariner linux, we need to add the following line to the stunnel configuration file,
-    # otherwise stunnle complains about the missing ciphers for TLSv1.3 - need to do it for 
-    # TLSv1.2 as well since ciphers for both TLS versions are checked as part of initialization process.
+    # otherwise stunnel complains about the missing ciphers for TLSv1.3 - need to do add it even if using
+    # TLSv1.2, since ciphers for both TLS versions are checked as part of the initialization process.
 
     distro_id=
     if [ -f /etc/os-release ]; then
@@ -358,7 +336,7 @@ tls_nfsv4_files_share_mount()
                     # but not the stunnel_conf_file. In this case, we should remove the stunnel_conf_file and create a new one.
                     eecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
                     accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
-                    pecho "killing stunnle process with pid: $pid on port: $accept_port"
+                    pecho "killing stunnel process with pid: $pid on port: $accept_port"
                     kill -9 $pid
                     if [ $? -ne 0 ]; then
                         eecho "[FATAL] Unable to kill stunnel process $pid!"
