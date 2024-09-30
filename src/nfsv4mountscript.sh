@@ -261,6 +261,27 @@ add_stunnel_configuration()
         return 1
     fi
 
+    # For Mariner linux, we need to add the following line to the stunnel configuration file,
+    # otherwise stunnle complains about the missing ciphers for TLSv1.3 - need to do it for 
+    # TLSv1.2 as well since ciphers for both TLS versions are checked as part of initialization process.
+
+    distro_id=
+    if [ -f /etc/os-release ]; then
+        distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(canonicalize_distro_id $distro_id)
+    fi
+
+    if [ "$distro_id" == "mariner" ]; then
+        # List available TLSv1.3 ciphersuites using OpenSSL
+        available_ciphers=$(openssl ciphers -s -tls1_3 | awk '{print $1}')
+        echo "ciphersuites = $available_ciphers" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add 'ciphersuites' info to $stunnel_conf_file!"
+            return 1
+        fi
+    fi
+
     chattr -f +i $stunnel_conf_file
 }
 
