@@ -99,7 +99,6 @@ ensure_mountmapv4_not_exist()
 
 cleanup_mount()
 {
-    #sepideh test this
     local l_conf=$1
     local l_log=$2
     local l_pid=$3
@@ -200,9 +199,9 @@ process_nfsv4_mounts()
 
         #
         # MOUNTMAPv4 line is of the form:
-        # account.file.preprod.core.windows.net;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>
+        # account.file.preprod.core.windows.net;<IP>;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>
         #
-        IFS=";" read l_host l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        IFS=";" read l_host l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
 
         if [ -z "$l_host" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
