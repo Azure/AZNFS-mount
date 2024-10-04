@@ -263,6 +263,37 @@ add_stunnel_configuration()
     chattr -f +i $stunnel_conf_file
 }
 
+check_if_notls_mount_exists()
+{
+    local nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
+
+    # Check if the mount to the same endpoint exists that is using clear text (without TLS).
+    local nfs_mounts=$(findmnt | grep nfs4 | grep -v $LOCALHOST 2>&1 | awk '{print $2}')
+
+    #
+    # For no matching mounts also, findmnt exits with a failure return, so check
+    # for both exit status and non-empty error o/p.
+    #
+    if [ $? -ne 0 -a -n "$nfs_mounts" ]; then
+        eecho "${nfs_mounts}."
+        eecho "[FATAL] findmnt failed unexpectedly!"
+        # This usually indicates some non-transient issue, bail out.
+        exit 1
+    fi
+
+    for mount in $nfs_mounts; do
+        local mount_hostname=$(echo "$mount" | cut -d: -f1)
+        local mount_ip_address=$(getent hosts "$mount_hostname" | awk '{print $1}')
+
+        if [ "$mount_ip_address" == "$nfs_host_ip" ]; then
+            eecho "Mount failed!"
+            eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using clear text (without TLS)."
+            eecho "Cannot mount with TLS to the same endpoint as they use the same connection. You need to unmount share on ${mount_hostname} and try again."
+            exit 1
+        fi
+    done
+}
+
 #
 # Mount nfsv4 files share with TLS encryption.
 #
@@ -334,12 +365,12 @@ tls_nfsv4_files_share_mount()
                     # We should always have the mountmap entry for the stunnel_conf_file.
                     # If we kill the watchdog process right after unmount (can happen on reboot), watchdog might have cleaned up the mountmap entry
                     # but not the stunnel_conf_file. In this case, we should remove the stunnel_conf_file and create a new one.
-                    eecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
+                    vecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
                     accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
                     pecho "killing stunnel process with pid: $pid on port: $accept_port"
                     kill -9 $pid
                     if [ $? -ne 0 ]; then
-                        eecho "[FATAL] Unable to kill stunnel process $pid!"
+                        vecho "Unable to kill stunnel process $pid!"
                     fi
                     chattr -i -f $stunnel_conf_file
                     rm $stunnel_conf_file
@@ -421,7 +452,8 @@ tls_nfsv4_files_share_mount()
         # Mounted: mount command is executed successfully. If the mount is unmounted, watchdog can remove this entry.
         # Failed: mount command failed. Watchdog can remove this entry.
 
-        local mountmap_entry="$nfs_host;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
+        local nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
+        local mountmap_entry="$nfs_host;$nfs_host_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
         chattr -f -i $MOUNTMAPv4
         echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
@@ -441,7 +473,7 @@ tls_nfsv4_files_share_mount()
         is_stunnel_running=
 
         # Check if stunnel_pid_file exist for storageaccount and stunnel process is running.
-        stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount.pid" | cut -d ";" -f4`
+        stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount.pid" | cut -d ";" -f5`
         if [ -f $stunnel_pid_file ]; then
             is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $stunnel_pid_file`)
         fi
@@ -554,10 +586,13 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     # to the same endpoint as they use the same connection.
 
     # Check if the mount to the same endpoint exists that is using TLS.
-    mountmap_entry=$(grep -m1 "^${nfs_host};" $MOUNTMAPv4)
+    nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
+    mountmap_entry=$(grep -m1 ";${nfs_host_ip};" $MOUNTMAPv4)
     if [ -n "$mountmap_entry" ]; then
-        eecho "Mount to the same endpoint ${nfs_host} exists that is using TLS."
+        eecho "Mount failed!"
+        eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using TLS."
         eecho "Cannot mount without TLS to the same endpoint as they use the same connection."
+        eecho "You can try unmounting the share on the same endpoint and try again. Mountmap entry on the same endpoint: $mountmap_entry"
         exit 1
     fi
 
@@ -590,25 +625,7 @@ else
         exit 1
     fi
 
-    # Check if the mount to the same endpoint exists that is using clear text (without TLS).
-    findmnt=$(findmnt | grep nfs4 | grep -v $LOCALHOST 2>&1)
-
-    #
-    # For no matching mounts also, findmnt exits with a failure return, so check
-    # for both exit status and non-empty error o/p.
-    #
-    if [ $? -ne 0 -a -n "$findmnt" ]; then
-        eecho "${findmnt}."
-        eecho "[FATAL] findmnt failed unexpectedly!"
-        # This usually indicates some non-transient issue, bail out.
-        exit 1
-    fi
-
-    if findmnt | grep "nfs4" | grep -v $LOCALHOST | grep -q "$nfs_host"; then
-        eecho "Mount to the same endpoint ${nfs_host} exists that is using clear text (without TLS)."
-        eecho "Cannot mount with TLS to the same endpoint as they use the same connection."
-        exit 1
-    fi
+    check_if_notls_mount_exists
 
     tls_nfsv4_files_share_mount
 fi
