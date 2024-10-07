@@ -24,9 +24,6 @@ CERT_PATH=
 CERT_UPDATE_COMMAND=
 STUNNEL_CAFILE=
 
-# Temporary mountmap file used to overwrite mountmap file.
-TMP_MOUNTMAPv4="/tmp/mountmapv4.tmp"
-
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
 CONNECT_PORT=2049
 
@@ -34,6 +31,12 @@ CONNECT_PORT=2049
 # If the mount command does not complete within this time, the mount is considered failed.
 # https://linux.die.net/man/5/nfs
 MOUNT_TIMEOUT_IN_SECONDS=180
+
+# Cleanup function to release the lock on mountmap file.
+cleanup() {
+    flock -u $fd2
+    exec {fd2}<&-
+}
 
 get_next_available_port()
 {
@@ -287,8 +290,8 @@ check_if_notls_mount_exists()
 
         if [ "$mount_ip_address" == "$nfs_host_ip" ]; then
             eecho "Mount failed!"
-            eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using clear text (without TLS)."
-            eecho "Cannot mount with TLS to the same endpoint as they use the same connection. You need to unmount share on ${mount_hostname} and try again."
+            eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using clear text (no TLS). Cannot mount with TLS to the same endpoint as they use the same connection."
+            eecho "Try unmounting the share on ${mount_hostname} and run the mount command again."
             exit 1
         fi
     done
@@ -321,67 +324,59 @@ tls_nfsv4_files_share_mount()
         exit 1
     fi
 
-    exec {fd2}<$MOUNTMAPv4
-    flock -e $fd2
-
     EntryExistinMountMap="true"
 
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount.conf"
 
-    trap 'cleanup' EXIT
-
-    cleanup() {
-        flock -u $fd2
-        exec {fd2}<&-
-    }
-
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
     else
-        # Check if the stunnel_conf_file already exist for the storageaccount.
-        # We need to acquire lock on both config file and mountmap since the watchdog can also update them.
-        if exec {fd1}<$stunnel_conf_file; then
-            flock -e $fd1
-            # If config file exists, update the mountmap status to waiting.
-            if [ -e $stunnel_conf_file ]; then
-                # update mountmep status to waiting
-                local existing_mountmap_entry=$(grep -m1 "$stunnel_conf_file" $MOUNTMAPv4)
-                if [ -n "$existing_mountmap_entry" ]; then
-                    chattr -f -i $MOUNTMAPv4
-                    # Update the status to waiting - If the mount on this share has failed but we haven't cleaned up the files yet, we should still update the status
-                    # to waiting and reuse the mountmap entry and stunnel files.
-                    # Since we are locking the mountmap file, we can't safely update the status to waiting using sed, we should overwrite
-                    # the file instead.
-                    vecho "Stunnel config file already exist. Updating mountmap status to waiting on $MOUNTMAPv4 for entry $existing_mountmap_entry."
-                    current_timestamp=$(date +%s)
-                    mount_timeout=$(($current_timestamp + $MOUNT_TIMEOUT_IN_SECONDS))
-                    sed "\#$stunnel_conf_file;#s#\(;mounted\|;failed\)#;waiting#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
-                    # Add mount timeout to the mountmap entry. Used when aznfsWatchdog is cleaning up the mountmap file.
-                    sed -i "\#$stunnel_conf_file;#s#\(.*;\)\([^;]*\)\$#\1$mount_timeout#" $TMP_MOUNTMAPv4
-                    cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
-                    rm $TMP_MOUNTMAPv4
-                    chattr -f +i $MOUNTMAPv4
-                else
-                    # We should always have the mountmap entry for the stunnel_conf_file.
-                    # If we kill the watchdog process right after unmount (can happen on reboot), watchdog might have cleaned up the mountmap entry
-                    # but not the stunnel_conf_file. In this case, we should remove the stunnel_conf_file and create a new one.
-                    vecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
-                    accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
-                    pecho "killing stunnel process with pid: $pid on port: $accept_port"
-                    kill -9 $pid
-                    if [ $? -ne 0 ]; then
-                        vecho "Unable to kill stunnel process $pid!"
-                    fi
-                    chattr -i -f $stunnel_conf_file
-                    rm $stunnel_conf_file
-                    EntryExistinMountMap="false"
+        # If config file exists, update the mountmap status to waiting.
+        local existing_mountmap_entry=$(grep -m1 "$stunnel_conf_file" $MOUNTMAPv4)
+        if [ -n "$existing_mountmap_entry" ]; then
+            chattr -f -i $MOUNTMAPv4
+            # Update the status to waiting - even if the mount on this share has failed but we haven't cleaned up the files yet, we should still update the status
+            # to waiting and reuse the mountmap entry and stunnel files. Also add mount timeout to the mountmap entry. Used when aznfsWatchdog is cleaning up the mountmap file.
+            # Since we are locking the mountmap file, we can't safely update the file using sed, we should overwrite
+            # the file instead.
+            vecho "Stunnel config file already exist. Updating mountmap status to waiting on $MOUNTMAPv4 for entry $existing_mountmap_entry."
+            current_timestamp=$(date +%s)
+            mount_timeout=$(($current_timestamp + $MOUNT_TIMEOUT_IN_SECONDS))
+
+            out=$(sed "\#$stunnel_conf_file;#s#\(.*;\)[^;]*;\([0-9]*\)#\1waiting;${mount_timeout}#" $MOUNTMAPv4)
+            ret=$?
+            if [ $ret -eq 0 ]; then
+                #
+                # If this echo fails then MOUNTMAPv4 could be truncated.
+                #
+                echo "$out" > $MOUNTMAPv4
+                ret=$?
+                out=
+                if [ $ret -ne 0 ]; then
+                    eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
                 fi
-            else
-                EntryExistinMountMap="false"
             fi
-            flock -u $fd1
-            exec {fd1}<&-
+
+            if [ $ret -ne 0 ]; then
+                chattr -f +i $MOUNTMAPv4
+                eecho "[FATAL] failed to update ${MOUNTMAPv4}! Won't proceed with mount."
+                exit 1
+            fi
+
+            chattr -f +i $MOUNTMAPv4
         else
+            # We should always have the mountmap entry for the stunnel_conf_file.
+            # If we kill the watchdog process right after unmount (can happen on reboot), watchdog might have cleaned up the mountmap entry
+            # but not the stunnel_conf_file. In this case, we should remove the stunnel_conf_file and create a new one.
+            vecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
+            accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
+            pecho "killing stunnel process with pid: $pid on port: $accept_port"
+            kill -9 $pid
+            if [ $? -ne 0 ]; then
+                vecho "Unable to kill stunnel process $pid!"
+            fi
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
             EntryExistinMountMap="false"
         fi
     fi
@@ -500,12 +495,30 @@ tls_nfsv4_files_share_mount()
                     # If we have updated the port in stunnel config file, we also need to update the checksum hash in mountmap file.
                     new_checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
                     chattr -f -i $MOUNTMAPv4
+
                     # Since we are locking the mountmap file, we can't safely update it using sed, we should overwrite
                     # the file instead.
                     vecho "Updating the checksum hash on $MOUNTMAPv4 from $checksumHash to $new_checksumHash."
-                    sed -i "s/$checksumHash/$new_checksumHash/" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
-                    cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
-                    rm $TMP_MOUNTMAPv4
+                    out=$(sed "s/$checksumHash/$new_checksumHash/" $MOUNTMAPv4)
+                    ret=$?
+                    if [ $ret -eq 0 ]; then
+                        #
+                        # If this echo fails then MOUNTMAPv4 could be truncated.
+                        #
+                        echo "$out" > $MOUNTMAPv4
+                        ret=$?
+                        out=
+                        if [ $ret -ne 0 ]; then
+                            eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+                        fi
+                    fi
+
+                    if [ $ret -ne 0 ]; then
+                        chattr -f +i $MOUNTMAPv4
+                        eecho "[FATAL] failed to update ${MOUNTMAPv4}! Won't proceed with mount."
+                        exit 1
+                    fi
+
                     chattr -f +i $MOUNTMAPv4
                 fi
             fi
@@ -517,10 +530,6 @@ tls_nfsv4_files_share_mount()
         vecho "Local Port to use: $available_port"
     fi
 
-    # Unlock the mountmap file.
-    flock -u $fd2
-    exec {fd2}<&-
-
     vecho "Stunnel process is running for $nfs_host on accept port $available_port."
 
     vecho "Running the mount command: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
@@ -531,24 +540,43 @@ tls_nfsv4_files_share_mount()
         pecho "$mount_output"
     fi
 
-    # Lock the mountmap file and update the status of the mount entry.
-    exec {fd2}<$MOUNTMAPv4
-    flock -e $fd2
     chattr -f -i $MOUNTMAPv4
     if [ $mount_status -ne 0 ]; then
         # If the status is not waiting then we should not mark it as failed - it means there are other mounts on the same share.
         vecho "Updating mountmap status to failed."
-        sed "\#$stunnel_conf_file;#s#;waiting#;failed#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
-        cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
-        rm $TMP_MOUNTMAPv4
+        out=$(sed "\#$stunnel_conf_file;#s#;waiting#;failed#" $MOUNTMAPv4)
+        ret=$?
+        if [ $ret -eq 0 ]; then
+            #
+            # If this echo fails then MOUNTMAPv4 could be truncated.
+            #
+            echo "$out" > $MOUNTMAPv4
+            ret=$?
+            out=
+            if [ $ret -ne 0 ]; then
+                eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+            fi
+        fi
+
         chattr -f +i $MOUNTMAPv4
         eecho "Mount failed!"
         exit 1
     else
         vecho "Updating mountmap status to mounted."
-        sed "\#$stunnel_conf_file;#s#;waiting#;mounted#" $MOUNTMAPv4 > $TMP_MOUNTMAPv4
-        cp $TMP_MOUNTMAPv4 $MOUNTMAPv4
-        rm $TMP_MOUNTMAPv4
+        out=$(sed "\#$stunnel_conf_file;#s#;waiting#;mounted#" $MOUNTMAPv4)
+        ret=$?
+        if [ $ret -eq 0 ]; then
+            #
+            # If this echo fails then MOUNTMAPv4 could be truncated.
+            #
+            echo "$out" > $MOUNTMAPv4
+            ret=$?
+            out=
+            if [ $ret -ne 0 ]; then
+                eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+            fi
+        fi
+
         chattr -f +i $MOUNTMAPv4
         vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
     fi
@@ -579,6 +607,13 @@ if ! chattr -f +i $MOUNTMAPv4; then
     wecho "chattr does not work for ${MOUNTMAPv4}!"
 fi
 
+# Lock the mountmap file as both other mount and watchdog processes might be accessing it.
+exec {fd2}<$MOUNTMAPv4
+flock -e $fd2
+
+# Set trap to cleanup the lock on mountmap file on exit.
+trap 'cleanup' EXIT
+
 if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     vecho "notls option is enabled. Mount nfs share without TLS."
 
@@ -589,10 +624,10 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
     mountmap_entry=$(grep -m1 ";${nfs_host_ip};" $MOUNTMAPv4)
     if [ -n "$mountmap_entry" ]; then
+        storage_account=$(echo $mountmap_entry | cut -d';' -f1)
         eecho "Mount failed!"
-        eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using TLS."
-        eecho "Cannot mount without TLS to the same endpoint as they use the same connection."
-        eecho "You can try unmounting the share on the same endpoint and try again. Mountmap entry on the same endpoint: $mountmap_entry"
+        eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using TLS. Cannot mount without TLS to the same endpoint as they use the same connection."
+        eecho "Try unmounting the shares on $storage_account and run the mount command again."
         exit 1
     fi
 

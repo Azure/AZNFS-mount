@@ -104,9 +104,7 @@ cleanup_mount()
     local l_pid=$3
     local line=$4
 
-    # Need to lock MOUNTMAPv4 and config file since the mountscript could be updating them.
-    exec {fd1}<$l_conf
-    flock -e $fd1
+    # Need to lock MOUNTMAPv4 since the mountscript could modify them as well.
     exec {fd2}<$MOUNTMAPv4
     flock -e $fd2
 
@@ -127,8 +125,6 @@ cleanup_mount()
         eecho "Failed to delete entry from ${MOUNTMAPv4}! Entry: [$line]"
         flock -u $fd2
         exec {fd2}<&-
-        flock -u $fd1
-        exec {fd1}<&-
         return 1
     fi
 
@@ -136,8 +132,6 @@ cleanup_mount()
 
     flock -u $fd2
     exec {fd2}<&-
-    flock -u $fd1
-    exec {fd1}<&-
     return 0
 }
 
