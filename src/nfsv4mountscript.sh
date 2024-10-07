@@ -35,6 +35,12 @@ CONNECT_PORT=2049
 # https://linux.die.net/man/5/nfs
 MOUNT_TIMEOUT_IN_SECONDS=180
 
+# Cleanup function to release the lock on mountmap file.
+cleanup() {
+    flock -u $fd2
+    exec {fd2}<&-
+}
+
 get_next_available_port()
 {
     for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
@@ -321,19 +327,9 @@ tls_nfsv4_files_share_mount()
         exit 1
     fi
 
-    exec {fd2}<$MOUNTMAPv4
-    flock -e $fd2
-
     EntryExistinMountMap="true"
 
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount.conf"
-
-    trap 'cleanup' EXIT
-
-    cleanup() {
-        flock -u $fd2
-        exec {fd2}<&-
-    }
 
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
@@ -517,10 +513,6 @@ tls_nfsv4_files_share_mount()
         vecho "Local Port to use: $available_port"
     fi
 
-    # Unlock the mountmap file.
-    flock -u $fd2
-    exec {fd2}<&-
-
     vecho "Stunnel process is running for $nfs_host on accept port $available_port."
 
     vecho "Running the mount command: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
@@ -531,9 +523,6 @@ tls_nfsv4_files_share_mount()
         pecho "$mount_output"
     fi
 
-    # Lock the mountmap file and update the status of the mount entry.
-    exec {fd2}<$MOUNTMAPv4
-    flock -e $fd2
     chattr -f -i $MOUNTMAPv4
     if [ $mount_status -ne 0 ]; then
         # If the status is not waiting then we should not mark it as failed - it means there are other mounts on the same share.
@@ -578,6 +567,13 @@ fi
 if ! chattr -f +i $MOUNTMAPv4; then
     wecho "chattr does not work for ${MOUNTMAPv4}!"
 fi
+
+# Lock the mountmap file.
+exec {fd2}<$MOUNTMAPv4
+flock -e $fd2
+
+# Set trap to cleanup the lock on mountmap file on exit.
+trap 'cleanup' EXIT
 
 if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     vecho "notls option is enabled. Mount nfs share without TLS."
