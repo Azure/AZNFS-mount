@@ -622,27 +622,14 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
 
     # Check if the mount to the same endpoint exists that is using TLS.
     nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
-
-    grep ";${nfs_host_ip};" $MOUNTMAPv4 | while read -r line; do
-        storage_account_with_same_IP=$(echo "$line" | awk -F'stunnel_|.conf' '{print $2}')
-
-        if findmnt | grep nfs4 | grep "${LOCALHOST}" | grep -q "${storage_account_with_same_IP}"; then
-            eecho "Mount failed!"
-            eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using TLS. Cannot mount without TLS to the same endpoint as they use the same connection."
-            eecho "Try unmounting the shares on $storage_account_with_same_IP and run the mount command again."
-            exit 1
-        fi
-    done
-
-    # Old design that needs "clean" option to work properly
-    # mountmap_entry=$(grep -m1 ";${nfs_host_ip};" $MOUNTMAPv4)
-    # if [ -n "$mountmap_entry" ]; then
-    #     storage_account=$(echo $mountmap_entry | cut -d';' -f1)
-    #     eecho "Mount failed!"
-    #     eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using TLS. Cannot mount without TLS to the same endpoint as they use the same connection."
-    #     eecho "Try unmounting the shares on $storage_account and run the mount command again."
-    #     exit 1
-    # fi
+    mountmap_entry=$(grep -m1 ";${nfs_host_ip};" $MOUNTMAPv4)
+    if [ -n "$mountmap_entry" ]; then
+        storage_account=$(echo $mountmap_entry | cut -d';' -f1)
+        eecho "Mount failed!"
+        eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using TLS. Cannot mount without TLS to the same endpoint as they use the same connection."
+        eecho "Try unmounting the shares on $storage_account and run the mount command again."
+        exit 1
+    fi
 
     if [[ "$MOUNT_OPTIONS" == *"notls,"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//notls,/}
