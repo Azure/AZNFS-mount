@@ -135,6 +135,52 @@ cleanup_mount()
     return 0
 }
 
+check_timeout_error_and_restart_stunnel()
+{
+    local pid
+    local lines
+
+    if [ "$CAPTURE_AZNFS_TCPDUMP" -eq 1 ]; then
+        if dmesg -T | grep -q "not responding"; then
+            eecho "Got the timeout error on $date, restarting stunnel process."
+            mkdir -p /tmp/aznfs_dmsg
+            rpcdebug -m rpc -c all
+            dmesg -T > /tmp/aznfs_dmsg/dmesg_$(date +%Y%m%d%H%M%S).log
+            killall tcpdump
+        fi
+    fi
+
+    if dmesg -T | grep -q "not responding"; then
+        IFS=$'\n' lines=$(cat $MOUNTMAPv4)
+        for line in $lines; do
+            if [ -z "$line" ]; then
+                continue
+            fi
+
+            IFS=";" read m_ip m_conf m_log m_pid m_checksumhash m_status m_timeout <<< "$line"
+
+            pid=$(cat $m_pid)
+            pecho "Timeout error: killing stunnel process with pid: $pid"
+            kill -9 $pid
+
+            stunnel_status=$(stunnel $m_conf 2>&1)
+            if [ -n "$stunnel_status" ]; then
+                m_port=$(cat $m_conf | grep accept | cut -d: -f2)
+                is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$m_conf: Address already in use")
+
+                if [ -n "$is_binding_error" ]; then
+                    eecho "Timeout error: [FATAL] Restarting stunnel failed.$m_conf port is already being used by other process.!"
+                    eecho "Timeout error: It's recommended to unmount all shares from $m_ip and then remount shares using aznfs mount helper!"
+                else
+                    eecho "Timeout error: [FATAL] watchdog service is unable to start stunnel process for '${m_conf}'!"
+                    eecho "Timeout error: Please check the stunnel logs in $m_log for more details."
+                    eecho "Timeout error: It's recommended to unmount all shares from $m_ip and then remount shares using aznfs mount helper!"
+                fi
+            fi
+    fi
+
+}
+
 process_nfsv4_mounts()
 {
     local l_conf
@@ -293,5 +339,8 @@ fi
 
 while :; do
     sleep $MONITOR_INTERVAL_SECS
+
+    check_timeout_error_and_restart_stunnel
+
     process_nfsv4_mounts
 done

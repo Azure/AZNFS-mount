@@ -579,6 +579,16 @@ tls_nfsv4_files_share_mount()
 
         chattr -f +i $MOUNTMAPv4
         vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
+
+        tcpdump_running=$(pgrep tcpdump)
+
+        if [ -z "$tcpdump_running" ] && [ "$CAPTURE_AZNFS_TCPDUMP" -eq 1 ]; then
+            dmesg -Tc > /tmp/dmesg-old.txt
+            rm /tmp/aznfs_repro.pcap
+            rpcdebug -m rpc -s all
+            tcpdump "(port 2049 or host 127.0.0.1)" -i any -W 20 -C 50 -n -w /tmp/aznfs_repro.pcap &
+            vecho "tcpdump started successfully."
+        fi
     fi
 }
 
