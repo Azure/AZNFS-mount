@@ -226,6 +226,9 @@ fi
 if [ ! -f "$FLAG_FILE" ]; then
         user_consent_for_auto_update
 
+		# Wanted by watchdog service
+		systemctl enable nfs-client.target
+
         # Start watchdog service for NFSv3
         systemctl daemon-reload
         systemctl enable aznfswatchdog
