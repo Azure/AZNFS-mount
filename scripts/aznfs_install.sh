@@ -384,6 +384,7 @@ case "${__m}:${__s}" in
             eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
             pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest'"
             pecho "If the problem persists, contact Microsoft support."
+            exit 1
         fi
         ;;
     *)
