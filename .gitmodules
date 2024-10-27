@@ -1,0 +1,9 @@
+[submodule "turbonfs/extern/libnfs"]
+	path = turbonfs/extern/libnfs
+	url = https://github.com/linuxsmiths/libnfs
+[submodule "turbonfs/extern/yaml-cpp"]
+	path = turbonfs/extern/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git
+[submodule "turbonfs/extern/spdlog"]
+	path = turbonfs/extern/spdlog
+	url = https://github.com/gabime/spdlog.git
