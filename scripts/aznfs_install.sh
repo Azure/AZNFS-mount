@@ -299,7 +299,13 @@ ensure_pkg()
     elif [ "$distro" == "sles" ]; then
         zypper=1
         zypper install -y $pkg
+    else
+        eecho "[FATAL] Unknown linux distro"
+        pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest'"
+        pecho "If the problem persists, contact Microsoft support."
+        exit 1
     fi
+    
 }
 
 verify_super_user()
