@@ -1,0 +1,106 @@
+#
+# Share details
+#
+account: sjc22prdste06hnfsv3acc1
+container: nfsv3test
+cloud_suffix: blob.preprod.core.windows.net
+port: 2047
+
+#
+# NFS mount options
+# These have the same name and meaning as Linux NFS client mount options.
+# Also note that only a subset of Linux mount options are supported.
+# readdir_maxcount
+# lookupcache: all|none|pos|positive
+#
+nconnect: 1
+timeo: 600
+retrans: 2
+acregmin: 3
+acregmax: 60
+acdirmin: 30
+acdirmax: 60
+actimeo: 300
+lookupcache: all
+rsize: 1048576
+wsize: 1048576
+
+#
+# Consistency config.
+# This controls the consistency level desired wrt updates from other clients.
+# Following values are supported (from lowest to highest consistency):
+# - solowriter
+#   Use this when this fuse client is the only one accessing the share or all
+#   other clients have mounted the share readonly, and hence it's guaranteed that
+#   file/dirs cannot be updated outside our knowledge. This implies we can cache
+#   attributes and data indefinitely and local changes will correctly update the
+#   caches.
+#   actimeo config will be ignored and set to "infinite" value.
+#   Beware, if you wrongly choose this when there are other clients actually
+#   making changes to the share (creating/deleting files/dirs) those changes may
+#   not reflect for indefinitely long period.
+#
+# - standardnfs
+#   Use this to get the same consistency as standard NFS, which is close-to-open
+#   consistency with fresh attributes queried every actimeo period. actimeo
+#   config will be honoured.
+#   Files/directories are assumed to not have changed till actimeo after which
+#   we make a GETATTR call to query the attributes based on which we decide if
+#   the file/dir cache needs to be invalidated.
+#   Hence any changes done by other clients will be reflected no later than
+#   actimeo period.
+#   Other non-NFS protocol clients may not see changes to files made by this
+#   fuse client till the file is closed.
+#
+# - azurempa (Multi Protocol Access)
+#   This is same as "standard" with one difference - non-NFS protocol clients
+#   will see changes to files made by this fuse client more promptly.
+#   Use this if you want to access files updated by this client, from other
+#   non-NFS protocols.
+#
+consistency: solowriter
+
+#
+# Misc options
+#
+readdir_maxcount: 1048576
+fuse_max_background: 4096
+
+#
+# Cache config
+#
+# We cache the following:
+# - file/dir attributes
+# - lookup results
+# - readdir data
+# - file data
+#
+# attributes are cached in the kernel and/or user and can be controlled by the
+# following mount options:
+# - acregmin/acregmax
+# - acdirmin/acdirmax
+# - actimeo
+# - lookupcache
+#
+# Attribute caching can be effectively disabled by setting actimeo to 0.
+#
+# Readdir data can be cached in the kernel and/or user caches.
+# It can be controlled using cache.readdir.* config.
+#
+# File data can be cached in the kernel and/or user caches. User cache can be
+# memory and/or file backed.
+# Memory backed caches are controlled using cache.data.* configs, while
+# file backed cache are controlled using filecache.* configs.
+#
+readahead_kb: 16384
+cache.attr.user.enable: true
+cache.readdir.kernel.enable: true
+cache.readdir.user.enable: true
+cache.data.kernel.enable: true
+cache.data.user.enable: true
+cache.data.user.max_size_mb: 4096
+
+filecache.enable: false
+filecache.cachedir: /mnt
+filecache.max_size_gb: 1000
+cache_max_mb: 4096
