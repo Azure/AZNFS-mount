@@ -305,7 +305,6 @@ ensure_pkg()
         pecho "If the problem persists, contact Microsoft support."
         exit 1
     fi
-    
 }
 
 verify_super_user()
