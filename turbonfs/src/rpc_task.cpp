@@ -4430,19 +4430,34 @@ void rpc_task::send_readdir_or_readdirplus_response(
             /*
              * it->attributes are copied from nfs_inode->attr at the time when
              * the directory_entry was created, after that inode's ctime can
-             * only go forward.
+             * only go forward. If there are cached writes happening on the file
+             * the attribute size in the inode can increase while ctime remains
+             * unchanged. See on_cached_write() for how this can happen.
              *
              * TODO: Remove directory_entry->attributes if we don't need them.
              */
-			{
-				std::shared_lock<std::shared_mutex> lock(it->nfs_inode->ilock_1);
-				assert((::memcmp(&it->attributes,
-								 &it->nfs_inode->get_attr_nolock(),
-                                 sizeof(struct stat)) == 0) ||
-					   (compare_timespec(it->attributes.st_ctim,
-										 it->nfs_inode->get_attr_nolock().st_ctim) < 0));
-				assert(it->attributes.st_ino == it->nfs_inode->get_attr_nolock().st_ino);
-			}
+            {
+                std::shared_lock<std::shared_mutex> lock(it->nfs_inode->ilock_1);
+                assert(it->attributes.st_ino == it->nfs_inode->get_attr_nolock().st_ino);
+
+                const bool attr_same = (::memcmp(&it->attributes,
+                                                 &it->nfs_inode->get_attr_nolock(),
+                                                 sizeof(struct stat)) == 0);
+                if (!attr_same) {
+                    const bool inode_attr_ctime_newer =
+                        (compare_timespec(it->attributes.st_ctim,
+                                          it->nfs_inode->get_attr_nolock().st_ctim) < 0);
+                    const bool inode_attr_ctime_same =
+                        (compare_timespec(it->attributes.st_ctim,
+                                          it->nfs_inode->get_attr_nolock().st_ctim) == 0);
+                    const bool inode_attr_size_bigger =
+                        (it->nfs_inode->get_attr_nolock().st_size > it->attributes.st_size);
+
+                    assert(inode_attr_ctime_newer ||
+                           (inode_attr_ctime_same && inode_attr_size_bigger));
+                }
+
+            }
 #endif
 
             // We don't need the memset as we are setting all members.
