@@ -299,10 +299,33 @@ ensure_pkg()
     elif [ "$distro" == "sles" ]; then
         zypper=1
         zypper install -y $pkg
+    elif [ -n "$AZNFS_FORCE_PACKAGE_MANAGER" ]; then
+        case "$AZNFS_FORCE_PACKAGE_MANAGER" in
+            apt)
+                apt=1
+                wecho "[WARNING] Using apt as overridden package manager on unsupported distro."
+                wecho "[WARNING] Proceeding with the AZNFS installation; it may or may not succeed. Please contact Microsoft support for assistance if issues arise."
+                ;;
+            yum|dnf)
+                yum=1
+                wecho "[WARNING] Using yum/dnf as overridden package manager on unsupported distro."
+                wecho "[WARNING] Proceeding with the AZNFS installation; it may or may not succeed. Please contact Microsoft support for assistance if issues arise."
+                ;;
+            zypper)
+                zypper=1
+                wecho "[WARNING] Using zypper as overridden package manager on unsupported distro."
+                wecho "[WARNING] Proceeding with the AZNFS installation; it may or may not succeed. Please contact Microsoft support for assistance if issues arise."
+                ;;
+            *)
+                weecho "[FATAL] Unsupported value for AZNFS_FORCE_PACKAGE_MANAGER <$AZNFS_FORCE_PACKAGE_MANAGER>. Use 'apt', 'yum', 'dnf', or 'zypper'"
+                exit 1
+                ;;
+        esac
+    fi
     else
-        eecho "[FATAL] Unknown linux distro"
+        eecho "[FATAL] Unsupported linux distro <$distro>"
+        pecho "Check 'https://github.com/Azure/AZNFS-mount/blob/main/README.md#supported-distros' to see the list of supported distros, or"
         pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest'"
-        pecho "If the problem persists, contact Microsoft support."
         exit 1
     fi
 }
