@@ -4371,6 +4371,8 @@ void rpc_task::send_readdir_or_readdirplus_response(
      */
     const size_t size = rpc_api->readdir_task.get_size();
     const fuse_ino_t parent_ino = rpc_api->readdir_task.get_ino();
+    const struct nfs_inode *dir_inode =
+        get_client()->get_nfs_inode_from_ino(parent_ino);
 
     // Fuse always requests 4096 bytes.
     assert(size >= 4096);
@@ -4389,6 +4391,14 @@ void rpc_task::send_readdir_or_readdirplus_response(
     AZLogDebug("send_readdir_or_readdirplus_response: Number of directory"
                " entries to send {}, size: {}",
                readdirentries.size(), size);
+
+    /*
+     * If we return at least one entry, make sure cookie_verifier is valid as
+     * the caller might send a READDIR{PLUS} request to the server for querying
+     * subsequent entries.
+     */
+    assert(readdirentries.empty() ||
+           *(uint64_t *)dir_inode->get_dircache()->get_cookieverf() != 0);
 
     for (auto& it : readdirentries) {
         /*

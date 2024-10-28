@@ -484,6 +484,15 @@ public:
         return dircache_handle;
     }
 
+    const std::shared_ptr<readdirectory_cache>& get_dircache() const
+    {
+        assert(is_dir());
+        assert(dircache_alloced);
+        assert(dircache_handle);
+
+        return dircache_handle;
+    }
+
     /**
      * External users of this nfs_inode can check for presence of dircache by
      * calling has_dircache().
