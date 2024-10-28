@@ -684,15 +684,17 @@ void readdirectory_cache::clear()
         std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
 
         /*
-         * Set cookie_verifier to 0 as we have purged the cache and we should
-         * not be doing a continuation readdir(plus), instead we must query
-         * cookie=0 and cookie_verifier=0 in the next call to the server.
-         * We don't clear eof and eof_cookie as that information was returned
-         * from the server and is still valid, even though we have purged the
-         * readdir cache.
+         * We don't clear eof, eof_cookie and cookie_verifier as that
+         * information was returned from the server and is still valid, even
+         * though we have purged the readdir cache.
+         * Note that caller may query directory entries at a non-zero offset
+         * and for that we need all those.
+         *
+         * If dir_entries has one or more entries those must have been returned
+         * by the server along with the cookieverifier, hence it must be set.
          */
+        assert(dir_entries.empty() || (*(uint64_t *)&cookie_verifier != 0));
         cache_size = 0;
-        ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
 
         for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it) {
             struct nfs_inode *inode = it->second->nfs_inode;

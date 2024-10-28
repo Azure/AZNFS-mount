@@ -1145,7 +1145,7 @@ static void setattr_callback(
 
     if (status == 0) {
         if (!res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow) {
-            /* 
+            /*
              * For NFS, the postop attributes are optional, but fuse expects
              * us to pass attributes in the callback. If NFS server fails to
              * return the postop attributes, make a GETATTR RPC request to
@@ -4234,9 +4234,14 @@ void rpc_task::fetch_readdir_entries_from_server()
 
         args.dir = dir_inode->get_fh();
         args.cookie = cookie;
-        ::memcpy(&args.cookieverf,
-                 dir_inode->get_dircache()->get_cookieverf(),
-                 sizeof(args.cookieverf));
+        if (args.cookie == 0) {
+            ::memset(&args.cookieverf, 0, sizeof(args.cookieverf));
+        } else {
+            ::memcpy(&args.cookieverf,
+                     dir_inode->get_dircache()->get_cookieverf(),
+                     sizeof(args.cookieverf));
+        }
+
         args.count = nfs_get_readdir_maxcount(get_nfs_context());
 
         /*
@@ -4244,10 +4249,8 @@ void rpc_task::fetch_readdir_entries_from_server()
          * - cookieverf!=0 with cookie=0.
          * - cookieverf==0 with cookie!=0.
          */
-        assert((cookie != 0) ||
-               (*(uint64_t *)dir_inode->get_dircache()->get_cookieverf() == 0));
-        assert((cookie == 0) ||
-               (*(uint64_t *)dir_inode->get_dircache()->get_cookieverf() != 0));
+        assert((args.cookie != 0) || (*(uint64_t *) args.cookieverf == 0));
+        assert((args.cookie == 0) || (*(uint64_t *) args.cookieverf != 0));
 
         rpc_retry = false;
         stats.on_rpc_issue();
@@ -4285,9 +4288,14 @@ void rpc_task::fetch_readdirplus_entries_from_server()
 
         args.dir = dir_inode->get_fh();
         args.cookie = cookie;
-        ::memcpy(&args.cookieverf,
-                 dir_inode->get_dircache()->get_cookieverf(),
-                 sizeof(args.cookieverf));
+        if (args.cookie == 0) {
+            ::memset(&args.cookieverf, 0, sizeof(args.cookieverf));
+        } else {
+            ::memcpy(&args.cookieverf,
+                     dir_inode->get_dircache()->get_cookieverf(),
+                     sizeof(args.cookieverf));
+        }
+
         /*
          * Use dircount/maxcount according to the user configured and
          * the server advertised value.
@@ -4300,10 +4308,8 @@ void rpc_task::fetch_readdirplus_entries_from_server()
          * - cookieverf!=0 with cookie=0.
          * - cookieverf==0 with cookie!=0.
          */
-        assert((cookie != 0) ||
-               (*(uint64_t *)dir_inode->get_dircache()->get_cookieverf() == 0));
-        assert((cookie == 0) ||
-               (*(uint64_t *)dir_inode->get_dircache()->get_cookieverf() != 0));
+        assert((args.cookie != 0) || (*(uint64_t *) args.cookieverf == 0));
+        assert((args.cookie == 0) || (*(uint64_t *) args.cookieverf != 0));
 
         rpc_retry = false;
         stats.on_rpc_issue();
