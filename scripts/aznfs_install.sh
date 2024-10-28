@@ -303,19 +303,19 @@ ensure_pkg()
         case "$AZNFS_FORCE_PACKAGE_MANAGER" in
             apt)
                 apt=1
-                wecho "[WARNING] Forcing '$AZNFS_FORCE_PACKAGE_MANAGER' package manager on unsupported distro <$distro>"
+                wecho "[WARNING] Forcing package manager '$AZNFS_FORCE_PACKAGE_MANAGER' on unsupported distro <$distro>"
                 wecho "[WARNING] Proceeding with the AZNFS installation, please contact Microsoft support in case of any issues."
                 apt install -y $pkg
                 ;;
             yum|dnf)
                 yum=$AZNFS_FORCE_PACKAGE_MANAGER
-                wecho "[WARNING] Forcing '$AZNFS_FORCE_PACKAGE_MANAGER' package manager on unsupported distro <$distro>"
+                wecho "[WARNING] Forcing package manager '$AZNFS_FORCE_PACKAGE_MANAGER' on unsupported distro <$distro>"
                 wecho "[WARNING] Proceeding with the AZNFS installation, please contact Microsoft support in case of any issues."
                 $yum install -y $pkg
                 ;;
             zypper)
                 zypper=1
-                wecho "[WARNING] Forcing '$AZNFS_FORCE_PACKAGE_MANAGER' package manager on unsupported distro <$distro>"
+                wecho "[WARNING] Forcing package manager '$AZNFS_FORCE_PACKAGE_MANAGER' on unsupported distro <$distro>"
                 wecho "[WARNING] Proceeding with the AZNFS installation, please contact Microsoft support in case of any issues."
                 zypper install -y $pkg
                 ;;
