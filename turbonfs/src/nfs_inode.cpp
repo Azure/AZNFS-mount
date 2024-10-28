@@ -485,7 +485,7 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
 }
 
 /**
- * Note: This takes shared lock on ilock_1.
+ * Note: This takes exclusive lock on ilock_1.
  */
 int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
                              off_t offset,
@@ -571,6 +571,8 @@ try_copy:
             ::memcpy(bc.get_buffer(), buf, bc.length);
             mb->set_uptodate();
             mb->set_dirty();
+            // Update file size in inode'c cached attr.
+            on_cached_write(bc.offset, bc.length);
         } else {
 #ifdef ENABLE_PARANOID
             /*

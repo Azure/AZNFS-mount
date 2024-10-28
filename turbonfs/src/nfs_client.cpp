@@ -1071,7 +1071,7 @@ void nfs_client::getattr(
      * NFS server.
      *
      * TODO: If it turns out to cause bad user experience, we can explore
-     *       updating nfs_inode::attr during writes and then returning
+     *       updating nfs_inode::attr during cached writes and then returning
      *       attributes from that instead of making a getattr call here.
      *       We need to think carefully though.
      */

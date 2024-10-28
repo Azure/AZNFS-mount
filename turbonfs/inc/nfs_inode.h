@@ -748,6 +748,28 @@ public:
     }
 
     /**
+     * This must be called from copy_to_cache() whenever we successfully copy
+     * some data to filecache. If it copies data beyond eof causing file size
+     * to change, on_cached_write() updates the file size in attr.size so that
+     * get_file_size() returns the correct size.
+     *
+     * NOte: It doesn't update attr.ctime and attr.mtime deliberately as this
+     *       is not authoritative info and we would want to fetch attributes
+     *       from server when needed. This size updation helps get_file_size()
+     *       call made from run_read() in solowriter mode so that we don't
+     *       return eof incorrectly, while we have data sitting in cache.
+     */
+    void on_cached_write(off_t offset, size_t length)
+    {
+        const off_t new_size = offset + length;
+
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
+        if (new_size > attr.st_size) {
+            attr.st_size = new_size;
+        }
+    }
+
+    /**
      * Check if [offset, offset+length) lies within the current RA window.
      * bytes_chunk_cache would call this to find out if a particular membuf
      * can be purged. Membufs in RA window would mostly be used soon and
