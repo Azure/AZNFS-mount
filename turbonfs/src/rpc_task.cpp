@@ -4237,8 +4237,17 @@ void rpc_task::fetch_readdir_entries_from_server()
         ::memcpy(&args.cookieverf,
                  dir_inode->get_dircache()->get_cookieverf(),
                  sizeof(args.cookieverf));
-
         args.count = nfs_get_readdir_maxcount(get_nfs_context());
+
+        /*
+         * We must never send
+         * - cookieverf!=0 with cookie=0.
+         * - cookieverf==0 with cookie!=0.
+         */
+        assert((cookie != 0) ||
+               (*(uint64_t *)dir_inode->get_dircache()->get_cookieverf() == 0));
+        assert((cookie == 0) ||
+               (*(uint64_t *)dir_inode->get_dircache()->get_cookieverf() != 0));
 
         rpc_retry = false;
         stats.on_rpc_issue();
@@ -4279,13 +4288,22 @@ void rpc_task::fetch_readdirplus_entries_from_server()
         ::memcpy(&args.cookieverf,
                  dir_inode->get_dircache()->get_cookieverf(),
                  sizeof(args.cookieverf));
-
         /*
          * Use dircount/maxcount according to the user configured and
          * the server advertised value.
          */
         args.maxcount = nfs_get_readdir_maxcount(get_nfs_context());
         args.dircount = args.maxcount;
+
+        /*
+         * We must never send
+         * - cookieverf!=0 with cookie=0.
+         * - cookieverf==0 with cookie!=0.
+         */
+        assert((cookie != 0) ||
+               (*(uint64_t *)dir_inode->get_dircache()->get_cookieverf() == 0));
+        assert((cookie == 0) ||
+               (*(uint64_t *)dir_inode->get_dircache()->get_cookieverf() != 0));
 
         rpc_retry = false;
         stats.on_rpc_issue();

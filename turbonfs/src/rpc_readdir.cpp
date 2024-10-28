@@ -683,7 +683,14 @@ void readdirectory_cache::clear()
     {
         std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
 
-        eof = false;
+        /*
+         * Set cookie_verifier to 0 as we have purged the cache and we should
+         * not be doing a continuation readdir(plus), instead we must query
+         * cookie=0 and cookie_verifier=0 in the next call to the server.
+         * We don't clear eof and eof_cookie as that information was returned
+         * from the server and is still valid, even though we have purged the
+         * readdir cache.
+         */
         cache_size = 0;
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
 
