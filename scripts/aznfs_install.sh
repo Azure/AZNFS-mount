@@ -326,8 +326,8 @@ ensure_pkg()
         esac
     else
         eecho "[FATAL] Unsupported linux distro <$distro>"
-        pecho "Check 'https://github.com/Azure/AZNFS-mount/blob/main/README.md#supported-distros' to see the list of supported distros, or"
-        pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest'"
+        pecho "Check 'https://github.com/Azure/AZNFS-mount/blob/main/README.md#supported-distros' to see the list of supported distros"
+        pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest' or try running install after setting env variable 'AZNFS_FORCE_PACKAGE_MANAGER' to one of 'apt', 'yum', 'dnf', or 'zypper'"
         exit 1
     fi
 }
@@ -412,7 +412,7 @@ case "${__m}:${__s}" in
             distro_id=$(canonicalize_distro_id $distro_id)
         else
             eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
-            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest'"
+            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest' or try running install after setting env variable 'AZNFS_FORCE_PACKAGE_MANAGER' to one of 'apt', 'yum', 'dnf', or 'zypper'"
             pecho "If the problem persists, contact Microsoft support."
             exit 1
         fi

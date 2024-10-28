@@ -113,9 +113,6 @@ aznfswatchdog service.
   `export AZNFS_PING_LOCAL_IP_BEFORE_USE=1`.
 - Check https://learn.microsoft.com/en-us/azure/storage/blobs/network-file-system-protocol-support-how-to for more
   information regarding NFSv3 mount.
-- Starting November 2024, the AZNFS mount helper install script now bails out on unsupported distros, rather than defaulting to yum as the package manager. Existing users on unsupported distros
-  may experience disruptions if they rely on auto-updates. They can force package manager of choice using env variable 'AZNFS_FORCE_PACKAGE_MANAGER' which can take following values 'apt', 'yum',
-  'dnf', or 'zypper'
 
 
 
