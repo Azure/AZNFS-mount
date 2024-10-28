@@ -289,7 +289,7 @@ ensure_pkg()
         fi
         apt=1
         apt install -y $pkg
-    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
+    elif [ "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         # lsb_release package is called redhat-lsb-core in redhat/centos.
         if [ "$pkg" == "lsb-release" ]; then
             pkg="redhat-lsb-core"
@@ -324,6 +324,11 @@ ensure_pkg()
                 exit 1
                 ;;
         esac
+        install_error=$?
+        if [ $install_error -ne 0 ]; then
+            eecho "[FATAL] Error installing AZNFS (Error: $install_error)"
+            exit 1
+        fi
     else
         eecho "[FATAL] Unsupported linux distro <$distro>"
         pecho "Check 'https://github.com/Azure/AZNFS-mount/blob/main/README.md#supported-distros' to see the list of supported distros"
