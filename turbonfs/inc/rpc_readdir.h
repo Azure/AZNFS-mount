@@ -361,6 +361,9 @@ public:
              bool acquire_lock = true);
     void dnlc_add(const char *filename, struct nfs_inode *inode);
 
+    /*
+     * TODO: Access to this must be synchronized.
+     */
     const cookieverf3* get_cookieverf() const
     {
         return &cookie_verifier;

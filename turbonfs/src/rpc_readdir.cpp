@@ -692,8 +692,11 @@ void readdirectory_cache::clear()
          *
          * If dir_entries has one or more entries those must have been returned
          * by the server along with the cookieverifier, hence it must be set.
+         * lookuponly caches may not have cookie_verifier as they may be
+         * populated from LOOKUP response, so exempt them.
          */
-        assert(dir_entries.empty() || (*(uint64_t *)&cookie_verifier != 0));
+        assert(dir_entries.empty() ||
+               (*(uint64_t *)&cookie_verifier != 0) || is_lookuponly());
         cache_size = 0;
 
         for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it) {
