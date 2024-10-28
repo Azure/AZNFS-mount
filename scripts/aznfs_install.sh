@@ -321,7 +321,6 @@ ensure_pkg()
                 exit 1
                 ;;
         esac
-    fi
     else
         eecho "[FATAL] Unsupported linux distro <$distro>"
         pecho "Check 'https://github.com/Azure/AZNFS-mount/blob/main/README.md#supported-distros' to see the list of supported distros, or"
