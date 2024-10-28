@@ -303,21 +303,21 @@ ensure_pkg()
         case "$AZNFS_FORCE_PACKAGE_MANAGER" in
             apt)
                 apt=1
-                wecho "[WARNING] Using apt as overridden package manager on unsupported distro."
-                wecho "[WARNING] Proceeding with the AZNFS installation; it may or may not succeed. Please contact Microsoft support for assistance if issues arise."
+                wecho "[WARNING] Forcing $AZNFS_FORCE_PACKAGE_MANAGER package manager on unsupported distro <$distro>"
+                wecho "[WARNING] Proceeding with the AZNFS installation, Please contact Microsoft support in case of any issues."
                 ;;
             yum|dnf)
-                yum=1
-                wecho "[WARNING] Using yum/dnf as overridden package manager on unsupported distro."
-                wecho "[WARNING] Proceeding with the AZNFS installation; it may or may not succeed. Please contact Microsoft support for assistance if issues arise."
+                yum=$AZNFS_FORCE_PACKAGE_MANAGER
+                wecho "[WARNING] Forcing $AZNFS_FORCE_PACKAGE_MANAGER package manager on unsupported distro <$distro>"
+                wecho "[WARNING] Proceeding with the AZNFS installation, Please contact Microsoft support in case of any issues."
                 ;;
             zypper)
                 zypper=1
-                wecho "[WARNING] Using zypper as overridden package manager on unsupported distro."
-                wecho "[WARNING] Proceeding with the AZNFS installation; it may or may not succeed. Please contact Microsoft support for assistance if issues arise."
+                wecho "[WARNING] Forcing $AZNFS_FORCE_PACKAGE_MANAGER package manager on unsupported distro <$distro>"
+                wecho "[WARNING] Proceeding with the AZNFS installation, Please contact Microsoft support in case of any issues."
                 ;;
             *)
-                weecho "[FATAL] Unsupported value for AZNFS_FORCE_PACKAGE_MANAGER <$AZNFS_FORCE_PACKAGE_MANAGER>. Use 'apt', 'yum', 'dnf', or 'zypper'"
+                eecho "[FATAL] Unsupported value for AZNFS_FORCE_PACKAGE_MANAGER <$AZNFS_FORCE_PACKAGE_MANAGER>. Use 'apt', 'yum', 'dnf', or 'zypper'"
                 exit 1
                 ;;
         esac
@@ -485,8 +485,8 @@ elif [ $zypper -eq 1 ]; then
     perform_aznfs_update
 
 else
-    install_cmd="yum"
-    current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+    install_cmd=$yum
+    current_version=$($install_cmd info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     # Without current version, auto-update cannot proceed.
     if [ "$RUN_MODE" == "auto-update" ] && [ -z "$current_version" ]; then
         eecho "Unable to retrieve the current version of AZNFS, exiting!"
