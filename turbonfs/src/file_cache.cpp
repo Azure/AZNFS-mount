@@ -622,6 +622,38 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
     assert(get_buffer() != nullptr);
 }
 
+bytes_chunk_cache::bytes_chunk_cache(struct nfs_inode *_inode,
+                                     const char *_backing_file_name) :
+    inode(_inode),
+    backing_file_name(_backing_file_name ? _backing_file_name : "")
+{
+    // File will be opened on first access.
+    assert(backing_file_fd == -1);
+    assert((int) backing_file_len == 0);
+
+    if (!backing_file_name.empty()) {
+        AZLogDebug("File-backed bytes_chunk_cache created with backing "
+                   "file {}", backing_file_name);
+    } else {
+        AZLogDebug("Memory-backed bytes_chunk_cache created");
+    }
+
+    num_caches++;
+
+    AZLogDebug("[{}] Added new file cache, total file caches now: {}",
+               CACHE_TAG, get_num_caches());
+}
+
+bytes_chunk_cache::~bytes_chunk_cache()
+{
+    clear();
+
+    assert(num_caches > 0);
+    num_caches--;
+    AZLogDebug("[{}} Deleted file cache, total file caches now: {}",
+               CACHE_TAG, get_num_caches());
+}
+
 std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                                  uint64_t length,
                                                  scan_action action,
@@ -635,10 +667,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      */
     if (inject_error()) {
         const uint64_t sleep_usecs = random_number(10'000, 1000'000);
-        if (inode) {
-            AZLogWarn("[{}] scan(offset={}, length={}), delaying {} usecs",
-                      inode->get_fuse_ino(), offset, length, sleep_usecs);
-        }
+        AZLogWarn("[{}] scan(offset={}, length={}), delaying {} usecs",
+                  CACHE_TAG, offset, length, sleep_usecs);
         ::usleep(sleep_usecs);
     }
 #endif
@@ -703,7 +733,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 	 * Before we proceed with the cache lookup check if invalidate is pending.
 	 */
 	if (invalidate_pending.exchange(false)) {
-		AZLogDebug("[{}] (Deferred) Purging file_cache", inode->get_fuse_ino());
+		AZLogDebug("[{}] (Deferred) Purging file_cache", CACHE_TAG);
 		clear_nolock();
 	}
 
@@ -1657,7 +1687,7 @@ void bytes_chunk_cache::inline_prune()
     }
 
     AZLogDebug("[{}] inline_prune(): Inline prune goal of {:0.2f} MB",
-               fmt::ptr(this), inline_bytes / (1024 * 1024.0));
+               CACHE_TAG, inline_bytes / (1024 * 1024.0));
 
     uint32_t inuse = 0, dirty = 0, locked = 0, inra = 0;
     uint64_t inuse_bytes = 0, dirty_bytes = 0, locked_bytes = 0, inra_bytes = 0;
@@ -1676,7 +1706,7 @@ void bytes_chunk_cache::inline_prune()
         if (inode && inode->in_ra_window(mb->offset, mb->length)) {
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) lies in RA window",
-                       fmt::ptr(this), mb->offset, mb->length);
+                       CACHE_TAG, mb->offset, mb->length);
             inra++;
             inra_bytes += mb->allocated_length;
             continue;
@@ -1689,7 +1719,7 @@ void bytes_chunk_cache::inline_prune()
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is inuse (locked={}, dirty={}, flushing={}, "
                        "uptodate={})",
-                       fmt::ptr(this), mb->offset, mb->length,
+                       CACHE_TAG, mb->offset, mb->length,
                        mb->is_locked() ? "yes" : "no",
                        mb->is_dirty() ? "yes" : "no",
                        mb->is_flushing() ? "yes" : "no",
@@ -1709,7 +1739,7 @@ void bytes_chunk_cache::inline_prune()
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is locked (dirty={}, flushing={}, "
                        "uptodate={})",
-                       fmt::ptr(this), mb->offset, mb->length,
+                       CACHE_TAG, mb->offset, mb->length,
                        mb->is_dirty() ? "yes" : "no",
                        mb->is_flushing() ? "yes" : "no",
                        mb->is_uptodate() ? "yes" : "no");
@@ -1725,7 +1755,7 @@ void bytes_chunk_cache::inline_prune()
         if (mb->is_dirty()) {
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is dirty (flushing={}, uptodate={})",
-                       fmt::ptr(this), mb->offset, mb->length,
+                       CACHE_TAG, mb->offset, mb->length,
                        mb->is_flushing() ? "yes" : "no",
                        mb->is_uptodate() ? "yes" : "no");
             dirty++;
@@ -1734,7 +1764,7 @@ void bytes_chunk_cache::inline_prune()
         }
 
         AZLogDebug("[{}] inline_prune(): deleting membuf(offset={}, length={})",
-                   fmt::ptr(this), mb->offset, mb->length);
+                   CACHE_TAG, mb->offset, mb->length);
 
         /*
          * Release the chunk.
@@ -1834,7 +1864,7 @@ int64_t bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
 void bytes_chunk_cache::clear_nolock()
 {
     AZLogDebug("[{}] Cache purge: chunkmap.size()={}, backing_file_name={}",
-               fmt::ptr(this), chunkmap.size(), backing_file_name);
+               CACHE_TAG, chunkmap.size(), backing_file_name);
 
     assert(bytes_allocated <= bytes_allocated_g);
     assert(bytes_cached <= bytes_cached_g);
@@ -1877,7 +1907,7 @@ void bytes_chunk_cache::clear_nolock()
         if (mb->is_inuse()) {
             AZLogDebug("[{}] Cache purge: skipping inuse membuf(offset={}, "
                        "length={}) (inuse count={}, dirty={})",
-                       fmt::ptr(this), mb->offset, mb->length,
+                       CACHE_TAG, mb->offset, mb->length,
                        mb->get_inuse(), mb->is_dirty());
             continue;
         }
@@ -1891,7 +1921,7 @@ void bytes_chunk_cache::clear_nolock()
         if (mb->is_locked()) {
             AZLogDebug("[{}] Cache purge: skipping locked membuf(offset={}, "
                        "length={}) (inuse count={}, dirty={})",
-                       fmt::ptr(this), mb->offset, mb->length,
+                       CACHE_TAG, mb->offset, mb->length,
                        mb->get_inuse(), mb->is_dirty());
             continue;
         }
@@ -1903,13 +1933,13 @@ void bytes_chunk_cache::clear_nolock()
         if (mb->is_dirty()) {
             AZLogDebug("[{}] Cache purge: skipping dirty membuf(offset={}, "
                        "length={})",
-                       fmt::ptr(this), mb->offset, mb->length);
+                       CACHE_TAG, mb->offset, mb->length);
             continue;
         }
 
         AZLogDebug("[{}] Cache purge: deleting membuf(offset={}, length={}), "
                    "use_count={}, deleted {} of {}",
-                   fmt::ptr(this), mb->offset, mb->length,
+                   CACHE_TAG, mb->offset, mb->length,
                    bc->get_membuf_usecount(),
                    start_size - chunkmap.size(), start_size);
 
@@ -1939,7 +1969,7 @@ void bytes_chunk_cache::clear_nolock()
     if (!chunkmap.empty()) {
         AZLogDebug("[{}] Cache purge: Skipping delete for backing_file_name={}, "
                    "as chunkmap not empty (still present {} of {})",
-                   fmt::ptr(this), backing_file_name,
+                   CACHE_TAG, backing_file_name,
                    chunkmap.size(), start_size);
         assert(bytes_allocated > 0);
         return;
@@ -1967,7 +1997,7 @@ void bytes_chunk_cache::clear_nolock()
         AZLogWarn("[{}] Cache purge: bytes_allocated is still {}, some user "
                   "is still holding on to the bytes_chunk/membuf even after "
                   "dropping the inuse count: backing_file_name={}",
-                  fmt::ptr(this), bytes_allocated.load(), backing_file_name);
+                  CACHE_TAG, bytes_allocated.load(), backing_file_name);
 #if 0
         assert(0);
 #endif

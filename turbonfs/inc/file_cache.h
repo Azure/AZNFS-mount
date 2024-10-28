@@ -87,6 +87,13 @@ namespace aznfsc {
 
 #define PAGE_SIZE (4096ULL)
 
+/*
+ * Cache tag used for logging.
+ * When inode is present, use inode number else address of bytes_chunk_cache
+ * expressed as a 64-bit integer.
+ */
+#define CACHE_TAG (inode ? inode->get_fuse_ino() : (uint64_t) this)
+
 // Forward declaration.
 class bytes_chunk_cache;
 
@@ -791,38 +798,9 @@ class bytes_chunk_cache
 
 public:
     bytes_chunk_cache(struct nfs_inode *_inode,
-                      const char *_backing_file_name = nullptr) :
-        inode(_inode),
-        backing_file_name(_backing_file_name ? _backing_file_name : "")
-    {
-        // File will be opened on first access.
-        assert(backing_file_fd == -1);
-        assert((int) backing_file_len == 0);
+                      const char *_backing_file_name = nullptr);
 
-        if (!backing_file_name.empty()) {
-            AZLogDebug("File-backed bytes_chunk_cache created with backing "
-                       "file {}", backing_file_name);
-        } else {
-            AZLogDebug("Memory-backed bytes_chunk_cache created");
-        }
-
-        num_caches++;
-
-        AZLogDebug("Added new file cache {}, total file caches now: {}",
-                   fmt::ptr(this),
-                   get_num_caches());
-    }
-
-    ~bytes_chunk_cache()
-    {
-        clear();
-
-        assert(num_caches > 0);
-        num_caches--;
-        AZLogDebug("Deleted file cache {}, total file caches now: {}",
-                   fmt::ptr(this),
-                   get_num_caches());
-    }
+    ~bytes_chunk_cache();
 
     /**
      * Call this to check if the cache is empty, i.e., newly allocated.
