@@ -289,7 +289,7 @@ ensure_pkg()
         fi
         apt=1
         apt install -y $pkg
-    elif [ "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
+    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         # lsb_release package is called redhat-lsb-core in redhat/centos.
         if [ "$pkg" == "lsb-release" ]; then
             pkg="redhat-lsb-core"
