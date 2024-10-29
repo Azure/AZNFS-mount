@@ -146,7 +146,15 @@ check_timeout_error_and_restart_stunnel()
         timeouterror=$(cat /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/stunnel_20.150.93.156.log | grep "TIMEOUTidle exceeded")
         reseterror=$(cat /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/stunnel_20.150.93.156.log | grep "(104)")
 
-        if [ -n "$timeouterror" || -n "$reseterror" ]; then
+        if [ -n "$timeouterror" ]; then
+            eecho "Got the timeout error: ${timeouterror}" 
+        fi
+
+        if [ -n "$reseterror" ]; then
+            eecho "Got the timeout error: ${reseterror}" 
+        fi
+
+        if [[ -n "$timeouterror" || -n "$reseterror" ]]; then
             tcpdump_timestamp=$(date +%s)
             eecho "Got the timeout error, restarting stunnel process."
             eecho "${reseterror}"

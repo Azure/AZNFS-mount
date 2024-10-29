@@ -212,6 +212,11 @@ add_stunnel_configuration()
         return 1
     fi
 
+    echo "socket = l:SO_KEEPALIVE=1 " >> $stunnel_conf_file
+    echo "socket = r:SO_KEEPALIVE=1 " >> $stunnel_conf_file
+    echo "TIMEOUTbusy = 23" >> $stunnel_conf_file
+    echo "TIMEOUTidle = 23" >> $stunnel_conf_file
+
     echo >> $stunnel_conf_file
 
     echo "[$storageaccount_ip]" >> $stunnel_conf_file
