@@ -142,47 +142,65 @@ check_timeout_error_and_restart_stunnel()
 
     tcpdump_running=$(pgrep tcpdump)
 
-    if [ -n "$tcpdump_running" ]; then 
-        if dmesg -T | grep -q "not responding"; then
+    if [ -n "$tcpdump_running" ]; then
+        timeouterror=$(cat /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/stunnel_20.150.93.156.log | grep "TIMEOUTidle exceeded")
+        reseterror=$(cat /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/stunnel_20.150.93.156.log | grep "(104)")
+
+        if [ -n "$timeouterror" || -n "$reseterror" ]; then
+            tcpdump_timestamp=$(date +%s)
             eecho "Got the timeout error, restarting stunnel process."
+            eecho "${reseterror}"
+            eecho "${timeouterror}"
             mkdir -p /tmp/aznfs_dmsg
             rpcdebug -m rpc -c all
+            rpcdebug -m nfs -c all
             dmesg -T > /tmp/aznfs_dmsg/dmesg_$(date +%Y%m%d%H%M%S).log
             killall tcpdump
+            mv /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/stunnel_20.150.93.156.log /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/stunnel_20.150.93.156_$tcpdump_timestamp.log
+            touch /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/stunnel_20.150.93.156.log
+
+            if [ "$CAPTURE_AZNFS_TCPDUMP" -eq 1 ]; then
+                dmesg -Tc > /tmp/dmesg-old.txt
+                rm /tmp/aznfs_repro.pcap
+                rpcdebug -m rpc -s all
+                rpcdebug -m nfs -s all
+                tcpdump "(port 2049 or host 127.0.0.1)" -i any -W 20 -C 50 -n -w /tmp/aznfs_repro_$tcpdump_timestamp.pcap &
+                vecho "watchdog: tcpdump started successfully."
+            fi
         fi
     fi
 
 
-    if dmesg -T | grep -q "not responding"; then
-        IFS=$'\n' lines=$(cat $MOUNTMAPv4)
-        for line in $lines; do
-            if [ -z "$line" ]; then
-                continue
-            fi
+    # if dmesg -T | grep -q "not responding"; then
+    #     IFS=$'\n' lines=$(cat $MOUNTMAPv4)
+    #     for line in $lines; do
+    #         if [ -z "$line" ]; then
+    #             continue
+    #         fi
 
-            IFS=";" read m_ip m_conf m_log m_pid m_checksumhash m_status m_timeout <<< "$line"
+    #         IFS=";" read m_ip m_conf m_log m_pid m_checksumhash m_status m_timeout <<< "$line"
 
-            pid=$(cat $m_pid)
-            pecho "Timeout error: killing stunnel process with pid: $pid"
-            kill -9 $pid
+    #         pid=$(cat $m_pid)
+    #         pecho "Timeout error: killing stunnel process with pid: $pid"
+    #         kill -9 $pid
 
-            stunnel_status=$(stunnel $m_conf 2>&1)
-            if [ -n "$stunnel_status" ]; then
-                m_port=$(cat $m_conf | grep accept | cut -d: -f2)
-                is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$m_conf: Address already in use")
+    #         stunnel_status=$(stunnel $m_conf 2>&1)
+    #         if [ -n "$stunnel_status" ]; then
+    #             m_port=$(cat $m_conf | grep accept | cut -d: -f2)
+    #             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$m_conf: Address already in use")
 
-                if [ -n "$is_binding_error" ]; then
-                    eecho "Timeout error: [FATAL] Restarting stunnel failed.$m_conf port is already being used by other process.!"
-                    eecho "Timeout error: It's recommended to unmount all shares from $m_ip and then remount shares using aznfs mount helper!"
-                else
-                    eecho "Timeout error: [FATAL] watchdog service is unable to start stunnel process for '${m_conf}'!"
-                    eecho "Timeout error: Please check the stunnel logs in $m_log for more details."
-                    eecho "Timeout error: It's recommended to unmount all shares from $m_ip and then remount shares using aznfs mount helper!"
-                fi
-            fi
-        done
-        dmesg -Tc > /tmp/dmesg-old.txt
-    fi
+    #             if [ -n "$is_binding_error" ]; then
+    #                 eecho "Timeout error: [FATAL] Restarting stunnel failed.$m_conf port is already being used by other process.!"
+    #                 eecho "Timeout error: It's recommended to unmount all shares from $m_ip and then remount shares using aznfs mount helper!"
+    #             else
+    #                 eecho "Timeout error: [FATAL] watchdog service is unable to start stunnel process for '${m_conf}'!"
+    #                 eecho "Timeout error: Please check the stunnel logs in $m_log for more details."
+    #                 eecho "Timeout error: It's recommended to unmount all shares from $m_ip and then remount shares using aznfs mount helper!"
+    #             fi
+    #         fi
+    #     done
+    #     dmesg -Tc > /tmp/dmesg-old.txt
+    # fi
 
 }
 
