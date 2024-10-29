@@ -4377,7 +4377,7 @@ void rpc_task::send_readdir_or_readdirplus_response(
      */
     const size_t size = rpc_api->readdir_task.get_size();
     const fuse_ino_t parent_ino = rpc_api->readdir_task.get_ino();
-    const struct nfs_inode *dir_inode =
+    [[maybe_unused]] const struct nfs_inode *dir_inode =
         get_client()->get_nfs_inode_from_ino(parent_ino);
 
     // Fuse always requests 4096 bytes.
