@@ -11,13 +11,6 @@ AKS_USER="false"
 RELEASE_NUMBER_FOR_AKS=x.y.z
 
 #
-# In case of unsupported distros already using mount-helper require auto update enabled,
-# they need to set AZNFS_FORCE_PACKAGE_MANAGER accordingly else we fail to update package amd remain on the same version.
-#
-AZNFS_FORCE_PACKAGE_MANAGER="${AZNFS_FORCE_PACKAGE_MANAGER:-DEFAULT}"
-export AZNFS_FORCE_PACKAGE_MANAGER
-
-#
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob endpoints.
 #

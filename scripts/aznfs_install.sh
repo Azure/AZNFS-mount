@@ -289,6 +289,7 @@ ensure_pkg()
         fi
         apt=1
         apt install -y $pkg
+        install_error=$?
     elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         # lsb_release package is called redhat-lsb-core in redhat/centos.
         if [ "$pkg" == "lsb-release" ]; then
@@ -296,9 +297,11 @@ ensure_pkg()
         fi
         use_dnf_or_yum
         $yum install -y $pkg
+        install_error=$?
     elif [ "$distro" == "sles" ]; then
         zypper=1
         zypper install -y $pkg
+        install_error=$?
     elif [ -n "$AZNFS_FORCE_PACKAGE_MANAGER" ]; then
         case "$AZNFS_FORCE_PACKAGE_MANAGER" in
             apt)
@@ -306,33 +309,36 @@ ensure_pkg()
                 wecho "[WARNING] Forcing package manager '$AZNFS_FORCE_PACKAGE_MANAGER' on unsupported distro <$distro>"
                 wecho "[WARNING] Proceeding with the AZNFS installation, please contact Microsoft support in case of any issues."
                 apt install -y $pkg
+                install_error=$?
                 ;;
             yum|dnf)
                 yum=$AZNFS_FORCE_PACKAGE_MANAGER
                 wecho "[WARNING] Forcing package manager '$AZNFS_FORCE_PACKAGE_MANAGER' on unsupported distro <$distro>"
                 wecho "[WARNING] Proceeding with the AZNFS installation, please contact Microsoft support in case of any issues."
                 $yum install -y $pkg
+                install_error=$?
                 ;;
             zypper)
                 zypper=1
                 wecho "[WARNING] Forcing package manager '$AZNFS_FORCE_PACKAGE_MANAGER' on unsupported distro <$distro>"
                 wecho "[WARNING] Proceeding with the AZNFS installation, please contact Microsoft support in case of any issues."
                 zypper install -y $pkg
+                install_error=$?
                 ;;
             *)
                 eecho "[FATAL] Unsupported value for AZNFS_FORCE_PACKAGE_MANAGER <$AZNFS_FORCE_PACKAGE_MANAGER>. Use 'apt', 'yum', 'dnf', or 'zypper'"
                 exit 1
                 ;;
         esac
-        install_error=$?
-        if [ $install_error -ne 0 ]; then
-            eecho "[FATAL] Error installing AZNFS (Error: $install_error)"
-            exit 1
-        fi
     else
         eecho "[FATAL] Unsupported linux distro <$distro>"
         pecho "Check 'https://github.com/Azure/AZNFS-mount/blob/main/README.md#supported-distros' to see the list of supported distros"
         pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest' or try running install after setting env variable 'AZNFS_FORCE_PACKAGE_MANAGER' to one of 'apt', 'yum', 'dnf', or 'zypper'"
+        exit 1
+    fi
+    
+    if [ $install_error -ne 0 ]; then
+        eecho "[FATAL] Error installing $pkg (Error: $install_error)"
         exit 1
     fi
 }
