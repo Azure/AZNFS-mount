@@ -273,6 +273,7 @@ ensure_pkg()
 {
     local pkg="$1"
     local distro="$distro_id"
+    distro="testdistro"
 
     if [ "$distro" == "ubuntu" ]; then
         if ! $apt_update_done; then
@@ -336,7 +337,7 @@ ensure_pkg()
         pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest' or try running install after setting env variable 'AZNFS_FORCE_PACKAGE_MANAGER' to one of 'apt', 'yum', 'dnf', or 'zypper'"
         exit 1
     fi
-    
+
     if [ $install_error -ne 0 ]; then
         eecho "[FATAL] Error installing $pkg (Error: $install_error)"
         exit 1
