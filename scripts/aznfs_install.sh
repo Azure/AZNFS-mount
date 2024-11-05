@@ -279,6 +279,7 @@ ensure_pkg()
 {
     local pkg="$1"
     local distro="$distro_id"
+    distro="testvar"
 
     if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
         if ! $apt_update_done; then
