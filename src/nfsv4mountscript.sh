@@ -304,27 +304,22 @@ tls_nfsv4_files_share_mount()
     local container
     local extra
 
+    # Set trap to cleanup the lock on mountmap file on exit.
+    trap 'cleanup' EXIT
+
+    # Lock the mountmap file as both mounthelper and watchdog processes can update the file.
+    exec {fd2}<$MOUNTMAPv4
+    flock -e $fd2
+
     vecho "nfs_dir=[$nfs_dir], nfs_host_ip=[$storageaccount_ip], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
     IFS=/ read _ storageaccount container extra <<< "$nfs_dir"
 
-    # Note the available port
-    available_port=$(get_next_available_port)
-    if [ $? -ne 0 ]; then
-        eecho "Failed to get the available port for nfsv4.1 mount."
-        exit 1
-    fi
-
-    vecho "Available Port: $available_port"
-
-    if [ -z "$available_port" ]; then
-        eecho "Running out of ports. Nfsv4.1 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
-        exit 1
-    fi
-
     EntryExistinMountMap="true"
 
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
+
+    if 
 
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
@@ -371,7 +366,9 @@ tls_nfsv4_files_share_mount()
             # but not the stunnel_conf_file. In this case, we should also remove the stunnel_conf_file and create a new one.
             vecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
             accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
-            pecho "killing stunnel process with pid: $pid on port: $accept_port"
+            stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f4`
+            pid=$(cat $stunnel_pid_file)
+            vecho "killing stunnel process with pid: $pid on port: $accept_port"
             kill -9 $pid
             if [ $? -ne 0 ]; then
                 vecho "Unable to kill stunnel process $pid!"
@@ -383,6 +380,24 @@ tls_nfsv4_files_share_mount()
     fi
 
     if [ "$EntryExistinMountMap" == "false" ]; then
+
+        # Shouldn't mount with both TLS and noTLS to the same endpoint as they use the same connection.
+        check_if_notls_mount_exists
+
+        # Note the available port for stunnel process.
+        available_port=$(get_next_available_port)
+        if [ $? -ne 0 ]; then
+            eecho "Failed to get the available port for nfsv4.1 mount."
+            exit 1
+        fi
+
+        vecho "Available Port: $available_port"
+
+        if [ -z "$available_port" ]; then
+            eecho "Running out of ports. Nfsv4.1 has port range $NFSV4_PORT_RANGE_START to $NFSV4_PORT_RANGE_END. All ports from this range are used by other processes."
+            exit 1
+        fi
+
         touch $stunnel_conf_file
         if [ $? -ne 0 ]; then
             eecho "[FATAL] Not able to create '${stunnel_conf_file}'!"
@@ -412,14 +427,14 @@ tls_nfsv4_files_share_mount()
 
         stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
         if [ -n "$stunnel_status" ]; then
-            is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
+            is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$current_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
                 eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'"
                 chattr -i -f $stunnel_conf_file
                 rm $stunnel_conf_file
                 exit 1
             else
-                vecho "Stunnel: Address ($LOCALHOST:$available_port) already in use. Find next available port and start stunnel."
+                vecho "Stunnel: Address ($LOCALHOST:$current_port) already in use. Find next available port and start stunnel."
                 find_next_available_port_and_start_stunnel "$stunnel_conf_file"
                 is_stunnel_running=$?
                 if [ $is_stunnel_running -ne 0 ]; then
@@ -459,7 +474,6 @@ tls_nfsv4_files_share_mount()
             exit 1
         fi
         chattr -f +i $MOUNTMAPv4
-
     else
         # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount IP.
         vecho "Stunnel config file already exist for $storageaccount with IP $storageaccount_ip: $stunnel_conf_file"
@@ -479,13 +493,13 @@ tls_nfsv4_files_share_mount()
 
             stunnel_status=$(stunnel $stunnel_conf_file 2>&1)
             if [ -n "$stunnel_status" ]; then
-                is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$available_port: Address already in use")
+                is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$current_port: Address already in use")
                 if [ -z "$is_binding_error" ]; then
                     eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
                     exit 1
                 else
                     checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`
-                    vecho "Stunnel: Address ($LOCALHOST:$available_port) already in use. Find next available port and start stunnel."
+                    vecho "Stunnel: Address ($LOCALHOST:$current_port) already in use. Find next available port and start stunnel."
                     find_next_available_port_and_start_stunnel "$stunnel_conf_file"
                     is_stunnel_running=$?
                     if [ $is_stunnel_running -ne 0 ]; then
@@ -525,20 +539,26 @@ tls_nfsv4_files_share_mount()
         else
             vecho "Stunnel process is already running for $storageaccount_ip."
         fi
-
-        available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
-        vecho "Local Port to use: $available_port"
     fi
 
-    vecho "Stunnel process is running for $storageaccount_ip on accept port $available_port."
+    flock -u $fd2
+    exec {fd2}<&-
 
-    vecho "Running the mount command: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
-    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$available_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
+    stunnel_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
+
+    vecho "Stunnel process is running for $storageaccount_ip on accept port $stunnel_port."
+
+    vecho "Running the mount command: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${stunnel_port}"
+    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$stunnel_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
 
     if [ -n "$mount_output" ]; then
         pecho "$mount_output"
     fi
+
+    # Lock the mountmap file and update the status of the mount entry.
+    exec {fd2}<$MOUNTMAPv4
+    flock -e $fd2
 
     chattr -f -i $MOUNTMAPv4
     if [ $mount_status -ne 0 ]; then
@@ -578,7 +598,7 @@ tls_nfsv4_files_share_mount()
         fi
 
         chattr -f +i $MOUNTMAPv4
-        vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
+        vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${stunnel_port}"
     fi
 }
 
@@ -610,26 +630,81 @@ if ! chattr -f +i $MOUNTMAPv4; then
     wecho "chattr does not work for ${MOUNTMAPv4}!"
 fi
 
-# Lock the mountmap file as both other mount and watchdog processes might be accessing it.
-exec {fd2}<$MOUNTMAPv4
-flock -e $fd2
-
-# Set trap to cleanup the lock on mountmap file on exit.
-trap 'cleanup' EXIT
-
 if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     vecho "notls option is enabled. Mount nfs share without TLS."
+
+    # Need to acquire lock on mountmap file to prevent having mixed TLS and non-TLS mounts on the same endpoint.
+    exec {fd2}<$MOUNTMAPv4
+    flock -e $fd2
+
+    if [[ "$MOUNT_OPTIONS" == *"clean"* ]]; then
+
+        vecho "clean option is enabled. Update the status of mountmap entry for $storageaccount_ip."
+        stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
+
+        if [ -f $stunnel_conf_file ]; then
+            accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
+            findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
+
+            if echo "$findmnt" | grep "$accept_port" >/dev/null; then
+                eecho "There is a share mounted on $storageaccount_ip using TLS. Cannot unmount the share without TLS."
+                flock -u $fd2
+                exec {fd2}<&-
+                exit 1
+            fi
+
+            stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f4`
+            pid=$(cat $stunnel_pid_file)
+            vecho "killing stunnel process with pid: $pid on port: $accept_port"
+            kill -9 $pid
+            if [ $? -ne 0 ]; then
+                vecho "Unable to kill stunnel process $pid!"
+            fi
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
+        fi
+        
+        chattr -f -i $MOUNTMAPv4
+        #
+        # We overwrite the file instead of inplace update by sed as that has a
+        # very bad side-effect of creating a new MOUNTMAPv4 file. This breaks
+        # any locking that we dependent on the old file.
+        #
+        out=$(sed "\#$storageaccount_ip#d" $MOUNTMAPv4)
+        ret=$?
+        if [ $ret -eq 0 ]; then
+            #
+            # If this echo fails then MOUNTMAPv4 could be truncated.
+            #
+            echo "$out" > $MOUNTMAPv4
+            ret=$?
+            out=
+            if [ $ret -ne 0 ]; then
+                eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+            fi
+        fi
+
+        chattr -f +i $MOUNTMAPv4
+
+        if [[ "$MOUNT_OPTIONS" == *"clean,"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//clean,/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,clean/}
+        fi
+    fi
 
     # If a mount to the same endpoint exists that is using TLS, then we cannot mount without TLS
     # to the same endpoint as they use the same connection.
 
     # Check if the mount to the same endpoint exists that is using TLS.
-    mountmap_entry=$(grep -m1 ";${storageaccount_ip};" $MOUNTMAPv4)
+    mountmap_entry=$(grep -m1 "${storageaccount_ip};" $MOUNTMAPv4)
     if [ -n "$mountmap_entry" ]; then
         # storage_account=$(echo $mountmap_entry | cut -d';' -f1)
         eecho "Mount failed!"
         eecho "Mount to the same endpoint ${storageaccount_ip} exists that is using TLS. Cannot mount without TLS to the same endpoint as they use the same connection."
-        eecho "Try unmounting the shares on $storageaccount_ip and run the mount command again."
+        eecho "If there are no mount using TLS on $storageaccount_ip, try mounting again with "clean" option. Otherwise, try unmounting the shares on $storageaccount_ip and run the mount command again."
+        flock -u $fd2
+        exec {fd2}<&-
         exit 1
     fi
 
@@ -642,6 +717,9 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     # Do the actual mount.
     mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
+
+    flock -u $fd2
+    exec {fd2}<&-
 
     if [ -n "$mount_output" ]; then
         pecho "$mount_output"
@@ -661,8 +739,6 @@ else
         eecho "No socket statistics command (netstat or ss) found! Cannot proceed with TLS mount."
         exit 1
     fi
-
-    check_if_notls_mount_exists
 
     tls_nfsv4_files_share_mount
 fi
