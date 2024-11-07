@@ -132,13 +132,8 @@ perform_aznfs_update()
         AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
         package_name=${AZNFS_RELEASE_SUSE}.x86_64.rpm
     else
-        if [ "$distro_id" == "mariner" ]; then
-            AZNFS_RELEASE="aznfs_mariner-${RELEASE_NUMBER}-1"
-            package_name=${AZNFS_RELEASE}.x86_64.rpm
-        else
-            AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
-            package_name=${AZNFS_RELEASE}.x86_64.rpm
-        fi
+        AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
+        package_name=${AZNFS_RELEASE}.x86_64.rpm
     fi
 
     # Use wget to download the package, and check for success.

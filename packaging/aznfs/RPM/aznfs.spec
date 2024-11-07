@@ -4,11 +4,7 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-%if 0%{?mariner}
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, build-essential, binutils, kernel-headers, openssl, openssl-devel
-%else
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
-%endif
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
@@ -36,7 +32,21 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-if grep -qi "mariner" /etc/os-release; then
+# Install stunnel.
+if ! command -v dnf > /dev/null; then
+	install_cmd="dnf"
+else if ! command -v yum > /dev/null; then
+	install_cmd="yum"
+else
+	install_cmd="zypper"
+fi
+
+# There is no stunnel in Mariner repo, and the stunnel version in RedHat7 repo is not lower with the required version.
+if grep -qi "mariner" /etc/os-release || [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
+
+	# Install dependencies
+	$install_cmd install -y build-essential binutils kernel-headers openssl openssl-devel
+
 	# Check if stunnel is not already installed.
 	if ! command -v stunnel > /dev/null; then
 		# Install stunnel from source on Mariner.
@@ -86,6 +96,17 @@ if grep -qi "mariner" /etc/os-release; then
 		cd -
 		rm -rf /tmp/$stunnel_dir
 		rm -f /tmp/stunnel-latest.tar.gz
+	fi
+fi
+else
+	# Check if stunnel is not already installed.
+	if ! command -v stunnel > /dev/null; then
+		# Install stunnel from the package manager.
+		$install_cmd install -y stunnel
+		if [ $? -ne 0 ]; then
+			echo "Failed to install stunnel. Please install stunnel and try again."
+			exit 1
+		fi
 	fi
 fi
 
