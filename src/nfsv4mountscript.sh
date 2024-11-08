@@ -181,14 +181,6 @@ add_stunnel_configuration()
         return 1
     fi
 
-    # TODO: Change to TLSv1.3 once we have TLSv1.3 version enabled.
-    echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add sslVersion option to $stunnel_conf_file!"
-        return 1
-    fi
-
     echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -209,6 +201,37 @@ add_stunnel_configuration()
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add pid file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "socket = l:SO_KEEPALIVE=1 " >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add local socket to $stunnel_conf_file!"
+        return 1
+    fi
+    echo "socket = r:SO_KEEPALIVE=1 " >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add remote socket to $stunnel_conf_file!"
+        return 1
+    fi
+    echo "TIMEOUTbusy = 23" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTbusy to $stunnel_conf_file!"
+        return 1
+    fi
+    echo "TIMEOUTidle = 23" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
+        return 1
+    fi
+    echo "TIMEOUTclose = 0" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTclose to $stunnel_conf_file!"
         return 1
     fi
 
@@ -295,43 +318,6 @@ check_if_notls_mount_exists()
     done
 }
 
-update_timeout_from_mount_options()
-{
-    local timeout_string="timeo="
-    local retry_string="retrans="
-    local nfs_timeout=0
-    local nfs_retry=0
-
-    #
-    # Check if timeout options are passed to mount command.
-    #
-    if [[ ! "$MOUNT_OPTIONS" == *"$timeout_string"* ]] && [[ ! "$MOUNT_OPTIONS" == *"$retry_string"* ]]; then
-        return 1
-    fi
-
-    IFS=','
-    read -a options_arr <<< "$MOUNT_OPTIONS"
-
-    for option in "${options_arr[@]}";
-    do
-        if [[ "$option" == *"$timeout_string"* ]]; then
-            nfs_timeout=$(echo $option | cut -d= -f2)
-        fi
-
-        if [[ "$option" == *"$retry_string"* ]]; then
-            nfs_retry=$(echo $option | cut -d= -f2)
-        fi
-    done
-
-    if [ $nfs_timeout -ne 0 ]; then
-        MOUNT_TIMEOUT_IN_SECONDS=$(($nfs_timeout/10))
-    fi
-
-    if [ $nfs_retry -ne 0 ]; then
-        MOUNT_TIMEOUT_IN_SECONDS=$(($MOUNT_TIMEOUT_IN_SECONDS * $nfs_retry))
-    fi
-}
-
 #
 # Mount nfsv4 files share with TLS encryption.
 #
@@ -355,9 +341,6 @@ tls_nfsv4_files_share_mount()
     EntryExistinMountMap="true"
 
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
-
-    # Should update default timeout based on timeo and retrans mount options.
-    update_timeout_from_mount_options
 
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
