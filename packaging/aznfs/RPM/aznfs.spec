@@ -4,8 +4,9 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-%if 0%{?mariner}
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, build-essential, binutils, kernel-headers, openssl, openssl-devel
+%if 0%{?stunnel}
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc
+Recommends: build-essential
 %else
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
 %endif
@@ -36,10 +37,11 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-if grep -qi "mariner" /etc/os-release; then
+# Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat 7 is not compatible with aznfs.
+if grep -qi "mariner" /etc/os-release || [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
 	# Check if stunnel is not already installed.
 	if ! command -v stunnel > /dev/null; then
-		# Install stunnel from source on Mariner.
+		# Install stunnel from source.
 		wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
 		if [ $? -ne 0 ]; then
 			echo "Failed to download stunnel source code. Please install stunnel and try again."
