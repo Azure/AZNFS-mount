@@ -212,6 +212,37 @@ add_stunnel_configuration()
         return 1
     fi
 
+    echo "socket = l:SO_KEEPALIVE=1 " >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add local socket to $stunnel_conf_file!"
+        return 1
+    fi
+    echo "socket = r:SO_KEEPALIVE=1 " >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add remote socket to $stunnel_conf_file!"
+        return 1
+    fi
+    echo "TIMEOUTbusy = 23" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTbusy to $stunnel_conf_file!"
+        return 1
+    fi
+    echo "TIMEOUTidle = 23" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
+        return 1
+    fi
+    echo "TIMEOUTclose = 0" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTclose to $stunnel_conf_file!"
+        return 1
+    fi
+
     echo >> $stunnel_conf_file
 
     echo "[$storageaccount_ip]" >> $stunnel_conf_file
