@@ -1165,9 +1165,9 @@ void nfs_inode::lookup_dircache(
                 }
 
                 // No space left to add more entries.
-                AZLogDebug("lookup_dircache: Returning {} entries, as {} bytes "
+                AZLogDebug("[{}] lookup_dircache: Returning {} entries, as {} bytes "
                            "of output buffer exhausted (eof={})",
-                           num_cache_entries, max_size, eof);
+                           get_fuse_ino(), num_cache_entries, max_size, eof);
                 break;
             }
 
@@ -1189,9 +1189,9 @@ void nfs_inode::lookup_dircache(
                 eof = true;
             }
 
-            AZLogDebug("lookup_dircache: Returning {} entries, as next "
+            AZLogDebug("[{}] lookup_dircache: Returning {} entries, as next "
                        "cookie {} not found in cache (eof={})",
-                       num_cache_entries, cookie, eof);
+                       get_fuse_ino(), num_cache_entries, cookie, eof);
 
             /*
              * If we don't find the current cookie, then we will not find the

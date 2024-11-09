@@ -405,7 +405,6 @@ std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
     // Either cookie or filename_hint (not both) must be passed.
     assert((cookie == 0) == (filename_hint != nullptr));
 
-    // Take shared look to see if the entry exists in the cache.
     /*
      * If acquire_lock is true, get shared lock on the map for looking up the
      * entry in the map. We use a dummy_lock for minimal code changes in the
@@ -684,12 +683,6 @@ void readdirectory_cache::clear()
         std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
 
         /*
-         * We don't clear eof, eof_cookie and cookie_verifier as that
-         * information was returned from the server and is still valid, even
-         * though we have purged the readdir cache.
-         * Note that caller may query directory entries at a non-zero offset
-         * and for that we need all those.
-         *
          * If dir_entries has one or more entries those must have been returned
          * by the server along with the cookieverifier, hence it must be set.
          * lookuponly caches may not have cookie_verifier as they may be
@@ -697,7 +690,6 @@ void readdirectory_cache::clear()
          */
         assert(dir_entries.empty() ||
                (*(uint64_t *)&cookie_verifier != 0) || is_lookuponly());
-        cache_size = 0;
 
         for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it) {
             struct nfs_inode *inode = it->second->nfs_inode;
@@ -759,8 +751,14 @@ void readdirectory_cache::clear()
 
         /*
          * No cookies in the cache, hence no sequence.
+         * Also clear eof, eof_cookie, cache_size as cache is purged mostly
+         * because directory changed on the server and thus we don't know any
+         * better about the directory than when we started.
          */
         seq_last_cookie = 0;
+        eof = false;
+        eof_cookie = -1;
+        cache_size = 0;
         clear_confirmed();
         clear_lookuponly();
     }

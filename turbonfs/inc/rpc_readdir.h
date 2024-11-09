@@ -379,6 +379,11 @@ public:
         return eof_cookie;
     }
 
+    uint64_t get_seq_last_cookie() const
+    {
+        return seq_last_cookie;
+    }
+
     void set_cookieverf(const cookieverf3* cokieverf)
     {
         assert(cokieverf != nullptr);

@@ -3385,6 +3385,10 @@ static void readdir_callback(
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
+    // Get handle to the readdirectory cache.
+    std::shared_ptr<readdirectory_cache>& dircache_handle =
+        dir_inode->get_dircache();
+
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<std::shared_ptr<const directory_entry>> readdirentries;
@@ -3399,6 +3403,15 @@ static void readdir_callback(
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
+
+    /*
+     * Is this READDIR request querying a cookie after a gap, i.e., one or
+     * more cookies not queried. In case of gap we cannot tell if directory
+     * shrank.
+     */
+    const bool cookie_gap =
+        ((uint64_t) task->rpc_api->readdir_task.get_offset() >
+         dircache_handle->get_seq_last_cookie());
 
     /*
      * Last valid offset seen for this directory enumeration. We keep on
@@ -3430,6 +3443,12 @@ static void readdir_callback(
      */
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
+    if (cookie_gap) {
+        AZLogWarn("[{}] readdir_callback: GAP in cookie requested ({} -> {})",
+                  dir_ino, dircache_handle->get_seq_last_cookie(),
+                  task->rpc_api->readdir_task.get_offset());
+    }
+
     if (status == 0) {
         /*
          * Update attributes of parent directory returned in postop
@@ -3442,10 +3461,6 @@ static void readdir_callback(
         eof = res->READDIR3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
         int num_dirents = 0;
-
-        // Get handle to the readdirectory cache.
-        std::shared_ptr<readdirectory_cache>& dircache_handle =
-            dir_inode->get_dircache();
 
         // Process all dirents received.
         while (entry) {
@@ -3547,8 +3562,8 @@ static void readdir_callback(
              * - This is a regular (non re-enumeration) call.
              * - This is a re-enumeration call and we have seen a cookie >=
              *   target_offset, the last cookie seen before the badcookie error.
-             * In either case, we need to return this this new entry (and
-             * subsequent ones) to fuse.
+             * In either case, we need to return this new entry (and subsequent
+             * ones) to fuse.
              */
             got_new_entry = (((off_t) entry->cookie >=
                         task->rpc_api->readdir_task.get_target_offset()));
@@ -3593,31 +3608,41 @@ static void readdir_callback(
             ++num_dirents;
         }
 
-        AZLogDebug("readdir_callback {}: Num of entries returned by server is {}, "
+        AZLogDebug("[{}] readdir_callback {}: Num of entries returned by server is {}, "
                    "returned to fuse: {}, eof: {}, eof_cookie: {}",
-                   is_reenumerating ? "(R)" : "",
+                   dir_ino, is_reenumerating ? "(R)" : "",
                    num_dirents, readdirentries.size(), eof, eof_cookie);
 
+        assert(readdirentries.size() <= (size_t) num_dirents);
         dircache_handle->set_cookieverf(&res->READDIR3res_u.resok.cookieverf);
 
         if (eof) {
+            assert((eof_cookie != -1) || (readdirentries.size() == 0));
             /*
              * If we pass the last cookie or beyond it, then server won't
              * return any directory entries, but it'll set eof to true.
-             * In such case, we must already have set eof and eof_cookie.
+             * In such case, we must already have set eof and eof_cookie,
+             * unless the cookie queried by this READDIR request was not
+             * immediately following the last cookie received from the server
+             * in prev READDIR/READDIRPLUS response.
              */
             if (eof_cookie != -1) {
                 assert(num_dirents > 0);
                 dircache_handle->set_eof(eof_cookie);
-            } else {
+            } else if (!cookie_gap) {
                 assert(num_dirents == 0);
-                assert(readdirentries.size() == 0);
                 if (dircache_handle->get_eof() != true) {
                     /*
                      * Server returned 0 entries and set eof to true, but the
                      * previous READDIR call that we made, for that server
                      * didn't return eof, this means the directory shrank in the
-                     * server. To be safe, invalidate the cache.
+                     * server. Note that we can claim "directory shrank" only
+                     * if this READDIR call queried next cookie after the last
+                     * one received (and it returned no entries with eof=true,
+                     * while the last one didn't return eof). If there's a gap
+                     * between the last cookie received from the server and this
+                     * one queried then we cannot say that.
+                     * To be safe, invalidate the cache.
                      */
                     AZLogWarn("[{}] readdir_callback {}: Directory shrank in "
                             "the server! cookie asked: {} target_offset: {}. "
@@ -3748,6 +3773,10 @@ static void readdirplus_callback(
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
+    // Get handle to the readdirectory cache.
+    std::shared_ptr<readdirectory_cache>& dircache_handle =
+        dir_inode->get_dircache();
+
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<std::shared_ptr<const directory_entry>> readdirentries;
@@ -3762,6 +3791,15 @@ static void readdirplus_callback(
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
+
+    /*
+     * Is this READDIRPLUS request querying a cookie after a gap, i.e., one or
+     * more cookies not queried. In case of gap we cannot tell if directory
+     * shrank.
+     */
+    const bool cookie_gap =
+        ((uint64_t) task->rpc_api->readdir_task.get_offset() >
+         dircache_handle->get_seq_last_cookie());
 
     /*
      * Last valid offset seen for this directory enumeration. We keep on
@@ -3793,6 +3831,12 @@ static void readdirplus_callback(
      */
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
+    if (cookie_gap) {
+        AZLogWarn("[{}] readdirplus_callback: GAP in cookie requested ({} -> {})",
+                  dir_ino, dircache_handle->get_seq_last_cookie(),
+                  task->rpc_api->readdir_task.get_offset());
+    }
+
     if (status == 0) {
         /*
          * Update attributes of parent directory returned in postop
@@ -3806,10 +3850,6 @@ static void readdirplus_callback(
         eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
         int num_dirents = 0;
-
-        // Get handle to the readdirectory cache.
-        std::shared_ptr<readdirectory_cache>& dircache_handle =
-            dir_inode->get_dircache();
 
         // Process all dirents received.
         while (entry) {
@@ -3974,8 +4014,8 @@ static void readdirplus_callback(
              * - This is a regular (non re-enumeration) call.
              * - This is a re-enumeration call and we have seen a cookie >=
              *   target_offset, the last cookie seen before the badcookie error.
-             * In either case, we need to return this this new entry (and
-             * subsequent ones) to fuse.
+             * In either case, we need to return this new entry (and subsequent
+             * ones) to fuse.
              */
             got_new_entry = (((off_t) entry->cookie >=
                         task->rpc_api->readdir_task.get_target_offset()));
@@ -4035,30 +4075,40 @@ static void readdirplus_callback(
             ++num_dirents;
         }
 
-        AZLogDebug("readdirplus_callback {}: Num of entries returned by server "
+        AZLogDebug("[{}] readdirplus_callback {}: Num of entries returned by server "
                    "is {}, returned to fuse: {}, eof: {}, eof_cookie: {}",
-                   is_reenumerating ? "(R)" : "",
+                   dir_ino, is_reenumerating ? "(R)" : "",
                    num_dirents, readdirentries.size(), eof, eof_cookie);
 
+        assert(readdirentries.size() <= (size_t) num_dirents);
         dircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
         if (eof) {
+            assert((eof_cookie != -1) || (readdirentries.size() == 0));
             /*
              * If we pass the last cookie or beyond it, then server won't
              * return any directory entries, but it'll set eof to true.
-             * In such case, we must already have set eof and eof_cookie.
+             * In such case, we must already have set eof and eof_cookie,
+             * unless the cookie queried by this READDIRPLUS3res_u request was
+             * not immediately following the last cookie received from the
+             * server in prev READDIR/READDIRPLUS response.
              */
             if (eof_cookie != -1) {
                 assert(num_dirents > 0);
                 dircache_handle->set_eof(eof_cookie);
-            } else {
-                assert(readdirentries.size() == 0);
+            } else if (!cookie_gap) {
                 if (dircache_handle->get_eof() != true) {
                     /*
                      * Server returned 0 entries and set eof to true, but the
                      * previous READDIR call that we made, for that server
                      * didn't return eof, this means the directory shrank in the
-                     * server. To be safe, invalidate the cache.
+                     * server. Note that we can claim "directory shrank" only
+                     * if this READDIRPLUS call queried next cookie after the
+                     * last one received (and it returned no entries with
+                     * eof=true, while the last one didn't return eof).
+                     * If there's a gap between the last cookie received from
+                     * the server and this one queried then we cannot say that.
+                     * To be safe, invalidate the cache.
                      */
                     AZLogWarn("[{}] readdirplus_callback {}: Directory shrank in "
                             "the server! cookie asked: {} target_offset: {}. "
@@ -4394,9 +4444,9 @@ void rpc_task::send_readdir_or_readdirplus_response(
     size_t rem = size;
     size_t num_entries_added = 0;
 
-    AZLogDebug("send_readdir_or_readdirplus_response: Number of directory"
+    AZLogDebug("[{}] send_readdir_or_readdirplus_response: Number of directory"
                " entries to send {}, size: {}",
-               readdirentries.size(), size);
+               parent_ino, readdirentries.size(), size);
 
     /*
      * If we return at least one entry, make sure cookie_verifier is valid as
@@ -4586,7 +4636,8 @@ void rpc_task::send_readdir_or_readdirplus_response(
 #endif
 
     if (!inject_fuse_reply_buf_failure) {
-        AZLogDebug("Num of entries sent in readdir response is {}", num_entries_added);
+        AZLogDebug("[{}] Num of entries sent in readdir response is {}",
+                   parent_ino, num_entries_added);
 
         if (fuse_reply_buf(get_fuse_req(), buf1, size - rem) != 0) {
             AZLogError("fuse_reply_buf failed!");
