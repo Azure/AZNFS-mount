@@ -878,9 +878,17 @@ public:
      /**
       * Should we skip setattr(mtime) call for this inode?
       * See discussion above stamp_cached_write().
+      * new_mtime is the updated mtime that fuse wants to set.
+      * If we propose to skip mtime update, and inode's cached mtime is older
+      * than new_mtime, we refresh inode's cached mtime and ctime.
+      *
+      * LOCKS: Exclusive ilock_1.
       */
-     bool skip_mtime_update() const
+     bool skip_mtime_update(const struct timespec& new_mtime)
      {
+        // Caller must pass a valid mtime.
+        assert(new_mtime.tv_sec != 0);
+
         static const int64_t one_sec = 1000 * 1000ULL;
         const int64_t now_usecs = get_current_usecs();
         const int64_t now_msecs = now_usecs / 1000ULL;
@@ -899,7 +907,19 @@ public:
          * one sec and if we have valid cached attributes for this inode.
          * Note that we need to return updated attributes in setattr response.
          */
-        return (write_seen_recently && attrs_valid);
+        const bool skip = (write_seen_recently && attrs_valid);
+
+        if (skip) {
+            std::unique_lock<std::shared_mutex> lock(ilock_1);
+            if (compare_timespec(new_mtime, attr.st_mtim) > 0) {
+                attr.st_mtim = new_mtime;
+                if (compare_timespec(new_mtime, attr.st_ctim) > 0) {
+                    attr.st_ctim = new_mtime;
+                }
+            }
+        }
+
+        return skip;
      }
 
     /**

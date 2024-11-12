@@ -2359,19 +2359,20 @@ void rpc_task::run_setattr()
 {
     auto ino = rpc_api->setattr_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
-    auto attr = rpc_api->setattr_task.get_attr();
+    const struct stat *attr = rpc_api->setattr_task.get_attr();
     const int valid = rpc_api->setattr_task.get_attr_flags_to_set();
     bool rpc_retry;
 
     /*
      * If this is a setattr(mtime) call called for updating mtime of a file
      * under write in writeback mode, skip the call and return cached
-     * attributes. Note that write requests sent to NSF server will correctly
+     * attributes. Note that write requests sent to NFS server will correctly
      * update the mtime so we don't need to do that.
      * Since fuse doesn't provide us a way to turn off these setattr(mtime)
      * calls, we have this hack.
      */
-    if ((valid && !(valid & ~FUSE_SET_ATTR_MTIME)) && inode->skip_mtime_update()) {
+    if ((valid && !(valid & ~FUSE_SET_ATTR_MTIME)) &&
+        inode->skip_mtime_update(attr->st_mtim)) {
         /*
          * Set fuse kernel attribute cache timeout to the current attribute
          * cache timeout for this inode, as per the recent revalidation
@@ -3264,8 +3265,8 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
 
         bc.num_backend_calls_issued++;
 
-        AZLogDebug("Issuing read to backend at offset: {} length: {}",
-                   args.offset, args.count);
+        AZLogDebug("[{}] Issuing read to backend at offset: {} length: {}",
+                   inode->get_fuse_ino(), args.offset, args.count);
 
         rpc_retry = false;
         stats.on_rpc_issue();
