@@ -328,28 +328,38 @@ static void readahead_callback (
             res->READ3res_u.resok.eof) {
             assert(res->READ3res_u.resok.count < issued_length);
 
+            /*
+             * We need to clear the inuse count held by this thread, else
+             * release() will not be able to release. We drop and then
+             * promptly grab the inuse count after the release(), so that
+             * set_uptodate() can be called.
+             */
+            bc->get_membuf()->clear_inuse();
             const uint64_t released_bytes =
                 read_cache->release(bc->offset + bc->pvt,
                                     bc->length - bc->pvt);
-                /*
-                 * If we are able to successfully release all the extra bytes
-                 * from the bytes_chunk, that means there's no other thread
-                 * actively performing IOs to the underlying membuf, so we can
-                 * mark it uptodate.
-                 */
-                if (released_bytes == (bc->length - bc->pvt)) {
-                    AZLogWarn("[{}] Setting uptodate flag for membuf [{}, {}), "
-                              "after readahead hit eof, requested [{}, {}), "
-                              "got [{}, {})",
-                              ino,
-                              bc->offset, bc->offset + bc->length,
-                              issued_offset,
-                              issued_offset + issued_length,
-                              issued_offset,
-                              issued_offset + res->READ3res_u.resok.count);
-                    bc->get_membuf()->set_uptodate();
-                    set_uptodate = true;
-                }
+            bc->get_membuf()->set_inuse();
+
+            /*
+             * If we are able to successfully release all the extra bytes
+             * from the bytes_chunk, that means there's no other thread
+             * actively performing IOs to the underlying membuf, so we can
+             * mark it uptodate.
+             */
+            assert(released_bytes <= (bc->length - bc->pvt));
+            if (released_bytes == (bc->length - bc->pvt)) {
+                AZLogWarn("[{}] Setting uptodate flag for membuf [{}, {}), "
+                          "after readahead hit eof, requested [{}, {}), "
+                          "got [{}, {})",
+                          ino,
+                          bc->offset, bc->offset + bc->length,
+                          issued_offset,
+                          issued_offset + issued_length,
+                          issued_offset,
+                          issued_offset + res->READ3res_u.resok.count);
+                bc->get_membuf()->set_uptodate();
+                set_uptodate = true;
+            }
         }
 
         if (!set_uptodate) {
