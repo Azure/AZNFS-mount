@@ -485,9 +485,10 @@ int ra_state::issue_readaheads()
      * Issue all readaheads allowed by this ra_state.
      */
     while ((ra_offset = get_next_ra()) > 0) {
-        AZLogDebug("[{}] Issuing readahead at off: {} len: {}: ongoing: {} ({})",
+        AZLogDebug("[{}] Issuing readahead at off: {} len: {}: ongoing: {} "
+                   "filesize: {} ({})",
                    inode->get_fuse_ino(), ra_offset, def_ra_size,
-                   ra_ongoing.load(), ra_bytes);
+                   ra_ongoing.load(), inode->get_file_size(), ra_bytes);
 
         /*
          * Get bytes_chunk representing the byte range we want to readahead

@@ -46,6 +46,9 @@ do { \
                    inode->get_fuse_ino(), \
                    __FUNCTION__); \
         inode->update(&(postop.post_op_attr_u.attributes)); \
+        AZLogDebug("[{}] UPDATE_INODE_ATTR(): file size: {}", \
+                   inode->get_fuse_ino(), \
+                   inode->get_file_size()); \
     } \
 } while (0)
 
@@ -84,6 +87,9 @@ do { \
                    inode->get_fuse_ino(), \
                    __FUNCTION__); \
         inode->update(postattr, preattr); \
+        AZLogDebug("[{}] UPDATE_INODE_WCC(): file size: {}", \
+                   inode->get_fuse_ino(), \
+                   inode->get_file_size()); \
     } \
 } while (0)
 
