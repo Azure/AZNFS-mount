@@ -295,42 +295,6 @@ check_if_notls_mount_exists()
     done
 }
 
-update_timeout_from_mount_options()
-{
-    local timeout_string="timeo="
-    local retry_string="retrans="
-    local nfs_timeout=0
-    local nfs_retry=0
-
-    #
-    # Check if timeout options are passed to mount command.
-    #
-    if [[ ! "$MOUNT_OPTIONS" == *"$timeout_string"* ]] && [[ ! "$MOUNT_OPTIONS" == *"$retry_string"* ]]; then
-        return 1
-    fi
-
-    IFS=','
-    read -a options_arr <<< "$MOUNT_OPTIONS"
-
-    for option in "${options_arr[@]}";
-    do
-        if [[ "$option" == *"$timeout_string"* ]]; then
-            nfs_timeout=$(echo $option | cut -d= -f2)
-        fi
-
-        if [[ "$option" == *"$retry_string"* ]]; then
-            nfs_retry=$(echo $option | cut -d= -f2)
-        fi
-    done
-
-    if [ $nfs_timeout -ne 0 ]; then
-        MOUNT_TIMEOUT_IN_SECONDS=$(($nfs_timeout/10))
-    fi
-
-    if [ $nfs_retry -ne 0 ]; then
-        MOUNT_TIMEOUT_IN_SECONDS=$(($MOUNT_TIMEOUT_IN_SECONDS * $nfs_retry))
-    fi
-}
 
 #
 # Mount nfsv4 files share with TLS encryption.
@@ -355,9 +319,6 @@ tls_nfsv4_files_share_mount()
     EntryExistinMountMap="true"
 
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
-
-    # Should update default timeout based on timeo and retrans mount options.
-    update_timeout_from_mount_options
 
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
