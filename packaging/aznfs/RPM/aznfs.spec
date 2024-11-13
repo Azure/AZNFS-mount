@@ -37,7 +37,7 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-# Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat 7 is not compatible with aznfs.
+# Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat7 and Centos7 is not compatible with aznfs.
 if grep -qi "mariner" /etc/os-release || [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
 	# Check if stunnel is not already installed.
 	if ! command -v stunnel > /dev/null; then

@@ -132,7 +132,7 @@ perform_aznfs_update()
         AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
         package_name=${AZNFS_RELEASE_SUSE}.x86_64.rpm
     else
-        if [[ "$distro_id" == "mariner" || ("$distro_id" == "rhel" && $(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1) == 7) ]] ; then
+        if [[ "$distro_id" == "mariner" || (("$distro_id" == "rhel" || "$distro_id" == "centos") && $(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1) == 7) ]] ; then
             AZNFS_RELEASE="aznfs_stunnel-${RELEASE_NUMBER}-1"
             package_name=${AZNFS_RELEASE}.x86_64.rpm
         else
@@ -280,7 +280,7 @@ ensure_pkg()
     local pkg="$1"
     local distro="$distro_id"
 
-    if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
+    if [ "$distro" == "ubuntu" ]; then
         if ! $apt_update_done; then
             apt -y update
             if [ $? -ne 0 ]; then

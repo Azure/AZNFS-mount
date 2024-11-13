@@ -31,7 +31,7 @@ HOSTNAME=$(hostname)
 
 LOCALHOST="127.0.0.1"
 
-# Command to use for getting socket statistics - netstat or ss
+# Determine the command to use for getting socket statistics: netstat or ss
 NETSTATCOMMAND=""
 
 if [ -z "$AZNFS_VERSION" ]; then
@@ -695,8 +695,8 @@ get_check_host_value()
     declare -A certs
     certs=(
         ["preprod.core.windows.net$"]="*.file.preprod.core.windows.net"
-        ["chinacloudapi.cn$"]="*.file.core.usgovcloudapi.net"
-        ["usgovcloudapi.net$"]="*.file.core.chinacloudapi.cn"
+        ["chinacloudapi.cn$"]="*.file.core.chinacloudapi.cn"
+        ["usgovcloudapi.net$"]="*.file.core.usgovcloudapi.net"
     )
 
     for cert in "${!certs[@]}"; do
@@ -706,7 +706,7 @@ get_check_host_value()
         fi
     done
 
-    echo $check_host_value
+    echo "$check_host_value"
 }
 
 # On some distros mount program doesn't pass correct PATH variable.
@@ -716,6 +716,9 @@ if command -v netstat &> /dev/null; then
     NETSTATCOMMAND="netstat"
 elif command -v ss &> /dev/null; then
     NETSTATCOMMAND="ss"
+else
+    eecho "[FATAL] Neither 'netstat' nor 'ss' is available!"
+    exit 1
 fi
 
 if [ ! -d $OPTDIRDATA ]; then
