@@ -743,9 +743,10 @@ public:
      * estimate and should not use it for any hard failures that may be in
      * violation of the protocol.
      * If cached attributes have expired (as per the configured actimeo) then
-     * it returns -1 and caller must handle it.
+     * it returns -1 and caller must handle it, unless caller does not care
+     * and passed dont_check_expiry as true.
      */
-    int64_t get_file_size() const
+    int64_t get_file_size(const bool dont_check_expiry = false) const
     {
         /*
          * XXX We access attr.st_size w/o holding ilock_1 as aligned access
@@ -753,6 +754,11 @@ public:
          *     ilock_1 in the read fastpath.
          */
         assert((size_t) attr.st_size <= AZNFSC_MAX_FILE_SIZE);
+
+        if (dont_check_expiry) {
+            return attr.st_size;
+        }
+
         return attr_cache_expired() ? -1 : attr.st_size;
     }
 

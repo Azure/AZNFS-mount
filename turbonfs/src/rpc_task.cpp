@@ -1796,6 +1796,7 @@ void rpc_task::run_write()
     const size_t length = rpc_api->write_task.get_size();
     struct fuse_bufvec *const bufv = rpc_api->write_task.get_buffer_vector();
     const off_t offset = rpc_api->write_task.get_offset();
+    const bool sparse_write = (offset > inode->get_file_size(true));
     uint64_t extent_left = 0;
     uint64_t extent_right = 0;
 
@@ -1882,61 +1883,72 @@ void rpc_task::run_write()
     assert(extent_right >= (extent_left + length));
 
     /*
-     * If the extent size exceeds the max allowed dirty size as returned by
-     * max_dirty_extent_bytes(), then it's time to flush the extent.
-     * Note that this will cause sequential writes to be flushed at just the
-     * right intervals to optimize fewer write calls and also allowing the
-     * server scheduler to merge better.
-     * See bytes_to_flush for how random writes are flushed.
-     *
-     * Note: max_dirty_extent is static as it doesn't change after it's
-     *       queried for the first time.
+     * If this is a sparse write beyond eof we perform inline write, w/o this
+     * we can have some reader read from the sparse part of the file which is
+     * not yet in the bytes_chunk_cache. This read will be issued to the server
+     * and since server doesn't know the updated file size (as the write may
+     * still be sitting in our bytes_chunk_cache) it will return eof.
+     * This is not correct as such reads issued after successful write, are
+     * valid and should return 0 bytes for the sparse range.
      */
-    static const uint64_t max_dirty_extent =
-        inode->get_filecache()->max_dirty_extent_bytes();
-    assert(max_dirty_extent > 0);
-
-    /*
-     * How many bytes in the cache need to be flushed.
-     */
-    const uint64_t bytes_to_flush =
-        inode->get_filecache()->get_bytes_to_flush();
-
-    AZLogDebug("[{}] extent_left: {}, extent_right: {}, size: {}, "
-               "bytes_to_flush: {} (max_dirty_extent: {})",
-               ino, extent_left, extent_right,
-               (extent_right - extent_left),
-               bytes_to_flush,
-               max_dirty_extent);
-
-    if ((extent_right - extent_left) < max_dirty_extent) {
+    if (!sparse_write) {
         /*
-         * Current extent is not big enough to be flushed, see if we have
-         * enough dirty data that needs to be flushed. This is to cause
-         * random writes to be periodically flushed.
+         * If the extent size exceeds the max allowed dirty size as returned by
+         * max_dirty_extent_bytes(), then it's time to flush the extent.
+         * Note that this will cause sequential writes to be flushed at just the
+         * right intervals to optimize fewer write calls and also allowing the
+         * server scheduler to merge better.
+         * See bytes_to_flush for how random writes are flushed.
+         *
+         * Note: max_dirty_extent is static as it doesn't change after it's
+         *       queried for the first time.
          */
-        if (bytes_to_flush < max_dirty_extent) {
-            AZLogDebug("Reply write without syncing to Blob");
-            reply_write(length);
-            return;
+        static const uint64_t max_dirty_extent =
+            inode->get_filecache()->max_dirty_extent_bytes();
+        assert(max_dirty_extent > 0);
+
+        /*
+         * How many bytes in the cache need to be flushed.
+         */
+        const uint64_t bytes_to_flush =
+            inode->get_filecache()->get_bytes_to_flush();
+
+        AZLogDebug("[{}] extent_left: {}, extent_right: {}, size: {}, "
+                   "bytes_to_flush: {} (max_dirty_extent: {})",
+                   ino, extent_left, extent_right,
+                   (extent_right - extent_left),
+                   bytes_to_flush,
+                   max_dirty_extent);
+
+        if ((extent_right - extent_left) < max_dirty_extent) {
+            /*
+             * Current extent is not big enough to be flushed, see if we have
+             * enough dirty data that needs to be flushed. This is to cause
+             * random writes to be periodically flushed.
+             */
+            if (bytes_to_flush < max_dirty_extent) {
+                AZLogDebug("Reply write without syncing to Blob");
+                reply_write(length);
+                return;
+            }
+
+            /*
+             * This is the case of non-sequential writes causing enough dirty
+             * data to be accumulated, need to flush all of that.
+             */
+            extent_left = 0;
+            extent_right = UINT64_MAX;
         }
-
-        /*
-         * This is the case of non-sequential writes causing enough dirty
-         * data to be accumulated, need to flush all of that.
-         */
-        extent_left = 0;
-        extent_right = UINT64_MAX;
     }
 
     /*
      * Ok, we need to flush the extent now, check if we must do it inline.
      */
-    if (inode->get_filecache()->do_inline_write()) {
+    if (sparse_write || inode->get_filecache()->do_inline_write()) {
         INC_GBL_STATS(inline_writes, 1);
 
-        AZLogDebug("[{}] Inline write, {} bytes extent @ [{}, {})",
-                   ino, (extent_right - extent_left),
+        AZLogDebug("[{}] Inline write (sparse={}), {} bytes, extent @ [{}, {})",
+                   ino, sparse_write, (extent_right - extent_left),
                    extent_left, extent_right);
 
         const int err = inode->flush_cache_and_wait(extent_left, extent_right);
