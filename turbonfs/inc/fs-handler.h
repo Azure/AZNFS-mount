@@ -333,7 +333,7 @@ static void aznfsc_ll_open(fuse_req_t req,
         // Drop opencnt incremented in on_fuse_open().
         inode->opencnt--;
     } else {
-        INC_GBL_STATS(fuse_responses_awaited, 1);
+        DEC_GBL_STATS(fuse_responses_awaited, 1);
     }
 }
 
