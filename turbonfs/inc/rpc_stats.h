@@ -10,7 +10,7 @@
 namespace aznfsc {
 
 /**
- * Stats for a specific RPC type.
+ * Stats for a specific RPC (actually FUSE_*) type.
  */
 struct rpc_opstat
 {
@@ -319,9 +319,14 @@ public:
     static std::atomic<uint64_t> tot_lookup_reqs;
     static std::atomic<uint64_t> lookup_served_from_cache;
     static std::atomic<uint64_t> inline_writes;
+
+    static std::atomic<uint64_t> rpc_tasks_allocated;
+    static std::atomic<uint64_t> fuse_responses_awaited;
+    static std::atomic<uint64_t> fuse_reply_failed;
 };
 
 #define INC_GBL_STATS(var, inc)  rpc_stats_az::var += (inc)
+#define DEC_GBL_STATS(var, dec)  {assert(rpc_stats_az::var >= dec); rpc_stats_az::var -= (dec);}
 #define GET_GBL_STATS(var)       rpc_stats_az::var
 
 }

@@ -37,6 +37,8 @@ static void aznfsc_ll_lookup(fuse_req_t req,
                              fuse_ino_t parent_ino,
                              const char *name)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_lookup(req={}, parent_ino={}, name={})",
                fmt::ptr(req), parent_ino, name);
 
@@ -49,6 +51,8 @@ static void aznfsc_ll_getattr(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_getattr(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
@@ -63,6 +67,8 @@ static void aznfsc_ll_setattr(fuse_req_t req,
                               int to_set /* bitmask indicating the attributes to set */,
                               struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     // TODO: Log all to-be-set attributes.
     AZLogDebug("aznfsc_ll_setattr(req={}, ino={}, to_set=0x{:x}, fi={})",
                fmt::ptr(req), ino, to_set, fmt::ptr(fi));
@@ -75,6 +81,8 @@ static void aznfsc_ll_setattr(fuse_req_t req,
 static void aznfsc_ll_readlink(fuse_req_t req,
                                fuse_ino_t ino)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_readlink(req={}, ino={})",
                fmt::ptr(req), ino);
 
@@ -89,6 +97,8 @@ static void aznfsc_ll_mknod(fuse_req_t req,
                             mode_t mode,
                             dev_t rdev)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_mknod(req={}, parent_ino={}, name={}, "
                "mode=0{:03o})",
                fmt::ptr(req), parent_ino, name, mode);
@@ -100,7 +110,14 @@ static void aznfsc_ll_mknod(fuse_req_t req,
         AZLogError("mknod(req={}, parent_ino={}, name={}, "
                    "mode=0{:03o}) is unsupported for non-regular files.",
                    fmt::ptr(req), parent_ino, name, mode);
-        fuse_reply_err(req, ENOSYS);
+        const int fre = fuse_reply_err(req, ENOSYS);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_err({}) failed: {}", fmt::ptr(req), fre);
+            assert(0);
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
+        }
     }
 }
 
@@ -110,6 +127,8 @@ static void aznfsc_ll_mkdir(fuse_req_t req,
                             const char *name,
                             mode_t mode)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_mkdir(req={}, parent_ino={}, name={}, mode=0{:03o})",
                fmt::ptr(req), parent_ino, name, mode);
 
@@ -122,6 +141,8 @@ static void aznfsc_ll_unlink(fuse_req_t req,
                              fuse_ino_t parent_ino,
                              const char *name)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_unlink(req={}, parent_ino={}, name={})",
                fmt::ptr(req), parent_ino, name);
 
@@ -147,6 +168,8 @@ static void aznfsc_ll_rmdir(fuse_req_t req,
                             fuse_ino_t parent_ino,
                             const char *name)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_rmdir(req={}, parent_ino={}, name={})",
                fmt::ptr(req), parent_ino, name);
 
@@ -160,6 +183,8 @@ static void aznfsc_ll_symlink(fuse_req_t req,
                               fuse_ino_t parent_ino,
                               const char *name)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_symlink(req={}, link={}, parent_ino={}, name={})",
                fmt::ptr(req), link, parent_ino, name);
 
@@ -175,6 +200,8 @@ static void aznfsc_ll_rename(fuse_req_t req,
                              const char *newname,
                              unsigned int flags)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     /*
      * We don't support renameat2() i.e., no support for `RENAME_EXCHANGE` or
      * `RENAME_NOREPLACE` flags. Force flags to 0. Default NFS rename behaviour
@@ -215,6 +242,8 @@ static void aznfsc_ll_open(fuse_req_t req,
                            fuse_ino_t ino,
                            struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_open(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
@@ -295,10 +324,16 @@ static void aznfsc_ll_open(fuse_req_t req,
     inode->on_fuse_open(FUSE_OPEN);
     assert(inode->opencnt > 0);
 
-    if (fuse_reply_open(req, fi) < 0) {
-        AZLogError("[{}] fuse_reply_open() failed", inode->get_fuse_ino());
+    const int fre = fuse_reply_open(req, fi);
+    if (fre != 0) {
+        INC_GBL_STATS(fuse_reply_failed, 1);
+        AZLogError("[{}] fuse_reply_open({}) failed: {}",
+                   inode->get_fuse_ino(), fmt::ptr(req), fre);
+        assert(0);
         // Drop opencnt incremented in on_fuse_open().
         inode->opencnt--;
+    } else {
+        INC_GBL_STATS(fuse_responses_awaited, 1);
     }
 }
 
@@ -309,6 +344,8 @@ static void aznfsc_ll_read(fuse_req_t req,
                            off_t off,
                            struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_read(req={}, ino={}, size={}, offset={} fi={}, "
                "fi->fh={})",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi), fi->fh);
@@ -333,13 +370,22 @@ static void aznfsc_ll_write(fuse_req_t req,
                             off_t off,
                             struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     /*
      * XXX: write will be never called as we implement write_buf.
      */
     AZLogError("aznfsc_ll_write(req={}, ino={}, buf={}, size={}, off={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(buf), size, off, fmt::ptr(fi));
 
-    fuse_reply_err(req, ENOSYS);
+    const int fre = fuse_reply_err(req, ENOSYS);
+    if (fre != 0) {
+        INC_GBL_STATS(fuse_reply_failed, 1);
+        AZLogError("fuse_reply_err({}) failed: {}", fmt::ptr(req), fre);
+        assert(0);
+    } else {
+        DEC_GBL_STATS(fuse_responses_awaited, 1);
+    }
 }
 
 [[maybe_unused]]
@@ -347,6 +393,8 @@ static void aznfsc_ll_flush(fuse_req_t req,
                             fuse_ino_t ino,
                             struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_flush(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
@@ -359,6 +407,8 @@ static void aznfsc_ll_release(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     /*
      * Fuse calls flush() for every fd closed and release() once per file,
      * when the last fd to that file is closed.
@@ -402,6 +452,8 @@ static void aznfsc_ll_opendir(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_opendir(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
@@ -428,10 +480,16 @@ static void aznfsc_ll_opendir(fuse_req_t req,
     inode->on_fuse_open(FUSE_OPENDIR);
     assert(inode->opencnt > 0);
 
-    if (fuse_reply_open(req, fi) < 0) {
-        AZLogError("[{}] fuse_reply_open() failed", inode->get_fuse_ino());
+    const int fre = fuse_reply_open(req, fi);
+    if (fre != 0) {
+        INC_GBL_STATS(fuse_reply_failed, 1);
+        AZLogError("[{}] fuse_reply_open({}) failed: {}",
+                   inode->get_fuse_ino(), fmt::ptr(req), fre);
+        assert(0);
         // Drop opencnt incremented in on_fuse_open().
         inode->opencnt--;
+    } else {
+        DEC_GBL_STATS(fuse_responses_awaited, 1);
     }
 }
 
@@ -442,6 +500,8 @@ static void aznfsc_ll_readdir(fuse_req_t req,
                               off_t off,
                               struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_readdir(req={}, ino={}, size={}, off={}, fi={})",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
@@ -459,6 +519,8 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
                                  fuse_ino_t ino,
                                  struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_releasedir(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
@@ -478,7 +540,14 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
      */
 
     inode->release(req);
-    fuse_reply_err(req, 0);
+    const int fre = fuse_reply_err(req, 0);
+    if (fre != 0) {
+        INC_GBL_STATS(fuse_reply_failed, 1);
+        AZLogError("fuse_reply_err({}) failed: {}", fmt::ptr(req), fre);
+        assert(0);
+    } else {
+        DEC_GBL_STATS(fuse_responses_awaited, 1);
+    }
 }
 
 [[maybe_unused]]
@@ -497,6 +566,8 @@ static void aznfsc_ll_fsyncdir(fuse_req_t req,
 static void aznfsc_ll_statfs(fuse_req_t req,
                              fuse_ino_t ino)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_statfs(req={}, ino={})", fmt::ptr(req), ino);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
@@ -556,6 +627,8 @@ static void aznfsc_ll_access(fuse_req_t req,
                              fuse_ino_t ino,
                              int mask)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_access(req={}, ino={}, mask=0{:03o})",
                fmt::ptr(req), ino, mask);
 
@@ -570,6 +643,8 @@ static void aznfsc_ll_create(fuse_req_t req,
                              mode_t mode,
                              struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_create(req={}, parent_ino={}, name={}, "
                "mode=0{:03o}, fi={})",
                fmt::ptr(req), parent_ino, name, mode, fmt::ptr(fi));
@@ -681,6 +756,8 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
                                 off_t off,
                                 struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     assert(bufv->idx < bufv->count);
     const size_t length = bufv->buf[bufv->idx].size - bufv->off;
     assert((int) length >= 0);
@@ -755,6 +832,8 @@ static void aznfsc_ll_readdirplus(fuse_req_t req,
                                   off_t off,
                                   struct fuse_file_info *fi)
 {
+    INC_GBL_STATS(fuse_responses_awaited, 1);
+
     AZLogDebug("aznfsc_ll_readdirplus(req={}, ino={}, size={}, off={}, fi={})",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 

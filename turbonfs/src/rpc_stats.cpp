@@ -19,6 +19,9 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_lookup_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::lookup_served_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::inline_writes = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::rpc_tasks_allocated = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::fuse_responses_awaited = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::fuse_reply_failed = 0;
 
 /* static */
 void rpc_stats_az::dump_stats()
@@ -171,6 +174,14 @@ void rpc_stats_az::dump_stats()
     str += "  " + std::to_string(GET_GBL_STATS(lookup_served_from_cache)) +
                   " lookup served from cache (" +
                   std::to_string(lookup_cache_pct) + "%)\n";
+
+    str += "Misc statistics:\n";
+    str += "  " + std::to_string(GET_GBL_STATS(rpc_tasks_allocated)) +
+                  " rpc tasks currently running\n";
+    str += "  " + std::to_string(GET_GBL_STATS(fuse_responses_awaited)) +
+                  " responses awaited by fuse\n";
+    str += "  " + std::to_string(GET_GBL_STATS(fuse_reply_failed)) +
+                  " fuse replies failed to send\n";
 
 #define DUMP_OP(opcode) \
 do { \

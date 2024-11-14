@@ -2072,25 +2072,61 @@ public:
     void reply_error(int rc)
     {
         assert(rc >= 0);
-        fuse_reply_err(get_fuse_req(), rc);
+        const int fre = fuse_reply_err(get_fuse_req(), rc);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_err({}) failed: {}",
+                       fmt::ptr(get_fuse_req()), fre);
+            assert(0);
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
+        }
+
         free_rpc_task();
     }
 
     void reply_statfs(const struct statvfs *statbuf)
     {
-        fuse_reply_statfs(get_fuse_req(), statbuf);
+        const int fre = fuse_reply_statfs(get_fuse_req(), statbuf);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_statfs({}) failed: {}",
+                       fmt::ptr(get_fuse_req()), fre);
+            assert(0);
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
+        }
+
         free_rpc_task();
     }
 
     void reply_readlink(const char *linkname)
     {
-        fuse_reply_readlink(get_fuse_req(), linkname);
+        const int fre = fuse_reply_readlink(get_fuse_req(), linkname);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_readlink({}) failed: {}",
+                       fmt::ptr(get_fuse_req()), fre);
+            assert(0);
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
+        }
+
         free_rpc_task();
     }
 
     void reply_attr(const struct stat& attr, double attr_timeout)
     {
-        fuse_reply_attr(get_fuse_req(), &attr, attr_timeout);
+        const int fre = fuse_reply_attr(get_fuse_req(), &attr, attr_timeout);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_attr({}) failed: {}",
+                       fmt::ptr(get_fuse_req()), fre);
+            assert(0);
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
+        }
+
         free_rpc_task();
     }
 
@@ -2104,7 +2140,16 @@ public:
          */
         assert(count <= 1048576);
 
-        fuse_reply_write(get_fuse_req(), count);
+        const int fre = fuse_reply_write(get_fuse_req(), count);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_write({}) failed: {}",
+                       fmt::ptr(get_fuse_req()), fre);
+            assert(0);
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
+        }
+
         free_rpc_task();
     }
 
@@ -2121,7 +2166,16 @@ public:
          */
         assert(count <= 1048576);
 
-        fuse_reply_iov(get_fuse_req(), iov, count);
+        const int fre = fuse_reply_iov(get_fuse_req(), iov, count);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_iov({}) failed: {}",
+                       fmt::ptr(get_fuse_req()), fre);
+            assert(0);
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
+        }
+
         free_rpc_task();
     }
 
@@ -2155,7 +2209,13 @@ public:
 
         assert((int64_t) e->generation <= get_current_usecs());
 
-        if (fuse_reply_entry(get_fuse_req(), e) < 0) {
+        const int fre = fuse_reply_entry(get_fuse_req(), e);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_entry({}) failed: {}",
+                       fmt::ptr(get_fuse_req()), fre);
+            assert(0);
+
             if (inode) {
                 /*
                  * Not able to convey to fuse, drop forget_expected count
@@ -2165,6 +2225,8 @@ public:
                 inode->forget_expected--;
                 inode->decref();
             }
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
         }
 
         free_rpc_task();
@@ -2205,9 +2267,12 @@ public:
          */
         assert(inode->opencnt > 0);
 
-        if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
-            AZLogError("[{}] fuse_reply_create() failed",
-                       inode->get_fuse_ino());
+        const int fre = fuse_reply_create(get_fuse_req(), entry, file);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("[{}] fuse_reply_create({}) failed: {}",
+                       inode->get_fuse_ino(), fmt::ptr(get_fuse_req()), fre);
+            assert(0);
 
             /*
              * Not able to convey to fuse, drop forget_expected count
@@ -2221,6 +2286,8 @@ public:
              */
             inode->opencnt--;
             inode->decref();
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
         }
 
         free_rpc_task();
@@ -2453,6 +2520,7 @@ public:
         task->csched = (task->client->mnt_options.nfs_port == 2047) ?
                         CONN_SCHED_RR : CONN_SCHED_FH_HASH;
 
+        INC_GBL_STATS(rpc_tasks_allocated, 1);
         return task;
     }
 
@@ -2541,6 +2609,7 @@ public:
         task->is_async_task = false;
 
         release_free_index(task->get_index());
+        DEC_GBL_STATS(rpc_tasks_allocated, 1);
     }
 };
 

@@ -4652,9 +4652,15 @@ void rpc_task::send_readdir_or_readdirplus_response(
         AZLogDebug("[{}] Num of entries sent in readdir response is {}",
                    parent_ino, num_entries_added);
 
-        if (fuse_reply_buf(get_fuse_req(), buf1, size - rem) != 0) {
-            AZLogError("fuse_reply_buf failed!");
+        const int fre = fuse_reply_buf(get_fuse_req(), buf1, size - rem);
+        if (fre != 0) {
+            INC_GBL_STATS(fuse_reply_failed, 1);
+            AZLogError("fuse_reply_buf({}) failed: {}",
+                       fmt::ptr(get_fuse_req()), fre);
             startidx = 0;
+            assert(0);
+        } else {
+            DEC_GBL_STATS(fuse_responses_awaited, 1);
         }
     } else {
         AZLogWarn("[{}] PP: injecting fuse_reply_buf() failure, "
