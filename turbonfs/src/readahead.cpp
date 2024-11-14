@@ -166,11 +166,11 @@ static void readahead_callback (
         // Release the buffer since we did not fill it.
         read_cache->release(bc->offset, bc->length);
 
-        AZLogWarn("[{}] readahead_callback [FAILED] for offset: {} size: {} "
+        AZLogWarn("[{}] <{}> readahead_callback [FAILED] for offset: {} size: {} "
                   "total bytes read till now: {} of {} for [{}, {}) "
                   "num_backend_calls_issued: {}, rpc_status: {}, nfs_status: {}, "
                   "error: {}",
-                  ino,
+                  ino, task->issuing_tid,
                   issued_offset,
                   issued_length,
                   bc->pvt,
@@ -204,10 +204,10 @@ static void readahead_callback (
 
         INC_GBL_STATS(bytes_read_ahead, res->READ3res_u.resok.count);
 
-        AZLogDebug("[{}] readahead_callback: {}Read completed for offset: {} "
+        AZLogDebug("[{}] <{}> readahead_callback: {}Read completed for offset: {} "
                    " size: {} Bytes read: {} eof: {}, total bytes read till "
                    "now: {} of {} for [{}, {}) num_backend_calls_issued: {}",
-                   ino,
+                   ino, task->issuing_tid,
                    is_partial_read ? "Partial " : "",
                    issued_offset,
                    issued_length,

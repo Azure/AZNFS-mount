@@ -771,7 +771,6 @@ static void write_iov_callback(
     void *data,
     void *private_data)
 {
-    AZLogDebug("write_iov_callback");
     assert(rpc != nullptr);
 
     struct rpc_task *task = (struct rpc_task *) private_data;
@@ -846,8 +845,8 @@ static void write_iov_callback(
             (res->WRITE3res_u.resok.count < bciov->length);
 
         if (is_partial_write) {
-            AZLogDebug("[{}] Partial write: [{}, {}) of [{}, {})",
-                       ino,
+            AZLogDebug("[{}] <{}> Partial write: [{}, {}) of [{}, {})",
+                       ino, task->issuing_tid,
                        bciov->offset,
                        bciov->offset + res->WRITE3res_u.resok.count,
                        bciov->orig_offset,
@@ -884,8 +883,8 @@ static void write_iov_callback(
             bciov->on_io_complete(res->WRITE3res_u.resok.count);
 
             // Complete data writen to blob.
-            AZLogDebug("[{}] Completed write, off: {}, len: {}",
-                       ino, bciov->offset, bciov->length);
+            AZLogDebug("[{}] <{}> Completed write, off: {}, len: {}",
+                       ino, task->issuing_tid, bciov->offset, bciov->length);
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         AZLogDebug("[{}] JUKEBOX error write, off: {}, len: {}",
@@ -899,8 +898,8 @@ static void write_iov_callback(
          * Since the api failed and can no longer be retried, set write_error
          * and do not clear dirty flag.
          */
-        AZLogError("[{}] Write [{}, {}) failed with status {}: {}",
-                   ino,
+        AZLogError("[{}] <{}> Write [{}, {}) failed with status {}: {}",
+                   ino, task->issuing_tid,
                    bciov->offset,
                    bciov->length,
                    status, errstr);
@@ -2529,17 +2528,25 @@ void rpc_task::run_read()
                        rpc_api->read_task.get_offset(),
                        rpc_api->read_task.get_size());
 
-    const size_t size = bc_vec.size();
-    assert(size > 0);
+    /*
+     * send_read_response() will later convey this read completion to fuse.
+     * fuse_reply_iov() uses writev() for sending the iov over to the fuse
+     * device. writev() can accept max 1024 sized vector, and fuse_reply_iov()
+     * uses the first element of the vector for conveying the req id and status,
+     * so we cannot convey more than 1023 vector elements.
+     */
+    const size_t size = std::max((int) bc_vec.size(), 1023);
+    assert(size > 0 && size <= 1023);
 
     // There should not be any reads running for this RPC task initially.
     assert(num_ongoing_backend_reads == 0);
 
-    AZLogDebug("[{}] run_read: offset {}, size: {}, chunks: {}",
+    AZLogDebug("[{}] run_read: offset {}, size: {}, chunks: {}{}",
                ino,
                rpc_api->read_task.get_offset(),
                rpc_api->read_task.get_size(),
-               size);
+               size,
+               size != bc_vec.size() ? " (capped at 1023)" : "");
 
     /*
      * Now go through the byte chunk vector to see if the chunks are
@@ -2567,7 +2574,7 @@ void rpc_task::run_read()
 
     num_ongoing_backend_reads = 1;
 
-    for (size_t i = 0; i < size; i++) {
+    for (size_t i = 0; i < bc_vec.size(); i++) {
         /*
          * Every bytes_chunk returned by get() must have its inuse count
          * bumped. Also they must have pvt set to the initial value of 0
@@ -2578,6 +2585,16 @@ void rpc_task::run_read()
         assert(bc_vec[i].num_backend_calls_issued == 0);
 
         total_length += bc_vec[i].length;
+
+        if (i >= size) {
+            AZLogDebug("[{}] Skipping read beyond vector count 1023, "
+                       "offset: {}, length: {}",
+                       ino,
+                       bc_vec[i].offset,
+                       bc_vec[i].length);
+            bc_vec[i].get_membuf()->clear_inuse();
+            continue;
+        }
 
         if (!bc_vec[i].get_membuf()->is_uptodate()) {
             /*
@@ -2608,9 +2625,8 @@ void rpc_task::run_read()
 
                 INC_GBL_STATS(bytes_read_from_cache, bc_vec[i].length);
 
-                AZLogDebug("Data read from cache. offset: {}, length: {}",
-                        bc_vec[i].offset,
-                        bc_vec[i].length);
+                AZLogDebug("[{}] Data read from cache. offset: {}, length: {}",
+                           ino, bc_vec[i].offset, bc_vec[i].length);
 
 #ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
                 /*
@@ -2669,6 +2685,9 @@ void rpc_task::run_read()
 
             child_tsk->read_from_server(bc_vec[i]);
         } else {
+            AZLogDebug("[{}] Data read from cache. offset: {}, length: {}",
+                       ino, bc_vec[i].offset, bc_vec[i].length);
+
             bc_vec[i].get_membuf()->clear_inuse();
 
             /*
@@ -2752,7 +2771,7 @@ void rpc_task::send_read_response()
     }
 
     /*
-     * No go over all the chunks and send a vectored read response to fuse.
+     * Now go over all the chunks and send a vectored read response to fuse.
      * Note that only the last chunk can be partial.
      * XXX No, in case of multiple chunks and short read, multiple can be
      *     partial.
@@ -2783,6 +2802,13 @@ void rpc_task::send_read_response()
     }
 
     assert((bytes_read == rpc_api->read_task.get_size()) || partial_read);
+    /*
+     * Currently fuse sends max 1MiB read requests, so we should never
+     * be responding more than that.
+     * This is a sanity assert for catching unintended bugs, update if
+     * fuse max read size changes.
+     */
+    assert(bytes_read <= 1048576);
 
     // Send response to caller.
     if (bytes_read == 0) {
@@ -2927,10 +2953,10 @@ static void read_callback(
         bc->pvt += res->READ3res_u.resok.count;
         assert(bc->pvt <= bc->length);
 
-        AZLogDebug("[{}] read_callback: {}Read completed for [{}, {}), "
+        AZLogDebug("[{}] <{}> read_callback: {}Read completed for [{}, {}), "
                    "Bytes read: {} eof: {}, total bytes read till "
                    "now: {} of {} for [{}, {}) num_backend_calls_issued: {}",
-                   ino,
+                   ino, task->issuing_tid,
                    is_partial_read ? "Partial " : "",
                    issued_offset,
                    issued_offset + issued_length,
@@ -3132,10 +3158,10 @@ static void read_callback(
          */
         return;
     } else {
-        AZLogError("[{}] Read failed for offset: {} size: {} "
+        AZLogError("[{}] <{}> Read failed for offset: {} size: {} "
                    "total bytes read till now: {} of {} for [{}, {}) "
                    "num_backend_calls_issued: {} error: {}",
-                   ino,
+                   ino, task->issuing_tid,
                    issued_offset,
                    issued_length,
                    bc->pvt,

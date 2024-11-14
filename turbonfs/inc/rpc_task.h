@@ -1680,6 +1680,12 @@ private:
 
 public:
     /*
+     * Issuing thread's tid. Useful for debugging.
+     * Only set if ENABLE_PARANOID is defined.
+     */
+    pid_t issuing_tid = -1;
+
+    /*
      * Valid only for read RPC tasks.
      * To serve single client read call we may issue multiple NFS reads
      * depending on the chunks returned by bytes_chunk_cache::get().
@@ -2159,12 +2165,21 @@ public:
         assert((iov == nullptr) == (count == 0));
 
         /*
-         * Currently fuse sends max 1MiB read requests, so we should never
-         * be responding more than that.
-         * This is a sanity assert for catching unintended bugs, update if
-         * fuse max read size changes.
+         * fuse_reply_iov() uses writev() for sending the iov over to the
+         * fuse device. writev() can accept max 1024 sized vector, and
+         * fuse_reply_iov() uses the first element of the vector for conveying
+         * the req id and status, so count can be max 1023.
+         * Though the callers are aware of this and they won't send more than
+         * 1023 iov elements, but to be safe we cap it here as well, o/w this
+         * causes this thread's fuse communication to stall.
+         * Fails with error "fuse: writing device: Invalid argument".
          */
-        assert(count <= 1048576);
+        if (count > 1023) {
+            AZLogError("[BUG] reply_iov called with count ({}) > 1023, "
+                       "capping at 1023", count);
+            count = 1023;
+            assert(0);
+        }
 
         const int fre = fuse_reply_iov(get_fuse_req(), iov, count);
         if (fre != 0) {
@@ -2519,6 +2534,10 @@ public:
          */
         task->csched = (task->client->mnt_options.nfs_port == 2047) ?
                         CONN_SCHED_RR : CONN_SCHED_FH_HASH;
+
+#ifdef ENABLE_PARANOID
+        task->issuing_tid = ::gettid();
+#endif
 
         INC_GBL_STATS(rpc_tasks_allocated, 1);
         return task;
