@@ -2169,8 +2169,8 @@ public:
         const int fre = fuse_reply_iov(get_fuse_req(), iov, count);
         if (fre != 0) {
             INC_GBL_STATS(fuse_reply_failed, 1);
-            AZLogError("fuse_reply_iov({}) failed: {}",
-                       fmt::ptr(get_fuse_req()), fre);
+            AZLogError("fuse_reply_iov({}) failed (count={}): {}",
+                       fmt::ptr(get_fuse_req()), count, fre);
             assert(0);
         } else {
             DEC_GBL_STATS(fuse_responses_awaited, 1);
