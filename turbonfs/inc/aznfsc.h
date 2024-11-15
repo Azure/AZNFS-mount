@@ -75,6 +75,14 @@ static_assert(AZNFSCFG_WSIZE_MAX == AZNFSCFG_RSIZE_MAX);
 #define FUSE_OPCODE_MAX         FUSE_LSEEK
 
 /*
+ * fuse_reply_iov() uses writev() for sending the iov over to the fuse
+ * device. writev() can accept max 1024 sized vector, and fuse_reply_iov()
+ * uses the first element of the vector for conveying the req id and status,
+ * so we cannot convey more than 1023 vector elements through fuse_reply_iov().
+ */
+#define FUSE_REPLY_IOV_MAX_COUNT (1023)
+
+/*
  * In paranoid builds, also enable pressure points (aka error injection).
  */
 #ifdef ENABLE_PARANOID

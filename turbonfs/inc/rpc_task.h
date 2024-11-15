@@ -2165,19 +2165,20 @@ public:
         assert((iov == nullptr) == (count == 0));
 
         /*
-         * fuse_reply_iov() uses writev() for sending the iov over to the
-         * fuse device. writev() can accept max 1024 sized vector, and
-         * fuse_reply_iov() uses the first element of the vector for conveying
-         * the req id and status, so count can be max 1023.
-         * Though the callers are aware of this and they won't send more than
-         * 1023 iov elements, but to be safe we cap it here as well, o/w this
-         * causes this thread's fuse communication to stall.
-         * Fails with error "fuse: writing device: Invalid argument".
+         * fuse_reply_iov() cannot handle count > FUSE_REPLY_IOV_MAX_COUNT,
+         * o/w it fails with "fuse: writing device: Invalid argument" and fuse
+         * communication stalls.
+         *
+         * Note:  Though the callers are aware of this and they won't send more
+         *        than FUSE_REPLY_IOV_MAX_COUNT iov elements, but to be safe we
+         *        cap it here also as the final gatekeeper.
          */
-        if (count > 1023) {
-            AZLogError("[BUG] reply_iov called with count ({}) > 1023, "
-                       "capping at 1023", count);
-            count = 1023;
+        if (count > FUSE_REPLY_IOV_MAX_COUNT) {
+            AZLogError("[BUG] reply_iov called with count ({}) > {}, "
+                       "capping at {}",
+                       count, FUSE_REPLY_IOV_MAX_COUNT,
+                       FUSE_REPLY_IOV_MAX_COUNT);
+            count = FUSE_REPLY_IOV_MAX_COUNT;
             assert(0);
         }
 

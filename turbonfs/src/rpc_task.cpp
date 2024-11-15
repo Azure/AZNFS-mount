@@ -2529,14 +2529,12 @@ void rpc_task::run_read()
                        rpc_api->read_task.get_size());
 
     /*
-     * send_read_response() will later convey this read completion to fuse.
-     * fuse_reply_iov() uses writev() for sending the iov over to the fuse
-     * device. writev() can accept max 1024 sized vector, and fuse_reply_iov()
-     * uses the first element of the vector for conveying the req id and status,
-     * so we cannot convey more than 1023 vector elements.
+     * send_read_response() will later convey this read completion to fuse
+     * using fuse_reply_iov() which can send max FUSE_REPLY_IOV_MAX_COUNT
+     * vector elements.
      */
-    const size_t size = std::min((int) bc_vec.size(), 1023);
-    assert(size > 0 && size <= 1023);
+    const size_t size = std::min((int) bc_vec.size(), FUSE_REPLY_IOV_MAX_COUNT);
+    assert(size > 0 && size <= FUSE_REPLY_IOV_MAX_COUNT);
 
     // There should not be any reads running for this RPC task initially.
     assert(num_ongoing_backend_reads == 0);
@@ -2587,11 +2585,12 @@ void rpc_task::run_read()
         total_length += bc_vec[i].length;
 
         if (i >= size) {
-            AZLogDebug("[{}] Skipping read beyond vector count 1023, "
+            AZLogDebug("[{}] Skipping read beyond vector count {}, "
                        "offset: {}, length: {}",
-                       ino,
+                       ino, size,
                        bc_vec[i].offset,
                        bc_vec[i].length);
+            assert(size == FUSE_REPLY_IOV_MAX_COUNT);
             bc_vec[i].get_membuf()->clear_inuse();
             continue;
         }
@@ -2712,6 +2711,10 @@ void rpc_task::run_read()
         }
     }
 
+    if (bc_vec.size() > FUSE_REPLY_IOV_MAX_COUNT) {
+        bc_vec.resize(FUSE_REPLY_IOV_MAX_COUNT);
+    }
+
     // get() must return bytes_chunks exactly covering the requested range.
     assert(total_length == rpc_api->read_task.get_size());
 
@@ -2801,7 +2804,14 @@ void rpc_task::send_read_response()
         }
     }
 
-    assert((bytes_read == rpc_api->read_task.get_size()) || partial_read);
+    /*
+     * If bc_vec.size() == FUSE_REPLY_IOV_MAX_COUNT, then it may have been
+     * trimmed, so we cannot assert for bytes_read to exactly match requested
+     * size.
+     */
+    assert((bytes_read == rpc_api->read_task.get_size()) ||
+           partial_read || (bc_vec.size() == FUSE_REPLY_IOV_MAX_COUNT));
+
     /*
      * Currently fuse sends max 1MiB read requests, so we should never
      * be responding more than that.
