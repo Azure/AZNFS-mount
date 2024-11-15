@@ -32,6 +32,9 @@ CONNECT_PORT=2049
 # https://linux.die.net/man/5/nfs
 MOUNT_TIMEOUT_IN_SECONDS=180
 
+stunnel_timeout_busy=0
+stunnel_timeout_idle=0
+
 # Cleanup function to release the lock on mountmap file.
 cleanup() {
     flock -u $fd2
@@ -210,24 +213,32 @@ add_stunnel_configuration()
         eecho "Failed to add local socket to $stunnel_conf_file!"
         return 1
     fi
+
     echo "socket = r:SO_KEEPALIVE=1 " >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add remote socket to $stunnel_conf_file!"
         return 1
     fi
-    echo "TIMEOUTbusy = 23" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add TIMEOUTbusy to $stunnel_conf_file!"
-        return 1
+
+    if [ $stunnel_timeout_busy -ne 0 ]; then
+        echo "TIMEOUTbusy = $stunnel_timeout_busy" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add TIMEOUTbusy to $stunnel_conf_file!"
+            return 1
+        fi
     fi
-    echo "TIMEOUTidle = 23" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
-        return 1
+
+    if [ $stunnel_timeout_idle -ne 0 ]; then
+        echo "TIMEOUTidle = $stunnel_timeout_idle" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
+            return 1
+        fi
     fi
+
     echo "TIMEOUTclose = 0" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -329,6 +340,35 @@ tls_nfsv4_files_share_mount()
 
     # Set trap to cleanup the lock on mountmap file on exit.
     trap 'cleanup' EXIT
+
+    # Check if the mount options have timeoutbusy or timeoutidle options.
+    if [[ "$MOUNT_OPTIONS" == *"timeoutbusy"* ]] || [["$MOUNT_OPTIONS" == *"timeoutidle"*]]; then
+
+        IFS=','
+        read -a options_arr <<< "$MOUNT_OPTIONS"
+
+        for option in "${options_arr[@]}";
+        do
+            if [[ "$option" == *"timeoutbusy"* ]]; then
+                stunnel_timeout_busy=$(echo $option | cut -d= -f2)
+            fi
+            if [[ "$option" == *"timeoutidle"* ]]; then
+                stunnel_timeout_idle=$(echo $option | cut -d= -f2)
+            fi
+        done
+
+        if [[ "$MOUNT_OPTIONS" == *"timeoutbusy,"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//timeoutbusy,/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,timeoutbusy/}
+        fi
+
+        if [[ "$MOUNT_OPTIONS" == *"timeoutidle,"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//timeoutidle,/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,timeoutidle/}
+        fi
+    fi
 
     # Lock the mountmap file as both mounthelper and watchdog processes can update the file.
     exec {fd2}<$MOUNTMAPv4
