@@ -2535,7 +2535,7 @@ void rpc_task::run_read()
      * uses the first element of the vector for conveying the req id and status,
      * so we cannot convey more than 1023 vector elements.
      */
-    const size_t size = std::max((int) bc_vec.size(), 1023);
+    const size_t size = std::min((int) bc_vec.size(), 1023);
     assert(size > 0 && size <= 1023);
 
     // There should not be any reads running for this RPC task initially.
