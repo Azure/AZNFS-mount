@@ -2545,7 +2545,7 @@ void rpc_task::run_read()
                ino,
                rpc_api->read_task.get_offset(),
                rpc_api->read_task.get_size(),
-               size,
+               bc_vec.size(),
                size != bc_vec.size() ? " (capped at 1023)" : "");
 
     /*
