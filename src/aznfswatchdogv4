@@ -143,7 +143,6 @@ cleanup_mount()
 
 process_nfsv4_mounts()
 {
-    local l_host
     local l_conf
     local l_log
     local l_pid
@@ -201,9 +200,9 @@ process_nfsv4_mounts()
         # MOUNTMAPv4 line is of the form:
         # account.file.preprod.core.windows.net;<IP>;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>
         #
-        IFS=";" read l_host l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
 
-        if [ -z "$l_host" -o -z "$l_conf" -o -z "$l_pid" ]; then
+        if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
             exec {fd2}<$MOUNTMAPv4
             flock -e $fd2
@@ -234,12 +233,12 @@ process_nfsv4_mounts()
         # it around.
         #
         if ! echo "$findmnt" | grep "$accept_port" >/dev/null; then
-            pecho "No mounted shares for host $l_host with accept port $accept_port, deleting from ${MOUNTMAPv4} [$line]."
+            pecho "No mounted shares for host $l_ip with accept port $accept_port, deleting from ${MOUNTMAPv4} [$line]."
 
             cleanup_mount $l_conf $l_log $l_pid $line
             continue
         else
-            # vecho "Mounted shares found for host $l_host with accept port $accept_port."
+            # vecho "Mounted shares found for host $l_ip with accept port $accept_port."
 
             # Check if checksumHash for stunnel.conf file has changed.
             # Customers should not modify stunnel.conf files created by aznfs mount helper.
@@ -252,7 +251,7 @@ process_nfsv4_mounts()
                 eecho "'${l_conf}' file has modified!"
                 eecho "It's not recommended to modify '${l_conf}' file created by aznfs mount helper!"
                 eecho "watchdog service will do cleanup, kill stunnel process with pid:$(cat $l_pid) and remove '${l_conf}'; '${l_log}'; '${l_pid}'!"
-                eecho "Please remount the shares from ${l_host} using aznfs mount helper."
+                eecho "Please remount the shares from ${l_ip} using aznfs mount helper."
 
                 cleanup_mount $l_conf $l_log $l_pid $line
                 continue
@@ -269,15 +268,15 @@ process_nfsv4_mounts()
                     is_caroot_cert_failure=$(echo $stunnel_status | grep "certificate verify failed")
                     if [ -n "$is_binding_error" ]; then
                         eecho "[FATAL] Restarting stunnel failed.$used_port port is already being used by other process.!"
-                        eecho "It's recommended to unmount all shares from $l_host and then remount shares using aznfs mount helper!"
+                        eecho "It's recommended to unmount all shares from $l_ip and then remount shares using aznfs mount helper!"
                     elif [ -n "$is_caroot_cert_failure" ]; then
                         eecho "[FATAL] Restarting stunnel failed. CA root certificate is either missing or is unable to authenticate TLS server certificate."
                         eecho "Please download the CA root certificate from https://learn.microsoft.com/en-us/azure/security/fundamentals/azure-ca-details"
-                        eecho "It's recommended to unmount all shares from $l_host and then remount shares using aznfs mount helper!"
+                        eecho "It's recommended to unmount all shares from $l_ip and then remount shares using aznfs mount helper!"
                     else
                         eecho "[FATAL] watchdog service is unable to start stunnel process for '${l_conf}'!"
                         eecho "Please check the stunnel logs in $l_log for more details."
-                        eecho "It's recommended to unmount all shares from $l_host and then remount shares using aznfs mount helper!"
+                        eecho "It's recommended to unmount all shares from $l_ip and then remount shares using aznfs mount helper!"
                     fi
                 fi
             fi

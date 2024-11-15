@@ -35,6 +35,9 @@ CONNECT_PORT=2049
 # https://linux.die.net/man/5/nfs
 MOUNT_TIMEOUT_IN_SECONDS=180
 
+stunnel_timeout_idle=0
+stunnel_timeout_busy=0
+
 get_next_available_port()
 {
     for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
@@ -135,11 +138,11 @@ install_CA_cert()
 }
 
 #
-# Add stunnel configuration in stunnel_<storageaccount>.conf file.
+# Add stunnel configuration in stunnel_<storageaccount_ip>.conf file.
 #
 add_stunnel_configuration()
 {
-    local storageaccount=$1
+    local storageaccount_ip=$1
     chattr -f -i $stunnel_conf_file
 
     if ! get_cert_path_based_and_command; then
@@ -178,14 +181,6 @@ add_stunnel_configuration()
         return 1
     fi
 
-    # TODO: Change to TLSv1.3 once we have TLSv1.3 version enabled.
-    echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add sslVersion option to $stunnel_conf_file!"
-        return 1
-    fi
-
     echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -193,7 +188,7 @@ add_stunnel_configuration()
         return 1
     fi
 
-    stunnel_log_file="$STUNNELDIR/logs/stunnel_$storageaccount.log"
+    stunnel_log_file="$STUNNELDIR/logs/stunnel_$storageaccount_ip.log"
     echo "output = $stunnel_log_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -201,7 +196,7 @@ add_stunnel_configuration()
         return 1
     fi
 
-    stunnel_pid_file="$STUNNELDIR/logs/stunnel_$storageaccount.pid"
+    stunnel_pid_file="$STUNNELDIR/logs/stunnel_$storageaccount_ip.pid"
     echo "pid = $stunnel_pid_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -209,12 +204,51 @@ add_stunnel_configuration()
         return 1
     fi
 
-    echo >> $stunnel_conf_file
-
-    echo "[$nfs_host]" >> $stunnel_conf_file
+    echo "socket = l:SO_KEEPALIVE=1 " >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
-        eecho "Failed to add $nfs_host service/entry name to $stunnel_conf_file!"
+        eecho "Failed to add local socket to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "socket = r:SO_KEEPALIVE=1 " >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add remote socket to $stunnel_conf_file!"
+        return 1
+    fi
+
+    if [ $stunnel_timeout_busy -ne 0 ]; then
+        echo "TIMEOUTbusy = $stunnel_timeout_busy" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add TIMEOUTbusy to $stunnel_conf_file!"
+            return 1
+        fi
+    fi
+
+    if [ $stunnel_timeout_idle -ne 0 ]; then
+        echo "TIMEOUTidle = $stunnel_timeout_idle" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
+            return 1
+        fi
+    fi
+
+    echo "TIMEOUTclose = 0" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTclose to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo >> $stunnel_conf_file
+
+    echo "[$storageaccount_ip]" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add $storageaccount_ip service/entry name to $stunnel_conf_file!"
         return 1
     fi
 
@@ -232,7 +266,7 @@ add_stunnel_configuration()
         return 1
     fi
 
-    echo "connect = $nfs_host:$CONNECT_PORT" >> $stunnel_conf_file
+    echo "connect = $storageaccount_ip:$CONNECT_PORT" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add 'connect' info to $stunnel_conf_file!"
@@ -285,9 +319,9 @@ check_if_notls_mount_exists()
         local mount_hostname=$(echo "$mount" | cut -d: -f1)
         local mount_ip_address=$(getent hosts "$mount_hostname" | awk '{print $1}')
 
-        if [ "$mount_ip_address" == "$nfs_host_ip" ]; then
+        if [ "$mount_ip_address" == "$storageaccount_ip" ]; then
             eecho "Mount failed!"
-            eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using clear text (without TLS)."
+            eecho "Mount to the same endpoint ${storageaccount_ip} exists that is using clear text (without TLS)."
             eecho "Cannot mount with TLS to the same endpoint as they use the same connection. You need to unmount share on ${mount_hostname} and try again."
             exit 1
         fi
@@ -303,9 +337,42 @@ tls_nfsv4_files_share_mount()
     local container
     local extra
 
-    vecho "nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+    vecho "nfs_dir=[$nfs_dir], nfs_host_ip=[$storageaccount_ip], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
     IFS=/ read _ storageaccount container extra <<< "$nfs_dir"
+
+    # Check if the mount options have timeoutbusy or timeoutidle options.
+    if [[ "$MOUNT_OPTIONS" == *"timeoutbusy"* ]] || [[ "$MOUNT_OPTIONS" == *"timeoutidle"* ]]; then
+
+        IFS=','
+        read -a options_arr <<< "$MOUNT_OPTIONS"
+
+        for option in "${options_arr[@]}";
+        do
+            if [[ "$option" == *"timeoutbusy"* ]]; then
+                stunnel_timeout_busy=$(echo $option | cut -d= -f2)
+            fi
+            if [[ "$option" == *"timeoutidle"* ]]; then
+                stunnel_timeout_idle=$(echo $option | cut -d= -f2)
+            fi
+        done
+
+        if [[ "$MOUNT_OPTIONS" == *"timeoutbusy,"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//timeoutbusy=[0-9][0-9],/}
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//timeoutbusy=[0-9],/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,timeoutbusy=[0-9][0-9]/}
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,timeoutbusy=[0-9]/}
+        fi
+
+        if [[ "$MOUNT_OPTIONS" == *"timeoutidle,"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//timeoutidle=[0-9][0-9],/}
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//timeoutidle=[0-9],/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,timeoutidle=[0-9][0-9]/}
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,timeoutidle=[0-9]/}
+        fi
+    fi
 
     # Note the available port
     available_port=$(get_next_available_port)
@@ -326,7 +393,7 @@ tls_nfsv4_files_share_mount()
 
     EntryExistinMountMap="true"
 
-    stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount.conf"
+    stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
 
     trap 'cleanup' EXIT
 
@@ -398,7 +465,7 @@ tls_nfsv4_files_share_mount()
         stunnel_log_file=
         stunnel_pid_file=
 
-        add_stunnel_configuration $storageaccount
+        add_stunnel_configuration $storageaccount_ip
         add_stunnel_configuration_status=$?
 
         if [ $add_stunnel_configuration_status -ne 0 ]; then
@@ -452,8 +519,10 @@ tls_nfsv4_files_share_mount()
         # Mounted: mount command is executed successfully. If the mount is unmounted, watchdog can remove this entry.
         # Failed: mount command failed. Watchdog can remove this entry.
 
-        local nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
-        local mountmap_entry="$nfs_host;$nfs_host_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
+        # local nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
+        # local mountmap_entry="$nfs_host;$nfs_host_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
+
+        local mountmap_entry="$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
         chattr -f -i $MOUNTMAPv4
         echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
@@ -467,13 +536,13 @@ tls_nfsv4_files_share_mount()
 
     else
         # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount.
-        vecho "Stunnel config file already exist for $storageaccount: $stunnel_conf_file"
+        vecho "Stunnel config file already exist for $storageaccount with IP $storageaccount_ip: $stunnel_conf_file"
 
         # It's possible that the stunnel process is not running for the storageaccount.
         is_stunnel_running=
 
         # Check if stunnel_pid_file exist for storageaccount and stunnel process is running.
-        stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount.pid" | cut -d ";" -f5`
+        stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f4`
         if [ -f $stunnel_pid_file ]; then
             is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $stunnel_pid_file`)
         fi
@@ -510,7 +579,7 @@ tls_nfsv4_files_share_mount()
                 fi
             fi
         else
-            vecho "Stunnel process is already running for $nfs_host."
+            vecho "Stunnel process is already running for $storageaccount_ip."
         fi
 
         available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
@@ -521,7 +590,7 @@ tls_nfsv4_files_share_mount()
     flock -u $fd2
     exec {fd2}<&-
 
-    vecho "Stunnel process is running for $nfs_host on accept port $available_port."
+    vecho "Stunnel process is running for $storageaccount_ip on accept port $available_port."
 
     vecho "Running the mount command: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${available_port}"
     mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$available_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
@@ -559,7 +628,11 @@ if ! ensure_aznfswatchdog "aznfswatchdogv4"; then
     exit 1
 fi
 
-vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+# vecho "nfs_host=[$nfs_host], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+
+storageaccount_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
+
+vecho "nfs_host=[$nfs_host], nfs_host_ip=[$storageaccount_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
 # MOUNTMAPv4 file must have been created by aznfswatchdog service. It's created in common.sh.
 if [ ! -f "$MOUNTMAPv4" ]; then
@@ -586,11 +659,11 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     # to the same endpoint as they use the same connection.
 
     # Check if the mount to the same endpoint exists that is using TLS.
-    nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
-    mountmap_entry=$(grep -m1 ";${nfs_host_ip};" $MOUNTMAPv4)
+    # nfs_host_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
+    mountmap_entry=$(grep -m1 ";${storageaccount_ip};" $MOUNTMAPv4)
     if [ -n "$mountmap_entry" ]; then
         eecho "Mount failed!"
-        eecho "Mount to the same endpoint ${nfs_host_ip} exists that is using TLS."
+        eecho "Mount to the same endpoint ${storageaccount_ip} exists that is using TLS."
         eecho "Cannot mount without TLS to the same endpoint as they use the same connection."
         eecho "You can try unmounting the share on the same endpoint and try again. Mountmap entry on the same endpoint: $mountmap_entry"
         exit 1
