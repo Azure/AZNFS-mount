@@ -13,6 +13,7 @@
 
 int main(int argc, char *argv[])
 {
+    unsetenv("BASH_ENV");
     if (setreuid(0, 0) != 0)
     {
         perror("setreuid");
