@@ -32,7 +32,7 @@ bool nfs_client::init()
         std::unique_lock<std::shared_mutex> lock(nfs_inode::get_sb_lock());
 
         assert(nfs_inode::get_sb().st.f_bsize == 0);
-        assert(nfs_inode::get_sb().st.dtpref == 0);
+        assert(nfs_inode::get_sb().dtpref == 0);
         nfs_inode::get_sb().st.f_bsize = mnt_options.wsize_adj;
         nfs_inode::get_sb().dtpref = mnt_options.readdir_maxcount_adj;
     }
