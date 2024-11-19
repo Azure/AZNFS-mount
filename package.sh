@@ -185,7 +185,7 @@ mkdir -p build
 pushd build
 meson setup ..
 ninja
-ninja install
+sudo ninja install
 popd
 popd
 
