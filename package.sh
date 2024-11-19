@@ -176,6 +176,26 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
 gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
 
+# build aznfsclient.
+wget https://github.com/libfuse/libfuse/releases/download/fuse-3.16.2/fuse-3.16.2.tar.gz -o fuse-3.16.2.tar.gz
+tar -xvzf fuse-3.16.2.tar.gz
+
+pushd fuse-3.16.2
+mkdir -p build
+pushd build
+meson setup ..
+ninja
+ninja install
+popd
+popd
+
+pushd ${SOURCE_DIR}/turbonfs
+./build.sh
+popd
+
+
+cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
+
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
 cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
