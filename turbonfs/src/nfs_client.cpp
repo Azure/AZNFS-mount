@@ -24,6 +24,20 @@ bool nfs_client::init()
     }
 
     /*
+     * Now we have negotiated wsize and dtpref with the server, set those values
+     * in the NFS superblock. Later when FSTAT is called we will set rest of the
+     * nfs_superblock fields.
+     */
+    {
+        std::unique_lock<std::shared_mutex> lock(nfs_inode::get_sb_lock());
+
+        assert(nfs_inode::get_sb().st.f_bsize == 0);
+        assert(nfs_inode::get_sb().st.dtpref == 0);
+        nfs_inode::get_sb().st.f_bsize = mnt_options.wsize_adj;
+        nfs_inode::get_sb().dtpref = mnt_options.readdir_maxcount_adj;
+    }
+
+    /*
      * Also query the attributes for the root fh.
      * XXX: Though libnfs makes getattr call as part of mount but there is no
      *      way for us to fetch those attributes from libnfs, so we need to
@@ -1681,7 +1695,11 @@ void nfs_client::stat_from_fattr3(struct stat& st, const struct fattr3& fattr)
     // TODO: Uncomment the below line.
     // st.st_rdev = makedev(fattr.rdev.specdata1, fattr.rdev.specdata2);
     st.st_size = fattr.size;
-    st.st_blksize = NFS_BLKSIZE;
+    if (fattr.type == NF3DIR) {
+        st.st_blksize = nfs_inode::get_sb().get_dtpref();
+    } else {
+        st.st_blksize = nfs_inode::get_sb().get_blocksize();
+    }
     st.st_blocks = (fattr.used + 511) >> 9;
     st.st_atim.tv_sec = fattr.atime.seconds;
     st.st_atim.tv_nsec = fattr.atime.nseconds;

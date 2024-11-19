@@ -1025,6 +1025,13 @@ static void statfs_callback(
         st.f_favail = res->FSSTAT3res_u.resok.afiles;
         st.f_namemax = NAME_MAX;
 
+        {
+            std::unique_lock<std::shared_mutex> lock(nfs_inode::get_sb_lock());
+            nfs_inode::get_sb().st = st;
+            nfs_inode::get_sb().dtpref =
+                task->get_client()->mnt_options.readdir_maxcount_adj;
+        }
+
         task->reply_statfs(&st);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);

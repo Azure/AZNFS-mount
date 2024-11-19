@@ -52,6 +52,36 @@ private:
 };
 
 /**
+ * Properties common to the entire filesystem.
+ */
+struct nfs_superblock
+{
+    mutable std::shared_mutex sb_lock;
+
+    /*
+     * Blocksize and other filesystem properties.
+     */
+    struct statvfs st;
+
+    /*
+     * Preferred readdir size (for directory enumeration).
+     */
+    uint64_t dtpref;
+
+    uint64_t get_blocksize() const
+    {
+        assert(st.f_bsize >= 4096);
+        return st.f_bsize;
+    }
+
+    uint64_t get_dtpref() const
+    {
+        assert(dtpref >= 4096);
+        return dtpref;
+    }
+};
+
+/**
  * This is the NFS inode structure. There is one of these per file/directory
  * and contains any global information about the file/directory., f.e.,
  * - NFS filehandle for accessing the file/directory.
@@ -67,6 +97,11 @@ struct nfs_inode
      * have the correct pointer.
      */
     const uint32_t magic = NFS_INODE_MAGIC;
+
+    /*
+     * Filesystem properties, common to all inodes.
+     */
+    static struct nfs_superblock sb;
 
     /*
      * Inode lock.
@@ -665,6 +700,21 @@ public:
     {
         assert(generation != 0);
         return generation;
+    }
+
+    /**
+     * Get ref to the superblock structure.
+     * Caller must ensure that any access to the superblock structure is done
+     * while duly holding the sb_lock.
+     */
+    static struct nfs_superblock& get_sb()
+    {
+        return sb;
+    }
+
+    static std::shared_mutex& get_sb_lock()
+    {
+        return sb.sb_lock;
     }
 
     /**

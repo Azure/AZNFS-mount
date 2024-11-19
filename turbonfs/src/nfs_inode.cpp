@@ -3,6 +3,8 @@
 #include "file_cache.h"
 #include "rpc_task.h"
 
+struct nfs_superblock nfs_inode::sb;
+
 /**
  * Constructor.
  * nfs_client must be known when nfs_inode is being created.
