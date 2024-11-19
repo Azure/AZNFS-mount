@@ -177,7 +177,7 @@ mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
 gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
 
 # build aznfsclient.
-wget https://github.com/libfuse/libfuse/releases/download/fuse-3.16.2/fuse-3.16.2.tar.gz -o fuse-3.16.2.tar.gz
+wget https://github.com/libfuse/libfuse/releases/download/fuse-3.16.2/fuse-3.16.2.tar.gz
 tar -xvzf fuse-3.16.2.tar.gz
 
 pushd fuse-3.16.2
