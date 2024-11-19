@@ -650,7 +650,7 @@ bytes_chunk_cache::~bytes_chunk_cache()
 
     assert(num_caches > 0);
     num_caches--;
-    AZLogDebug("[{}} Deleted file cache, total file caches now: {}",
+    AZLogDebug("[{}] Deleted file cache, total file caches now: {}",
                CACHE_TAG, get_num_caches());
 }
 
