@@ -124,6 +124,9 @@ IP prefixes with either 2 or 3 octets can be set `f.e. 10.100 10.100.100 172.16 
 It starts a systemd service named **aznfswatchdog** which monitors the change in IP address for all the mounted Azure
 Blob NFS shares. If it detects a change in endpoint IP, aznfswatchdog will update the iptables DNAT rule and NFS
 traffic will be forwarded to new endpoint IP.
+> [!NOTE]
+> After an Azure Blob NFS endpoint is unmounted, the local proxy IP-to-endpoint mapping remains cached in the mountmap for 5 minutes. If the same endpoint is remounted within this period, it will automatically reuse the previous proxy IP address. During this period, it will ignore `AZNFS_IP_PREFIXES` environment variable if it is set.
+
 
 ## Limitations
 
