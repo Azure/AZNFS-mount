@@ -186,8 +186,6 @@ pushd build
 meson setup ..
 ninja
 sudo ninja install
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/lib/libfuse
-sudo DESTDIR=${STG_DIR}/deb/${pkg_dir}/lib/libfuse ninja install
 popd
 popd
 
@@ -195,7 +193,8 @@ pushd ${SOURCE_DIR}/turbonfs
 ./build.sh
 popd
 
-
+mkdir -p ${STG_DIR}/deb/${pkg_dir}/lib
+cp -avf /usr/local/lib/x86_64-linux-gnu/libfuse3.so* ${STG_DIR}/deb/${pkg_dir}/lib/
 cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
 
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
