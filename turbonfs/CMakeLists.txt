@@ -197,8 +197,8 @@ set(sources
 
 
 # Set RPATH for runtime search paths
-set(CMAKE_BUILD_RPATH "$ORIGIN/../lib/libfuse/usr/local/lib/x86_64-linux-gnu")
-set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib/libfuse/usr/local/lib/x86_64-linux-gnu")
+set(CMAKE_BUILD_RPATH "$ORIGIN/../lib")
+set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
 if(ENABLE_NO_FUSE)
