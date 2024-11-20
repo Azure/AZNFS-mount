@@ -187,7 +187,7 @@ meson setup ..
 ninja
 sudo ninja install
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/lib/libfuse
-DESTDIR=${STG_DIR}/deb/${pkg_dir}/lib/libfuse ninja install
+sudo DESTDIR=${STG_DIR}/deb/${pkg_dir}/lib/libfuse ninja install
 popd
 popd
 
