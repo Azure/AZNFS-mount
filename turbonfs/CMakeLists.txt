@@ -56,14 +56,21 @@ if(ENABLE_CHATTY)
   add_definitions(-DENABLE_CHATTY)
 endif()
 
+find_program(MESON_EXECUTABLE meson REQUIRED)
+find_program(NINJA_EXECUTABLE ninja REQUIRED)
+
 set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for binaries")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH})
+
+set(LIBFUSE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/libfuse")
+set(LIBFUSE_BUILD_DIR "${CMAKE_BINARY_DIR}/extern/libfuse")
 
 #
 # We add the following submodule(s), update them as needed, before starting.
 # git submodule add https://github.com/linuxsmiths/libnfs extern/libnfs
 # git submodule add https://github.com/jbeder/yaml-cpp.git extern/yaml-cpp
 # git submodule add https://github.com/gabime/spdlog.git extern/spdlog
+# git submodule add https://github.com/libfuse/libfuse.git extern/libfuse
 #
 find_package(Git QUIET)
 if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/../.git")
@@ -91,27 +98,18 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/spdlog/CMakeLists.txt")
     message(FATAL_ERROR "The spdlog submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
-#
-# Find fuse3 and if not found try to install.
-#
-if(NOT ENABLE_NO_FUSE)
-find_package(fuse3 QUIET)
-if(NOT fuse3_FOUND)
-    message(STATUS "fuse3 not found, trying to install libfuse3-dev!")
-    execute_process(COMMAND sudo apt install -y libfuse3-dev
-		    RESULT_VARIABLE fuse3_INSTALL_RESULT)
-    if(NOT fuse3_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install libfuse3-dev failed with ${fuse3_INSTALL_RESULT}, try installing libfuse3-dev manually and then run cmake again")
-    else()
-	# Call once more to ensure above install completed fine and also
-	# will set fuse3_INCLUDE_DIR and fuse3_LIBRARY variables.
-        find_package(fuse3 REQUIRED)
-    endif()
-else()
-    message(STATUS "Using fuse3 lib ${fuse3_LIBRARY}")
-    message(STATUS "Using fuse3 include dir ${fuse3_INCLUDE_DIR}")
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/libfuse/meson.build")
+    message(FATAL_ERROR "The libfuse submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
-endif()
+
+add_custom_command(
+    OUTPUT ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a
+    COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static
+    COMMAND ${MESON_EXECUTABLE} compile -C ${LIBFUSE_BUILD_DIR}
+    COMMAND ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
+)
+
+add_custom_target(libfuse ALL DEPENDS ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a)
 
 #
 # We need GnuTLS for secure libnfs transport.
@@ -211,6 +209,7 @@ else()
 set(sources ${sources} src/main.cpp)
 add_executable(${CMAKE_PROJECT_NAME}
                ${sources})
+add_dependencies(${CMAKE_PROJECT_NAME} libfuse)
 endif()
 
 # All include directories.
@@ -225,10 +224,8 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/spdlog/include")
 
 if(NOT ENABLE_NO_FUSE)
-target_include_directories(${CMAKE_PROJECT_NAME}
-                           PRIVATE "${fuse3_INCLUDE_DIR}")
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${fuse3_LIBRARY})
+                      ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a)
 endif()
 
 target_compile_options(${CMAKE_PROJECT_NAME}
@@ -240,6 +237,7 @@ target_compile_options(${CMAKE_PROJECT_NAME}
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}
                       ${ZLIB_LIBRARIES}
+                      dl
                       pthread
                       nfs
                       yaml-cpp
