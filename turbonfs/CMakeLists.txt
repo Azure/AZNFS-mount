@@ -106,7 +106,7 @@ add_custom_command(
     OUTPUT ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a
     COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static
     COMMAND ${MESON_EXECUTABLE} compile -C ${LIBFUSE_BUILD_DIR}
-    COMMAND ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
+    COMMAND sudo ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
 )
 
 add_custom_target(libfuse ALL DEPENDS ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a)
@@ -192,12 +192,6 @@ set(sources
     src/file_cache.cpp
     src/readahead.cpp
     src/rpc_stats.cpp)
-
-
-# Set RPATH for runtime search paths
-set(CMAKE_BUILD_RPATH "$ORIGIN/../lib")
-set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
 if(ENABLE_NO_FUSE)
 # libaznfsclient.so.
