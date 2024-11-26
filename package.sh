@@ -176,11 +176,14 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
 gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
 
+# We build the turbonfs project here, note that we can set all cmake options in the 
+# future using env variables.
 pushd ${SOURCE_DIR}/turbonfs
-./build.sh
+mkdir -p build && cd build
+cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DENABLE_TCMALLOC=OFF ..
+make
 popd
 
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/lib
 cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
 
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}

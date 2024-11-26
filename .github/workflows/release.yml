@@ -15,6 +15,13 @@ on:
       versionName:
         description: 'Version Name'
         required: true
+      buildType:
+        type: choice
+        description: 'Build Type'
+        options:
+        - Release
+        - Debug
+        default: 'Release'
 
 permissions:
   contents: write
@@ -50,12 +57,11 @@ jobs:
             echo "Official Release version cannot be of the form 0.y.z" 
             false
         fi
-    - name: Install arm64 Cross-Compile Toolchain, meson, ninja
+    - name: Install arm64 Cross-Compile Toolchain
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt install -y gcc-aarch64-linux-gnu meson ninja-build
-        sudo apt-get install -y build-essential
+        sudo apt install -y gcc-aarch64-linux-gnu
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Run Package.sh
@@ -64,6 +70,7 @@ jobs:
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
         export STG_DIR=$GITHUB_WORKSPACE
         export SOURCE_DIR=$GITHUB_WORKSPACE
+        export BUILD_TYPE=${{ github.events.inputs.buildType }}
         chmod +x $GITHUB_WORKSPACE/package.sh
         $GITHUB_WORKSPACE/package.sh
     - name: Create Release

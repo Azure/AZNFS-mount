@@ -25,6 +25,7 @@ option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
 #
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_definitions(-DENABLE_DEBUG)
+  set(MESON_BUILD_TYPE debug)
   if(ENABLE_PARANOID)
     add_definitions(-DENABLE_PARANOID)
   endif()
@@ -32,6 +33,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-fsanitize=address)
     add_link_options(-fsanitize=address)
   endif()
+else()
+  set(MESON_BUILD_TYPE release)
 endif()
 
 #
@@ -55,9 +58,6 @@ endif()
 if(ENABLE_CHATTY)
   add_definitions(-DENABLE_CHATTY)
 endif()
-
-find_program(MESON_EXECUTABLE meson REQUIRED)
-find_program(NINJA_EXECUTABLE ninja REQUIRED)
 
 set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for binaries")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH})
@@ -102,9 +102,39 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/libfuse/meson.build")
     message(FATAL_ERROR "The libfuse submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
+#
+# We need meson to compile libfuse.
+#
+find_program(MESON_EXECUTABLE meson QUIET)
+if(NOT MESON_FOUND)
+    message(STATUS "meson not found, trying to install meson!")
+    execute_process(COMMAND sudo apt install -y meson
+                    RESULT_VARIABLE MESON_INSTALL_RESULT)
+    if(NOT MESON_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install meson failed with ${MESON_INSTALL_RESULT}, try installing meson manually and then run cmake again")
+    else()
+        find_program(MESON_EXECUTABLE meson REQUIRED)
+    endif()
+endif()
+
+#
+# We need ninja to install libfuse in build dir.
+#
+find_program(NINJA_EXECUTABLE ninja QUIET)
+if(NOT NINJA_FOUND)
+    message(STATUS "ninja not found, trying to install ninja-build!")
+    execute_process(COMMAND sudo apt install -y ninja-build
+                    RESULT_VARIABLE NINJA_INSTALL_RESULT)
+    if(NOT NINJA_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install ninja-build failed with ${NINJA_INSTALL_RESULT}, try installing ninja-build manually and then run cmake again")
+    else()
+        find_program(NINJA_EXECUTABLE ninja REQUIRED)
+    endif()
+endif()
+
 add_custom_command(
     OUTPUT ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a
-    COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static
+    COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static --buildtype=${MESON_BUILD_TYPE}
     COMMAND ${MESON_EXECUTABLE} compile -C ${LIBFUSE_BUILD_DIR}
     COMMAND sudo ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
 )
