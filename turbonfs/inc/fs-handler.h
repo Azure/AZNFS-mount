@@ -208,11 +208,12 @@ static void aznfsc_ll_rename(fuse_req_t req,
      * should be fine.
      */
     if (flags != 0) {
-        AZLogWarn("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
-                  "newparent_ino={}, newname={}, flags={})",
+        AZLogError("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
+                  "newparent_ino={}, newname={}, flags={} not supported)",
                   fmt::ptr(req), parent_ino, name,
                   newparent_ino, newname, flags);
-        flags = 0;
+        fuse_reply_err(req, EINVAL);
+        return;
     } else {
         AZLogDebug("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
                    "newparent_ino={}, newname={}, flags={})",
@@ -221,6 +222,18 @@ static void aznfsc_ll_rename(fuse_req_t req,
     }
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+
+    /*
+     * Call silly rename to see if it wants to silly rename instead of rename
+     * of the file \p newname.
+     * We will perform silly rename if the opencnt of the newname is not 0, i.e.,
+     * some process has the file open. This is for POSIX compliance, where
+     * open files should be accessible till the last open handle is closed.
+     * Irrespective of the silly_rename status, we will go ahead and rename the
+     * file.
+     */
+    (void)client->silly_rename(req, newparent_ino, newname, true /* rename_triggered_silly_rename */);
+
     client->rename(req, parent_ino, name, newparent_ino, newname,
                    false, 0, flags);
 }

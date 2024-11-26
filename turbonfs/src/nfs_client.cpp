@@ -1156,14 +1156,16 @@ void nfs_client::mkdir(
 bool nfs_client::silly_rename(
     fuse_req_t req,
     fuse_ino_t parent_ino,
-    const char* name)
+    const char* name,
+    bool rename_triggered_silly_rename)
 {
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
     // Inode of the file being silly renamed.
     struct nfs_inode *inode = parent_inode->lookup(name);
 
     /*
-     * This is called from aznfsc_ll_unlink() for all unlinked files, so
+     * This is called from aznfsc_ll_unlink() for all unlinked files,
+     * or from aznfsc_ll_rename() for the destination file, so
      * this is a good place to remove the entry from DNLC.
      */
     if (parent_inode->has_dircache()) {
@@ -1185,7 +1187,7 @@ bool nfs_client::silly_rename(
                   parent_ino, name, newname, inode->get_fuse_ino());
 
         rename(req, parent_ino, name, parent_ino, newname, true,
-               inode->get_fuse_ino(), 0);
+               inode->get_fuse_ino(), 0, rename_triggered_silly_rename);
         return true;
     } else if (!inode) {
         AZLogError("silly_rename: Failed to get inode for file {}/{}. File "
@@ -1245,7 +1247,8 @@ void nfs_client::rename(
     const char *new_name,
     bool silly_rename,
     fuse_ino_t silly_rename_ino,
-    unsigned int flags)
+    unsigned int flags,
+    bool rename_triggered_silly_rename)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RENAME);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
@@ -1269,7 +1272,8 @@ void nfs_client::rename(
     }
 
     tsk->init_rename(req, parent_ino, name, newparent_ino, new_name,
-                     silly_rename, silly_rename_ino, flags);
+                     silly_rename, silly_rename_ino, flags,
+                     rename_triggered_silly_rename);
     tsk->run_rename();
 }
 

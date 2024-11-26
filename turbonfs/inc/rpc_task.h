@@ -1147,6 +1147,11 @@ struct rename_rpc_task
         return silly_rename;
     }
 
+    bool get_rename_triggered_silly_rename() const
+    {
+        return rename_triggered_silly_rename;
+    }
+
     fuse_ino_t get_silly_rename_ino() const
     {
         return silly_rename_ino;
@@ -1182,6 +1187,11 @@ struct rename_rpc_task
         silly_rename = is_silly;
     }
 
+    void set_rename_triggered_silly_rename(bool is_silly)
+    {
+        rename_triggered_silly_rename = is_silly;
+    }
+
     void set_silly_rename_ino(fuse_ino_t _silly_rename_ino)
     {
         silly_rename_ino = _silly_rename_ino;
@@ -1201,6 +1211,7 @@ private:
     char *newname;
     unsigned int flags;
     bool silly_rename;
+    bool rename_triggered_silly_rename;
     fuse_ino_t silly_rename_ino;
 };
 
@@ -1946,7 +1957,8 @@ public:
                      const char *newname,
                      bool silly_rename,
                      fuse_ino_t silly_rename_ino,
-                     unsigned int flags);
+                     unsigned int flags,
+                     bool rename_triggered_silly_rename = false);
 
     void run_rename();
 

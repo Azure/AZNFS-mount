@@ -505,7 +505,8 @@ void rpc_task::init_rename(fuse_req *request,
                            const char *newname,
                            bool silly_rename,
                            fuse_ino_t silly_rename_ino,
-                           unsigned int flags)
+                           unsigned int flags,
+                           bool rename_triggered_silly_rename)
 {
     assert(get_op_type() == FUSE_RENAME);
     assert(silly_rename == (silly_rename_ino != 0));
@@ -517,6 +518,8 @@ void rpc_task::init_rename(fuse_req *request,
     rpc_api->rename_task.set_silly_rename(silly_rename);
     rpc_api->rename_task.set_silly_rename_ino(silly_rename_ino);
     rpc_api->rename_task.set_flags(flags);
+    rpc_api->rename_task.set_rename_triggered_silly_rename(
+        rename_triggered_silly_rename);
 
     /*
      * In case of cross-dir rename, we have to choose between
@@ -1561,6 +1564,8 @@ void rename_callback(
     struct nfs_inode *newparent_inode = client->get_nfs_inode_from_ino(newparent_ino);
 
     const bool silly_rename = task->rpc_api->rename_task.get_silly_rename();
+    const bool rename_triggered_silly_rename =
+        task->rpc_api->rename_task.get_rename_triggered_silly_rename();
     auto res = (RENAME3res*) data;
 
 #if 0
@@ -1643,7 +1648,15 @@ void rename_callback(
                                   res->RENAME3res_u.resok.todir_wcc.after);
             }
         }
-        task->reply_error(status);
+        if (!rename_triggered_silly_rename) {
+            task->reply_error(status);
+        } else {
+            /*
+             * The response will be sent by the actual renamed call.
+             * Hence just free the task here.
+             */
+            task->free_rpc_task();
+        }
     }
 }
 

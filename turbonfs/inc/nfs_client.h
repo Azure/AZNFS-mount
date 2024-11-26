@@ -387,7 +387,8 @@ public:
     bool silly_rename(
         fuse_req_t req,
         fuse_ino_t parent_ino,
-        const char *name);
+        const char *name,
+        bool rename_triggered_silly_rename = false);
 
     /**
      * for_silly_rename tells if this unlink() call is being made to delete
@@ -431,7 +432,8 @@ public:
         const char *new_name,
         bool silly_rename,
         fuse_ino_t silly_rename_ino,
-        unsigned int flags);
+        unsigned int flags,
+        bool rename_triggered_silly_rename = false);
 
     void readlink(
         fuse_req_t req,
