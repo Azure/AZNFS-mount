@@ -52,6 +52,7 @@ jobs:
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
         export STG_DIR=$GITHUB_WORKSPACE
         export SOURCE_DIR=$GITHUB_WORKSPACE
+        export BUILD_TYPE=${{ github.events.inputs.buildType }}
         chmod +x $GITHUB_WORKSPACE/package.sh
         $GITHUB_WORKSPACE/package.sh
     - name: Create Test Release
