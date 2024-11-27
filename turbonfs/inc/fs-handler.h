@@ -156,7 +156,7 @@ static void aznfsc_ll_unlink(fuse_req_t req,
      * Depending on the silly_rename status this will reply to the fuse unlink
      * request.
      */
-    if (client->silly_rename(req, parent_ino, name)) {
+    if (client->silly_rename(req, parent_ino, name, parent_ino, name)) {
         return;
     }
 
@@ -204,8 +204,7 @@ static void aznfsc_ll_rename(fuse_req_t req,
 
     /*
      * We don't support renameat2() i.e., no support for `RENAME_EXCHANGE` or
-     * `RENAME_NOREPLACE` flags. Force flags to 0. Default NFS rename behaviour
-     * should be fine.
+     * `RENAME_NOREPLACE` flags.
      */
     if (flags != 0) {
         AZLogError("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
@@ -232,10 +231,15 @@ static void aznfsc_ll_rename(fuse_req_t req,
      * Irrespective of the silly_rename status, we will go ahead and rename the
      * file.
      */
-    (void)client->silly_rename(req, newparent_ino, newname, true /* rename_triggered_silly_rename */);
-
-    client->rename(req, parent_ino, name, newparent_ino, newname,
-                   false, 0, flags);
+    if (!client->silly_rename(req,
+                              parent_ino,
+                              name,
+                              newparent_ino,
+                              newname,
+                              true /* rename_triggered_silly_rename */)) {
+        client->rename(req, parent_ino, name, newparent_ino, newname,
+                       parent_ino, name, false, 0, flags);
+    }
 }
 
 [[maybe_unused]]

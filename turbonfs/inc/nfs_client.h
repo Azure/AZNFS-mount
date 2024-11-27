@@ -386,6 +386,8 @@ public:
      */
     bool silly_rename(
         fuse_req_t req,
+        fuse_ino_t srcparent_ino,
+        const char *src_name,
         fuse_ino_t parent_ino,
         const char *name,
         bool rename_triggered_silly_rename = false);
@@ -430,6 +432,8 @@ public:
         const char *name,
         fuse_ino_t newparent_ino,
         const char *new_name,
+        fuse_ino_t srcparent_ino,
+        const char *src_name,
         bool silly_rename,
         fuse_ino_t silly_rename_ino,
         unsigned int flags,

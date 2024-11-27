@@ -1127,6 +1127,11 @@ struct rename_rpc_task
         return newparent_ino;
     }
 
+    fuse_ino_t get_srcparent_ino() const
+    {
+        return srcparent_ino;
+    }
+
     const char *get_name() const
     {
         return name;
@@ -1135,6 +1140,11 @@ struct rename_rpc_task
     const char *get_newname() const
     {
         return newname;
+    }
+
+    const char *get_srcname() const
+    {
+        return srcname;
     }
 
     unsigned int get_flags() const
@@ -1167,6 +1177,16 @@ struct rename_rpc_task
         newparent_ino = parent;
     }
 
+    /*
+     * This will be set to the ino of the original src file when
+     * rename_triggered_silly_rename is set else this will be same
+     * as \p parent_ino.
+     */
+    void set_srcparent_ino(fuse_ino_t parent)
+    {
+        srcparent_ino = parent;
+    }
+
     void set_name(const char *_name)
     {
         name = ::strdup(_name);
@@ -1175,6 +1195,16 @@ struct rename_rpc_task
     void set_newname(const char *name)
     {
         newname = ::strdup(name);
+    }
+
+    /*
+     * This will be set to the name of the original src file when
+     * rename_triggered_silly_rename is set else this will be same
+     * as \p name.
+     */
+    void set_srcname(const char *name)
+    {
+        srcname = ::strdup(name);
     }
 
     void set_flags(unsigned int _flags)
@@ -1202,13 +1232,16 @@ struct rename_rpc_task
     {
         ::free(name);
         ::free(newname);
+        ::free(srcname);
     }
 
 private:
     fuse_ino_t parent_ino;
     fuse_ino_t newparent_ino;
+    fuse_ino_t srcparent_ino;
     char *name;
     char *newname;
+    char* srcname;
     unsigned int flags;
     bool silly_rename;
     bool rename_triggered_silly_rename;
@@ -1955,6 +1988,8 @@ public:
                      const char *name,
                      fuse_ino_t newparent_ino,
                      const char *newname,
+                     fuse_ino_t srcparent_ino,
+                     const char *srcname,
                      bool silly_rename,
                      fuse_ino_t silly_rename_ino,
                      unsigned int flags,

@@ -503,6 +503,8 @@ void rpc_task::init_rename(fuse_req *request,
                            const char *name,
                            fuse_ino_t newparent_ino,
                            const char *newname,
+                           fuse_ino_t srcparent_ino,
+                           const char *srcname,
                            bool silly_rename,
                            fuse_ino_t silly_rename_ino,
                            unsigned int flags,
@@ -515,6 +517,8 @@ void rpc_task::init_rename(fuse_req *request,
     rpc_api->rename_task.set_name(name);
     rpc_api->rename_task.set_newparent_ino(newparent_ino);
     rpc_api->rename_task.set_newname(newname);
+    rpc_api->rename_task.set_srcparent_ino(srcparent_ino);
+    rpc_api->rename_task.set_srcname(srcname);
     rpc_api->rename_task.set_silly_rename(silly_rename);
     rpc_api->rename_task.set_silly_rename_ino(silly_rename_ino);
     rpc_api->rename_task.set_flags(flags);
@@ -1651,11 +1655,50 @@ void rename_callback(
         if (!rename_triggered_silly_rename) {
             task->reply_error(status);
         } else {
-            /*
-             * The response will be sent by the actual renamed call.
-             * Hence just free the task here.
-             */
-            task->free_rpc_task();
+            if (status != 0) {
+                AZLogError("Failed to silly rename file {}/{} to {}/{}, failing the rename",
+                    parent_ino,
+                    task->rpc_api->rename_task.get_name(),
+                    parent_ino,
+                    task->rpc_api->rename_task.get_newname());
+
+                task->reply_error(status);
+            } else {
+                /*
+                 * Now that silly rename of destination file is done, issue
+                 * the original rename.
+                 * Create a new child task to carry out this request.
+                 */
+                AZLogInfo("Renaming file {}/{} to {}/{} after silly rename",
+                    task->rpc_api->rename_task.get_srcparent_ino(),
+                    task->rpc_api->rename_task.get_srcname(),
+                    parent_ino,
+                    task->rpc_api->rename_task.get_name());
+
+                struct rpc_task *rename_tsk =
+                    task->get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_RENAME);
+
+                rename_tsk->init_rename(
+                    task->rpc_api->req,
+                    task->rpc_api->rename_task.get_srcparent_ino(),
+                    task->rpc_api->rename_task.get_srcname(),
+                    parent_ino,
+                    task->rpc_api->rename_task.get_name(),
+                    task->rpc_api->rename_task.get_srcparent_ino(),
+                    task->rpc_api->rename_task.get_srcname(),
+                    false, /* silly_rename */ 
+                    0, /* silly_rename_ino */
+                    0, /* flags */
+                    false /* rename_triggered_silly_rename */);
+
+                rename_tsk->run_rename();
+
+                /*
+                 * The response will be sent by the actual rename call
+                 * made above, hence free the current task.
+                 */
+                task->free_rpc_task();
+            }
         }
     }
 }

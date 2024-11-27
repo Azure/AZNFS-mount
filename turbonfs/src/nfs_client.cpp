@@ -409,6 +409,8 @@ void nfs_client::jukebox_runner()
                            js->rpc_api->rename_task.get_name(),
                            js->rpc_api->rename_task.get_newparent_ino(),
                            js->rpc_api->rename_task.get_newname(),
+                           js->rpc_api->rename_task.get_srcparent_ino(),
+                           js->rpc_api->rename_task.get_srcname(),
                            js->rpc_api->rename_task.get_silly_rename(),
                            js->rpc_api->rename_task.get_silly_rename_ino(),
                            js->rpc_api->rename_task.get_flags());
@@ -1155,6 +1157,8 @@ void nfs_client::mkdir(
  */
 bool nfs_client::silly_rename(
     fuse_req_t req,
+    fuse_ino_t srcparent_ino,
+    const char* src_name,
     fuse_ino_t parent_ino,
     const char* name,
     bool rename_triggered_silly_rename)
@@ -1172,6 +1176,15 @@ bool nfs_client::silly_rename(
         parent_inode->get_dircache()->dnlc_remove(name);
     }
 
+    if (rename_triggered_silly_rename && inode && inode->is_dir())
+    {
+        /*
+         * Silly rename should not be done if we are trying to rename
+         * a directory.
+         */
+        return false;
+    }
+
     /*
      * Note: VFS will hold the inode lock for the target file, so it won't
      *       go away till the rename_callback() is called (and we respond to
@@ -1186,7 +1199,8 @@ bool nfs_client::silly_rename(
         AZLogInfo("silly_rename: Renaming {}/{} -> {}, ino={}",
                   parent_ino, name, newname, inode->get_fuse_ino());
 
-        rename(req, parent_ino, name, parent_ino, newname, true,
+        rename(req, parent_ino, name, parent_ino, newname,
+               srcparent_ino, src_name, true,
                inode->get_fuse_ino(), 0, rename_triggered_silly_rename);
         return true;
     } else if (!inode) {
@@ -1245,6 +1259,8 @@ void nfs_client::rename(
     const char *name,
     fuse_ino_t newparent_ino,
     const char *new_name,
+    fuse_ino_t srcparent_ino,
+    const char *src_name,
     bool silly_rename,
     fuse_ino_t silly_rename_ino,
     unsigned int flags,
@@ -1272,8 +1288,8 @@ void nfs_client::rename(
     }
 
     tsk->init_rename(req, parent_ino, name, newparent_ino, new_name,
-                     silly_rename, silly_rename_ino, flags,
-                     rename_triggered_silly_rename);
+                     srcparent_ino, src_name, silly_rename, silly_rename_ino,
+                     flags, rename_triggered_silly_rename);
     tsk->run_rename();
 }
 
