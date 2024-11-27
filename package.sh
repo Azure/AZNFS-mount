@@ -178,6 +178,7 @@ gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mo
 
 # We build the turbonfs project here, note that we can set all cmake options in the 
 # future using env variables.
+# Turn tcmalloc off for debug builds because it has some issues with asan.
 enable_tcmalloc="ON"
 if [ "${BUILD_TYPE}" == "Debug" ]; then
 	enable_tcmalloc="OFF"

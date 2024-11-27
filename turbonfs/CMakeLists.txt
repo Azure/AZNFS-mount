@@ -132,17 +132,18 @@ if(NOT NINJA_FOUND)
     endif()
 endif()
 
+# Meson will install the fuse library and header files in the following paths.
+set(fuse3_LIBRARY "/usr/local/lib/x86_64-linux-gnu/libfuse3.a")
+set(fuse3_INCLUDE_DIR "/usr/local/include")
+
 add_custom_command(
-    OUTPUT ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a
+    OUTPUT $fuse3_LIBRARY
     COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static --buildtype=${MESON_BUILD_TYPE}
     COMMAND ${MESON_EXECUTABLE} compile -C ${LIBFUSE_BUILD_DIR}
     COMMAND sudo ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
 )
 
-add_custom_target(libfuse ALL DEPENDS ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a)
-
-set(fuse3_LIBRARY "/usr/local/lib/x86_64-linux-gnu/libfuse3.a")
-set(fuse3_INCLUDE_DIR "/usr/local/include")
+add_custom_target(libfuse ALL DEPENDS $fuse3_LIBRARY)
 
 #
 # We need GnuTLS for secure libnfs transport.
