@@ -7,3 +7,6 @@
 [submodule "turbonfs/extern/spdlog"]
 	path = turbonfs/extern/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "turbonfs/extern/libfuse"]
+	path = turbonfs/extern/libfuse
+	url = https://github.com/libfuse/libfuse.git
