@@ -141,7 +141,7 @@ add_custom_command(
 
 add_custom_target(libfuse ALL DEPENDS ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a)
 
-set(fuse3_LIBRARY "/usr/local/lib/x86_64-linux-gnu")
+set(fuse3_LIBRARY "/usr/local/lib/x86_64-linux-gnu/libfuse3.a")
 set(fuse3_INCLUDE_DIR "/usr/local/include")
 
 #
