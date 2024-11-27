@@ -141,6 +141,9 @@ add_custom_command(
 
 add_custom_target(libfuse ALL DEPENDS ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a)
 
+set(fuse3_LIBRARY "/usr/local/lib/x86_64-linux-gnu")
+set(fuse3_INCLUDE_DIR "/usr/local/include")
+
 #
 # We need GnuTLS for secure libnfs transport.
 #
@@ -248,8 +251,10 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/spdlog/include")
 
 if(NOT ENABLE_NO_FUSE)
+target_include_directories(${CMAKE_PROJECT_NAME}
+                           PRIVATE "${fuse3_INCLUDE_DIR}")
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${LIBFUSE_BUILD_DIR}/lib/libfuse3.a)
+                      ${fuse3_LIBRARY})
 endif()
 
 target_compile_options(${CMAKE_PROJECT_NAME}
