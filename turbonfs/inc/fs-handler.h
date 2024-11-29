@@ -228,14 +228,15 @@ static void aznfsc_ll_rename(fuse_req_t req,
      * We will perform silly rename if the opencnt of the newname is not 0, i.e.,
      * some process has the file open. This is for POSIX compliance, where
      * open files should be accessible till the last open handle is closed.
-     * Irrespective of the silly_rename status, we will go ahead and rename the
-     * file.
+     * If silly_rename is not done, then we issue the original rename of
+     * name->newname here, else this will be issued in the rename callback
+     * of the silly rename if it succeeds.
      */
     if (!client->silly_rename(req,
                               parent_ino,
                               name,
                               newparent_ino,
-                              newname,
+                              newname, /* file to silly rename */
                               true /* rename_triggered_silly_rename */)) {
         client->rename(req, parent_ino, name, newparent_ino, newname,
                        parent_ino, name, false, 0, flags);

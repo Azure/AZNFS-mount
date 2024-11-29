@@ -1588,15 +1588,15 @@ void rename_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     /*
-     * If this rename is a silly rename for an unlink operation, we need to
-     * store the directory inode and the renamed filename so that we can
+     * If this rename is a silly rename for an unlink/rename operation, we need
+     * to store the directory inode and the renamed filename so that we can
      * delete the silly renamed file when the last open count on this inode
      * is dropped.
      *
-     * Note: Silly rename is done in response to a user unlink call and VFS
-     *       holds the inode lock for the duration of the unlink, which means
-     *       we will not get any other call for this inode, so we can safely
-     *       access the inode w/o lock.
+     * Note: Silly rename is done in response to a user unlink call or user
+     *       rename calls and VFS holds the inode lock for the duration of the
+     *       unlink, which means we will not get any other call for this inode,
+     *        so we can safely access the inode w/o lock.
      */
     if (status == 0 && silly_rename) {
         const fuse_ino_t silly_rename_ino =
@@ -1653,21 +1653,30 @@ void rename_callback(
             }
         }
         if (!rename_triggered_silly_rename) {
+            /*
+             * Respond to the fuse if this rename was not triggered
+             * to silly rename a file as a result of user issued rename.
+             */
             task->reply_error(status);
         } else {
             if (status != 0) {
-                AZLogError("Failed to silly rename file {}/{} to {}/{}, failing the rename",
+                AZLogError("Failed to silly rename file {}/{} to {}/{},"
+                    " failing the user initiated rename of  {}/{} to {}/{}",
                     parent_ino,
                     task->rpc_api->rename_task.get_name(),
                     parent_ino,
-                    task->rpc_api->rename_task.get_newname());
+                    task->rpc_api->rename_task.get_newname(),
+                    task->rpc_api->rename_task.get_srcparent_ino(),
+                    task->rpc_api->rename_task.get_srcname(),
+                    parent_ino,
+                    task->rpc_api->rename_task.get_name());
 
                 task->reply_error(status);
             } else {
                 /*
                  * Now that silly rename of destination file is done, issue
                  * the original rename.
-                 * Create a new child task to carry out this request.
+                 * Create a new task to carry out this request.
                  */
                 AZLogInfo("Renaming file {}/{} to {}/{} after silly rename",
                     task->rpc_api->rename_task.get_srcparent_ino(),

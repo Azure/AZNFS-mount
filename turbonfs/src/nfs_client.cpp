@@ -1196,12 +1196,15 @@ bool nfs_client::silly_rename(
                    inode->get_fuse_ino(), inode->get_generation(),
                    inode->get_silly_rename_level());
 
-        AZLogInfo("silly_rename: Renaming {}/{} -> {}, ino={}",
-                  parent_ino, name, newname, inode->get_fuse_ino());
+        AZLogInfo("silly_rename: Renaming {}/{} -> {}, ino={}"
+                  "rename_triggered_silly_rename={}",
+                  parent_ino, name, newname, inode->get_fuse_ino(),
+                  rename_triggered_silly_rename);
 
         rename(req, parent_ino, name, parent_ino, newname,
                srcparent_ino, src_name, true,
                inode->get_fuse_ino(), 0, rename_triggered_silly_rename);
+
         return true;
     } else if (!inode) {
         AZLogError("silly_rename: Failed to get inode for file {}/{}. File "

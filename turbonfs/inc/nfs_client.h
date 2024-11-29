@@ -382,7 +382,12 @@ public:
      * Try to perform silly rename of the given file and return true if silly
      * rename was required (and done), else return false.
      * Note that silly rename is required for a file that's open when unlink
-     * request is received for it.
+     * or rename request is received for it.
+     * For unlink, srcparent_ino/src_name and parent_ino/name are the same
+     * and rename_triggered_silly_rename will be false.
+     * For rename, srcparent_ino/src_name points to the src file which is being
+     * renamed and parent_ino/name points to the dest file which has to be
+     * silly renamed and rename_triggered_silly_rename will be set to true.
      */
     bool silly_rename(
         fuse_req_t req,

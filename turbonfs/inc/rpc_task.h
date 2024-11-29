@@ -1178,8 +1178,8 @@ struct rename_rpc_task
     }
 
     /*
-     * This will be set to the ino of the original src file when
-     * rename_triggered_silly_rename is set else this will be same
+     * This will be set to the parent ino of the original src file when
+     * rename_triggered_silly_rename is set, else this will be same
      * as \p parent_ino.
      */
     void set_srcparent_ino(fuse_ino_t parent)
