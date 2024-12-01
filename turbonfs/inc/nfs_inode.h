@@ -902,10 +902,12 @@ public:
     /*
      * Find nfs_inode for 'filename' in this directory.
      * It first searches in dnlc and if not found there makes a sync LOOKUP
-     * call.
+     * call. If sync LOOKUP fails it returns nullptr and sets failure_status
+     * to a +ve errno value.
      * This calls revalidate().
      */
-    struct nfs_inode *lookup(const char *filename);
+    struct nfs_inode *lookup(const char *filename,
+                             int *failure_status = nullptr);
 
     /**
      * Note usecs when the last cached write was received for this inode.

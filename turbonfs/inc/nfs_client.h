@@ -478,11 +478,12 @@ public:
     /**
      * Sync version of lookup().
      * This is to be used internally and not for serving fuse requests.
-     * It returns true if we are able to get a success response for the
+     * It returns 0 if we are able to get a success response for the
      * LOOKUP RPC that we sent, in that case child_ino will contain the
      * child's fuse inode number.
+     * In case of a failed lookup it'll return a +ve errno value.
      */
-    bool lookup_sync(
+    int lookup_sync(
         fuse_ino_t parent_ino,
         const char *name,
         fuse_ino_t& child_ino);

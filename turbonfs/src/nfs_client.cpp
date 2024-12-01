@@ -922,7 +922,7 @@ static void lookup_sync_callback(
             }
             AZLogDebug("lookup_sync_callback() got child_ino={}", *child_ino_p);
         } else {
-            AZLogError("lookup_sync_callback() failed, status={}", status);
+            AZLogDebug("lookup_sync_callback() failed, status={}", status);
         }
 
         /*
@@ -935,9 +935,9 @@ static void lookup_sync_callback(
     }
 }
 
-bool nfs_client::lookup_sync(fuse_ino_t parent_ino,
-                             const char* name,
-                             fuse_ino_t& child_ino)
+int nfs_client::lookup_sync(fuse_ino_t parent_ino,
+                            const char* name,
+                            fuse_ino_t& child_ino)
 {
     assert(name != nullptr);
 
@@ -950,7 +950,7 @@ bool nfs_client::lookup_sync(fuse_ino_t parent_ino,
     struct rpc_pdu *pdu = nullptr;
     struct rpc_context *rpc = nullptr;
     bool rpc_retry = false;
-    bool success = false;
+    int status = -1;
 
     child_ino = 0;
     AZLogDebug("lookup_sync({}/{})", parent_ino, name);
@@ -1021,9 +1021,8 @@ wait_more:
             assert(ctx->rpc_status != -1);
             assert(ctx->nfs_status != -1);
 
-            const int status = task->status(ctx->rpc_status, ctx->nfs_status);
+            status = task->status(ctx->rpc_status, ctx->nfs_status);
             if (status == 0) {
-                success = true;
                 assert(child_ino != 0);
             } else if (ctx->rpc_status == RPC_STATUS_SUCCESS &&
                        ctx->nfs_status == NFS3ERR_JUKEBOX) {
@@ -1033,11 +1032,10 @@ wait_more:
                 // This goto will cause the above lock to unlock.
                 goto try_again;
             } else {
-                AZLogError("lookup_sync({}/{}) failed, status={}, "
+                AZLogDebug("lookup_sync({}/{}) failed, status={}, "
                            "rpc_status={}, nfs_status={}",
                            parent_ino, name, status, ctx->rpc_status,
                            ctx->nfs_status);
-                assert(!success);
                 assert(child_ino == 0);
             }
         }
@@ -1049,7 +1047,8 @@ wait_more:
 
     delete ctx;
 
-    return success;
+    assert(status >= 0);
+    return status;
 }
 
 void nfs_client::access(fuse_req_t req, fuse_ino_t ino, int mask)
@@ -1168,7 +1167,8 @@ bool nfs_client::silly_rename(
 {
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
     // Inode of the file being silly renamed.
-    struct nfs_inode *inode = parent_inode->lookup(name);
+    int lookup_status = -1;
+    struct nfs_inode *inode = parent_inode->lookup(name, &lookup_status);
     /*
      * Is this silly rename called to silly rename an outgoing file in a
      * rename workflow as opposed to silly renaming a to-be-unlinked file.
@@ -1222,10 +1222,23 @@ bool nfs_client::silly_rename(
 
         return true;
     } else if (!inode) {
-        AZLogError("silly_rename: Failed to get inode for file {}/{}. File "
-                   "will be deleted, any process having file open will get "
-                   "errors when accessing it!",
-                   parent_ino, name);
+        assert(lookup_status > 0);
+        if (lookup_status != ENOENT) {
+            AZLogError("silly_rename: Failed to get inode for file {}/{} "
+                       "(error: {}). File will be deleted at the server, any "
+                       "process having file open will get stale filehandle "
+                       "errors when accessing it!",
+                       parent_ino, name, lookup_status);
+        } else {
+            /*
+             * For unlink() if file doesn't exist fuse won't call
+             * aznfsc_ll_unlink() hence silly_rename() will never be called
+             * for cases where file doesn't exist.
+             * For rename() this is a likely case and hence we should not
+             * log an error.
+             */
+            assert(rename_triggered_silly_rename);
+        }
     }
 
     return false;

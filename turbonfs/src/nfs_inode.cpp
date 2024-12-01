@@ -285,7 +285,7 @@ bool nfs_inode::in_ra_window(uint64_t offset, uint64_t length) const
  *       lookup_sync(), the corresponding nfs_inode will still be present in
  *       our inode_map since kernel wouldn't have called forget on the inode.
  */
-struct nfs_inode *nfs_inode::lookup(const char *filename)
+struct nfs_inode *nfs_inode::lookup(const char *filename, int *failure_status)
 {
     // Must be called only for a directory inode.
     assert(is_dir());
@@ -318,9 +318,14 @@ struct nfs_inode *nfs_inode::lookup(const char *filename)
     }
 
     if (child_ino == 0) {
-       if (!client->lookup_sync(get_fuse_ino(), filename, child_ino)) {
-           AZLogDebug("{}/{}, sync LOOKUP failed!",
-                      get_fuse_ino(), filename);
+       const int status =
+           client->lookup_sync(get_fuse_ino(), filename, child_ino);
+       if (status != 0) {
+           AZLogDebug("{}/{}, sync LOOKUP failed with error {}!",
+                      get_fuse_ino(), filename, status);
+           if (failure_status) {
+               *failure_status = status;
+           }
            return nullptr;
        }
        assert(child_ino != 0);
@@ -339,6 +344,9 @@ struct nfs_inode *nfs_inode::lookup(const char *filename)
        child_inode->decref();
     }
 
+    if (failure_status) {
+        *failure_status = 0;
+    }
     return child_inode;
 }
 
