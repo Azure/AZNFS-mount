@@ -511,6 +511,7 @@ void rpc_task::init_rename(fuse_req *request,
 {
     assert(get_op_type() == FUSE_RENAME);
 
+    [[maybe_unused]]
     const bool rename_triggered_silly_rename = (old_name != nullptr);
     assert(rename_triggered_silly_rename == (oldparent_ino != 0));
     assert(!rename_triggered_silly_rename || silly_rename);

@@ -1291,6 +1291,7 @@ void nfs_client::rename(
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RENAME);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
     struct nfs_inode *newparent_inode = get_nfs_inode_from_ino(newparent_ino);
+    [[maybe_unused]]
     const bool rename_triggered_silly_rename = (old_name != nullptr);
     assert(rename_triggered_silly_rename == (oldparent_ino != 0));
     assert(!rename_triggered_silly_rename || silly_rename);
