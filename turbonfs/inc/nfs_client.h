@@ -379,15 +379,36 @@ public:
         mode_t mode);
 
     /**
-     * Try to perform silly rename of the given file and return true if silly
-     * rename was required (and done), else return false.
-     * Note that silly rename is required for a file that's open when unlink
-     * request is received for it.
+     * Try to perform silly rename of the given file (parent_ino/name) and
+     * return true if silly rename was required (and done), else return false.
+     * Note that silly rename is required for the following two cases:
+     *
+     * 1. When unlinking a file we need to silly rename the file if it has a
+     *    non-zero open count.
+     *    In this case caller just needs to pass parent_ino and name.
+     *    In this case (silly) renaming the to-be-unlinked file is sufficient
+     *    in order to serve the unlink requested by the user.
+     * 2. When renaming oldparent_ino/old_name to parent_ino/name, after the
+     *    rename parent_ino/name will start referring to the file originally
+     *    referred by oldparent_ino/old_name and in case parent_ino/name existed
+     *    at the time of rename that file would no longer be accessible after
+     *    rename, so it's effectively deleted by the server. Hence we need to
+     *    silly rename it if it has a non-zero open count.
+     *    In this case caller needs to pass parent_ino and name and additionally
+     *    oldparent_ino and old_name. The oldparent_ino and old_name are as such
+     *    not used by silly rename but since the actual rename is performed when
+     *    the silly rename succeeds (from rename_callback()), we need to store
+     *    the oldparent_ino and old_name details in the silly rename task.
+     *    In this case silly_rename() will do the following:
+     *    - silly rename the outgoing file, and if/when silly rename succeeds,
+     *      perform actual rename (oldparent_ino/old_name -> parent_ino/name).
      */
     bool silly_rename(
         fuse_req_t req,
         fuse_ino_t parent_ino,
-        const char *name);
+        const char *name,
+        fuse_ino_t oldparent_ino = 0,
+        const char *old_name = nullptr);
 
     /**
      * for_silly_rename tells if this unlink() call is being made to delete
@@ -418,10 +439,14 @@ public:
 
     /**
      * silly_rename must be passed as true if this is a silly rename and not
-     * rename triggered by user. We silly rename a file that's being unlinked
-     * while it has a non-zero opencnt.
-     * In that case, silly_rename_ino is the ino of the file that's being
-     * unlinked.
+     * rename triggered by user. See silly_rename() for explanation of why and
+     * when we need to silly rename a file. If this rename operation is
+     * being performed to realize a silly rename, then silly_rename_ino must
+     * contain the ino of the file that's being silly renamed.
+     * Also in that case oldparent_ino and old_name refer to the source of the
+     * actual rename triggered by user.
+     *
+     * See comments above init_rename() in rpc_task.h.
      */
     void rename(
         fuse_req_t req,
@@ -429,9 +454,10 @@ public:
         const char *name,
         fuse_ino_t newparent_ino,
         const char *new_name,
-        bool silly_rename,
-        fuse_ino_t silly_rename_ino,
-        unsigned int flags);
+        bool silly_rename = false,
+        fuse_ino_t silly_rename_ino = 0,
+        fuse_ino_t oldparent_ino = 0,
+        const char *old_name = nullptr);
 
     void readlink(
         fuse_req_t req,
