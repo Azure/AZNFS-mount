@@ -397,23 +397,27 @@ void nfs_client::jukebox_runner()
                     break;
                 case FUSE_RENAME:
                     AZLogWarn("[JUKEBOX REISSUE] rename(req={}, parent_ino={}, "
-                              "name={}, newparent_ino={}, newname={}, flags={})",
+                              "name={}, newparent_ino={}, newname={}, "
+                              "silly_rename={}, silly_rename_ino={}, "
+                              "oldparent_ino={}, oldname={})",
                               fmt::ptr(js->rpc_api->req),
                               js->rpc_api->rename_task.get_parent_ino(),
                               js->rpc_api->rename_task.get_name(),
                               js->rpc_api->rename_task.get_newparent_ino(),
                               js->rpc_api->rename_task.get_newname(),
-                              js->rpc_api->rename_task.get_flags());
+                              js->rpc_api->rename_task.get_silly_rename(),
+                              js->rpc_api->rename_task.get_silly_rename_ino(),
+                              js->rpc_api->rename_task.get_oldparent_ino(),
+                              js->rpc_api->rename_task.get_oldname());
                     rename(js->rpc_api->req,
                            js->rpc_api->rename_task.get_parent_ino(),
                            js->rpc_api->rename_task.get_name(),
                            js->rpc_api->rename_task.get_newparent_ino(),
                            js->rpc_api->rename_task.get_newname(),
-                           js->rpc_api->rename_task.get_srcparent_ino(),
-                           js->rpc_api->rename_task.get_srcname(),
                            js->rpc_api->rename_task.get_silly_rename(),
                            js->rpc_api->rename_task.get_silly_rename_ino(),
-                           js->rpc_api->rename_task.get_flags());
+                           js->rpc_api->rename_task.get_oldparent_ino(),
+                           js->rpc_api->rename_task.get_oldname());
                     break;
                 case FUSE_READ:
                     AZLogWarn("[JUKEBOX REISSUE] read(req={}, ino={}, "
@@ -1157,15 +1161,21 @@ void nfs_client::mkdir(
  */
 bool nfs_client::silly_rename(
     fuse_req_t req,
-    fuse_ino_t srcparent_ino,
-    const char* src_name,
     fuse_ino_t parent_ino,
-    const char* name,
-    bool rename_triggered_silly_rename)
+    const char *name,
+    fuse_ino_t oldparent_ino,
+    const char *old_name)
 {
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
     // Inode of the file being silly renamed.
     struct nfs_inode *inode = parent_inode->lookup(name);
+    /*
+     * Is this silly rename called to silly rename an outgoing file in a
+     * rename workflow as opposed to silly renaming a to-be-unlinked file.
+     */
+    [[maybe_unused]]
+    const bool rename_triggered_silly_rename = (old_name != nullptr);
+    assert(rename_triggered_silly_rename == (oldparent_ino != 0));
 
     /*
      * This is called from aznfsc_ll_unlink() for all unlinked files,
@@ -1176,12 +1186,17 @@ bool nfs_client::silly_rename(
         parent_inode->get_dircache()->dnlc_remove(name);
     }
 
-    if (rename_triggered_silly_rename && inode && inode->is_dir())
+    if (inode && inode->is_dir())
     {
         /*
-         * Silly rename should not be done if we are trying to rename
-         * a directory.
+         * inode cannot refer to a directory when silly_rename() is called
+         * from unlink.
+         * If it is called from rename and inode does refer to a directory
+         * we don't need to silly rename as only empty directories can be
+         * the target of rename.
          */
+        assert(rename_triggered_silly_rename);
+
         return false;
     }
 
@@ -1202,8 +1217,8 @@ bool nfs_client::silly_rename(
                   rename_triggered_silly_rename);
 
         rename(req, parent_ino, name, parent_ino, newname,
-               srcparent_ino, src_name, true,
-               inode->get_fuse_ino(), 0, rename_triggered_silly_rename);
+               true /* silly_rename */, inode->get_fuse_ino(),
+               oldparent_ino, old_name);
 
         return true;
     } else if (!inode) {
@@ -1256,22 +1271,29 @@ void nfs_client::symlink(
     tsk->run_symlink();
 }
 
+/**
+ * This is the nfs_client method to rename a file from its current name
+ * (dirX/nameA) to its new name (dirY/nameB), where dirX and dirY can be
+ * referring to same or different directories. dirY/nameB may refer to an
+ * existing file or it could be a new file.
+ */
 void nfs_client::rename(
     fuse_req_t req,
     fuse_ino_t parent_ino,
     const char *name,
     fuse_ino_t newparent_ino,
     const char *new_name,
-    fuse_ino_t srcparent_ino,
-    const char *src_name,
     bool silly_rename,
     fuse_ino_t silly_rename_ino,
-    unsigned int flags,
-    bool rename_triggered_silly_rename)
+    fuse_ino_t oldparent_ino,
+    const char *old_name)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RENAME);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
     struct nfs_inode *newparent_inode = get_nfs_inode_from_ino(newparent_ino);
+    const bool rename_triggered_silly_rename = (old_name != nullptr);
+    assert(rename_triggered_silly_rename == (oldparent_ino != 0));
+    assert(!rename_triggered_silly_rename || silly_rename);
 
     /*
      * 'name' is going away and 'new_name', if exists, will no longer refer to
@@ -1291,8 +1313,7 @@ void nfs_client::rename(
     }
 
     tsk->init_rename(req, parent_ino, name, newparent_ino, new_name,
-                     srcparent_ino, src_name, silly_rename, silly_rename_ino,
-                     flags, rename_triggered_silly_rename);
+                     silly_rename, silly_rename_ino, oldparent_ino, old_name);
     tsk->run_rename();
 }
 

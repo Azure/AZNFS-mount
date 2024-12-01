@@ -1115,21 +1115,31 @@ private:
     gid_t gid;
 };
 
+/**
+ * NFS RENAME is performed from parent_ino/name -> newparent_ino/newname.
+ * These will be the original {oldpath, newpath} in case of user requested
+ * rename while for silly rename we rename the outgoing file.
+ * For details of various members and methods see init_rename() prototype
+ * below.
+ */
 struct rename_rpc_task
 {
+    void set_parent_ino(fuse_ino_t parent)
+    {
+        parent_ino = parent;
+        assert(parent_ino != 0);
+    }
+
     fuse_ino_t get_parent_ino() const
     {
+        assert(parent_ino != 0);
         return parent_ino;
     }
 
-    fuse_ino_t get_newparent_ino() const
+    void set_name(const char *_name)
     {
-        return newparent_ino;
-    }
-
-    fuse_ino_t get_srcparent_ino() const
-    {
-        return srcparent_ino;
+        assert(_name != nullptr);
+        name = ::strdup(_name);
     }
 
     const char *get_name() const
@@ -1137,89 +1147,65 @@ struct rename_rpc_task
         return name;
     }
 
+    void set_newparent_ino(fuse_ino_t parent)
+    {
+        newparent_ino = parent;
+        assert(newparent_ino != 0);
+    }
+
+    fuse_ino_t get_newparent_ino() const
+    {
+        assert(newparent_ino != 0);
+        return newparent_ino;
+    }
+
+    void set_newname(const char *name)
+    {
+        assert(name != nullptr);
+        newname = ::strdup(name);
+    }
+
     const char *get_newname() const
     {
         return newname;
     }
 
-    const char *get_srcname() const
-    {
-        return srcname;
-    }
-
-    unsigned int get_flags() const
-    {
-        return flags;
-    }
-
-    bool get_silly_rename() const
-    {
-        return silly_rename;
-    }
-
-    bool get_rename_triggered_silly_rename() const
-    {
-        return rename_triggered_silly_rename;
-    }
-
-    fuse_ino_t get_silly_rename_ino() const
-    {
-        return silly_rename_ino;
-    }
-
-    void set_parent_ino(fuse_ino_t parent)
-    {
-        parent_ino = parent;
-    }
-
-    void set_newparent_ino(fuse_ino_t parent)
-    {
-        newparent_ino = parent;
-    }
-
     /*
-     * This will be set to the parent ino of the original src file when
-     * rename_triggered_silly_rename is set, else this will be same
-     * as \p parent_ino.
+     * oldparent_ino/oldname will be non-zero/non-null only for silly rename
+     * triggered by user requested rename operation.
      */
-    void set_srcparent_ino(fuse_ino_t parent)
+    void set_oldparent_ino(fuse_ino_t parent)
     {
-        srcparent_ino = parent;
+        oldparent_ino = parent;
     }
 
-    void set_name(const char *_name)
+    fuse_ino_t get_oldparent_ino() const
     {
-        name = ::strdup(_name);
+        return oldparent_ino;
     }
 
-    void set_newname(const char *name)
+    void set_oldname(const char *name)
     {
-        newname = ::strdup(name);
+        oldname = name ? ::strdup(name) : nullptr;
     }
 
-    /*
-     * This will be set to the name of the original src file when
-     * rename_triggered_silly_rename is set else this will be same
-     * as \p name.
-     */
-    void set_srcname(const char *name)
+    const char *get_oldname() const
     {
-        srcname = ::strdup(name);
-    }
-
-    void set_flags(unsigned int _flags)
-    {
-        flags = _flags;
+        return oldname;
     }
 
     void set_silly_rename(bool is_silly)
     {
+        // For silly rename olddir and newdir must be same.
+        assert(!silly_rename || (parent_ino == newparent_ino));
         silly_rename = is_silly;
     }
 
-    void set_rename_triggered_silly_rename(bool is_silly)
+    bool get_silly_rename() const
     {
-        rename_triggered_silly_rename = is_silly;
+        // For silly rename olddir and newdir must be same.
+        assert(!silly_rename || (parent_ino == newparent_ino));
+        return silly_rename;
     }
 
     void set_silly_rename_ino(fuse_ino_t _silly_rename_ino)
@@ -1228,23 +1214,32 @@ struct rename_rpc_task
         assert(silly_rename == (silly_rename_ino != 0));
     }
 
+    fuse_ino_t get_silly_rename_ino() const
+    {
+        return silly_rename_ino;
+    }
+
+    bool get_rename_triggered_silly_rename() const
+    {
+        assert((oldparent_ino != 0) == (oldname != nullptr));
+        return (oldname != nullptr);
+    }
+
     void release()
     {
         ::free(name);
         ::free(newname);
-        ::free(srcname);
+        ::free(oldname);
     }
 
 private:
     fuse_ino_t parent_ino;
     fuse_ino_t newparent_ino;
-    fuse_ino_t srcparent_ino;
+    fuse_ino_t oldparent_ino;
     char *name;
     char *newname;
-    char* srcname;
-    unsigned int flags;
+    char *oldname;
     bool silly_rename;
-    bool rename_triggered_silly_rename;
     fuse_ino_t silly_rename_ino;
 };
 
@@ -1982,18 +1977,48 @@ public:
 
     /*
      * init/run methods for the RENAME RPC.
+     * Note that this can be called both for performing a user requested rename
+     * and for silly rename. silly rename in turn can be called for a user
+     * requested unlink or rename.
+     *
+     * For user requested rename:
+     * - parent_ino/name -> newparent_ino/newname, and
+     * - silly_rename silly_rename, silly_rename_ino, oldparent_ino, old_name
+     *   must not be provided (and their default values are used).
+     *
+     * For silly rename called in response to user requested unlink:
+     * - parent_ino/name is the to-be-unlinked file.
+     * - newparent_ino/newname is the silly rename file. Since silly rename file
+     *   is created in the same directory, newparent_ino MUST be same as
+     *   parent_ino.
+     * - silly_rename must be true.
+     * - silly_rename_ino must be the ino of the to-be-silly-renamed file
+     *   parent_ino/name.
+     * - oldparent_ino/old_name must not be passed.
+     *
+     * For silly rename called in response to user requested rename:
+     * - parent_ino/name is the outgoing file i.e., the newfile passed by the
+     *   user requested rename.
+     * - newparent_ino/newname is the silly rename file. Since silly rename file
+     *   is created in the same directory, newparent_ino MUST be same as
+     *   parent_ino.
+     * - silly_rename must be true.
+     * - silly_rename_ino must be the ino of the to-be-silly-renamed file
+     *   parent_ino/name.
+     * - oldparent_ino/old_name is the orignal to-be-renamed file, i.e., the
+     *   oldfile passed by the user requested rename. This is not used by silly
+     *   rename but is used to initiate the actual rename once silly rename
+     *   completes successfully.
      */
     void init_rename(fuse_req *request,
                      fuse_ino_t parent_ino,
                      const char *name,
                      fuse_ino_t newparent_ino,
                      const char *newname,
-                     fuse_ino_t srcparent_ino,
-                     const char *srcname,
-                     bool silly_rename,
-                     fuse_ino_t silly_rename_ino,
-                     unsigned int flags,
-                     bool rename_triggered_silly_rename = false);
+                     bool silly_rename = false,
+                     fuse_ino_t silly_rename_ino = 0,
+                     fuse_ino_t oldparent_ino = 0,
+                     const char *old_name = nullptr);
 
     void run_rename();
 

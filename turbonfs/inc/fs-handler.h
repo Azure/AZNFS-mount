@@ -21,6 +21,20 @@ int fuse_reply_open(fuse_req_t req, const struct fuse_file_info *f)
     pxtask->res = 0;
     return 0;
 }
+#else
+#define FUSE_REPLY_ERR(req, errno_pos) \
+do { \
+    assert(errno_pos >= 0); \
+    const int fre = fuse_reply_err(req, errno_pos); \
+    if (fre != 0) { \
+        INC_GBL_STATS(fuse_reply_failed, 1); \
+        AZLogError("fuse_reply_err({}, {}) failed: {}", \
+                   fmt::ptr(req), errno_pos, fre); \
+        assert(0); \
+    } else { \
+        DEC_GBL_STATS(fuse_responses_awaited, 1); \
+    } \
+} while (0)
 #endif
 
 /*
@@ -110,14 +124,7 @@ static void aznfsc_ll_mknod(fuse_req_t req,
         AZLogError("mknod(req={}, parent_ino={}, name={}, "
                    "mode=0{:03o}) is unsupported for non-regular files.",
                    fmt::ptr(req), parent_ino, name, mode);
-        const int fre = fuse_reply_err(req, ENOSYS);
-        if (fre != 0) {
-            INC_GBL_STATS(fuse_reply_failed, 1);
-            AZLogError("fuse_reply_err({}) failed: {}", fmt::ptr(req), fre);
-            assert(0);
-        } else {
-            DEC_GBL_STATS(fuse_responses_awaited, 1);
-        }
+        FUSE_REPLY_ERR(req, ENOSYS);
     }
 }
 
@@ -149,14 +156,14 @@ static void aznfsc_ll_unlink(fuse_req_t req,
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
     /*
-     * Call silly rename to see if it wants to silly rename instead of unlink.
+     * Call silly_rename() to see if it wants to silly rename instead of unlink.
      * We will perform silly rename if the opencnt of the file is not 0, i.e.,
      * some process has the file open. This is for POSIX compliance, where
      * open files should be accessible till the last open handle is closed.
-     * Depending on the silly_rename status this will reply to the fuse unlink
+     * Depending on the silly rename status this will reply to the fuse unlink
      * request.
      */
-    if (client->silly_rename(req, parent_ino, name, parent_ino, name)) {
+    if (client->silly_rename(req, parent_ino, name)) {
         return;
     }
 
@@ -203,15 +210,29 @@ static void aznfsc_ll_rename(fuse_req_t req,
     INC_GBL_STATS(fuse_responses_awaited, 1);
 
     /*
+     * If oldpath and newpath are same then rename() must succeed w/o doing
+     * anything.
+     */
+    if ((parent_ino == newparent_ino) &&
+        (::strcmp(name, newname) == 0)) {
+        AZLogDebug("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
+                   "newparent_ino={}, newname={}, flags={}) oldpath==newpath",
+                   fmt::ptr(req), parent_ino, name,
+                   newparent_ino, newname, flags);
+        FUSE_REPLY_ERR(req, 0);
+        return;
+    }
+
+    /*
      * We don't support renameat2() i.e., no support for `RENAME_EXCHANGE` or
-     * `RENAME_NOREPLACE` flags.
+     * `RENAME_NOREPLACE` flags, as NFS doesn't support these.
      */
     if (flags != 0) {
         AZLogError("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
-                  "newparent_ino={}, newname={}, flags={} not supported)",
+                  "newparent_ino={}, newname={}, flags={}) not supported",
                   fmt::ptr(req), parent_ino, name,
                   newparent_ino, newname, flags);
-        fuse_reply_err(req, EINVAL);
+        FUSE_REPLY_ERR(req, EINVAL);
         return;
     } else {
         AZLogDebug("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
@@ -223,24 +244,35 @@ static void aznfsc_ll_rename(fuse_req_t req,
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
     /*
-     * Call silly rename to see if it wants to silly rename instead of rename
-     * of the file \p newname.
-     * We will perform silly rename if the opencnt of the newname is not 0, i.e.,
-     * some process has the file open. This is for POSIX compliance, where
-     * open files should be accessible till the last open handle is closed.
-     * If silly_rename is not done, then we issue the original rename of
-     * name->newname here, else this will be issued in the rename callback
-     * of the silly rename if it succeeds.
+     * Call silly_rename() to see if it wants to silly rename the outgoing file
+     * (newparent_ino/newname). Silly rename will be done if both of these
+     * conditions are true:
+     * 1. It exists and is a file (not a directory).
+     * 2. It has a non-zero open count.
+     *
+     * Note that silly rename is needed for POSIX compliance, where open files
+     * should be accessible till the last open handle is closed.
+     *
+     * If silly_rename() finds out that silly rename is needed as per the above
+     * conditions, it initiates the silly rename and arranges to call the actual
+     * rename from the silly rename completion callback. It returns true in that
+     * case and we don't need to perform the actual rename here. To call the
+     * actual rename it needs to know not only the to-be-silly-renamed file
+     * newparent_ino/newname but also the old file parent_ino/name.
+     *
+     * If silly_rename() finds out that silly rename is not needed, it returns
+     * false and in that case we must perform the actual rename here.
      */
-    if (!client->silly_rename(req,
-                              parent_ino,
-                              name,
-                              newparent_ino,
-                              newname, /* file to silly rename */
-                              true /* rename_triggered_silly_rename */)) {
-        client->rename(req, parent_ino, name, newparent_ino, newname,
-                       parent_ino, name, false, 0, flags);
+    if (client->silly_rename(req,
+                             newparent_ino,
+                             newname, /* file to silly rename */
+                             parent_ino,
+                             name /* original to-be-renamed file */)) {
+        return;
     }
+
+    // Perform user requested rename.
+    client->rename(req, parent_ino, name, newparent_ino, newname);
 }
 
 [[maybe_unused]]
@@ -396,14 +428,7 @@ static void aznfsc_ll_write(fuse_req_t req,
     AZLogError("aznfsc_ll_write(req={}, ino={}, buf={}, size={}, off={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(buf), size, off, fmt::ptr(fi));
 
-    const int fre = fuse_reply_err(req, ENOSYS);
-    if (fre != 0) {
-        INC_GBL_STATS(fuse_reply_failed, 1);
-        AZLogError("fuse_reply_err({}) failed: {}", fmt::ptr(req), fre);
-        assert(0);
-    } else {
-        DEC_GBL_STATS(fuse_responses_awaited, 1);
-    }
+    FUSE_REPLY_ERR(req, ENOSYS);
 }
 
 [[maybe_unused]]
@@ -558,14 +583,8 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
      */
 
     inode->release(req);
-    const int fre = fuse_reply_err(req, 0);
-    if (fre != 0) {
-        INC_GBL_STATS(fuse_reply_failed, 1);
-        AZLogError("fuse_reply_err({}) failed: {}", fmt::ptr(req), fre);
-        assert(0);
-    } else {
-        DEC_GBL_STATS(fuse_responses_awaited, 1);
-    }
+
+    FUSE_REPLY_ERR(req, 0);
 }
 
 [[maybe_unused]]
