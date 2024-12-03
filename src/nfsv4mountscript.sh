@@ -431,6 +431,7 @@ tls_nfsv4_files_share_mount()
             is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$current_port: Address already in use")
             if [ -z "$is_binding_error" ]; then
                 eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'"
+                eecho "${stunnel_status}"
                 chattr -i -f $stunnel_conf_file
                 rm $stunnel_conf_file
                 exit 1
@@ -497,6 +498,7 @@ tls_nfsv4_files_share_mount()
                 is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$current_port: Address already in use")
                 if [ -z "$is_binding_error" ]; then
                     eecho "[FATAL] Not able to start stunnel process for '${stunnel_conf_file}'!"
+                    eecho "${stunnel_status}"
                     exit 1
                 else
                     checksumHash=`cksum $stunnel_conf_file | awk '{print $1}'`

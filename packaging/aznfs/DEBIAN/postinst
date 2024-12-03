@@ -12,6 +12,61 @@ FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 CONFIG_FILE="/opt/microsoft/aznfs/data/config"
 AUTO_UPDATE_AZNFS="false"
 
+install_stunnel()
+{
+    # Install stunnel package from source
+    wget https://www.stunnel.org/downloads/stunnel-5.73.tar.gz -P /tmp
+    if [ $? -ne 0 ]; then
+        echo "Failed to download stunnel source code. Please install stunnel and try again."
+        exit 1
+    fi
+
+    tar -xvf /tmp/stunnel-5.73.tar.gz -C /tmp
+    if [ $? -ne 0 ]; then
+        echo "Failed to extract stunnel tarball. Please install stunnel and try again."
+        cd -
+        rm -f /tmp/stunnel-5.73.tar.gz
+        exit 1
+    fi
+
+    stunnel_dir=$(tar -tf /tmp/stunnel-5.73.tar.gz | head -n 1 | cut -f1 -d'/')
+
+    cd /tmp/$stunnel_dir
+    ./configure
+    if [ $? -ne 0 ]; then
+        echo "Failed to configure the build. Please install stunnel and try again."
+        cd -
+        rm -rf /tmp/$stunnel_dir
+        rm -f /tmp/stunnel-5.73.tar.gz
+        exit 1
+    fi
+
+    make
+    if [ $? -ne 0 ]; then
+        echo "Failed to build stunnel. Please install stunnel and try again."
+        cd -
+        rm -rf /tmp/$stunnel_dir
+        rm -f /tmp/stunnel-5.73.tar.gz
+        exit 1
+    fi
+
+    sudo rm -f /bin/stunnel
+
+    make install
+    if [ $? -ne 0 ]; then
+        echo "Failed to install stunnel. Please install stunnel and try again."
+        cd -
+        rm -rf /tmp/$stunnel_dir
+        rm -f /tmp/stunnel-5.73.tar.gz
+        exit 1
+    fi
+    cd -
+    rm -rf /tmp/$stunnel_dir
+    rm -f /tmp/stunnel-5.73.tar.gz
+
+    sudo ln -s /usr/local/bin/stunnel /bin/stunnel
+}
+
 parse_user_config()
 {
     if [ ! -f "$CONFIG_FILE" ]; then
@@ -74,6 +129,8 @@ chmod 4755 /sbin/mount.aznfs
 # Create data directory for holding mountmap and log file. 
 mkdir -p /opt/microsoft/aznfs/data
 chmod 0755 /opt/microsoft/aznfs/data
+
+install_stunnel
 
 # Create log directory under /etc/stunnel to store stunnel logs
 mkdir -p /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs

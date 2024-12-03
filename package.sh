@@ -11,17 +11,10 @@ set -e
 generate_rpm_package()
 {
 	rpm_dir=$1
-	is_stunnel_needed=0
 
 	# Overwrite rpm_pkg_dir in case of SUSE.
 	if [ "$rpm_dir" == "suse" ]; then
 		rpm_pkg_dir="${pkg_name}_sles-${RELEASE_NUMBER}-1.x86_64"
-	fi
-
-	# Overwrite rpm_pkg_dir in case of Mariner and RedHat7.
-	if [ "$rpm_dir" == "stunnel" ]; then
-		rpm_pkg_dir="${pkg_name}_stunnel-${RELEASE_NUMBER}-1.x86_64"
-		is_stunnel_needed=1
 	fi
 
 	# Create the directory to hold the package spec and data files for RPM package.
@@ -64,14 +57,6 @@ generate_rpm_package()
 		# For SLES, sysvinit-tools provides pidof.
 		sed -i -e "s/PROCPS_PACKAGE_NAME/sysvinit-tools/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/DISTRO/suse/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-	elif [ "$rpm_dir" == "stunnel" ]; then
-		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_stunnel/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		sed -i -e "s/NETCAT_PACKAGE_NAME/nmap-ncat/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		# In new versions of Centos/RedHat/Rocky, procps-ng provides pidof. For older versions, it is provided by sysvinit-tools but since it is not
-		# present in new versions, only install procps-ng which exists in all versions.
-		sed -i -e "s/PROCPS_PACKAGE_NAME/procps-ng/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		sed -i -e "s/DISTRO/stunnel/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		sed -i -e "s/INSTALL_CMD/yum/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	else
 		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/NETCAT_PACKAGE_NAME/nmap-ncat/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
@@ -83,7 +68,7 @@ generate_rpm_package()
 	fi
 
 	# Create the rpm package.
-	rpmbuild --define "stunnel $is_stunnel_needed" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	rpmbuild --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 }
 
 generate_tarball_package() {
