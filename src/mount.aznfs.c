@@ -13,6 +13,8 @@
 
 int main(int argc, char *argv[])
 {
+    unsetenv("BASH_ENV");
+    setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
     if (setreuid(0, 0) != 0)
     {
         perror("setreuid");
