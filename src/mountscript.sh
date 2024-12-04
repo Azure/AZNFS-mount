@@ -17,6 +17,11 @@ AZNFS_VERSION="unknown"
 export VERBOSE_MOUNT=false
 
 #
+# True if the user has passed the 'turbo' mount option.
+#
+export USING_AZNFSCLIENT=false
+
+#
 # Check if the given string is a valid blob/file FQDN (<accountname>.<blob/file>.core.windows.net).
 #
 is_valid_fqdn()
