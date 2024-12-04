@@ -786,8 +786,14 @@ bool nfs_inode::release(fuse_req_t req)
     assert(parent_ino != 0);
     assert(is_regfile());
 
-    AZLogInfo("Deleting silly renamed file, {}/{}",
-              parent_ino, silly_renamed_name);
+    AZLogInfo("[{}] Deleting silly renamed file, {}/{}",
+              ino, parent_ino, silly_renamed_name);
+
+    /*
+     * Since the inode is now truly getting deleted, invalidate the attribute
+     * cache.
+     */
+    invalidate_attribute_cache();
 
     client->unlink(req, parent_ino,
                    silly_renamed_name.c_str(), true /* for_silly_rename */);

@@ -1186,14 +1186,6 @@ bool nfs_client::silly_rename(
         parent_inode->get_dircache()->dnlc_remove(name);
     }
 
-    if (inode) {
-        /*
-         * Since the inode is getting deleted, invalidate the attribute
-         * cache.
-         */
-        inode->invalidate_attribute_cache();
-    }
-
     if (inode && inode->is_dir()) {
         /*
          * inode cannot refer to a directory when silly_rename() is called
@@ -1203,6 +1195,12 @@ bool nfs_client::silly_rename(
          * the target of rename.
          */
         assert(rename_triggered_silly_rename);
+
+        /*
+         * Since the inode is getting deleted, invalidate the attribute
+         * cache.
+         */
+        inode->invalidate_attribute_cache();
 
         return false;
     }
@@ -1246,6 +1244,12 @@ bool nfs_client::silly_rename(
              */
             assert(rename_triggered_silly_rename);
         }
+    } else {
+        /*
+         * Since the inode is getting deleted, invalidate the attribute
+         * cache.
+         */
+        inode->invalidate_attribute_cache();
     }
 
     return false;
@@ -1270,17 +1274,15 @@ void nfs_client::rmdir(
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RMDIR);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
-    int lookup_status = -1;
-    struct nfs_inode *inode = nullptr;
-    inode = parent_inode->lookup(name, &lookup_status);
+    struct nfs_inode *inode = parent_inode->lookup(name);
+
+    if (parent_inode->has_dircache()) {
+        parent_inode->get_dircache()->dnlc_remove(name);
+    }
 
     if (inode) {
         // Since we are removing the directory, invalidate its attribute cache.
         inode->invalidate_attribute_cache();
-    }
-
-    if (parent_inode->has_dircache()) {
-        parent_inode->get_dircache()->dnlc_remove(name);
     }
 
     tsk->init_rmdir(req, parent_ino, name);

@@ -771,10 +771,15 @@ public:
 
     /**
      * Marks the attribute cache as expired for the inode.
+     * Any call to attr_cache_expired() after this call MUST return true and
+     * hence caller MUST NOT try to use the saved attribute cache of this inode.
+     * Typically this is called when a file/dir is deleted and we don't want
+     * any subsequent getattr call to return attributes for deleted file/dir.
      */
     void invalidate_attribute_cache()
     {
-        attr_timeout_timestamp = get_current_msecs();
+        // Set it to 0 to force attr_cache_expired() to always return true.
+        attr_timeout_timestamp = 0;
     }
 
     /**
