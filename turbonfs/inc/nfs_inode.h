@@ -770,6 +770,14 @@ public:
     }
 
     /**
+     * Marks the attribute cache as expired for the inode.
+     */
+    void invalidate_attribute_cache()
+    {
+        attr_timeout_timestamp = get_current_msecs();
+    }
+
+    /**
      * Checks whether inode->attr is expired as per the current actimeo.
      */
     bool attr_cache_expired() const

@@ -276,8 +276,8 @@ bool nfs_inode::in_ra_window(uint64_t offset, uint64_t length) const
 
 /**
  * Note: nfs_inode::lookup() method currently has limited usage.
- *       It is only meant to be called from silly_rename() where we know
- *       that kernel must be holding a lock on the to-be-deleted file's
+ *       It is only meant to be called from silly_rename() and rmdir() where
+ *       we know that kernel must be holding a lock on the to-be-deleted file's
  *       inode and hence we can be certain that the corresponding nfs_inode
  *       pointer is accessible. Note that we don't take ref on the nfs_inode
  *       and depend on the kernel holding a use count on the inode.
