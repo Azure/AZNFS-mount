@@ -1,5 +1,7 @@
 #
 # Share details
+# These will ONLY be used if the user runs the binary directly or passes
+# "none" as source in the mount command
 #
 account: sjc22prdste06hnfsv3acc1
 container: nfsv3test

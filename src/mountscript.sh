@@ -154,6 +154,19 @@ parse_arguments()
     done
 }
 
+find_turbo_option()
+{
+    #
+    # Check if turbo flag is passed.
+    #
+    matchstr="(^|,)turbo(,|$)"
+    if [ -z "$MOUNT_OPTIONS" ] || [[ ! "$MOUNT_OPTIONS" =~ $matchstr  ]]; then
+        wecho "Not using turbo mount, performance might be impacted. Example: 'turbo'."
+    else
+        export USING_AZNFSCLIENT=true
+    fi
+}
+
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
 
@@ -165,53 +178,78 @@ AZ_PREFIX=
 
 parse_arguments "$@"
 
-nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
-if [ $? -ne 0 ]; then
-    eecho "$nfs_vers"
-    eecho "Mount failed!"
-    exit 1
-fi
+# The usual mount command looks like:
+# mount -t aznfs -o vers=3,proto=tcp,nconnect=4 account.blob.core.windows.net:/account/container /mnt/aznfs
+# With turbo nfs client user can use any of the following formats, we need to support all of them.
+# 1. mount -t aznfs -o turbo none /mnt/aznfs
+# 2. mount -t aznfs -o turbo,configfile=/home/config.yaml none /mnt/aznfs
+# 3. mount -t aznfs -o turbo account.blob.core.windows.net:/account/container /mnt/aznfs
+# 4. mount -t aznfs -o proto=tcp,nconnect=4,turbo,configfile=/home/config.yaml none /mnt/aznfs
+# 5. mount -t aznfs -o proto=tcp,nconnect=4,turbo,configfile=/home/config.yaml account.blob.core.windows.net:/account/container /mnt/aznfs
+find_turbo_option "$MOUNT_OPTIONS"
 
-if [ "$nfs_vers" == "4.1" ]; then
-    AZ_PREFIX="file"
-elif [ "$nfs_vers" == "3" ]; then
-    AZ_PREFIX="blob"
-else
-    eecho "NFS version is not supported by mount helper: $nfs_vers!"
-    exit 1
-fi
-
-nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
-if [ $? -ne 0 ]; then
-    eecho "$nfs_host"
-    eecho "Mount failed!"
-    exit 1
-fi
-
-# TODO: Comment out below code for devfabric. 'is_valid_fqdn' will fail on devfabric.
-if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
-    eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
-    if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
-        eecho "Must be of the form 'account.$AZ_PREFIX.core.$AZURE_ENDPOINT_OVERRIDE'!"
-    else
-        eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
+if [ ! "$USING_AZNFSCLIENT" ] || [[ "$MOUNT_OPTIONS" == *"vers"*  ]]; then
+    nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
+    if [ $? -ne 0 ]; then
+        eecho "$nfs_vers"
+        eecho "Mount failed!"
+        exit 1
     fi
-    eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint suffix!"
-    exit 1
+
+    if [ "$nfs_vers" == "4.1" ]; then
+        if [ "$USING_AZNFSCLIENT" ]; then
+            eecho "Turbo nfs client does not support NFS version: $nfs_vers!"
+            exit 1
+        fi
+        AZ_PREFIX="file"
+    elif [ "$nfs_vers" == "3" ]; then
+        AZ_PREFIX="blob"
+    else
+        eecho "NFS version is not supported by mount helper: $nfs_vers!"
+        exit 1
+    fi
+elif [ "$USING_AZNFSCLIENT" ]; then
+    # aznfsclient only supports nfsv3.
+    nfs_vers="3"
+    AZ_PREFIX="blob"
 fi
 
-nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
-if [ $? -ne 0 ]; then
-    eecho "$nfs_dir"
-    eecho "Mount failed!"
-    exit 1
-fi
+# Users need to pass share to the mount command however, it is 
+# optional to do so if the turbo flag is being used because the
+# users can provide the share details in the config file too.
+if [ ! "$USING_AZNFSCLIENT" ] || [[ "$1" != "none"  ]]; then
+    nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
+    if [ $? -ne 0 ]; then
+        eecho "$nfs_host"
+        eecho "Mount failed!"
+        exit 1
+    fi
 
-if [ -z "$nfs_dir" ]; then
-    eecho "Bad share name: ${1}!"
-    eecho "Share to be mounted must be of the form 'account.$AZ_PREFIX.core.windows.net:/account/container' for vers=$nfs_vers"
-    eecho "Mount failed!"
-    exit 1
+    # TODO: Comment out below code for devfabric. 'is_valid_fqdn' will fail on devfabric.
+    if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
+        eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
+        if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
+            eecho "Must be of the form 'account.$AZ_PREFIX.core.$AZURE_ENDPOINT_OVERRIDE'!"
+        else
+            eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
+        fi
+        eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint suffix!"
+        exit 1
+    fi
+
+    nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
+    if [ $? -ne 0 ]; then
+        eecho "$nfs_dir"
+        eecho "Mount failed!"
+        exit 1
+    fi
+
+    if [ -z "$nfs_dir" ]; then
+        eecho "Bad share name: ${1}!"
+        eecho "Share to be mounted must be of the form 'account.$AZ_PREFIX.core.windows.net:/account/container' for vers=$nfs_vers"
+        eecho "Mount failed!"
+        exit 1
+    fi
 fi
 
 if [ "$nfs_vers" == "4.1" ]; then

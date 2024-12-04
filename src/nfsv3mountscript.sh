@@ -88,6 +88,27 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 USING_PORT_2047=false
 
 #
+# Holds the config file path for aznfsclient mount. We should have a default config
+# file in OPT_DIR. The user can override this by passing the "configfile=/path/to/file"
+# option.
+#
+CONFIG_FILE_PATH=$OPTDIR/sample-config.yaml
+
+#
+# Holds the path to the aznfsclient binary. This will be used to mount if the user has
+# passed "turbo" option.
+#
+AZNFSCLIENT_BINARY_PATH="/sbin/aznfsclient"
+
+#
+# Holds the parsed args for aznfsclient. If the user has passed options in the mount
+# command, this will have the overridden values and pass these to aznfsclient.
+# This only holds the args string, the value validation has already happened by the time
+# this gets populated.
+#
+AZNFSCLIENT_MOUNT_ARGS=
+
+#
 # Check if any nconnect mount exists for port 2048.
 #
 has_2048_nconnect_mounts()
@@ -119,56 +140,67 @@ check_nconnect()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         value="${BASH_REMATCH[1]}"
         if [ $value -gt 1 ]; then
-            # Load sunrpc module if not already loaded.
-            if [ ! -d /sys/module/sunrpc/ ]; then
-                modprobe sunrpc
-            fi
-
-            #
-            # W/o server side nconnect, we need the azure nconnect support,
-            # turn it on. OTOH, if Server side nconnect is being used turn off
-            # azure nconnect support if enabled.
-            #
-            if [ $USING_PORT_2047 == false ]; then
-                if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
-                    eecho "nconnect option needs NFS client with Azure nconnect support!"
-                    return 1
-                fi
-
-                if has_2047_nconnect_mounts; then
-                    eecho "One or more mounts to port 2047 are using nconnect."
-                    eecho "Cannot mix port 2048 and 2047 nconnect mounts, unmount those and try mounting again!"
-                    return 1
-                fi
-
-                # Supported, enable if not enabled.
-                enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
-                if ! [[ "$enabled" =~ [yY] ]]; then
-                    vvecho "Azure nconnect not enabled, enabling!"
-                    echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
+            if [ $USING_AZNFSCLIENT ]; then
+                #
+                # On the aznfsclient max supported value is 256.
+                # Client patch is also not required.
+                #
+                if [ $value -gt 256 ]; then
+                    pecho "Suboptimal nconnect value $value, forcing nconnect=256!"
+                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=256/g")
                 fi
             else
-                if has_2048_nconnect_mounts; then
-                    eecho "One or more mounts to port 2048 are using nconnect."
-                    eecho "Cannot mix port 2048 and 2047 nconnect mounts, unmount those and try mounting again!"
-                    return 1
+                # Load sunrpc module if not already loaded.
+                if [ ! -d /sys/module/sunrpc/ ]; then
+                    modprobe sunrpc
                 fi
 
-                if [ -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
-                    enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
-                    if [[ "$enabled" =~ [yY] ]]; then
-                        vvecho "Azure nconnect enabled, disabling!"
-                        echo N > /sys/module/sunrpc/parameters/enable_azure_nconnect
+                #
+                # W/o server side nconnect, we need the azure nconnect support,
+                # turn it on. OTOH, if Server side nconnect is being used turn off
+                # azure nconnect support if enabled.
+                #
+                if [ $USING_PORT_2047 == false ]; then
+                    if [ ! -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
+                        eecho "nconnect option needs NFS client with Azure nconnect support!"
+                        return 1
                     fi
-                fi
 
-                #
-                # Higher nconnect values don't work well for server side
-                # nconnect, limit to optimal value 4.
-                #
-                if [ $value -gt 4 ]; then
-                    pecho "Suboptimal nconnect value $value, forcing nconnect=4!"
-                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=4/g")
+                    if has_2047_nconnect_mounts; then
+                        eecho "One or more mounts to port 2047 are using nconnect."
+                        eecho "Cannot mix port 2048 and 2047 nconnect mounts, unmount those and try mounting again!"
+                        return 1
+                    fi
+
+                    # Supported, enable if not enabled.
+                    enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
+                    if ! [[ "$enabled" =~ [yY] ]]; then
+                        vvecho "Azure nconnect not enabled, enabling!"
+                        echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
+                    fi
+                else
+                    if has_2048_nconnect_mounts; then
+                        eecho "One or more mounts to port 2048 are using nconnect."
+                        eecho "Cannot mix port 2048 and 2047 nconnect mounts, unmount those and try mounting again!"
+                        return 1
+                    fi
+
+                    if [ -e /sys/module/sunrpc/parameters/enable_azure_nconnect ]; then
+                        enabled=$(cat /sys/module/sunrpc/parameters/enable_azure_nconnect)
+                        if [[ "$enabled" =~ [yY] ]]; then
+                            vvecho "Azure nconnect enabled, disabling!"
+                            echo N > /sys/module/sunrpc/parameters/enable_azure_nconnect
+                        fi
+                    fi
+
+                    #
+                    # Higher nconnect values don't work well for server side
+                    # nconnect, limit to optimal value 4.
+                    #
+                    if [ $value -gt 4 ]; then
+                        pecho "Suboptimal nconnect value $value, forcing nconnect=4!"
+                        MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=4/g")
+                    fi
                 fi
             fi
         fi
@@ -374,6 +406,33 @@ fix_mount_options()
         value="${BASH_REMATCH[1]}"
         if [ "$value" == "2047" ]; then
             USING_PORT_2047=true
+        fi
+    fi
+    
+    #
+    # configfile is a turbo only option, hence we need to remove it if user is not using
+    # turbo. If the user is using turbo but has not provided a config file the default file
+    # present in OPT_DIR should be used.
+    #
+    config_file_path=
+    matchstr="(^|,)configfile=([^,]+)"
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+            if [ ! $USING_AZNFSCLIENT ]; then
+                wecho "configfile option can only be used with the turbo mount option!"
+                wecho "Removing incorrect option!"
+                MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed -E 's/(^|,)?configfile=[^,]*?//g')
+            else
+                config_file_path="${BASH_REMATCH[2]}"
+            fi
+    fi
+
+    if [ $USING_AZNFSCLIENT ]; then
+        if [ -z "$config_file_path" ] || [ ! -f "$config_file_path" ]; then
+            wecho "Config file is not provided or is invalid: $config_file_path"
+            wecho "Using default config file: $CONFIG_FILE_PATH"
+        else
+            vecho "Using config file: $config_file_path"
+            CONFIG_FILE_PATH=$config_file_path
         fi
     fi
 
@@ -801,9 +860,99 @@ actual_mount()
     return $mount_status
 }
 
+#
+# Parses the MOUNT_OPTIONS string into aznfsclient arguments.
+#
+create_aznfsclient_mount_args()
+{
+    args="--config-file=$CONFIG_FILE_PATH"
+    eecho $nfs_dir
+    eecho $nfs_share
+
+    # Add account, container and cloud_suffix
+    if [ -z "$nfs_dir" ] && [ -z "$nfs_host" ]; then
+        account=$(echo "$nfs_dir" | awk -F'/' '{print $2}')
+        args="$args --account=$account"
+        container=$(echo "$nfs_dir" | awk -F'/' '{print $3}')
+        args="$args --container=$container"
+        cloud_suffix="${nfs_host#*.}"
+        args="$args --cloud-suffix=$cloud_suffix"
+    fi
+
+    # Add nconnect value
+    nconnect=$(echo "$MOUNT_OPTIONS" | grep -o 'nconnect=[^,]*' | cut -d'=' -f2)
+    if [ -n "$nconnect" ]; then
+        args="$args --nconnect=$nconnect"
+    fi
+
+    # Add port value
+    port=$(echo "$MOUNT_OPTIONS" | grep -o 'port=[^,]*' | cut -d'=' -f2)
+    if [ -n "$port" ]; then
+        args="$args --port=$port"
+    fi
+
+    # Finally add the mount point.
+    AZNFSCLIENT_MOUNT_ARGS="$args $mount_point"
+}
+
+#
+# Parses the MOUNT_OPTIONS into aznfsclient args string and calls the 
+# turbo client. The client ensures it always prioritizes the option values
+# provided as part of the mount command instead of the config file.
+#
+aznfsclient_mount()
+{   
+    create_aznfsclient_mount_args
+    $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    return 0
+}
+
 # Check if aznfswatchdog service is running.
 if ! ensure_aznfswatchdog "aznfswatchdog"; then
     exit 1
+fi
+
+#
+# Fix MOUNT_OPTIONS if needed.
+#
+if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
+    fix_mount_options
+fi
+
+#
+# Check azure nconnect flag.
+#
+if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
+    if ! check_nconnect; then
+        eecho "Mount failed!"
+        exit 1
+    fi
+fi
+
+#
+# Fix dirty bytes config if needed.
+#
+if [ "$AZNFS_FIX_DIRTY_BYTES_CONFIG" == "1" ]; then
+    fix_dirty_bytes_config
+fi
+
+#
+# If this is a nfs turbo mount, we simply call the binary. 
+# The mount map magic is not needed here because libfuse will handle
+# IP changes. Hence, we form the args string, call the binary and exit.
+#
+if [ $USING_AZNFSCLIENT ]; then
+    aznfsclient_mount
+    if [ $? -ne 0 ]; then
+        eecho "Aznfsclient mount failed!"
+        exit 1
+    fi
+
+    exit 0 # Nothing in this script will run after this point.
 fi
 
 # MOUNTMAPv3 file must have been created by aznfswatchdog service.
@@ -833,31 +982,6 @@ if [ $status -ne 0 ]; then
         exit 1
     fi
 fi
-
-#
-# Fix MOUNT_OPTIONS if needed.
-#
-if [ "$AZNFS_FIX_MOUNT_OPTIONS" == "1" ]; then
-    fix_mount_options
-fi
-
-#
-# Check azure nconnect flag.
-#
-if [ "$AZNFS_CHECK_AZURE_NCONNECT" == "1" ]; then
-    if ! check_nconnect; then
-        eecho "Mount failed!"
-        exit 1
-    fi
-fi
-
-#
-# Fix dirty bytes config if needed.
-#
-if [ "$AZNFS_FIX_DIRTY_BYTES_CONFIG" == "1" ]; then
-    fix_dirty_bytes_config
-fi
-
 
 #
 # Get proxy IP to use for this nfs_ip.
