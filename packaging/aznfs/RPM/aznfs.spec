@@ -4,11 +4,8 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-%if 0%{?mariner}
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, build-essential, binutils, kernel-headers, openssl, openssl-devel
-%else
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
-%endif
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc
+Recommends: build-essential, make
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
@@ -36,57 +33,55 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-if grep -qi "mariner" /etc/os-release; then
-	# Check if stunnel is not already installed.
-	if ! command -v stunnel > /dev/null; then
-		# Install stunnel from source on Mariner.
-		wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
-		if [ $? -ne 0 ]; then
-			echo "Failed to download stunnel source code. Please install stunnel and try again."
-			exit 1
-		fi
+# Check if stunnel is not already installed.
+if ! command -v stunnel > /dev/null; then
+	# Install stunnel from source.
+	wget https://www.stunnel.org/downloads/stunnel-5.73.tar.gz -P /tmp
+	if [ $? -ne 0 ]; then
+		echo "Failed to download stunnel source code. Please install stunnel and try again."
+		exit 1
+	fi
 
-		tar -xvf /tmp/stunnel-latest.tar.gz -C /tmp
-		if [ $? -ne 0 ]; then
-			echo "Failed to extract stunnel tarball. Please install stunnel and try again."
-			cd -
-			rm -f /tmp/stunnel-latest.tar.gz
-			exit 1
-		fi
+	tar -xvf /tmp/stunnel-5.73.tar.gz -C /tmp
+	if [ $? -ne 0 ]; then
+		echo "Failed to extract stunnel tarball. Please install stunnel and try again."
+		cd -
+		rm -f /tmp/stunnel-5.73.tar.gz
+		exit 1
+	fi
 
-		stunnel_dir=$(tar -tf /tmp/stunnel-latest.tar.gz | head -n 1 | cut -f1 -d'/')
+	stunnel_dir=$(tar -tf /tmp/stunnel-5.73.tar.gz | head -n 1 | cut -f1 -d'/')
 
-		cd /tmp/$stunnel_dir
-		./configure
-		if [ $? -ne 0 ]; then
-			echo "Failed to configure the build. Please install stunnel and try again."
-			cd -
-			rm -rf /tmp/$stunnel_dir
-			rm -f /tmp/stunnel-latest.tar.gz
-			exit 1
-		fi
-
-		make
-		if [ $? -ne 0 ]; then
-			echo "Failed to build stunnel. Please install stunnel and try again."
-			cd -
-			rm -rf /tmp/$stunnel_dir
-			rm -f /tmp/stunnel-latest.tar.gz
-			exit 1
-		fi
-
-		make install
-		if [ $? -ne 0 ]; then
-			echo "Failed to install stunnel. Please install stunnel and try again."
-			cd -
-			rm -rf /tmp/$stunnel_dir
-			rm -f /tmp/stunnel-latest.tar.gz
-			exit 1
-		fi
+	cd /tmp/$stunnel_dir
+	./configure
+	if [ $? -ne 0 ]; then
+		echo "Failed to configure the build. Please install stunnel and try again."
 		cd -
 		rm -rf /tmp/$stunnel_dir
-		rm -f /tmp/stunnel-latest.tar.gz
+		rm -f /tmp/stunnel-5.73.tar.gz
+		exit 1
 	fi
+
+	make
+	if [ $? -ne 0 ]; then
+		echo "Failed to build stunnel. Please install stunnel and try again."
+		cd -
+		rm -rf /tmp/$stunnel_dir
+		rm -f /tmp/stunnel-5.73.tar.gz
+		exit 1
+	fi
+
+	make install
+	if [ $? -ne 0 ]; then
+		echo "Failed to install stunnel. Please install stunnel and try again."
+		cd -
+		rm -rf /tmp/$stunnel_dir
+		rm -f /tmp/stunnel-5.73.tar.gz
+		exit 1
+	fi
+	cd -
+	rm -rf /tmp/$stunnel_dir
+	rm -f /tmp/stunnel-5.73.tar.gz
 fi
 
 flag_file="/tmp/.update_in_progress_from_watchdog.flag"
@@ -225,6 +220,9 @@ fi
 #
 if [ ! -f "$FLAG_FILE" ]; then
         user_consent_for_auto_update
+
+		# Wanted by watchdog service
+		systemctl enable nfs-client.target
 
         # Start watchdog service for NFSv3
         systemctl daemon-reload
