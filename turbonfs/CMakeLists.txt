@@ -15,7 +15,7 @@ option(ENABLE_TESTS "Build and run test programs" OFF)
 option(ENABLE_NO_FUSE "Build nofuse shared library" OFF)
 option(ENABLE_DOCUMENTATION "Build Documentation" OFF)
 option(ENABLE_PARANOID "Enable paranoid checking in the code" ON)
-option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" ON)
+option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" OFF)
 option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
 
