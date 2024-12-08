@@ -237,6 +237,7 @@ do { \
     DUMP_OP(FUSE_READDIRPLUS);
     DUMP_OP(FUSE_READ);
     DUMP_OP(FUSE_WRITE);
+    DUMP_OP(FUSE_FLUSH);
 
     /*
      * TODO: Add more ops.

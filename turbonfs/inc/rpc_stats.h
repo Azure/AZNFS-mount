@@ -89,13 +89,8 @@ public:
 
         /*
          * FUSE_RELEASE is sent as FUSE_FLUSH.
-         * Also, FUSE_FLUSH is accounted as FUSE_WRITE as both result in WRITE
-         * RPCs.
          */
         assert(_optype != FUSE_RELEASE);
-        if (_optype == FUSE_FLUSH) {
-            _optype = FUSE_WRITE;
-        }
 
         optype = _optype;
         stamp.start = start_usec;
@@ -231,6 +226,7 @@ public:
                    optype == FUSE_READDIRPLUS ||
                    optype == FUSE_READ ||
                    optype == FUSE_WRITE ||
+                   optype == FUSE_FLUSH ||
                    optype == FUSE_GETATTR ||
                    optype == FUSE_LOOKUP ||
                    optype == FUSE_SETATTR);
