@@ -198,6 +198,15 @@ uint32_t calculate_crc32(const struct nfs_fh3& fh)
 }
 
 /**
+ * cookieverf3 -> uint64, conversion.
+ */
+static inline
+uint64_t cv2i(const cookieverf3& cookieverf)
+{
+    return *(uint64_t *)&cookieverf;
+}
+
+/**
  * Inject error with given probability percentage.
  * f.e., pct_prob=0.1 would cause inject_error() to return true for 0.1% of
  * the calls, i.e., 1 in 1000.

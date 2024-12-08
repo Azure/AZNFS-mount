@@ -356,8 +356,16 @@ public:
 
     /**
      * add() will add entry to dir_entries after bumping the shared_ptr ref.
+     * When called from readdir_callback()/readdirplus_callback(), cookieverf
+     * received is also passed. add() then atomically addds the directory_entry
+     * as well as updates the cookieverf stored in the readdirectory_cache.
+     * It's important to atomically update cookie and cookieverf in the
+     * readdirectory_cache since anyone looking up the cache and finding a
+     * cookie may use the cookieverf to query subsequent entries from the
+     * server.
      */
     bool add(const std::shared_ptr<struct directory_entry>& entry,
+             const cookieverf3 *cookieverf,
              bool acquire_lock = true);
     void dnlc_add(const char *filename, struct nfs_inode *inode);
 
@@ -384,13 +392,25 @@ public:
         return seq_last_cookie;
     }
 
-    void set_cookieverf(const cookieverf3* cokieverf)
+    void set_cookieverf_nolock(const cookieverf3 *cookieverf)
     {
-        assert(cokieverf != nullptr);
+        assert(cookieverf != nullptr);
+#ifndef ENABLE_NON_AZURE_NFS
+        /*
+         * We store the cookieverf returned by the server in response to
+         * READDIR{PLUS} RPC. Blob NFS server should not return 0 as cookieverf.
+         */
+        assert(cv2i(*cookieverf) != 0);
+#endif
+        ::memcpy(&cookie_verifier, cookieverf, sizeof(cookie_verifier));
+    }
 
-        // TODO: Can this be made atomic? Get exclusive lock to update the cookie verifier.
+    void set_cookieverf(const cookieverf3 *cookieverf)
+    {
+        assert(cookieverf != nullptr);
+
         std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
-        ::memcpy(&cookie_verifier, cokieverf, sizeof(cookie_verifier));
+        set_cookieverf_nolock(cookieverf);
     }
 
     void set_eof(uint64_t eof_cookie);

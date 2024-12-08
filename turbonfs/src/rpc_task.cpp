@@ -3581,6 +3581,25 @@ static void readdir_callback(
 
     if (status == 0) {
         /*
+         * If we send a cookieverf other than 0, then if server returns a
+         * success response it means that cookie+cookieverf passed by us was
+         * valid. In that case it MUST return the same cookieverf in the
+         * response, else it should fail with NFS3ERR_BAD_COOKIE error.
+         */
+        if (task->rpc_api->readdir_task.get_cookieverf() != 0) {
+            if (cv2i(res->READDIR3res_u.resok.cookieverf) !=
+                task->rpc_api->readdir_task.get_cookieverf()) {
+                AZLogWarn("[{}][SERVER BUG] readdir_callback: Successful "
+                          "READDIR response carried different cookieverf than "
+                          "request (0x{:x} -> 0x{:x})",
+                          dir_ino,
+                          task->rpc_api->readdir_task.get_cookieverf(),
+                          cv2i(res->READDIR3res_u.resok.cookieverf));
+                assert(0);
+            }
+        }
+
+        /*
          * Update attributes of parent directory returned in postop
          * attributes. If directory mtime has changed since the last time it'll
          * invalidate the cache.
@@ -3666,7 +3685,10 @@ static void readdir_callback(
                                             entry->fileid);
 
             // Add to readdirectory_cache for future use.
-            [[maybe_unused]] const bool added = dircache_handle->add(dir_entry);
+            [[maybe_unused]]
+            const bool added = dircache_handle->add(
+                                    dir_entry,
+                                    &res->READDIR3res_u.resok.cookieverf);
 
 #ifdef ENABLE_PARANOID
             if (added) {
@@ -3744,7 +3766,6 @@ static void readdir_callback(
                    num_dirents, readdirentries.size(), eof, eof_cookie);
 
         assert(readdirentries.size() <= (size_t) num_dirents);
-        dircache_handle->set_cookieverf(&res->READDIR3res_u.resok.cookieverf);
 
         if (eof) {
             assert((eof_cookie != -1) || (readdirentries.size() == 0));
@@ -3969,6 +3990,25 @@ static void readdirplus_callback(
 
     if (status == 0) {
         /*
+         * If we send a cookieverf other than 0, then if server returns a
+         * success response it means that cookie+cookieverf passed by us was
+         * valid. In that case it MUST return the same cookieverf in the
+         * response, else it should fail with NFS3ERR_BAD_COOKIE error.
+         */
+        if (task->rpc_api->readdir_task.get_cookieverf() != 0) {
+            if (cv2i(res->READDIRPLUS3res_u.resok.cookieverf) !=
+                task->rpc_api->readdir_task.get_cookieverf()) {
+                AZLogWarn("[{}][SERVER BUG] readdirplus_callback: Successful "
+                          "READDIRPLUS response carried different cookieverf "
+                          "than request (0x{:x} -> 0x{:x})",
+                          dir_ino,
+                          task->rpc_api->readdir_task.get_cookieverf(),
+                          cv2i(res->READDIRPLUS3res_u.resok.cookieverf));
+                assert(0);
+            }
+        }
+
+        /*
          * Update attributes of parent directory returned in postop
          * attributes. If directory mtime has changed since the last time it'll
          * invalidate the cache.
@@ -4113,7 +4153,10 @@ static void readdirplus_callback(
             assert(nfs_inode->dircachecnt >= 1);
 
             // Add to readdirectory_cache for future use.
-            [[maybe_unused]] const bool added = dircache_handle->add(dir_entry);
+            [[maybe_unused]]
+            const bool added = dircache_handle->add(
+                                    dir_entry,
+                                    &res->READDIRPLUS3res_u.resok.cookieverf);
 
 #ifdef ENABLE_PARANOID
             if (added) {
@@ -4211,7 +4254,6 @@ static void readdirplus_callback(
                    num_dirents, readdirentries.size(), eof, eof_cookie);
 
         assert(readdirentries.size() <= (size_t) num_dirents);
-        dircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
         if (eof) {
             assert((eof_cookie != -1) || (readdirentries.size() == 0));
@@ -4422,6 +4464,13 @@ void rpc_task::fetch_readdir_entries_from_server()
                      sizeof(args.cookieverf));
         }
 
+        /*
+         * Note cookieverf that was sent with this READDIR RPC.
+         * We use this to assert in readdir_callback() that server returns
+         * the same cookieverf back if we sent a non-zero cookieverf.
+         */
+        rpc_api->readdir_task.set_cookieverf(args.cookieverf);
+
         args.count = nfs_get_readdir_maxcount(get_nfs_context());
 
         /*
@@ -4475,6 +4524,13 @@ void rpc_task::fetch_readdirplus_entries_from_server()
                      dir_inode->get_dircache()->get_cookieverf(),
                      sizeof(args.cookieverf));
         }
+
+        /*
+         * Note cookieverf that was sent with this READDIRPLUS RPC.
+         * We use this to assert in readdirplus_callback() that server returns
+         * the same cookieverf back if we sent a non-zero cookieverf.
+         */
+        rpc_api->readdir_task.set_cookieverf(args.cookieverf);
 
         /*
          * Use dircount/maxcount according to the user configured and

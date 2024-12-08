@@ -1293,6 +1293,21 @@ public:
         }
     }
 
+    /**
+     * Unlike other set methods, this should not be called from
+     * init_readdir{plus}(), but must be called from
+     * fetch_readdir{plus}_entries_from_server() when we are about to send
+     * READDIR{PLUS} RPC to the server and we have the correct cookieverf
+     * value being sent to the server.
+     * readdir{plus}_callback() will then look this up and assert that server
+     * sent the same cookieverf in the response as we sent in the request,
+     * unless request was a fresh one carrying cookieverf=0.
+     */
+    void set_cookieverf(const cookieverf3& cookieverf)
+    {
+        ::memcpy(&cookie_verifier, &cookieverf, sizeof(cookie_verifier));
+    }
+
     fuse_ino_t get_ino() const
     {
         return inode;
@@ -1318,6 +1333,15 @@ public:
         return file_ptr;
     }
 
+    /**
+     * We return the cookieverf converted to uint64_t as caller mostly wants
+     * to compare this as an integer.
+     */
+    uint64_t get_cookieverf() const
+    {
+        return cv2i(cookie_verifier);
+    }
+
 private:
     // Inode of the directory.
     fuse_ino_t inode;
@@ -1338,6 +1362,7 @@ private:
     // File info passed by the fuse layer.
     fuse_file_info file;
     fuse_file_info* file_ptr;
+    cookieverf3 cookie_verifier;
 };
 
 struct read_rpc_task

@@ -157,6 +157,7 @@ void readdirectory_cache::set_eof(uint64_t eof_cookie)
 }
 
 bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& entry,
+                              const cookieverf3 *cookieverf,
                               bool acquire_lock)
 {
     assert(entry != nullptr);
@@ -229,6 +230,16 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
                    entry->nfs_inode ? entry->nfs_inode->lookupcnt.load() : -1);
 
         const auto it = dir_entries.emplace(entry->cookie, entry);
+
+        /*
+         * Now atomically update readdirectory_cache's cookieverf, so that any
+         * caller that looks up the readdirectory_cache and finds the directory
+         * entry we stored above, also finds a valid cookieverf in case they
+         * want to query subsequent entries from the server.
+         */
+        if (cookieverf) {
+            set_cookieverf_nolock(cookieverf);
+        }
 
         /*
          * Caller only calls us after ensuring cookie isn't already cached,
@@ -375,9 +386,14 @@ void readdirectory_cache::dnlc_add(const char *filename,
      *       in the meantime and the following add() will then not add.
      *       This is ok, as in either case we end up having an entry for the
      *       cookie.
+     *
+     * We pass cookieverf as nullptr as we don't have a cookieverf to add
+     * corresponding to this newly added entry. This is either added as a dnlc
+     * entry (in which case we don't need a cookieverf) or it's re-adding an
+     * existing entry (in which case correct cookieverf must already be set).
      */
     assert(inode->dircachecnt >= 1);
-    add(dir_entry);
+    add(dir_entry, nullptr /* cookieverf */);
 
     /*
      * Whether we are able to add the dnlc entry or not, the directory in the
