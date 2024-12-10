@@ -430,10 +430,13 @@ public:
 
 #ifndef ENABLE_NON_AZURE_NFS
         /*
-         * Blob NFS uses 1:1 mappign betweek cookie and files, so the
-         * following sanity assert should be good to catch any bugs.
+         * Blob NFS uses 1:1 mapping between cookie and files, so the
+         * cookie value issued by Blob NFS can be safely assumed to be less
+         * than UINT32_MAX, as we won't have 4B entries in a directory.
+         * For entries added by lookup, readdirectory_cache::dnlc_add() uses
+         * cookie value counting up from UINT64_MAX>>1.
          */
-        assert(cookie < UINT32_MAX);
+        assert((cookie < UINT32_MAX) || (cookie >= (UINT64_MAX >> 1)));
 #endif
 
         return cookie;
