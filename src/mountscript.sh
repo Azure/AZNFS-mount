@@ -167,9 +167,14 @@ check_nconnect()
                 # Check if AZNFS_MAX_NCONNECT is defined, numeric, and within the allowed range.
                 if [[ "$AZNFS_MAX_NCONNECT" =~ ^[0-9]+$ && "$AZNFS_MAX_NCONNECT" != "16" ]]; then
 
-                    # Validate if the value is in the valid range [1, 16].
                     if [[ "$AZNFS_MAX_NCONNECT" -lt 1 || "$AZNFS_MAX_NCONNECT" -gt 16 ]]; then
-                        pecho "[ERROR] Incorrect value $AZNFS_MAX_NCONNECT for the environment variable AZNFS_MAX_NCONNECT."
+                        eecho "[ERROR] Incorrect value $AZNFS_MAX_NCONNECT for the environment variable AZNFS_MAX_NCONNECT"
+                        exit 1
+                    fi
+
+                    # We reach here only if nconnect matches the regex 'matchstr="\<nconnect\>=([0-9]+)"'
+                    if [[ "$value" -lt 1 || "$value" -gt 16 ]]; then
+                        eecho "[ERROR] nconnect value must be provided between 1 and $AZNFS_MAX_NCONNECT"
                         exit 1
                     fi
 
