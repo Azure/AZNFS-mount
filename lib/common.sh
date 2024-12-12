@@ -22,6 +22,24 @@ MOUNTMAPv3="${OPTDIRDATA}/mountmap"
 #
 MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 
+#
+# This stores the map of local IP and share name an external file endpoint IP.
+#
+MOUNTMAPv4NONTLS="${OPTDIRDATA}/mountmapv4nontls"
+MOUNTMAPFILE=""
+
+#
+# Point to the correct MOUNTMAP file depending on if it's v3 or v4
+# to refactor V3 code for V4
+# MOUNTMAPFILE will be set during common.sh v3 or v4 mountscript.
+# We will share ensure_mountmapv3_not_exist(), update_mountmapv3_entry(), ensure_mountmapv3_exist(), ensure_mountmapv3_exist_nolock()
+# 
+if [ "$AZNFS_VERSION" -eq 3 ]; then
+    MOUNTMAPFILE=$MOUNTMAPv3
+elif [ "$AZNFS_VERSION" -eq 4 ]; then
+    MOUNTMAPFILE=$MOUNTMAPv4NONTLS
+fi
+
 RED="\e[2;31m"
 GREEN="\e[2;32m"
 YELLOW="\e[2;33m"
@@ -345,17 +363,17 @@ is_private_ip()
 #
 touch_mountmapv3()
 {
-    chattr -f -i $MOUNTMAPv3
-    touch $MOUNTMAPv3
+    chattr -f -i $MOUNTMAPFILE
+    touch $MOUNTMAPFILE
     if [ $? -ne 0 ]; then
-        chattr -f +i $MOUNTMAPv3
-        eecho "Failed to touch ${MOUNTMAPv3}!"
+        chattr -f +i $MOUNTMAPFILE
+        eecho "Failed to touch ${MOUNTMAPFILE}!"
         return 1
     fi
-    chattr -f +i $MOUNTMAPv3
+    chattr -f +i $MOUNTMAPFILE
 }
 
-# Create mount map file
+# Create mount map file MOUNTMAPv3 or MOUNTMAPv4
 create_mountmap_file()
 {
     local mountmap_filename=MOUNTMAPv$AZNFS_VERSION
@@ -368,6 +386,21 @@ create_mountmap_file()
         chattr -f +i ${!mountmap_filename}
     fi
 }
+
+# Create mountmap file MOUNTMAPv4NONTLS
+create_mountmap_file_nontlsv4()
+{
+    local mountmap_filename_nontls=MOUNTMAPv4NONTLS
+    if [ ! -f ${!mountmap_filename_nontls} ]; then
+        touch ${!mountmap_filename_nontls}
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${!mountmap_filename_nontls}'!"
+            return 1
+        fi
+        chattr -f +i ${!mountmap_filename_nontls}
+    fi
+}
+
 
 #
 # MOUNTMAPv3 is accessed by both mount.aznfs and aznfswatchdog service. Update it
@@ -386,18 +419,18 @@ ensure_mountmapv3_exist_nolock()
         return 1
     fi
 
-    egrep -q "^${1}$" $MOUNTMAPv3
+    egrep -q "^${1}$" $MOUNTMAPFILE
     if [ $? -ne 0 ]; then
-        chattr -f -i $MOUNTMAPv3
-        echo "$1" >> $MOUNTMAPv3
+        chattr -f -i $MOUNTMAPFILE
+        echo "$1" >> $MOUNTMAPFILE
         if [ $? -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
+            chattr -f +i $MOUNTMAPFILE
             eecho "[$1] failed to add to ${MOUNTMAPv3}!"
             # Could not add MOUNTMAPv3 entry, delete the DNAT rule added above.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip
             return 1
         fi
-        chattr -f +i $MOUNTMAPv3
+        chattr -f +i $MOUNTMAPFILE
     else
         pecho "[$1] already exists in ${MOUNTMAPv3}."
     fi
@@ -409,7 +442,7 @@ ensure_mountmapv3_exist()
         flock -e 999
         ensure_mountmapv3_exist_nolock "$1"
         return $?
-    ) 999<$MOUNTMAPv3
+    ) 999<$MOUNTMAPFILE
 }
 
 #
@@ -426,7 +459,7 @@ ensure_mountmapv3_not_exist()
         #
         local ifmatch="$2"
         if [ -n "$ifmatch" ]; then
-            local mtime=$(stat -c%Y $MOUNTMAPv3)
+            local mtime=$(stat -c%Y $MOUNTMAPFILE)
             if [ "$mtime" != "$ifmatch" ]; then
                 eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as $mtime != $ifmatch!"
                 return 1
@@ -442,13 +475,13 @@ ensure_mountmapv3_not_exist()
             fi
         fi
 
-        chattr -f -i $MOUNTMAPv3
+        chattr -f -i $MOUNTMAPFILE
         #
         # We do this thing instead of inplace update by sed as that has a
         # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
         # any locking that we dependent on the old file.
         #
-        out=$(sed "\%^${1}$%d" $MOUNTMAPv3)
+        out=$(sed "\%^${1}$%d" $MOUNTMAPFILE)
         ret=$?
         if [ $ret -eq 0 ]; then
             #
@@ -456,7 +489,7 @@ ensure_mountmapv3_not_exist()
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAPv3
+            echo "$out" > $MOUNTMAPFILE
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
@@ -465,17 +498,17 @@ ensure_mountmapv3_not_exist()
         fi
 
         if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
+            chattr -f +i $MOUNTMAPFILE
             eecho "[$1] failed to remove from ${MOUNTMAPv3}!"
             # Reinstate DNAT rule deleted above.
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
         fi
-        chattr -f +i $MOUNTMAPv3
+        chattr -f +i $MOUNTMAPFILE
 
         # Return the mtime after our mods.
-        echo $(stat -c%Y $MOUNTMAPv3)
-    ) 999<$MOUNTMAPv3
+        echo $(stat -c%Y $MOUNTMAPFILE)
+    ) 999<$MOUNTMAPFILE
 }
 
 #
@@ -512,13 +545,13 @@ update_mountmapv3_entry()
             fi
         fi
 
-        chattr -f -i $MOUNTMAPv3
+        chattr -f -i $MOUNTMAPFILE
         #
         # We do this thing instead of inplace update by sed as that has a
         # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
         # any locking that we dependent on the old file.
         #
-        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAPv3)
+        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAPFILE)
         ret=$?
         if [ $ret -eq 0 ]; then
             #
@@ -526,7 +559,7 @@ update_mountmapv3_entry()
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAPv3
+            echo "$out" > $MOUNTMAPFILE
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
@@ -535,15 +568,15 @@ update_mountmapv3_entry()
         fi
 
         if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
-            eecho "[$old -> $new] failed to update ${MOUNTMAPv3}!"
+            chattr -f +i $MOUNTMAPFILE
+            eecho "[$old -> $new] failed to update ${MOUNTMAPv3}!" #daniewo
             # Roll back.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
             ensure_iptable_entry $l_ip $l_nfsip_old
             return 1
         fi
-        chattr -f +i $MOUNTMAPv3
-    ) 999<$MOUNTMAPv3
+        chattr -f +i $MOUNTMAPFILE
+    ) 999<$MOUNTMAPFILE
 }
 
 #
@@ -702,6 +735,12 @@ fi
 
 # Create mount map file
 if ! create_mountmap_file; then
+    exit 1
+fi
+
+# Create mount map file nontls v4
+
+if ! create_mountmap_file_nontlsv4; then
     exit 1
 fi
 
