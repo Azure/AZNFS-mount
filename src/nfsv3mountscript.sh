@@ -543,7 +543,8 @@ octets_in_ipv4_prefix()
     echo 0
 }
 
-search_free_local_ip_with_prefix()
+#daniewo also move this to common.sh
+search_free_local_ip_with_prefix() 
 {
     initial_ip_prefix=$1
     num_octets=$(octets_in_ipv4_prefix $ip_prefix)
@@ -700,6 +701,7 @@ search_free_local_ip_with_prefix()
 #
 # Get a local IP that is free to use. Set global variable LOCAL_IP if found.
 #
+# also move this to common
 get_free_local_ip()
 {
     for ip_prefix in $IP_PREFIXES; do
