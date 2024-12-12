@@ -17,6 +17,7 @@ nfs_dir=$4
 mount_point=$5
 
 STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
+STUNNELLOGDIR="$STUNNELDIR/logs"
 NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 DEBUG_LEVEL="info"
@@ -198,7 +199,7 @@ add_stunnel_configuration()
         return 1
     fi
 
-    stunnel_log_file="$STUNNELDIR/logs/stunnel_$storageaccount_ip.log"
+    stunnel_log_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.log"
     echo "output = $stunnel_log_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -206,7 +207,7 @@ add_stunnel_configuration()
         return 1
     fi
 
-    stunnel_pid_file="$STUNNELDIR/logs/stunnel_$storageaccount_ip.pid"
+    stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
     echo "pid = $stunnel_pid_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -367,13 +368,32 @@ tls_nfsv4_files_share_mount()
             # but not the stunnel_conf_file. In this case, we should also remove the stunnel_conf_file and create a new one.
             vecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
             accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
-            stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f4`
-            pid=$(cat $stunnel_pid_file)
-            vecho "killing stunnel process with pid: $pid on port: $accept_port"
-            kill -9 $pid
-            if [ $? -ne 0 ]; then
-                vecho "Unable to kill stunnel process $pid!"
+            stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
+            stunnel_log_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.log"
+
+            if [ -f $stunnel_pid_file ]; then
+                pid=$(cat $stunnel_pid_file)
+                vecho "killing stunnel process with pid: $pid on port: $accept_port"
+                kill -9 $pid
+                if [ $? -ne 0 ]; then
+                    vecho "Unable to kill stunnel process $pid!"
+                fi
+                rm $stunnel_pid_file
+            else
+                vecho "stunnel pid file does not exist for $storageaccount_ip."
+                # If there is a stunnel process running on the port, kill it since the mountmap entry doesn't exist.
+                pid=$($NETSTATCOMMAND -tuapn | grep "$LOCALHOST:$accept_port" | awk '{print $7}' | cut -d/ -f1)
+                vecho "killing stunnel process with pid:: $pid on port: $accept_port"
+                kill -9 $pid
+                if [ $? -ne 0 ]; then
+                    vecho "Unable to kill stunnel process with pid $pid!"
+                fi
             fi
+
+            if [ -f $stunnel_log_file ]; then
+                rm $stunnel_log_file
+            fi
+
             chattr -i -f $stunnel_conf_file
             rm $stunnel_conf_file
             EntryExistinMountMap="false"
@@ -611,7 +631,12 @@ if ! ensure_aznfswatchdog "aznfswatchdogv4"; then
 fi
 
 # Mount helper creates a stunnel process per storage account IP address.
-storageaccount_ip=$(getent hosts "$nfs_host" | awk '{print $1}')
+storageaccount_ip=$(getent hosts "$nfs_host" | awk 'NR==1 {print $1}')
+
+if [ -z "$storageaccount_ip" ]; then
+    eecho "Failed to resolve the IP address for $nfs_host!"
+    exit 1
+fi
 
 vecho "nfs_host=[$nfs_host], nfs_host_ip=[$storageaccount_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 

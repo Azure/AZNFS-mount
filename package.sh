@@ -181,7 +181,6 @@ dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 
 generate_rpm_package rpm
 generate_rpm_package suse
-generate_rpm_package stunnel
 
 ##########################################
 # Generating Tarball for amd64 and arm64 #
