@@ -34,11 +34,7 @@ MOUNTMAPFILE=""
 # MOUNTMAPFILE will be set during common.sh v3 or v4 mountscript.
 # We will share ensure_mountmapv3_not_exist(), update_mountmapv3_entry(), ensure_mountmapv3_exist(), ensure_mountmapv3_exist_nolock()
 # 
-if [ "$AZNFS_VERSION" -eq 3 ]; then
-    MOUNTMAPFILE=$MOUNTMAPv3
-elif [ "$AZNFS_VERSION" -eq 4 ]; then
-    MOUNTMAPFILE=$MOUNTMAPv4NONTLS
-fi
+
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -56,6 +52,12 @@ elif [ "$AZNFS_VERSION" == "unknown" ]; then
     prefix=""
 else
     prefix="[v${AZNFS_VERSION}] "
+fi
+
+if [ "$AZNFS_VERSION" = "3" ]; then
+    MOUNTMAPFILE=$MOUNTMAPv3
+elif [ "$AZNFS_VERSION" = "4" ]; then
+    MOUNTMAPFILE=$MOUNTMAPv4NONTLS
 fi
 
 # Are we running inside the AKS?
