@@ -237,6 +237,43 @@ add_stunnel_configuration()
 }
 
 #
+# For the given AZNFS endpoint FQDN return a local IP that should proxy it.
+# If there is at least one mount to the same FQDN it MUST return the local IP
+# used for that, else assign a new free local IP.
+#
+get_local_ip_for_fqdn()
+{
+        local fqdn=$1
+        local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv4NONTLS) #change this to mountmapv4nontls
+        # One local ip per fqdn, so return existing one if already present.
+        IFS=" " read _ local_ip _ <<< "$mountmap_entry"
+
+        if [ -n "$local_ip" ]; then
+            LOCAL_IP=$local_ip
+
+            #
+            # Ask aznfswatchdog to stay away while we are using this proxy IP.
+            # This is similar to holding a timed lease, we can safely use this
+            # proxy IP w/o worrying about aznfswatchdog deleting it for 5 minutes.
+            #
+            touch_mountmapv4_nontls 
+
+            #
+            # This is not really needed since iptable entry must also be present,
+            # but it's always better to ensure MOUNTMAPv3 and iptable entries are
+            # in sync.
+            #
+            ensure_iptable_entry $local_ip $nfs_ip
+            return 0
+        fi
+
+        #
+        # First mount of an account on this client.
+        #
+        get_free_local_ip
+}
+
+#
 # Mount nfsv4 files share with TLS encryption.
 #
 tls_nfsv4_files_share_mount()
@@ -368,7 +405,8 @@ tls_nfsv4_files_share_mount()
         available_port=$(cat $stunnel_conf_file | grep accept | cut -d: -f2)
         vecho "Local Port to use: $available_port"
     fi
-
+    
+    #daniewo mount 
     mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS,port=$available_port" "${LOCALHOST}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
 
@@ -382,6 +420,8 @@ tls_nfsv4_files_share_mount()
         exit 1
     fi
 }
+
+#daniewo ----calls start here------
 
 # Check if aznfswatchdogv4 service is running.
 if ! ensure_aznfswatchdog "aznfswatchdogv4"; then
@@ -428,9 +468,14 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
     fi
 
-    # Do the actual mount.
+    # Do the actual mount. daniewo nontls mount
+    # get_local_ip_for_fqdn add this,  this will create a local IP that should proxy it. 
+    # here is also some logic that returns the local_ip for the mount
     mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
+    #call to add file to mountmap
+    # Add to new file and use the ensure methods so that we don't have any extra lines
+    # Add FQDN proxy IP and Destination IP, does it use proxyip here? nfs_host is the IP?
 
     if [ -n "$mount_output" ]; then
         pecho "$mount_output"

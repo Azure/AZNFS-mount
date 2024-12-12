@@ -410,6 +410,7 @@ check_account_count()
 # since the mountmap entry was created (could be due to migration or more likely due to RAs roundrobin DNS). 
 # In any case this will be properly handled by aznfswatchdog next time it checks for IP change for this fqdn.
 #
+#can check for different ip here
 resolve_ipv4_with_preference_to_mountmapv3()
 {
     local fqdn=$1
@@ -734,7 +735,7 @@ get_free_local_ip()
 get_local_ip_for_fqdn()
 {
         local fqdn=$1
-        local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv3)
+        local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv3) #change this to mountmapv4nontls
         # One local ip per fqdn, so return existing one if already present.
         IFS=" " read _ local_ip _ <<< "$mountmap_entry"
 

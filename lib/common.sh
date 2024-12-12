@@ -371,6 +371,27 @@ touch_mountmapv3()
     chattr -f +i $MOUNTMAPFILE
 }
 
+#
+# Mount helper must call this function to grab a timed lease on all MOUNTMAPv3
+# entries. It should do this if it decides to use any of the entries. Once
+# this is called aznfswatchdog is guaranteed to not delete any MOUNTMAPv3 till
+# the next 5 minutes.
+#
+# Must be called with MOUNTMAPv3 lock held.
+#
+touch_mountmapv4_nontls()
+{
+    chattr -f -i $MOUNTMAPFILE
+    touch $MOUNTMAPFILE
+    if [ $? -ne 0 ]; then
+        chattr -f +i $MOUNTMAPFILE
+        eecho "Failed to touch ${MOUNTMAPv4NONTLS}!"
+        return 1
+    fi
+    chattr -f +i $MOUNTMAPFILE
+}
+
+
 # Create mount map file
 create_mountmap_file()
 {
@@ -713,7 +734,7 @@ verify_iptable_entry()
         fi
     fi
 }
-# ----- daniewo code starts here for loading aznfs common helpers --------
+# ----- daniewo code starts here for loading aznfs common helpers -------- called from mountscript.sh
 # On some distros mount program doesn't pass correct PATH variable.
 export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -736,7 +757,7 @@ if ! create_mountmap_file; then
     exit 1
 fi
 
-# Create mount map file for v4 non tls
+# Create mount map file for v4 non tls Put behind v4 later daniewo
 if ! create_mountmap_file_nontls; then
     exit 1
 fi
@@ -748,6 +769,7 @@ fi
 
 #
 # In case there are inherited fds, close other than 0,1,2.
+# daniewo double check if we need to increase?
 #
 pushd /proc/$$/fd  > /dev/null
 for fd in *; do
