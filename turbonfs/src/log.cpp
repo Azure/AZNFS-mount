@@ -2,10 +2,10 @@
 
 bool enable_debug_logs = false;
 
-void init_log()
+void init_log() 
 {
     /*
-     * TODO: Initialize the logger to set the logfile, log format and anything
+     * TODO: Initialize the logger to set the log format and anything
      *       else.
      */
 
@@ -23,4 +23,38 @@ void init_log()
     spdlog::set_pattern("[%t]%+");
 
     AZLogDebug("Logger initialized");
+}
+
+void set_file_logger(const std::string& log_file_path) {
+    // Create new file sink for logging to file.
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>
+                     (log_file_path, true);
+    
+    auto log_level = spdlog::get_level();
+
+    /*
+     * Create new stdout sink explicitly, we need to do this because we want to
+     * merge the file and console sinks into one logger.
+     */
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    
+    /*
+     * Create a combined logger which will log to both sinks, this will now replace
+     * the old default logger.
+     */
+    auto logger = std::make_shared<spdlog::logger>
+                  ("multi_sink", spdlog::sinks_init_list{file_sink, console_sink});
+    
+    /*
+     * We need to register this logger, set it as default and set the flush_on level
+     * and log level.
+     */
+    spdlog::register_logger(logger);
+    spdlog::set_default_logger(logger);
+    spdlog::set_level(log_level);
+    spdlog::flush_on(log_level);
+    
+    spdlog::set_pattern("[%t]%+");
+
+    AZLogDebug("File logger init.");
 }

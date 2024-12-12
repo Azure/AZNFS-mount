@@ -92,7 +92,13 @@ USING_PORT_2047=false
 # file in OPT_DIR. The user can override this by passing the "configfile=/path/to/file"
 # option.
 #
-CONFIG_FILE_PATH=$OPTDIR/sample-config.yaml
+CONFIG_FILE_PATH=$OPTDIR/config.yaml
+
+#
+# Sample config file for aznfsclient. User NEEDS to copy this and create a new config
+# file.
+#
+SAMPLE_CONFIG_PATH=$OPTDIR/sample-config.yaml
 
 #
 # Holds the path to the aznfsclient binary. This will be used to mount if the user has
@@ -140,7 +146,7 @@ check_nconnect()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         value="${BASH_REMATCH[1]}"
         if [ $value -gt 1 ]; then
-            if [ $USING_AZNFSCLIENT ]; then
+            if [ "$USING_AZNFSCLIENT" == true ]; then
                 #
                 # On the aznfsclient max supported value is 256.
                 # Client patch is also not required.
@@ -417,19 +423,23 @@ fix_mount_options()
     config_file_path=
     matchstr="(^|,)configfile=([^,]+)"
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-            if [ ! $USING_AZNFSCLIENT ]; then
-                wecho "configfile option can only be used with the turbo mount option!"
-                wecho "Removing incorrect option!"
-                MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed -E 's/(^|,)?configfile=[^,]*?//g')
+            if [ "$USING_AZNFSCLIENT" == false ]; then
+                eecho "configfile option can only be used with the turbo mount option!"
+                exit 1
             else
                 config_file_path="${BASH_REMATCH[2]}"
             fi
     fi
 
-    if [ $USING_AZNFSCLIENT ]; then
+    if [ "$USING_AZNFSCLIENT" == true ]; then
         if [ -z "$config_file_path" ] || [ ! -f "$config_file_path" ]; then
             wecho "Config file is not provided or is invalid: $config_file_path"
             wecho "Using default config file: $CONFIG_FILE_PATH"
+            if [ ! -f "$CONFIG_FILE_PATH" ]; then
+                eecho "Default config file not found. Please create a valid config file at $CONFIG_FILE_PATH"
+                eecho "Refer sample config file at: $SAMPLE_CONFIG_PATH"
+                exit 1
+            fi
         else
             vecho "Using config file: $config_file_path"
             CONFIG_FILE_PATH=$config_file_path
@@ -866,11 +876,9 @@ actual_mount()
 create_aznfsclient_mount_args()
 {
     args="--config-file=$CONFIG_FILE_PATH"
-    eecho $nfs_dir
-    eecho $nfs_share
 
     # Add account, container and cloud_suffix
-    if [ -z "$nfs_dir" ] && [ -z "$nfs_host" ]; then
+    if [ -n "$nfs_dir" ] && [ -n "$nfs_host" ]; then
         account=$(echo "$nfs_dir" | awk -F'/' '{print $2}')
         args="$args --account=$account"
         container=$(echo "$nfs_dir" | awk -F'/' '{print $3}')
@@ -945,7 +953,7 @@ fi
 # The mount map magic is not needed here because libfuse will handle
 # IP changes. Hence, we form the args string, call the binary and exit.
 #
-if [ $USING_AZNFSCLIENT ]; then
+if [ "$USING_AZNFSCLIENT" == true ]; then
     aznfsclient_mount
     if [ $? -ne 0 ]; then
         eecho "Aznfsclient mount failed!"

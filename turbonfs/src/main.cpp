@@ -341,6 +341,12 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    std::string log_file_name = opts.mountpoint;
+    std::replace(log_file_name.begin(), log_file_name.end(), '/', '_');
+
+    std::string log_file_path = "/mnt/turbo" + log_file_name;
+    set_file_logger(log_file_path);
+
     /*
      * Hide fuse'ism and behave like a normal POSIX fs.
      * TODO: Make this configurable?

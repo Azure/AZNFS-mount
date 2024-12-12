@@ -166,7 +166,8 @@ find_turbo_option()
     #
     matchstr="(^|,)turbo(,|$)"
     if [ -z "$MOUNT_OPTIONS" ] || [[ ! "$MOUNT_OPTIONS" =~ $matchstr  ]]; then
-        wecho "Not using turbo mount, performance might be impacted. Example: 'turbo'."
+        # Keeping this here for future warnings about using turbo
+        export USING_AZNFSCLIENT=false
     else
         export USING_AZNFSCLIENT=true
     fi
@@ -186,43 +187,37 @@ parse_arguments "$@"
 # The usual mount command looks like:
 # mount -t aznfs -o vers=3,proto=tcp,nconnect=4 account.blob.core.windows.net:/account/container /mnt/aznfs
 # With turbo nfs client user can use any of the following formats, we need to support all of them.
-# 1. mount -t aznfs -o turbo none /mnt/aznfs
-# 2. mount -t aznfs -o turbo,configfile=/home/config.yaml none /mnt/aznfs
-# 3. mount -t aznfs -o turbo account.blob.core.windows.net:/account/container /mnt/aznfs
-# 4. mount -t aznfs -o proto=tcp,nconnect=4,turbo,configfile=/home/config.yaml none /mnt/aznfs
-# 5. mount -t aznfs -o proto=tcp,nconnect=4,turbo,configfile=/home/config.yaml account.blob.core.windows.net:/account/container /mnt/aznfs
+# 1. mount -t aznfs -o vers=3,turbo none /mnt/aznfs
+# 2. mount -t aznfs -o vers=3,turbo,configfile=/home/config.yaml none /mnt/aznfs
+# 3. mount -t aznfs -o vers=3,turbo account.blob.core.windows.net:/account/container /mnt/aznfs
+# 4. mount -t aznfs -o vers=3,proto=tcp,nconnect=4,turbo,configfile=/home/config.yaml none /mnt/aznfs
+# 5. mount -t aznfs -o vers=3,proto=tcp,nconnect=4,turbo,configfile=/home/config.yaml account.blob.core.windows.net:/account/container /mnt/aznfs
 find_turbo_option "$MOUNT_OPTIONS"
 
-if [ ! "$USING_AZNFSCLIENT" ] || [[ "$MOUNT_OPTIONS" == *"vers"*  ]]; then
-    nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
-    if [ $? -ne 0 ]; then
-        eecho "$nfs_vers"
-        eecho "Mount failed!"
-        exit 1
-    fi
+nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
+if [ $? -ne 0 ]; then
+    eecho "$nfs_vers"
+    eecho "Mount failed!"
+    exit 1
+fi
 
-    if [ "$nfs_vers" == "4.1" ]; then
-        if [ "$USING_AZNFSCLIENT" ]; then
-            eecho "Turbo nfs client does not support NFS version: $nfs_vers!"
-            exit 1
-        fi
-        AZ_PREFIX="file"
-    elif [ "$nfs_vers" == "3" ]; then
-        AZ_PREFIX="blob"
-    else
-        eecho "NFS version is not supported by mount helper: $nfs_vers!"
+if [ "$nfs_vers" == "4.1" ]; then
+    if [ "$USING_AZNFSCLIENT" == true ]; then
+        eecho "Turbo nfs client does not support NFS version: $nfs_vers!"
         exit 1
     fi
-elif [ "$USING_AZNFSCLIENT" ]; then
-    # aznfsclient only supports nfsv3.
-    nfs_vers="3"
+    AZ_PREFIX="file"
+elif [ "$nfs_vers" == "3" ]; then
     AZ_PREFIX="blob"
+else
+    eecho "NFS version is not supported by mount helper: $nfs_vers!"
+    exit 1
 fi
 
 # Users need to pass share to the mount command however, it is 
 # optional to do so if the turbo flag is being used because the
 # users can provide the share details in the config file too.
-if [ ! "$USING_AZNFSCLIENT" ] || [[ "$1" != "none"  ]]; then
+if [ "$USING_AZNFSCLIENT" == false ] || [[ "$1" != "none"  ]]; then
     nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
     if [ $? -ne 0 ]; then
         eecho "$nfs_host"
