@@ -471,6 +471,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
 
     # Resolve the IP address for the NFS host
     nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv4 "$nfs_host")
+    vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
     status=$?
     if [ $status -ne 0 ]; then
         if [ $status -eq 2 ]; then
