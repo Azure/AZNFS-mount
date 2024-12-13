@@ -29,6 +29,45 @@ STUNNEL_CAFILE=
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
 CONNECT_PORT=2049
 
+#
+# Local IP that is free to use.
+#
+LOCAL_IP=""
+
+#
+# To maintain consistency in case of regional account and in general to avoid creating
+# multiple DNAT entries corrosponding to one LOCAL_IP, first check for resolved IP in mountmap.
+# This will help keep mountmap and DNAT entries in sync with each other.
+# If the current resolved IP is different from the one stored in mountmap then it means that the IP has changed
+# since the mountmap entry was created (could be due to migration or more likely due to RAs roundrobin DNS). 
+# In any case this will be properly handled by aznfswatchdog next time it checks for IP change for this fqdn.
+#
+# this method will only be used for non tls in v4.
+resolve_ipv4_with_preference_to_mountmapv4()
+{
+    local fqdn=$1
+
+    exec {fd}<$MOUNTMAPv4NONTLS
+    flock -e $fd
+
+    local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv4NONTLS)
+    
+    flock -u $fd
+    exec {fd}<&-
+
+    IFS=" " read _ local_ip old_nfs_ip <<< "$mountmap_entry"
+    if [ -n "$old_nfs_ip" ]; then
+        echo "$old_nfs_ip"
+        return 2 
+    fi
+
+    #
+    # Resolve FQDN to IPv4 using DNS if not found in the mountmap.
+    #
+    resolve_ipv4 "$fqdn" "true"
+}
+
+
 get_next_available_port()
 {
     for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
@@ -427,6 +466,30 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     else
         MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
     fi
+
+    #after checking if the endpoint is mounted with TLS in mountmapv4, check for nontls monutmap file
+
+    # Resolve the IP address for the NFS host
+    nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv4 "$nfs_host")
+    status=$?
+    if [ $status -ne 0 ]; then
+        if [ $status -eq 2 ]; then
+            vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
+        else
+            echo "$nfs_ip"
+            eecho "Cannot resolve IP address for ${nfs_host}!"
+            eecho "Mount failed!"
+            exit 1
+        fi
+    fi
+
+    # daniewo check if nfs_host here needs to be changed to a local_ip (proxy)
+    # nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")
+    #nfs_host is the fqdn, we need to mount using l_ip and not nfs_host
+    #if we're doing non TLS mount, find a local IP to mount with, also find out what the nfs_ip will be.
+    #that could be read from a file after mount
+
+
 
     # Do the actual non tls mount.
     mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)

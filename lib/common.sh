@@ -71,6 +71,81 @@ RELEASE_NUMBER_FOR_AKS=x.y.z
 #
 MONITOR_INTERVAL_SECS=5
 
+#
+# ------------------ Common definitions from nfsv3mountscript.sh --------------------
+# 
+
+#
+# Default order in which we try the network prefixes for a free local IP to use.
+# This can be overriden using AZNFS_IP_PREFIXES environment variable.
+#
+DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
+IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
+
+# Aznfs port, defaults to 2048.
+AZNFS_PORT="${AZNFS_PORT:-2048}"
+
+# Default to checking azure nconnect support.
+AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
+
+# Default to fixing mount options passed in to help the user.
+AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
+
+# Default to fixing dirty bytes config to help the user.
+AZNFS_FIX_DIRTY_BYTES_CONFIG="${AZNFS_FIX_DIRTY_BYTES_CONFIG:-1}"
+
+# Read ahead size in KB defaults to 16384.
+AZNFS_READ_AHEAD_KB="${AZNFS_READ_AHEAD_KB:-16384}"
+
+#
+# Use noresvport mount option to allow using non-reserve ports by client.
+# This allows much higher number of local ports to be used by NFS client and
+# hence may alleviate some issues due to running out of very small resv port range.
+# Blob NFS doesn't require clients to use reserve ports so we can use non-reserve
+# port with Blob NFS but Linux NFS client doesn't reuse source port while reconnecting
+# if noresvport option is used. This does not work will with the DRC cache.
+#
+AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
+
+# Set the fingerprint GUID as an environment variable with a default value.
+AZNFS_FINGERPRINT="${AZNFS_FINGERPRINT:-80a18d5c-9553-4c64-88dd-d7553c6b3beb}"
+
+#
+# Default to maximum number of mount retries in case of server-side returns failure.
+# Retries make the mount process more robust. Currently, we don't distinguish between 
+# access denied failure due to intermittent issues or genuine mount failures. We retry anyways.
+#
+AZNFS_MAX_MOUNT_RETRIES="${AZNFS_MAX_MOUNT_RETRIES:-3}"
+
+#
+# Maximum number of accounts that can be mounted from the same tenant/cluster.
+# Any number of containers on these many accounts can be mounted.
+# With ~350 reserved ports and 16 connections per mount (with nconnect=16) leaving
+# some room, 20 is a reasonable limit.
+#
+MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT=20
+
+#
+# Local IP that is free to use.
+#
+# LOCAL_IP=""
+
+#
+# Proccess ID of the current process.
+#
+PID=""
+
+#
+# Choose the local IP based on last used IP in MOUNTMAPv3 if this flag is enabled.
+#
+OPTIMIZE_GET_FREE_LOCAL_IP=true
+
+#
+# True if user has asked to use port 2047 using 'port=2047' mount option.
+# This signifies server side nconnect which has some special needs.
+#
+USING_PORT_2047=false
+
 _log()
 {
     color=$1
@@ -501,7 +576,7 @@ ensure_mountmapv3_not_exist()
 
         if [ $ret -ne 0 ]; then
             chattr -f +i $MOUNTMAPFILE
-            eecho "[$1] failed to remove from ${MOUNTMAPv3}!"
+            eecho "[$1] failed to remove from ${MOUNTMAPFILE}!"
             # Reinstate DNAT rule deleted above.
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
@@ -532,7 +607,7 @@ update_mountmapv3_entry()
         IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
-                eecho "[$old] Refusing to remove from ${MOUNTMAPv3} as old iptable entry could not be deleted!"
+                eecho "[$old] Refusing to remove from ${MOUNTMAPFILE} as old iptable entry could not be deleted!"
                 return 1
             fi
         fi
@@ -540,7 +615,7 @@ update_mountmapv3_entry()
         IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
             if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
-                eecho "[$new] Refusing to remove from ${MOUNTMAPv3} as new iptable entry could not be added!"
+                eecho "[$new] Refusing to remove from ${MOUNTMAPFILE} as new iptable entry could not be added!"
                 # Roll back.
                 ensure_iptable_entry $l_ip $l_nfsip_old
                 return 1
