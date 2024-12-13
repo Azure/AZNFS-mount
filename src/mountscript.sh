@@ -17,11 +17,6 @@ AZNFS_VERSION="unknown"
 export VERBOSE_MOUNT=false
 
 #
-# True if the user has passed the 'turbo' mount option.
-#
-export USING_AZNFSCLIENT=false
-
-#
 # Check if the given string is a valid blob/file FQDN (<accountname>.<blob/file>.core.windows.net).
 #
 is_valid_fqdn()
@@ -159,16 +154,13 @@ parse_arguments()
     done
 }
 
-find_turbo_option()
+check_turbo_option()
 {
     #
     # Check if turbo flag is passed.
     #
     matchstr="(^|,)turbo(,|$)"
-    if [ -z "$MOUNT_OPTIONS" ] || [[ ! "$MOUNT_OPTIONS" =~ $matchstr  ]]; then
-        # Keeping this here for future warnings about using turbo
-        export USING_AZNFSCLIENT=false
-    else
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         export USING_AZNFSCLIENT=true
     fi
 }
@@ -186,13 +178,15 @@ parse_arguments "$@"
 
 # The usual mount command looks like:
 # mount -t aznfs -o vers=3,proto=tcp,nconnect=4 account.blob.core.windows.net:/account/container /mnt/aznfs
+#
 # With turbo nfs client user can use any of the following formats, we need to support all of them.
 # 1. mount -t aznfs -o vers=3,turbo none /mnt/aznfs
 # 2. mount -t aznfs -o vers=3,turbo,configfile=/home/config.yaml none /mnt/aznfs
 # 3. mount -t aznfs -o vers=3,turbo account.blob.core.windows.net:/account/container /mnt/aznfs
-# 4. mount -t aznfs -o vers=3,proto=tcp,nconnect=4,turbo,configfile=/home/config.yaml none /mnt/aznfs
-# 5. mount -t aznfs -o vers=3,proto=tcp,nconnect=4,turbo,configfile=/home/config.yaml account.blob.core.windows.net:/account/container /mnt/aznfs
-find_turbo_option "$MOUNT_OPTIONS"
+# 4. mount -t aznfs -o vers=3,proto=tcp,nconnect=64,turbo,configfile=/home/config.yaml none /mnt/aznfs
+# 5. mount -t aznfs -o vers=3,proto=tcp,nconnect=64,turbo,configfile=/home/config.yaml account.blob.core.windows.net:/account/container /mnt/aznfs
+
+check_turbo_option "$MOUNT_OPTIONS"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
 if [ $? -ne 0 ]; then
@@ -215,9 +209,9 @@ else
 fi
 
 # Users need to pass share to the mount command however, it is 
-# optional to do so if the turbo flag is being used because the
+# optional to do so in case of turbo client because the
 # users can provide the share details in the config file too.
-if [ "$USING_AZNFSCLIENT" == false ] || [[ "$1" != "none"  ]]; then
+if [ "$USING_AZNFSCLIENT" != true ] || [ "$1" != "none"  ]; then
     nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
     if [ $? -ne 0 ]; then
         eecho "$nfs_host"

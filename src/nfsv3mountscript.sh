@@ -416,14 +416,15 @@ fix_mount_options()
     fi
     
     #
-    # configfile is a turbo only option, hence we need to remove it if user is not using
-    # turbo. If the user is using turbo but has not provided a config file the default file
-    # present in OPT_DIR should be used.
+    # configfile is a turbo only option. If the user is using turbo but has not provided 
+    # a config file, the default file created in OPT_DIR should be used. The user first
+    # needs to refer the sample-config.yaml file in OPTDIR and create their own copy
+    # at: $OPTDIR/sample-config.yaml
     #
     config_file_path=
     matchstr="(^|,)configfile=([^,]+)"
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-            if [ "$USING_AZNFSCLIENT" == false ]; then
+            if [ "$USING_AZNFSCLIENT" != true ]; then
                 eecho "configfile option can only be used with the turbo mount option!"
                 exit 1
             else
@@ -433,8 +434,8 @@ fix_mount_options()
 
     if [ "$USING_AZNFSCLIENT" == true ]; then
         if [ -z "$config_file_path" ] || [ ! -f "$config_file_path" ]; then
-            wecho "Config file is not provided or is invalid: $config_file_path"
-            wecho "Using default config file: $CONFIG_FILE_PATH"
+            pecho "Config file is not provided or is invalid: $config_file_path"
+            pecho "Using default config file: $CONFIG_FILE_PATH"
             if [ ! -f "$CONFIG_FILE_PATH" ]; then
                 eecho "Default config file not found. Please create a valid config file at $CONFIG_FILE_PATH"
                 eecho "Refer sample config file at: $SAMPLE_CONFIG_PATH"
