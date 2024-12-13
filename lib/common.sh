@@ -427,14 +427,14 @@ ensure_mountmapv3_exist_nolock()
         echo "$1" >> $MOUNTMAPFILE
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAPFILE
-            eecho "[$1] failed to add to ${MOUNTMAPv3}!"
+            eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
             # Could not add MOUNTMAPv3 entry, delete the DNAT rule added above.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip
             return 1
         fi
         chattr -f +i $MOUNTMAPFILE
     else
-        pecho "[$1] already exists in ${MOUNTMAPv3}."
+        pecho "[$1] already exists in ${MOUNTMAPFILE}."
     fi
 }
 
@@ -472,7 +472,7 @@ ensure_mountmapv3_not_exist()
         IFS=" " read l_host l_ip l_nfsip <<< "$1"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as iptable entry could not be deleted!"
+                eecho "[$1] Refusing to remove from ${MOUNTMAPFILE} as iptable entry could not be deleted!"
                 return 1
             fi
         fi

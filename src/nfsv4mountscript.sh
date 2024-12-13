@@ -428,7 +428,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
     fi
 
-    # Do the actual mount.
+    # Do the actual non tls mount.
     mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
 
