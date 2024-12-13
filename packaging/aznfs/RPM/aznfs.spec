@@ -33,8 +33,23 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
+INSTALLED_STUNNEL_VERSION="0"
+REQUIRED_STUNNEL_VERSION="5.73"
+
+if command -v stunnel >/dev/null 2>&1; then
+    INSTALLED_STUNNEL_VERSION=$(stunnel -version 2>&1 | grep -Eo 'stunnel [0-9]+\.[0-9]+' | awk '{print $2}')
+fi
+
+cleanup_stunnel_files()
+{
+	cd -
+	rm -rf /tmp/$stunnel_dir
+	rm -f /tmp/stunnel-5.73.tar.gz
+}
+
 # Check if stunnel is not already installed.
-if ! command -v stunnel > /dev/null; then
+if ! command -v stunnel >/dev/null 2>&1 || (( $(echo "$REQUIRED_STUNNEL_VERSION > $INSTALLED_STUNNEL_VERSION" | bc -l) )); then
+	
 	# Install stunnel from source.
 	wget https://www.stunnel.org/downloads/stunnel-5.73.tar.gz -P /tmp
 	if [ $? -ne 0 ]; then
@@ -56,32 +71,25 @@ if ! command -v stunnel > /dev/null; then
 	./configure
 	if [ $? -ne 0 ]; then
 		echo "Failed to configure the build. Please install stunnel and try again."
-		cd -
-		rm -rf /tmp/$stunnel_dir
-		rm -f /tmp/stunnel-5.73.tar.gz
+		cleanup_stunnel_files
 		exit 1
 	fi
 
 	make
 	if [ $? -ne 0 ]; then
 		echo "Failed to build stunnel. Please install stunnel and try again."
-		cd -
-		rm -rf /tmp/$stunnel_dir
-		rm -f /tmp/stunnel-5.73.tar.gz
+		cleanup_stunnel_files
 		exit 1
 	fi
 
 	make install
 	if [ $? -ne 0 ]; then
 		echo "Failed to install stunnel. Please install stunnel and try again."
-		cd -
-		rm -rf /tmp/$stunnel_dir
-		rm -f /tmp/stunnel-5.73.tar.gz
+		cleanup_stunnel_files
 		exit 1
 	fi
-	cd -
-	rm -rf /tmp/$stunnel_dir
-	rm -f /tmp/stunnel-5.73.tar.gz
+
+	cleanup_stunnel_files
 fi
 
 flag_file="/tmp/.update_in_progress_from_watchdog.flag"
