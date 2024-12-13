@@ -93,6 +93,8 @@ ensure_mountmapv4_not_exist()
         return 1
     fi
 
+    pecho "[$1] removed from ${MOUNTMAPv4} successfully!"
+
     # Return the mtime after our mods.
     echo $(stat -c%Y $MOUNTMAPv4)
 }

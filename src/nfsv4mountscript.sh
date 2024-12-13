@@ -371,7 +371,7 @@ tls_nfsv4_files_share_mount()
             stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
             stunnel_log_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.log"
 
-            if [ -f $stunnel_pid_file ]; then
+            if [ -f "$stunnel_pid_file" ]; then
                 pid=$(cat $stunnel_pid_file)
                 vecho "killing stunnel process with pid: $pid on port: $accept_port"
                 kill -9 $pid
@@ -390,7 +390,7 @@ tls_nfsv4_files_share_mount()
                 fi
             fi
 
-            if [ -f $stunnel_log_file ]; then
+            if [ -f "$stunnel_log_file" ]; then
                 rm $stunnel_log_file
             fi
 
@@ -504,8 +504,8 @@ tls_nfsv4_files_share_mount()
         is_stunnel_running=
 
         # Check if stunnel_pid_file exist for storageaccount and stunnel process is running.
-        stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f4`
-        if [ -f $stunnel_pid_file ]; then
+        stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
+        if [ -f "$stunnel_pid_file" ]; then
             is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $stunnel_pid_file`)
         fi
 
@@ -670,7 +670,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         vecho "clean option is enabled. Update the status of mountmap entry for $storageaccount_ip."
         stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
 
-        if [ -f $stunnel_conf_file ]; then
+        if [ -f "$stunnel_conf_file" ]; then
             accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
             findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
 
@@ -681,7 +681,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
                 exit 1
             fi
 
-            stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f4`
+            stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f4 | awk 'NR==1 {print $1}'`
             pid=$(cat $stunnel_pid_file)
             vecho "killing stunnel process with pid: $pid on port: $accept_port"
             kill -9 $pid
