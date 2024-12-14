@@ -4,8 +4,8 @@ Release: 1
 Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc
-Recommends: build-essential, make
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc, make
+Recommends: build-essential
 
 %description
 Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
@@ -43,31 +43,28 @@ fi
 cleanup_stunnel_files()
 {
 	cd -
-	rm -rf /tmp/$stunnel_dir
-	rm -f /tmp/stunnel-5.73.tar.gz
+	rm -rf /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}
+	rm -f /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz
 }
 
-# Check if stunnel is not already installed.
-if ! command -v stunnel >/dev/null 2>&1 || (( $(echo "$REQUIRED_STUNNEL_VERSION > $INSTALLED_STUNNEL_VERSION" | bc -l) )); then
+# Install stunnel if not present or if the installed version is older than the required version.
+if (( $(echo $REQUIRED_STUNNEL_VERSION $INSTALLED_STUNNEL_VERSION | awk '{if ($1 > $2) print 1;}') )) ; then
 	
 	# Install stunnel from source.
-	wget https://www.stunnel.org/downloads/stunnel-5.73.tar.gz -P /tmp
+	wget https://www.stunnel.org/archive/5.x/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz -P /tmp
 	if [ $? -ne 0 ]; then
 		echo "Failed to download stunnel source code. Please install stunnel and try again."
 		exit 1
 	fi
 
-	tar -xvf /tmp/stunnel-5.73.tar.gz -C /tmp
+	tar -xvf /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz -C /tmp
 	if [ $? -ne 0 ]; then
 		echo "Failed to extract stunnel tarball. Please install stunnel and try again."
-		cd -
-		rm -f /tmp/stunnel-5.73.tar.gz
+		cleanup_stunnel_files
 		exit 1
 	fi
 
-	stunnel_dir=$(tar -tf /tmp/stunnel-5.73.tar.gz | head -n 1 | cut -f1 -d'/')
-
-	cd /tmp/$stunnel_dir
+	cd /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}
 	./configure
 	if [ $? -ne 0 ]; then
 		echo "Failed to configure the build. Please install stunnel and try again."
@@ -90,6 +87,21 @@ if ! command -v stunnel >/dev/null 2>&1 || (( $(echo "$REQUIRED_STUNNEL_VERSION 
 	fi
 
 	cleanup_stunnel_files
+
+	# Remove the old link and create a symlink to stunnel binary.
+    [ -f /bin/stunnel ] && mv /bin/stunnel /bin/stunnel.old
+    ln -sf /usr/local/bin/stunnel /bin/stunnel
+
+    if command -v stunnel >/dev/null 2>&1; then
+        echo "Successfully installed stunnel version ${REQUIRED_STUNNEL_VERSION}"
+        rm -f /bin/stunnel.old
+    else
+        echo "Failed to install stunnel version ${REQUIRED_STUNNEL_VERSION}. Please install stunnel and try again."
+        mv /bin/stunnel.old /bin/stunnel > /dev/null 2>&1
+        exit 1
+    fi
+else
+	echo "stunnel version $INSTALLED_STUNNEL_VERSION is already installed."
 fi
 
 flag_file="/tmp/.update_in_progress_from_watchdog.flag"

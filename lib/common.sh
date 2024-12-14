@@ -716,9 +716,6 @@ if command -v netstat &> /dev/null; then
     NETSTATCOMMAND="netstat"
 elif command -v ss &> /dev/null; then
     NETSTATCOMMAND="ss"
-else
-    eecho "[FATAL] Neither 'netstat' nor 'ss' is available!"
-    exit 1
 fi
 
 if [ ! -d $OPTDIRDATA ]; then
