@@ -39,7 +39,7 @@ get_host_from_share()
     local azprefix="$2"
     local account=""
     local hostprefix=""
-    local hostparts=()
+    declare -a hostparts
 
     IFS=: read host share <<< "$hostshare"
 

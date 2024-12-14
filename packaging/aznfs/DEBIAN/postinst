@@ -17,30 +17,27 @@ REQUIRED_STUNNEL_VERSION="5.73"
 cleanup_stunnel_files()
 {
     cd -
-    rm -rf /tmp/$stunnel_dir
-    rm -f /tmp/stunnel-5.73.tar.gz
+    rm -rf /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}
+    rm -f /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz
 }
 
 install_stunnel()
 {
     # Install stunnel package from source
-    wget https://www.stunnel.org/downloads/stunnel-5.73.tar.gz -P /tmp
+    wget https://www.stunnel.org/archive/5.x/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz -P /tmp
     if [ $? -ne 0 ]; then
         echo "Failed to download stunnel source code. Please install stunnel and try again."
         exit 1
     fi
 
-    tar -xvf /tmp/stunnel-5.73.tar.gz -C /tmp
+    tar -xvf /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz -C /tmp
     if [ $? -ne 0 ]; then
         echo "Failed to extract stunnel tarball. Please install stunnel and try again."
-        cd -
-        rm -f /tmp/stunnel-5.73.tar.gz
+        cleanup_stunnel_files
         exit 1
     fi
 
-    stunnel_dir=$(tar -tf /tmp/stunnel-5.73.tar.gz | head -n 1 | cut -f1 -d'/')
-
-    cd /tmp/$stunnel_dir
+    cd /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}
     ./configure
     if [ $? -ne 0 ]; then
         echo "Failed to configure the build. Please install stunnel and try again."
@@ -55,8 +52,7 @@ install_stunnel()
         exit 1
     fi
 
-    sudo rm -f /bin/stunnel
-
+    # Install stunnel to /usr/local/bin
     make install
     if [ $? -ne 0 ]; then
         echo "Failed to install stunnel. Please install stunnel and try again."
@@ -65,7 +61,20 @@ install_stunnel()
     fi
 
     cleanup_stunnel_files
-    sudo ln -sf /usr/local/bin/stunnel /bin/stunnel
+
+    # Remove the old link and create a symlink to stunnel binary.
+    [ -f /bin/stunnel ] && mv /bin/stunnel /bin/stunnel.old
+    rm -f /bin/stunnel
+    ln -sf /usr/local/bin/stunnel /bin/stunnel
+
+    if command -v stunnel >/dev/null 2>&1; then
+        echo "Successfully installed stunnel version ${REQUIRED_STUNNEL_VERSION}"
+        rm -f /bin/stunnel.old
+    else
+        echo "Failed to install stunnel version ${REQUIRED_STUNNEL_VERSION}. Please install stunnel and try again."
+        mv /bin/stunnel.old /bin/stunnel > /dev/null 2>&1
+        exit 1
+    fi
 }
 
 parse_user_config()
@@ -135,8 +144,11 @@ if command -v stunnel >/dev/null 2>&1; then
     INSTALLED_STUNNEL_VERSION=$(stunnel -version 2>&1 | grep -Eo 'stunnel [0-9]+\.[0-9]+' | awk '{print $2}')
 fi
 
-if ! command -v stunnel >/dev/null 2>&1 || (( $(echo "$REQUIRED_STUNNEL_VERSION > $INSTALLED_STUNNEL_VERSION" | bc -l) )); then
+# Install stunnel if not present or if the installed version is older than the required version.
+if (( $(echo $REQUIRED_STUNNEL_VERSION $INSTALLED_STUNNEL_VERSION | awk '{if ($1 > $2) print 1;}') )) ; then
     install_stunnel
+else
+    echo "stunnel version ${INSTALLED_STUNNEL_VERSION} is already installed."
 fi
 
 # Create log directory under /etc/stunnel to store stunnel logs
