@@ -11,7 +11,7 @@ LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 CONFIG_FILE="${OPTDIRDATA}/config"
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 
-RELEASE_NUMBER=x.y.z
+RELEASE_NUMBER=0.1.429
 AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
 AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
 RUN_MODE="manual-update"
