@@ -37,6 +37,10 @@ get_host_from_share()
 {
     local hostshare="$1"
     local azprefix="$2"
+    local account=""
+    local hostprefix=""
+    declare -a hostparts
+
     IFS=: read host share <<< "$hostshare"
 
     if [ -z "$host" -o -z "$share" ]; then
@@ -46,7 +50,15 @@ get_host_from_share()
     fi
 
     # Split host by "."
-    IFS=. read account hostprefix rest <<< "$host"
+    IFS=. read -r -a hostparts <<< "$host"
+
+    account="${hostparts[0]}"
+
+    if [[ "${hostparts[1]}" == "privatelink" ]]; then
+        hostprefix="${hostparts[2]}"
+    else
+        hostprefix="${hostparts[1]}"
+    fi
 
     # Check if the prefix matches the expected azprefix
     if [ "$hostprefix" != "$azprefix" ]; then
