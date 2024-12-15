@@ -67,7 +67,6 @@ jobs:
           ${{ github.workspace }}/amd64/deb/aznfs-${{ github.event.inputs.versionName }}-1_amd64.deb
           ${{ github.workspace }}/amd64/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace }}/amd64/suse/root/rpmbuild/RPMS/x86_64/aznfs_sles-${{ github.event.inputs.versionName }}-1.x86_64.rpm
-          ${{ github.workspace }}/amd64/mariner/root/rpmbuild/RPMS/x86_64/aznfs_mariner-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace }}/amd64/scripts/aznfs_install.sh
           ${{ github.workspace }}/amd64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.tar.gz
         body: |
@@ -113,7 +112,6 @@ jobs:
           ${{ github.workspace }}/arm64/deb/aznfs-${{ github.event.inputs.versionName }}-1_arm64.deb
           ${{ github.workspace }}/arm64/rpm/root/rpmbuild/RPMS/aarch64/aznfs-${{ github.event.inputs.versionName }}-1.aarch64.rpm
           ${{ github.workspace }}/arm64/suse/root/rpmbuild/RPMS/aarch64/aznfs_sles-${{ github.event.inputs.versionName }}-1.aarch64.rpm
-          ${{ github.workspace }}/arm64/mariner/root/rpmbuild/RPMS/aarch64/aznfs_mariner-${{ github.event.inputs.versionName }}-1.aarch64.rpm
           ${{ github.workspace }}/arm64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.aarch64.tar.gz
         body: |
           New Test Release ${{ github.event.inputs.versionName }}
