@@ -857,7 +857,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
 
     # Do the actual non tls mount.
-    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
+    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
 
     if [ -n "$mount_output" ]; then
