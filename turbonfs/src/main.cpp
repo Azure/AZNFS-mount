@@ -22,6 +22,9 @@ struct fuse_conn_info_opts* fuse_conn_info_opts_ptr;
  */
 #define AZNFSC_OPT(templ, key) { templ, offsetof(struct aznfsc_cfg, key), 0}
 
+// LogFile for this mount.
+const string optdirdata = "/opt/microsoft/aznfs/data";
+
 static const struct fuse_opt aznfsc_opts[] =
 {
     AZNFSC_OPT("--config-file=%s", config_yaml),
@@ -340,6 +343,14 @@ int main(int argc, char *argv[])
     if (fuse_parse_cmdline(&args, &opts) != 0) {
         return 1;
     }
+
+    std::string log_file_name = opts.mountpoint;
+    std::replace(log_file_name.begin(), log_file_name.end(), '/', '_');
+
+    std::string log_file_path = optdirdata + "/turbo" + log_file_name + ".log";
+    set_file_logger(log_file_path);
+
+    AZLogInfo("Logfile: {}", log_file_path);
 
     /*
      * Hide fuse'ism and behave like a normal POSIX fs.

@@ -3,7 +3,9 @@
 
 #include "spdlog/spdlog.h"
 #include "spdlog/cfg/env.h"   // support for loading levels from the environment variable
-#include "spdlog/fmt/ostr.h"  // support for user defined types
+#include "spdlog/fmt/ostr.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"  // support for user defined type
 
 #ifdef ENABLE_DEBUG
 /*
@@ -83,6 +85,7 @@
 #endif
 
 void init_log();
+void set_file_logger(const std::string& log_file_path);
 extern bool enable_debug_logs;
 
 #endif /* __AZNFSC_LOG_H__ */
