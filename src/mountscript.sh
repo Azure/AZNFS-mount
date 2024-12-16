@@ -176,16 +176,17 @@ AZ_PREFIX=
 
 parse_arguments "$@"
 
+#
 # The usual mount command looks like:
 # mount -t aznfs -o vers=3,proto=tcp,nconnect=4 account.blob.core.windows.net:/account/container /mnt/aznfs
 #
 # With turbo nfs client user can use any of the following formats, we need to support all of them.
 # 1. mount -t aznfs -o vers=3,turbo none /mnt/aznfs
-# 2. mount -t aznfs -o vers=3,turbo,configfile=/home/config.yaml none /mnt/aznfs
+# 2. mount -t aznfs -o vers=3,turbo,configfile=/path/to/your/config.yaml none /mnt/aznfs
 # 3. mount -t aznfs -o vers=3,turbo account.blob.core.windows.net:/account/container /mnt/aznfs
-# 4. mount -t aznfs -o vers=3,proto=tcp,nconnect=64,turbo,configfile=/home/config.yaml none /mnt/aznfs
-# 5. mount -t aznfs -o vers=3,proto=tcp,nconnect=64,turbo,configfile=/home/config.yaml account.blob.core.windows.net:/account/container /mnt/aznfs
-
+# 4. mount -t aznfs -o vers=3,proto=tcp,nconnect=64,turbo,configfile=/path/to/your/config.yaml none /mnt/aznfs
+# 5. mount -t aznfs -o vers=3,proto=tcp,nconnect=64,turbo,configfile=/path/to/your/config.yaml account.blob.core.windows.net:/account/container /mnt/aznfs
+#
 check_turbo_option "$MOUNT_OPTIONS"
 
 nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
@@ -208,10 +209,12 @@ else
     exit 1
 fi
 
+#
 # Users need to pass share to the mount command however, it is 
 # optional to do so in case of turbo client because the
 # users can provide the share details in the config file too.
-if [ "$USING_AZNFSCLIENT" != true ] || [ "$1" != "none"  ]; then
+#
+if [ "$USING_AZNFSCLIENT" != true ] || [ "$1" != "none" ]; then
     nfs_host=$(get_host_from_share "$1" "$AZ_PREFIX")
     if [ $? -ne 0 ]; then
         eecho "$nfs_host"

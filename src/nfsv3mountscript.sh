@@ -92,13 +92,13 @@ USING_PORT_2047=false
 # file in OPT_DIR. The user can override this by passing the "configfile=/path/to/file"
 # option.
 #
-CONFIG_FILE_PATH=$OPTDIR/config.yaml
+CONFIG_FILE_PATH=$OPTDIRDATA/turbo-config.yaml
 
 #
 # Sample config file for aznfsclient. User NEEDS to copy this and create a new config
 # file.
 #
-SAMPLE_CONFIG_PATH=$OPTDIR/sample-config.yaml
+SAMPLE_CONFIG_PATH=$OPTDIRDATA/sample-turbo-config.yaml
 
 #
 # Holds the path to the aznfsclient binary. This will be used to mount if the user has
@@ -148,7 +148,7 @@ check_nconnect()
         if [ $value -gt 1 ]; then
             if [ "$USING_AZNFSCLIENT" == true ]; then
                 #
-                # On the aznfsclient max supported value is 256.
+                # Max nconnect supported value for nconnect is 256.
                 # Client patch is also not required.
                 #
                 if [ $value -gt 256 ]; then
@@ -372,19 +372,33 @@ fix_mount_options()
 
     matchstr="\<rsize\>=([0-9]+)"
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        value="${BASH_REMATCH[1]}"
-        if [ $value -ne 1048576 ]; then
-            pecho "Suboptimal rsize=$value mount option, setting rsize=1048576!"
-            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<rsize\>=$value/rsize=1048576/g")
+        #
+        # TODO: Change this when we start supporting rsize as a valid option.
+        #
+        if [ "$USING_AZNFSCLIENT" == true ]; then
+            wecho "Cannot use rsize with turbo. The value provided in config file will be used."
+        else
+            value="${BASH_REMATCH[1]}"
+            if [ $value -ne 1048576 ]; then
+                pecho "Suboptimal rsize=$value mount option, setting rsize=1048576!"
+                MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<rsize\>=$value/rsize=1048576/g")
+            fi
         fi
     fi
 
     matchstr="\<wsize\>=([0-9]+)"
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        value="${BASH_REMATCH[1]}"
-        if [ $value -ne 1048576 ]; then
-            pecho "Suboptimal wsize=$value mount option, setting wsize=1048576!"
-            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<wsize\>=$value/wsize=1048576/g")
+        #
+        # TODO: Change this when we start supporting wsize as a valid option.
+        #
+        if [ "$USING_AZNFSCLIENT" == true ]; then
+            wecho "Cannot use wsize with turbo. The value provided in config file will be used."
+        else
+            value="${BASH_REMATCH[1]}"
+            if [ $value -ne 1048576 ]; then
+                pecho "Suboptimal wsize=$value mount option, setting wsize=1048576!"
+                MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<wsize\>=$value/wsize=1048576/g")
+            fi
         fi
     fi
 
@@ -418,8 +432,8 @@ fix_mount_options()
     #
     # configfile is a turbo only option. If the user is using turbo but has not provided 
     # a config file, the default file created in OPT_DIR should be used. The user first
-    # needs to refer the sample-config.yaml file in OPTDIR and create their own copy
-    # at: $OPTDIR/sample-config.yaml
+    # needs to refer the sample-turbo-config.yaml file in OPTDIR and create their own copy
+    # at: $OPTDIRDATA/turbo-config.yaml
     #
     config_file_path=
     matchstr="(^|,)configfile=([^,]+)"
@@ -437,7 +451,7 @@ fix_mount_options()
             pecho "Config file is not provided or is invalid: $config_file_path"
             pecho "Using default config file: $CONFIG_FILE_PATH"
             if [ ! -f "$CONFIG_FILE_PATH" ]; then
-                eecho "Default config file not found. Please create a valid config file at $CONFIG_FILE_PATH"
+                eecho "Default config file not found. Please create a valid config file at: $CONFIG_FILE_PATH"
                 eecho "Refer sample config file at: $SAMPLE_CONFIG_PATH"
                 exit 1
             fi
@@ -909,15 +923,16 @@ create_aznfsclient_mount_args()
 # turbo client. The client ensures it always prioritizes the option values
 # provided as part of the mount command instead of the config file.
 #
+# TODO: Add debug support.
+#
 aznfsclient_mount()
 {   
     create_aznfsclient_mount_args
-    $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS
-    if [ $? -ne 0 ]; then
-        return 1
-    fi
 
-    return 0
+    #
+    # TODO: Use named pipe to get mount status here.
+    #
+    $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS
 }
 
 # Check if aznfswatchdog service is running.

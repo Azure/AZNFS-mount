@@ -198,7 +198,7 @@ cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/turbonfs/sample-config.yaml ${STG_DIR}/deb/${pkg_dir}/${opt_dir}/
+cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/deb/${pkg_dir}/${opt_dir}/
 
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
