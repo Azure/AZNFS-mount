@@ -440,7 +440,7 @@ fi
 
 while :; do
     sleep $MONITOR_INTERVAL_SECS
-    process_nfsv4_mounts
+    #process_nfsv4_mounts
     process_nfsv4_nontlsmounts
     #daniewo process nontlsmounts and track for migration
 
