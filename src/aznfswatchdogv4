@@ -239,7 +239,7 @@ process_nfsv4_mounts()
 process_nfsv4_nontlsmounts()
 {
     epoch_now=$(date +%s)
-
+    vecho "Process nfsv4 non tls mounts"
     #
     # Go over all lines in MOUNTMAPv4NONTLS and check them for two things:
     # 1. Is that entry still in use by at least one aznfs mount, if not remove the entry.

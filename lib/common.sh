@@ -549,7 +549,7 @@ ensure_mountmapv3_not_exist()
         if [ -n "$ifmatch" ]; then
             local mtime=$(stat -c%Y $MOUNTMAPFILE)
             if [ "$mtime" != "$ifmatch" ]; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as $mtime != $ifmatch!"
+                eecho "[$1] Refusing to remove from ${MOUNTMAPFILE} as $mtime != $ifmatch!"
                 return 1
             fi
         fi
