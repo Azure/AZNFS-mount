@@ -140,6 +140,24 @@ check_nconnect()
                 modprobe sunrpc
             fi
 
+            # Check if AZNFS_MAX_NCONNECT is defined, numeric, and within the allowed range.
+            if [[ "$AZNFS_MAX_NCONNECT" =~ ^[0-9]+$ && "$AZNFS_MAX_NCONNECT" != "16" ]]; then
+
+                if [[ "$AZNFS_MAX_NCONNECT" -lt 1 || "$AZNFS_MAX_NCONNECT" -gt 16 ]]; then
+                    eecho "[ERROR] Incorrect value $AZNFS_MAX_NCONNECT for the environment variable AZNFS_MAX_NCONNECT"
+                    exit 1
+                fi
+
+                # We reach here only if nconnect matches the regex 'matchstr="\<nconnect\>=([0-9]+)"'
+                if [[ "$value" -lt 1 || "$value" -gt 16 ]]; then
+                    eecho "[ERROR] nconnect value must be provided between 1 and $AZNFS_MAX_NCONNECT"
+                    exit 1
+                fi
+
+                # Re-calculate the maximum accounts mountable from a single tenant.
+                MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT=$((320 / AZNFS_MAX_NCONNECT))
+            fi
+
             #
             # W/o server side nconnect, we need the azure nconnect support,
             # turn it on. OTOH, if Server side nconnect is being used turn off
@@ -164,28 +182,10 @@ check_nconnect()
                     echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
                 fi
 
-                # Check if AZNFS_MAX_NCONNECT is defined, numeric, and within the allowed range.
-                if [[ "$AZNFS_MAX_NCONNECT" =~ ^[0-9]+$ && "$AZNFS_MAX_NCONNECT" != "16" ]]; then
-
-                    if [[ "$AZNFS_MAX_NCONNECT" -lt 1 || "$AZNFS_MAX_NCONNECT" -gt 16 ]]; then
-                        eecho "[ERROR] Incorrect value $AZNFS_MAX_NCONNECT for the environment variable AZNFS_MAX_NCONNECT"
-                        exit 1
-                    fi
-
-                    # We reach here only if nconnect matches the regex 'matchstr="\<nconnect\>=([0-9]+)"'
-                    if [[ "$value" -lt 1 || "$value" -gt 16 ]]; then
-                        eecho "[ERROR] nconnect value must be provided between 1 and $AZNFS_MAX_NCONNECT"
-                        exit 1
-                    fi
-
-                    # Re-calculate the maximum accounts mountable from a single tenant.
-                    MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT=$((320 / AZNFS_MAX_NCONNECT))
-
-                    # Check if the current nconnect value in use is suboptimal.
-                    if [[ "$value" -gt "$AZNFS_MAX_NCONNECT" ]]; then
-                        pecho "Suboptimal nconnect value $value, forcing nconnect=$AZNFS_MAX_NCONNECT!"
-                        MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=$AZNFS_MAX_NCONNECT/g")
-                    fi
+                # Check if the current nconnect value in use is suboptimal.
+                if [[ "$value" -gt "$AZNFS_MAX_NCONNECT" ]]; then
+                    pecho "Suboptimal nconnect value $value, limiting nconnect to the advised value by AZNFS_MAX_NCONNECT: $AZNFS_MAX_NCONNECT."
+                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=$AZNFS_MAX_NCONNECT/g")
                 fi
 
             else
@@ -207,9 +207,14 @@ check_nconnect()
                 # Higher nconnect values don't work well for server side
                 # nconnect, limit to optimal value 4.
                 #
-                if [ $value -gt 4 ]; then
-                    pecho "Suboptimal nconnect value $value, forcing nconnect=4!"
-                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=4/g")
+                OPTIMAL_SERVER_SIDE_NCONNECT=4
+                if [ -n "$AZNFS_MAX_NCONNECT" ] && [ "$AZNFS_MAX_NCONNECT" -lt "$OPTIMAL_SERVER_SIDE_NCONNECT" ]; then
+                    OPTIMAL_SERVER_SIDE_NCONNECT=$AZNFS_MAX_NCONNECT
+                fi
+
+                if [ "$value" -gt "$OPTIMAL_SERVER_SIDE_NCONNECT" ]; then
+                    pecho "Suboptimal nconnect value $value, forcing nconnect=$OPTIMAL_SERVER_SIDE_NCONNECT!"
+                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=$OPTIMAL_SERVER_SIDE_NCONNECT/g")
                 fi
             fi
         fi
