@@ -26,6 +26,7 @@ MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 # This stores the map of local IP and share name an external file endpoint IP.
 #
 MOUNTMAPv4NONTLS="${OPTDIRDATA}/mountmapv4nontls"
+VIRTUALFSLOCATION="${OPTDIRDATA}/fslocation" #test file now
 MOUNTMAPFILE=""
 
 #
@@ -475,6 +476,16 @@ create_mountmap_file_nontlsv4()
             return 1
         fi
         chattr -f +i ${!mountmap_filename_nontls}
+    fi
+
+    local fslocation_filename=VIRTUALFSLOCATION
+    if [ ! -f ${!fslocation_filename} ]; then
+        touch ${!fslocation_filename}
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${!fslocation_filename}'!"
+            return 1
+        fi
+        chattr -f +i ${!fslocation_filename}
     fi
 }
 
