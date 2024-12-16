@@ -28,7 +28,7 @@ void init_log()
 void set_file_logger(const std::string& log_file_path) {
     // Create new file sink for logging to file.
     auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>
-                     (log_file_path, true /* truncate */);
+                     (log_file_path, false /* truncate */);
     
     auto log_level = spdlog::get_level();
 

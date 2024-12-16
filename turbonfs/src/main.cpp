@@ -347,7 +347,7 @@ int main(int argc, char *argv[])
     std::string log_file_name = opts.mountpoint;
     std::replace(log_file_name.begin(), log_file_name.end(), '/', '_');
 
-    std::string log_file_path = optdirdata + "/turbo" + log_file_name;
+    std::string log_file_path = optdirdata + "/turbo" + log_file_name + ".log";
     set_file_logger(log_file_path);
 
     AZLogInfo("Logfile: {}", log_file_path);

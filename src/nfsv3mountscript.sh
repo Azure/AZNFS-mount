@@ -148,7 +148,7 @@ check_nconnect()
         if [ $value -gt 1 ]; then
             if [ "$USING_AZNFSCLIENT" == true ]; then
                 #
-                # Max nconnect supported value for nconnect is 256.
+                # Max supported value for nconnect is 256.
                 # Client patch is also not required.
                 #
                 if [ $value -gt 256 ]; then
@@ -404,13 +404,19 @@ fix_mount_options()
 
     matchstr="\<retrans\>=([0-9]+)"
     if ! [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
-        vvecho "Adding retrans=6 mount option!"
-        MOUNT_OPTIONS="$MOUNT_OPTIONS,retrans=6"
+        if [ "$USING_AZNFSCLIENT" != true ]; then
+            vvecho "Adding retrans=6 mount option!"
+            MOUNT_OPTIONS="$MOUNT_OPTIONS,retrans=6"
+        fi
     else
-        value="${BASH_REMATCH[1]}"
-        if [ $value -lt 6 ]; then
-            pecho "Suboptimal retrans=$value mount option, setting retrans=6!"
-            MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<retrans\>=$value/retrans=6/g")
+        if [ "$USING_AZNFSCLIENT" == true ]; then
+            wecho "Cannot use retrans with turbo. The value provided in config file will be used."
+        else
+            value="${BASH_REMATCH[1]}"
+            if [ $value -lt 6 ]; then
+                pecho "Suboptimal retrans=$value mount option, setting retrans=6!"
+                MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<retrans\>=$value/retrans=6/g")
+            fi
         fi
     fi
 
