@@ -296,11 +296,13 @@ struct bc_iovec
      * It takes nfs_inode for releasing the cache chunks as IOs get completed
      * for the queued bytes_chunks.
      *
+     * Note: If the inode is stable write then we set max_iosize to AZNFSCFG_WSIZE_MIN as
+     *       server can handle writes of this size. Else we set it to wsize_adj.
      * Note: This takes shared lock on ilock_1.
      */
     bc_iovec(struct nfs_inode *_inode) :
         inode(_inode),
-        max_iosize(inode->get_client()->mnt_options.wsize_adj)
+        max_iosize(inode->is_stable_write() ? AZNFSCFG_WSIZE_MIN : inode->get_client()->mnt_options.wsize_adj)
     {
         assert(inode->magic == NFS_INODE_MAGIC);
         assert(inode->is_regfile());
@@ -321,7 +323,7 @@ struct bc_iovec
          * TODO: Currently we don't support wsize smaller than 1MB.
          *       See below.
          */
-        assert(max_iosize >= 1048576);
+        assert(max_iosize >= AZNFSCFG_WSIZE_MIN);
         assert(max_iosize <= AZNFSCFG_WSIZE_MAX);
 
         assert(iovcnt == 0);
@@ -443,7 +445,7 @@ struct bc_iovec
     /**
      * Must be called when bytes_completed bytes are successfully read/written.
      */
-    void on_io_complete(uint64_t bytes_completed)
+    void on_io_complete(uint64_t bytes_completed, bool is_unstable_write = false)
     {
         // (1+) Offset of the last byte successfully read/written.
         const uint64_t end_off = offset + bytes_completed;
@@ -489,7 +491,17 @@ struct bc_iovec
                 assert(mb->is_inuse() && mb->is_locked());
                 assert(mb->is_flushing() && mb->is_dirty() && mb->is_uptodate());
 
+                /**
+                 * Update the membuf flags.
+                 * Set the commit_pending flag so that this membuf accounted for commit RPC.
+                 * Clear the dirty flag first so that bytes_dirty + bytes_commit_pending is always
+                 * less than or equal to bytes_allocated.
+                 */
                 mb->clear_dirty();
+                if (is_unstable_write) {
+                    mb->set_commit_pending();
+                }
+
                 mb->clear_flushing();
                 mb->clear_locked();
                 mb->clear_inuse();
@@ -2161,6 +2173,12 @@ public:
     }
 
     struct nfs_context *get_nfs_context() const;
+
+    /*
+     * Set the task connection scheduling type depending 
+     * on whether the task is a stable write or not.
+     */
+    void set_task_csched(bool stable_write);
 
     struct rpc_context *get_rpc_ctx() const
     {
