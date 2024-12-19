@@ -72,7 +72,7 @@ _log()
 pecho()
 {
     color=$NORMAL
-    _log $color "${*}"
+    _log $color "[INFO] ${*}"
 }
 
 #
@@ -81,7 +81,7 @@ pecho()
 secho()
 {
     color=$GREEN
-    _log $color "${*}"
+    _log $color "[SUCCESS] ${*}"
 }
 
 #
@@ -90,7 +90,7 @@ secho()
 wecho()
 {
     color=$YELLOW
-    _log $color "${*}"
+    _log $color "[WARNING] ${*}"
 }
 
 #
@@ -99,7 +99,7 @@ wecho()
 eecho()
 {
     color=$RED
-    _log $color "${*}"
+    _log $color "[ERROR] ${*}"
 }
 
 #
@@ -139,7 +139,7 @@ vvecho()
         return
     fi
 
-    _log $color "${*}"
+    _log $color "[VERBOSE] ${*}"
 }
 
 #
