@@ -186,9 +186,6 @@ void rpc_stats_az::dump_stats()
 #define DUMP_OP(opcode) \
 do { \
     const auto& ops = opstats[opcode]; \
-    if (opcode == FUSE_FLUSH) { \
-        assert(ops.count == 0); \
-    } \
     if (ops.count != 0) { \
         const std::string opstr = rpc_task::fuse_opcode_to_string(opcode); \
         const int pcent_ops = (ops.count * 100) / cum_stats.num_req_sent; \
@@ -240,7 +237,6 @@ do { \
     DUMP_OP(FUSE_READDIRPLUS);
     DUMP_OP(FUSE_READ);
     DUMP_OP(FUSE_WRITE);
-    DUMP_OP(FUSE_FLUSH);
 
     /*
      * TODO: Add more ops.

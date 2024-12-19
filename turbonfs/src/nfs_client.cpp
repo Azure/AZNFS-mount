@@ -1478,6 +1478,9 @@ void nfs_client::read(
  */
 void nfs_client::jukebox_write(struct api_task_info *rpc_api)
 {
+    // Only BE tasks can be retried.
+    assert(rpc_api->write_task.is_be());
+
     /*
      * For write task pvt has write_iov_context, which has copy of byte_chunk vector.
      * To proceed it should be valid.
@@ -1488,9 +1491,6 @@ void nfs_client::jukebox_write(struct api_task_info *rpc_api)
     struct rpc_task *write_task =
         get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
     write_task->init_write_be(rpc_api->write_task.get_ino());
-
-    // Only BE tasks can be retried.
-    assert(write_task->rpc_api->write_task.is_be());
 
     // Any new task should start fresh as a parent task.
     assert(write_task->rpc_api->parent_task == nullptr);

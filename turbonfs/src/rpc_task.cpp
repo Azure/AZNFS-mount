@@ -327,6 +327,10 @@ void rpc_task::init_write_fe(fuse_req *request,
                           off_t offset)
 {
     assert(get_op_type() == FUSE_WRITE);
+    assert(request != nullptr);
+    assert(size != 0);
+    assert(bufv != nullptr);
+
     set_fuse_req(request);
     rpc_api->write_task.set_size(size);
     rpc_api->write_task.set_offset(offset);
