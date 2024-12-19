@@ -1489,6 +1489,9 @@ void nfs_client::jukebox_write(struct api_task_info *rpc_api)
         get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
     write_task->init_write_be(rpc_api->write_task.get_ino());
 
+    // Only BE tasks can be retried.
+    assert(write_task->rpc_api->write_task.is_be());
+
     // Any new task should start fresh as a parent task.
     assert(write_task->rpc_api->parent_task == nullptr);
 

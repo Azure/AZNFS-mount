@@ -324,27 +324,32 @@ void rpc_task::init_write_fe(fuse_req *request,
                           fuse_ino_t ino,
                           struct fuse_bufvec *bufv,
                           size_t size,
-                          off_t offset,
-                          bool front_end_write)
+                          off_t offset)
 {
     assert(get_op_type() == FUSE_WRITE);
     set_fuse_req(request);
-    rpc_api->write_task.set_front_end_write(front_end_write);
     rpc_api->write_task.set_size(size);
     rpc_api->write_task.set_offset(offset);
     rpc_api->write_task.set_ino(ino);
     rpc_api->write_task.set_buffer_vector(bufv);
 
+    assert(rpc_api->write_task.is_fe());
+    assert(!rpc_api->write_task.is_be());
+
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
-void rpc_task::init_write_be(fuse_ino_t ino,
-                             bool front_end_write)
+void rpc_task::init_write_be(fuse_ino_t ino)
 {
     assert(get_op_type() == FUSE_WRITE);
     set_fuse_req(nullptr);
-    rpc_api->write_task.set_front_end_write(front_end_write);
+    rpc_api->write_task.set_size(0);
+    rpc_api->write_task.set_offset(0);
     rpc_api->write_task.set_ino(ino);
+    rpc_api->write_task.set_buffer_vector(nullptr);
+
+    assert(!rpc_api->write_task.is_fe());
+    assert(rpc_api->write_task.is_be());
 
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
@@ -800,7 +805,8 @@ static void write_iov_callback(
     assert(task->magic == RPC_TASK_MAGIC);
     // Only flush tasks use this callback.
     assert(task->get_op_type() == FUSE_WRITE);
-
+    // This must be a BE task.
+    assert(task->rpc_api->write_task.is_be());
     // Those flush tasks must have pvt set to a bc_iovec ptr.
     struct bc_iovec *bciov = (struct bc_iovec *) task->rpc_api->pvt;
     assert(bciov);
@@ -957,6 +963,8 @@ void rpc_task::issue_write_rpc()
 {
     // Must only be called for a flush task.
     assert(get_op_type() == FUSE_WRITE);
+    // Must only be called for a BE task.
+    assert(rpc_api->write_task.is_be());
 
     const fuse_ino_t ino = rpc_api->write_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
@@ -1888,6 +1896,9 @@ void rpc_task::run_access()
 
 void rpc_task::run_write()
 {
+    // This must be called only for front end tasks.
+    assert(rpc_api->write_task.is_fe());
+
     const fuse_ino_t ino = rpc_api->write_task.get_ino();
     struct nfs_inode *const inode = get_client()->get_nfs_inode_from_ino(ino);
     const size_t length = rpc_api->write_task.get_size();

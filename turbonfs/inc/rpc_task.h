@@ -187,11 +187,6 @@ private:
  */
 struct write_rpc_task
 {
-    void set_front_end_write(bool front_end)
-    {
-        front_end_write = front_end;
-    }
-
     void set_ino(fuse_ino_t ino)
     {
         file_ino = ino;
@@ -199,33 +194,19 @@ struct write_rpc_task
 
     void set_offset(off_t off)
     {
-        assert(front_end_write);
         offset = off;
     }
 
     void set_size(size_t size)
     {
-        assert(front_end_write);
         /*
-         * length is how much this WRITE RPC wants to write and write_count
-         * is how much it has written so far. Note that WRITE RPC may write
-         * partial data so we need to track write_count.
+         * length is how much this WRITE RPC wants to write.
          */
         length = size;
-        write_count = 0;
-    }
-
-    void set_count(size_t count)
-    {
-        assert(front_end_write);
-        // Must not write more than requested.
-        assert(count <= length);
-        write_count = count;
     }
 
     void set_buffer_vector(struct fuse_bufvec *bufv)
     {
-        assert(front_end_write);
         write_bufv = bufv;
     }
 
@@ -236,26 +217,37 @@ struct write_rpc_task
 
     off_t get_offset() const
     {
-        assert(front_end_write);
         return offset;
     }
 
     size_t get_size() const
     {
-        assert(front_end_write);
         return length;
-    }
-
-    size_t get_count() const
-    {
-        assert(front_end_write);
-        return write_count;
     }
 
     struct fuse_bufvec *get_buffer_vector() const
     {
-        assert(front_end_write);
         return write_bufv;
+    }
+
+    bool is_fe() const
+    {
+        const bool is_fe = (write_bufv != nullptr);
+        assert(is_fe == (length > 0));
+        assert(is_fe || (offset == 0));
+        assert(file_ino != 0);
+
+        return is_fe;
+    }
+
+    bool is_be() const
+    {
+        const bool is_be = (write_bufv == nullptr);
+        assert(is_be == (length == 0));
+        assert(!is_be || (offset == 0));
+        assert(file_ino != 0);
+
+        return is_be;
     }
 
     /**
@@ -268,9 +260,7 @@ struct write_rpc_task
 private:
     fuse_ino_t file_ino;
     size_t length;
-    size_t write_count;
     off_t  offset;
-    bool front_end_write;
     struct fuse_bufvec *write_bufv;
 };
 
@@ -1927,11 +1917,9 @@ public:
                        fuse_ino_t ino,
                        struct fuse_bufvec *buf,
                        size_t size,
-                       off_t offset,
-                       bool front_end_write = true);
+                       off_t offset);
 
-    void init_write_be(fuse_ino_t ino,
-                       bool front_end_write = false);
+    void init_write_be(fuse_ino_t ino);
 
     void run_write();
 
