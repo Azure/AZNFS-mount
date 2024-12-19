@@ -320,18 +320,40 @@ void rpc_task::init_flush(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
-void rpc_task::init_write(fuse_req *request,
+void rpc_task::init_write_fe(fuse_req *request,
                           fuse_ino_t ino,
                           struct fuse_bufvec *bufv,
                           size_t size,
                           off_t offset)
 {
     assert(get_op_type() == FUSE_WRITE);
+    assert(request != nullptr);
+    assert(size != 0);
+    assert(bufv != nullptr);
+
     set_fuse_req(request);
     rpc_api->write_task.set_size(size);
     rpc_api->write_task.set_offset(offset);
     rpc_api->write_task.set_ino(ino);
     rpc_api->write_task.set_buffer_vector(bufv);
+
+    assert(rpc_api->write_task.is_fe());
+    assert(!rpc_api->write_task.is_be());
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
+}
+
+void rpc_task::init_write_be(fuse_ino_t ino)
+{
+    assert(get_op_type() == FUSE_WRITE);
+    set_fuse_req(nullptr);
+    rpc_api->write_task.set_size(0);
+    rpc_api->write_task.set_offset(0);
+    rpc_api->write_task.set_ino(ino);
+    rpc_api->write_task.set_buffer_vector(nullptr);
+
+    assert(!rpc_api->write_task.is_fe());
+    assert(rpc_api->write_task.is_be());
 
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
@@ -786,8 +808,9 @@ static void write_iov_callback(
     struct rpc_task *task = (struct rpc_task *) private_data;
     assert(task->magic == RPC_TASK_MAGIC);
     // Only flush tasks use this callback.
-    assert(task->get_op_type() == FUSE_FLUSH);
-
+    assert(task->get_op_type() == FUSE_WRITE);
+    // This must be a BE task.
+    assert(task->rpc_api->write_task.is_be());
     // Those flush tasks must have pvt set to a bc_iovec ptr.
     struct bc_iovec *bciov = (struct bc_iovec *) task->rpc_api->pvt;
     assert(bciov);
@@ -802,7 +825,7 @@ static void write_iov_callback(
 
     const char* errstr;
     const int status = task->status(rpc_status, NFS_STATUS(res), &errstr);
-    const fuse_ino_t ino = task->rpc_api->flush_task.get_ino();
+    const fuse_ino_t ino = task->rpc_api->write_task.get_ino();
     struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
 
     /*
@@ -865,20 +888,21 @@ static void write_iov_callback(
             // Update bciov after the current write.
             bciov->on_io_complete(res->WRITE3res_u.resok.count);
 
-            // Create a new flush_task for the remaining bc_iovec.
-            struct rpc_task *flush_task =
-                    client->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_FLUSH);
-            flush_task->init_flush(nullptr /* fuse_req */, ino);
-            // Any new task should start fresh as a parent task.
-            assert(flush_task->rpc_api->parent_task == nullptr);
+            // Create a new write_task for the remaining bc_iovec.
+            struct rpc_task *write_task =
+                    client->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_WRITE);
+            write_task->init_write_be(ino);
 
-            // Hand over the remaining bciov to the new flush_task.
-            assert(flush_task->rpc_api->pvt == nullptr);
-            flush_task->rpc_api->pvt = task->rpc_api->pvt;
+            // Any new task should start fresh as a parent task.
+            assert(write_task->rpc_api->parent_task == nullptr);
+
+            // Hand over the remaining bciov to the new write_task.
+            assert(write_task->rpc_api->pvt == nullptr);
+            write_task->rpc_api->pvt = task->rpc_api->pvt;
             task->rpc_api->pvt = nullptr;
 
             // Issue write for the remaining data.
-            flush_task->issue_write_rpc();
+            write_task->issue_write_rpc();
 
             /*
              * Release this task since it has done it's job.
@@ -931,7 +955,7 @@ static void write_iov_callback(
 
 bool rpc_task::add_bc(const bytes_chunk& bc)
 {
-    assert(get_op_type() == FUSE_FLUSH);
+    assert(get_op_type() == FUSE_WRITE);
 
     struct bc_iovec *bciov = (struct bc_iovec *) rpc_api->pvt;
     assert(bciov->magic == BC_IOVEC_MAGIC);
@@ -942,11 +966,16 @@ bool rpc_task::add_bc(const bytes_chunk& bc)
 void rpc_task::issue_write_rpc()
 {
     // Must only be called for a flush task.
-    assert(get_op_type() == FUSE_FLUSH);
+    assert(get_op_type() == FUSE_WRITE);
+    // Must only be called for a BE task.
+    assert(rpc_api->write_task.is_be());
 
-    const fuse_ino_t ino = rpc_api->flush_task.get_ino();
+    const fuse_ino_t ino = rpc_api->write_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
     struct bc_iovec *bciov = (struct bc_iovec *) rpc_api->pvt;
+
+    // We should come here only for FUSE_WRITE tasks with bciov set.
+    assert(bciov != nullptr);
     assert(bciov->magic == BC_IOVEC_MAGIC);
 
     WRITE3args args;
@@ -1871,6 +1900,9 @@ void rpc_task::run_access()
 
 void rpc_task::run_write()
 {
+    // This must be called only for front end tasks.
+    assert(rpc_api->write_task.is_fe());
+
     const fuse_ino_t ino = rpc_api->write_task.get_ino();
     struct nfs_inode *const inode = get_client()->get_nfs_inode_from_ino(ino);
     const size_t length = rpc_api->write_task.get_size();

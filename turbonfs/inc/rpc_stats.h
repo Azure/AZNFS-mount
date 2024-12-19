@@ -89,13 +89,8 @@ public:
 
         /*
          * FUSE_RELEASE is sent as FUSE_FLUSH.
-         * Also, FUSE_FLUSH is accounted as FUSE_WRITE as both result in WRITE
-         * RPCs.
          */
         assert(_optype != FUSE_RELEASE);
-        if (_optype == FUSE_FLUSH) {
-            _optype = FUSE_WRITE;
-        }
 
         optype = _optype;
         stamp.start = start_usec;
@@ -121,6 +116,9 @@ public:
      */
     void on_rpc_issue()
     {
+        // FUSE_FLUSH is never issued as an RPC task to the server. FUSE_WRITE is issued instead.
+        assert(optype != FUSE_FLUSH);
+
         assert(stamp.issue == 0);
         stamp.issue = get_current_usecs();
         assert(stamp.issue >= stamp.create);
@@ -135,6 +133,9 @@ public:
      */
     void on_rpc_cancel()
     {
+        // FUSE_FLUSH is never issued as an RPC task to the server. FUSE_WRITE is issued instead.
+        assert(optype != FUSE_FLUSH);
+
         assert(stamp.issue != 0);
         assert((int64_t) stamp.issue <= get_current_usecs());
         assert(stamp.dispatch == 0);
@@ -154,6 +155,9 @@ public:
      */
     void on_rpc_complete(struct rpc_pdu *pdu, nfsstat3 status)
     {
+        // FUSE_FLUSH is never issued as an RPC task to the server. FUSE_WRITE is issued instead.
+        assert(optype != FUSE_FLUSH);
+
         assert(nfsstat3_to_errno(status) != -ERANGE);
 
         req_size = rpc_pdu_get_req_size(pdu);
@@ -224,6 +228,9 @@ public:
              * Requests not issued.
              * See skip_mtime_update() for how we can come here for
              * FUSE_SETATTR.
+             *
+             * Note: FUSE_FLUSH is never issued as an RPC to the server,
+             *       so all FUSE_FLUSH tasks come here.
              */
             assert(stamp.dispatch == 0);
             assert(stamp.complete == 0);
@@ -231,6 +238,7 @@ public:
                    optype == FUSE_READDIRPLUS ||
                    optype == FUSE_READ ||
                    optype == FUSE_WRITE ||
+                   optype == FUSE_FLUSH ||
                    optype == FUSE_GETATTR ||
                    optype == FUSE_LOOKUP ||
                    optype == FUSE_SETATTR);

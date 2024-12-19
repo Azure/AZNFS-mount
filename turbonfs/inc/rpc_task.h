@@ -200,19 +200,9 @@ struct write_rpc_task
     void set_size(size_t size)
     {
         /*
-         * length is how much this WRITE RPC wants to write and write_count
-         * is how much it has written so far. Note that WRITE RPC may write
-         * partial data so we need to track write_count.
+         * length is how much this WRITE RPC wants to write.
          */
         length = size;
-        write_count = 0;
-    }
-
-    void set_count(size_t count)
-    {
-        // Must not write more than requested.
-        assert(count <= length);
-        write_count = count;
     }
 
     void set_buffer_vector(struct fuse_bufvec *bufv)
@@ -235,14 +225,29 @@ struct write_rpc_task
         return length;
     }
 
-    size_t get_count() const
-    {
-        return write_count;
-    }
-
     struct fuse_bufvec *get_buffer_vector() const
     {
         return write_bufv;
+    }
+
+    bool is_fe() const
+    {
+        const bool is_fe = (write_bufv != nullptr);
+        assert(is_fe == (length > 0));
+        assert(is_fe || (offset == 0));
+        assert(file_ino != 0);
+
+        return is_fe;
+    }
+
+    bool is_be() const
+    {
+        const bool is_be = (write_bufv == nullptr);
+        assert(is_be == (length == 0));
+        assert(!is_be || (offset == 0));
+        assert(file_ino != 0);
+
+        return is_be;
     }
 
     /**
@@ -255,7 +260,6 @@ struct write_rpc_task
 private:
     fuse_ino_t file_ino;
     size_t length;
-    size_t write_count;
     off_t  offset;
     struct fuse_bufvec *write_bufv;
 };
@@ -1902,12 +1906,21 @@ public:
 
     /*
      * init/run methods for the WRITE RPC.
+     *
+     * Note: init_write_fe() is used to initialize the application write (frontend write).
+     *       It has valid buffer, offset and size we received from the application.
+     *
+     * Note: init_write_be() is used to initialize the backend write on a inode. It is used
+     *       to flush cached application writes to the backend.
      */
-    void init_write(fuse_req *request,
-                    fuse_ino_t ino,
-                    struct fuse_bufvec *buf,
-                    size_t size,
-                    off_t offset);
+    void init_write_fe(fuse_req *request,
+                       fuse_ino_t ino,
+                       struct fuse_bufvec *buf,
+                       size_t size,
+                       off_t offset);
+
+    void init_write_be(fuse_ino_t ino);
+
     void run_write();
 
     /*

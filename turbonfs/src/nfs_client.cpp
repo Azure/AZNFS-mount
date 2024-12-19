@@ -457,11 +457,11 @@ void nfs_client::jukebox_runner()
                                 js->rpc_api->readdir_task.get_offset(),
                                 js->rpc_api->readdir_task.get_fuse_file());
                     break;
-                case FUSE_FLUSH:
-                    AZLogWarn("[JUKEBOX REISSUE] flush(req={}, ino={})",
+                case FUSE_WRITE:
+                    AZLogWarn("[JUKEBOX REISSUE] write(req={}, ino={})",
                               fmt::ptr(js->rpc_api->req),
-                              js->rpc_api->flush_task.get_ino());
-                    jukebox_flush(js->rpc_api);
+                              js->rpc_api->write_task.get_ino());
+                    jukebox_write(js->rpc_api);
                     break;
                 /* TODO: Add other request types */
                 default:
@@ -1071,7 +1071,7 @@ void nfs_client::write(fuse_req_t req, fuse_ino_t ino, struct fuse_bufvec *bufv,
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_WRITE);
 
-    tsk->init_write(req, ino, bufv, size, off);
+    tsk->init_write_fe(req, ino, bufv, size, off);
     tsk->run_write();
 }
 
@@ -1476,27 +1476,30 @@ void nfs_client::read(
  * with JUKEBOX error.
  * rpc_api defines the RPC request that need to be retried.
  */
-void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
+void nfs_client::jukebox_write(struct api_task_info *rpc_api)
 {
+    // Only BE tasks can be retried.
+    assert(rpc_api->write_task.is_be());
+
     /*
      * For write task pvt has write_iov_context, which has copy of byte_chunk vector.
      * To proceed it should be valid.
      */
     assert(rpc_api->pvt != nullptr);
-    assert(rpc_api->optype == FUSE_FLUSH);
+    assert(rpc_api->optype == FUSE_WRITE);
 
-    struct rpc_task *flush_task =
-        get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-    flush_task->init_flush(nullptr /* fuse_req */,
-                           rpc_api->flush_task.get_ino());
+    struct rpc_task *write_task =
+        get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
+    write_task->init_write_be(rpc_api->write_task.get_ino());
+
     // Any new task should start fresh as a parent task.
-    assert(flush_task->rpc_api->parent_task == nullptr);
+    assert(write_task->rpc_api->parent_task == nullptr);
 
     [[maybe_unused]] struct bc_iovec *bciov = (struct bc_iovec *) rpc_api->pvt;
     assert(bciov->magic == BC_IOVEC_MAGIC);
 
     // TODO: Make this a unique_ptr?
-    flush_task->rpc_api->pvt = rpc_api->pvt;
+    write_task->rpc_api->pvt = rpc_api->pvt;
     rpc_api->pvt = nullptr;
 
     /*
@@ -1509,7 +1512,7 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
      */
     assert(rpc_api->parent_task == nullptr);
 
-    flush_task->issue_write_rpc();
+    write_task->issue_write_rpc();
 }
 
 /*
