@@ -187,6 +187,11 @@ private:
  */
 struct write_rpc_task
 {
+    void set_front_end_write(bool front_end)
+    {
+        front_end_write = front_end;
+    }
+
     void set_ino(fuse_ino_t ino)
     {
         file_ino = ino;
@@ -194,11 +199,13 @@ struct write_rpc_task
 
     void set_offset(off_t off)
     {
+        assert(front_end_write);
         offset = off;
     }
 
     void set_size(size_t size)
     {
+        assert(front_end_write);
         /*
          * length is how much this WRITE RPC wants to write and write_count
          * is how much it has written so far. Note that WRITE RPC may write
@@ -210,6 +217,7 @@ struct write_rpc_task
 
     void set_count(size_t count)
     {
+        assert(front_end_write);
         // Must not write more than requested.
         assert(count <= length);
         write_count = count;
@@ -217,6 +225,7 @@ struct write_rpc_task
 
     void set_buffer_vector(struct fuse_bufvec *bufv)
     {
+        assert(front_end_write);
         write_bufv = bufv;
     }
 
@@ -227,21 +236,25 @@ struct write_rpc_task
 
     off_t get_offset() const
     {
+        assert(front_end_write);
         return offset;
     }
 
     size_t get_size() const
     {
+        assert(front_end_write);
         return length;
     }
 
     size_t get_count() const
     {
+        assert(front_end_write);
         return write_count;
     }
 
     struct fuse_bufvec *get_buffer_vector() const
     {
+        assert(front_end_write);
         return write_bufv;
     }
 
@@ -257,6 +270,7 @@ private:
     size_t length;
     size_t write_count;
     off_t  offset;
+    bool front_end_write;
     struct fuse_bufvec *write_bufv;
 };
 
@@ -1902,12 +1916,23 @@ public:
 
     /*
      * init/run methods for the WRITE RPC.
+     *
+     * Note: init_write_fe() is used to initialize the application write (frontend write).
+     *       It has valid buffer, offset and size we received from the application.
+     *
+     * Note: init_write_be() is used to initialize the backend write on a inode. It is used
+     *       to flush cached application writes to the backend.
      */
-    void init_write(fuse_req *request,
-                    fuse_ino_t ino,
-                    struct fuse_bufvec *buf,
-                    size_t size,
-                    off_t offset);
+    void init_write_fe(fuse_req *request,
+                       fuse_ino_t ino,
+                       struct fuse_bufvec *buf,
+                       size_t size,
+                       off_t offset,
+                       bool front_end_write = true);
+
+    void init_write_be(fuse_ino_t ino,
+                       bool front_end_write = false);
+
     void run_write();
 
     /*

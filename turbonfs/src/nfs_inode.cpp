@@ -455,8 +455,7 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
         if (write_task == nullptr) {
             write_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
-            write_task->init_write(nullptr /* fuse_req */, ino, nullptr /* fuse_bufvec */,
-                         0 /* size */, 0 /* offset */);
+            write_task->init_write_be(ino);
             assert(write_task->rpc_api->pvt == nullptr);
             write_task->rpc_api->pvt = new bc_iovec(this);
         }
@@ -479,8 +478,7 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
              */
             write_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
-            write_task->init_write(nullptr /* fuse_req */, ino, nullptr /* fuse_bufvec */,
-                         0 /* size */, 0 /* offset */);
+            write_task->init_write_be(ino);
             assert(write_task->rpc_api->pvt == nullptr);
             write_task->rpc_api->pvt = new bc_iovec(this);
 

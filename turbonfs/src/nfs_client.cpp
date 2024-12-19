@@ -458,9 +458,9 @@ void nfs_client::jukebox_runner()
                                 js->rpc_api->readdir_task.get_fuse_file());
                     break;
                 case FUSE_WRITE:
-                    AZLogWarn("[JUKEBOX REISSUE] flush(req={}, ino={})",
+                    AZLogWarn("[JUKEBOX REISSUE] write(req={}, ino={})",
                               fmt::ptr(js->rpc_api->req),
-                              js->rpc_api->flush_task.get_ino());
+                              js->rpc_api->write_task.get_ino());
                     jukebox_write(js->rpc_api);
                     break;
                 /* TODO: Add other request types */
@@ -1071,7 +1071,7 @@ void nfs_client::write(fuse_req_t req, fuse_ino_t ino, struct fuse_bufvec *bufv,
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_WRITE);
 
-    tsk->init_write(req, ino, bufv, size, off);
+    tsk->init_write_fe(req, ino, bufv, size, off);
     tsk->run_write();
 }
 
@@ -1487,11 +1487,8 @@ void nfs_client::jukebox_write(struct api_task_info *rpc_api)
 
     struct rpc_task *write_task =
         get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
-    write_task->init_write(nullptr /* fuse_req */,
-                           rpc_api->write_task.get_ino(),
-                           nullptr /* bufv */,
-                           0 /* size */,
-                           0 /* offset */);
+    write_task->init_write_be(rpc_api->write_task.get_ino());
+
     // Any new task should start fresh as a parent task.
     assert(write_task->rpc_api->parent_task == nullptr);
 

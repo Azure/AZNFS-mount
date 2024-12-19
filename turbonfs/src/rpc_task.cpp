@@ -320,18 +320,31 @@ void rpc_task::init_flush(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
-void rpc_task::init_write(fuse_req *request,
+void rpc_task::init_write_fe(fuse_req *request,
                           fuse_ino_t ino,
                           struct fuse_bufvec *bufv,
                           size_t size,
-                          off_t offset)
+                          off_t offset,
+                          bool front_end_write)
 {
     assert(get_op_type() == FUSE_WRITE);
     set_fuse_req(request);
+    rpc_api->write_task.set_front_end_write(front_end_write);
     rpc_api->write_task.set_size(size);
     rpc_api->write_task.set_offset(offset);
     rpc_api->write_task.set_ino(ino);
     rpc_api->write_task.set_buffer_vector(bufv);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
+}
+
+void rpc_task::init_write_be(fuse_ino_t ino,
+                             bool front_end_write)
+{
+    assert(get_op_type() == FUSE_WRITE);
+    set_fuse_req(nullptr);
+    rpc_api->write_task.set_front_end_write(front_end_write);
+    rpc_api->write_task.set_ino(ino);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
@@ -868,11 +881,8 @@ static void write_iov_callback(
             // Create a new write_task for the remaining bc_iovec.
             struct rpc_task *write_task =
                     client->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_WRITE);
-            write_task->init_write(nullptr /* fuse_req */,
-                                   ino,
-                                   nullptr /* bufv */,
-                                   0 /* size */,
-                                   0 /* offset */);
+            write_task->init_write_be(ino);
+
             // Any new task should start fresh as a parent task.
             assert(write_task->rpc_api->parent_task == nullptr);
 
@@ -951,6 +961,9 @@ void rpc_task::issue_write_rpc()
     const fuse_ino_t ino = rpc_api->write_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
     struct bc_iovec *bciov = (struct bc_iovec *) rpc_api->pvt;
+
+    // We should come here only for FUSE_WRITE tasks with bciov set.
+    assert(bciov != nullptr);
     assert(bciov->magic == BC_IOVEC_MAGIC);
 
     WRITE3args args;
