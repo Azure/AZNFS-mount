@@ -432,12 +432,13 @@ void membuf::set_flushing()
  */
 void membuf::clear_flushing()
 {
+    const bool was_flushing = (flag & MB_Flag::Flushing);
     // See comment in set_flushing() above.
     assert(is_locked());
     assert(is_inuse());
 
     // No spurious calls to clear_flushing().
-    assert(is_flushing());
+    assert(was_flushing);
 
     /*
      * clear_flushing() must be called after clear_dirty().
