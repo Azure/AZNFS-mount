@@ -97,8 +97,17 @@ namespace aznfsc {
 // Forward declaration.
 class bytes_chunk_cache;
 
-/**
- * membuf::flag bits.
+/*
+ * Note on membuf flags Dirty/Flushing/CommitPending
+ * =================================================
+ * When application data is copied to a membuf it becomes Dirty.
+ * Dirty membufs are flushed to the server either when dirty data exceeds some threshold or when
+ * the file is closed. While membuf is being flushed Flushing bit is set.
+ * Once the membuf is successfully flushed, Dirty and Flushing bits are cleared. If the flush was
+ * done using Unstable Write then CommitPending bit is set. Once the membuf is successfully committed
+ * to the server, CommitPending bit is cleared.
+ * Till any of these bits is set, the membuf contains data which may not yet be saved on the server
+ * and hence releasing the membuf may cause data loss.
  */
 namespace MB_Flag {
     enum : uint32_t
@@ -115,8 +124,9 @@ namespace MB_Flag {
        Dirty              = (1 << 3), // Data in membuf is newer than the Blob.
        Flushing           = (1 << 4), // Data from dirty membuf is being synced
                                       // to Blob.
-       CommitPending      = (1 << 5), // If data from dirty membuf is flushed to Blob
-                                      // with Unstable flag, then it needs to be commited.
+       CommitPending      = (1 << 5), // Data from dirty membuf is being synced to Blob (as UNSTABLE/FILE_SYNC Write).
+                                      // Data from dirty membuf was synced using UNSTABLE Write but
+                                      // it has not yet been committed to the server.
     };
 }
 
@@ -307,8 +317,10 @@ struct membuf
         /*
          * Make sure is_dirty returns true only when is_uptodate() is true
          * otherwise we may write garbage data to Blob.
+         * If membuf is dirty, it must not be in commit pending state.
          */
         assert(!dirty || is_uptodate());
+        assert(!dirty || !(flag & MB_Flag::CommitPending));
 
         return dirty;
     }
@@ -329,7 +341,16 @@ struct membuf
 
     bool is_flushing() const
     {
-        return (flag & MB_Flag::Flushing);
+        const bool flushing = (flag & MB_Flag::Flushing);
+
+        /*
+         * membuf can be marked flushing only if it's dirty already.
+         * If membuf is in flushing state, it means it can't be in commit pending state.
+         */
+        assert(!flushing || (flag & MB_Flag::Dirty));
+        assert(!flushing || !(flag & MB_Flag::CommitPending));
+
+        return flushing;
     }
 
     void set_flushing();
@@ -337,7 +358,17 @@ struct membuf
 
     bool is_commit_pending() const
     {
-        return (flag & MB_Flag::CommitPending);
+        const bool commit_pending = (flag & MB_Flag::CommitPending);
+
+        /*
+         * membuf can be marked CommitPending only after it's successfully written to the server as unstable
+         * write. Till it's committed we cannot copy new data to the membuf else we risk overwriting data
+         * which is not yet committed to the server.
+         */
+        assert(!commit_pending || !(flag & MB_Flag::Dirty));
+        assert(!commit_pending || !(flag & MB_Flag::Flushing));
+
+        return commit_pending;
     }
 
     void set_commit_pending();
@@ -1098,8 +1129,8 @@ public:
     /*
      * Returns all commit pending chunks for a given range in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s)
-     * and sets the membufs locked. Caller will typically sync commit pending
-     * membuf to Blob and once done must call clear_commit_pending, clear_locked()
+     * and sets the membufs locked. Caller will typically commit the returned
+     * membuf(s) to Blob and once done must call clear_commit_pending, clear_locked()
      * and clear_inuse() in that order.
      */
     std::vector<bytes_chunk> get_commit_pending_bc_range() const;
@@ -1208,8 +1239,9 @@ public:
         return std::max((int64_t)(bytes_dirty - bytes_flushing), int64_t(0));
     }
 
-    /*
-     * Get the amount of dirty data which are currently flushed to the Blob.
+    /**
+     * Get the amount of dirty data which which currently being flushed/written to the Blob.
+     * These could be either being written as stable or unstable writes.
      */
     uint64_t get_bytes_flushing() const
     {
@@ -1217,8 +1249,8 @@ public:
     }
 
     /**
-     * Get the amount of data which is flushed, needs to be committed.
-     * This excludes the dirty data which is currently not flushed or in process of flushing.
+     * Get the amount of data which has been written as unstable writes, but not yet committed.
+     * This excludes dirty data which is not flushed/written yet or in process of flushing.
      * It gets incremented on write completion of dirty data flushed to BLOB with unstable parameter.
      */
     uint64_t get_bytes_to_commit() const

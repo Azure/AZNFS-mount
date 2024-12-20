@@ -334,7 +334,10 @@ void membuf::set_commit_pending()
     assert(is_inuse());
 
     // MUST be uptodate .
-    assert(is_uptodate() && is_flushing());
+    assert(is_uptodate());
+
+    // We mark commit pending after the outstanding flush/write completes, but before we clear flushing.
+    assert(is_flushing());
 
     flag |= MB_Flag::CommitPending;
 
@@ -346,7 +349,7 @@ void membuf::set_commit_pending()
 }
 
 /**
- * Must be called after commiting membuf to Blob.
+ * Must be called after committing membuf to Blob.
  */
 void membuf::clear_commit_pending()
 {
@@ -571,6 +574,9 @@ void membuf::clear_locked()
 
 void membuf::set_dirty()
 {
+    // Check if membuf is already dirty.
+    const bool was_dirty = (flag & MB_Flag::Dirty);
+
     /*
      * Must be locked and inuse.
      * Note that following is the correct sequence of operations.
@@ -578,13 +584,24 @@ void membuf::set_dirty()
      * get()
      * set_locked()
      * << write application data into the above membuf(s) >>
+     * set_uptodate()
      * set_dirty()
      * clear_locked()
      * clear_inuse()
      */
     assert(is_locked());
     assert(is_inuse());
-    assert(!is_dirty());
+    assert(is_uptodate());
+
+    // Must not be flushing dirty data to Blob.
+    assert(!is_flushing());
+
+    // Must not be in commit pending state.
+    assert(!is_commit_pending());
+
+    if (was_dirty) {
+        return;
+    }
 
     flag |= MB_Flag::Dirty;
 

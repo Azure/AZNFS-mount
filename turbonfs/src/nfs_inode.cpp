@@ -34,7 +34,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
 
     // TODO: Revert this to false once commit changes integrated.
     assert(stable_write == true);
-    assert(commit_state == commit_not_running);
+    assert(commit_state == commit_state_t::COMMIT_NOT_NEEDED);
 
 #ifndef ENABLE_NON_AZURE_NFS
     // Blob NFS supports only these file types.
@@ -498,24 +498,6 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
     }
 }
 
-bool nfs_inode::check_stable_write_required(bool overlapped_io, const struct membuf *mb) const 
-{
-    if (stable_write || !overlapped_io) {
-        return false;
-    }
-
-    /*
-     * If the membuf is in process of flushing or commit_pending or uptodate state, then we can't overwrite 
-     * it, as we can't write this membuf without knowledge of how block list looks like on the server.
-     * It may require read modified write which stable write handles.
-     */
-    if (mb->is_flushing() || mb->is_commit_pending() || mb->is_uptodate()) {
-        return true;
-    }
-
-    return false;
-}
-
 /**
  * Note: This takes exclusive lock on ilock_1.
  */
@@ -555,7 +537,6 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
      */
     std::vector<bytes_chunk> bc_vec =
         filecache_handle->getx(offset, length, extent_left, extent_right);
-    const bool overlapped_io = is_overlapped_io(offset);
 
     size_t remaining = length;
 
@@ -581,7 +562,7 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
          * TODO: If we have copied at least one byte, do not fail but instead
          *       let the caller know that we copied ledd.
          */
-        if (err == EAGAIN || err == EACCES) {
+        if (err == EAGAIN) {
             mb->clear_inuse();
             assert(remaining >= bc.length);
             remaining -= bc.length;
@@ -599,34 +580,12 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
          * membuf remains uptodate after the copy.
          */
 try_copy:
-        if (check_stable_write_required(overlapped_io, mb)) {
-            AZLogWarn("[{}] Switch to stable write, Overwrite of membuf [{}, {}]",
-                    ino,
-                    mb->offset,
-                    mb->offset+mb->length);
-            assert(err == 0);
-            err = EACCES;
-
-            mb->clear_inuse();
-            filecache_handle->release(mb->offset, mb->length);
-            mb->set_inuse();
-        } else if ((bc.maps_full_membuf() || mb->is_uptodate()) &&
-                  !(mb->is_flushing() || mb->is_commit_pending())) {
+        if (bc.maps_full_membuf() || mb->is_uptodate()) {
 
             assert(bc.length <= remaining);
             ::memcpy(bc.get_buffer(), buf, bc.length);
             mb->set_uptodate();
-
-            /*
-            * If the membuf was not dirty, mark it dirty.
-            * It may happen in case of random writes where overwrite
-            * to previous data is done. In such cases the membuf is
-            * already dirty we don't need to mark it dirty again as it
-            * cause dirty membuf accounting to go wrong.
-            */
-            if (!mb->is_dirty()) {
-                mb->set_dirty();
-            }
+            mb->set_dirty();
 
             // Update file size in inode'c cached attr.
             on_cached_write(bc.offset, bc.length);
@@ -677,8 +636,7 @@ try_copy:
             inject_eagain = inject_error();
 #endif
 
-            if (mb->is_uptodate() &&
-                !(mb->is_flushing() || mb->is_commit_pending() || inject_eagain)) {
+            if (mb->is_uptodate() && !inject_eagain) {
                 AZLogWarn("[{}] Membuf [{}, {}) (bc [{}, {})) is now uptodate, "
                           "retrying copy", ino,
                           mb->offset, mb->offset+mb->length,

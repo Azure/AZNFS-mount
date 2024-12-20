@@ -358,25 +358,31 @@ public:
 
     /*
      * Commit state for this inode.
-     * This is used to track the state of the commit operation for this inode.
-     * It ensure that we don't send multiple commit requests for the same inode
-     * at the same time.
-     * 
-     * State transition: commit_not_running -> commit_pending -> commit_in_progress
-     *                   commit_not_running -> commit_in_progress
-     *                   commit_in_progress -> commit_not_running
-     * 
-     * commit_pending: This state is special to tell running write(flush) task to start 
-     *                 commit task when flushing completes (bytes_flushing == 0).
+     * This is used to track the state of commit operation for this inode, which can be one of:
+     * COMMIT_NOT_NEEDED:  No or not enough uncommitted (written using unstable writes) data.
+     *                     Note that we want to commit multiple blocks at a time to amortize the latency
+     *                     introduced by commit, given the fact that all writes have to stop till the commit
+     *                     completes.
+     * NEEDS_COMMIT:       There's enough uncommitted data that needs to be committed.
+     *                     This indicates running write(flush) task to start commit task when flushing completes
+     *                     (bytes_flushing == 0).
+     * COMMIT_IN_PROGRESS: There's an outstanding commit operation.
+     *                     Till it completes no write or commit for this inode can be sent to the server.
+     *
+     * Valid state transitions:
+     * COMMIT_NOT_NEEDED -> NEEDS_COMMIT -> COMMIT_IN_PROGRESS
+     * COMMIT_NOT_NEEDED -> COMMIT_IN_PROGRESS
+     * COMMIT_IN_PROGRESS -> COMMIT_NOT_NEEDED
      */
-    typedef enum {
-        commit_not_running = 0,
-        commit_pending = 1,
-        commit_in_progress = 2,
-        invalid_state = 3,
-    } commit_state_t;
+    enum class commit_state_t
+    {
+        INVALID = 0,
+        COMMIT_NOT_NEEDED,
+        NEEDS_COMMIT,
+        COMMIT_IN_PROGRESS,
+    };
 
-    commit_state_t commit_state = commit_not_running;
+    commit_state_t commit_state = commit_state_t::COMMIT_NOT_NEEDED;
 
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
@@ -903,20 +909,15 @@ public:
     }
 
     /*
-     * This function checks, whether new io is overlapping with the existing data
+     * This function checks, whether new io is overlapping/sparse write with the existing data
      * in the file or not.
+     * For overlapping/sparse write, we need to switch to stable write.
      */
-    bool is_overlapped_io(off_t offset) const
+    bool check_stable_write_required(off_t offset) const
     {
-        /*
-         * If current write is overlapping with the existing data, we need to
-         * do few more checks on existing membufs to decide whether we need
-         * to switch to stable write or not. Those checks are done in the 
-         * check_stable_write_required() function. 
-         */
-        if (offset < attr.st_size) {
-            AZLogDebug("offset:{} is overlapping with the existing data in the file with end_offset: {}",
-                offset, attr.st_size);
+        if (offset != attr.st_size) {
+            AZLogDebug("offset:{} is either overlapping/sparse_write with the existing data in the"
+             "file with end_offset: {}", offset, attr.st_size);
 
             return true;
         }
@@ -1075,8 +1076,8 @@ public:
      */
     bool is_commit_pending()
     {
-        assert(commit_state < invalid_state);
-        return (commit_state == commit_pending);
+        assert(commit_state != commit_state_t::INVALID);
+        return (commit_state == commit_state_t::NEEDS_COMMIT);
     }
 
     /**
@@ -1084,9 +1085,9 @@ public:
      */
     void set_commit_in_progress()
     {
-        assert(commit_state < invalid_state);
-        assert(commit_state != commit_in_progress);
-        commit_state = commit_in_progress;
+        assert(commit_state != commit_state_t::INVALID);
+        assert(commit_state != commit_state_t::COMMIT_IN_PROGRESS);
+        commit_state = commit_state_t::COMMIT_IN_PROGRESS;
     }
 
     /**
@@ -1095,9 +1096,9 @@ public:
      */
     void set_commit_in_pending()
     {
-        assert(commit_state < invalid_state);
-        assert(commit_state == commit_not_running);
-        commit_state = commit_pending;
+        // Commit can be set to pending only if it is in commit_not_needed state.
+        assert(commit_state == commit_state_t::COMMIT_NOT_NEEDED);
+        commit_state = commit_state_t::NEEDS_COMMIT;
     }
 
     /**
@@ -1105,9 +1106,10 @@ public:
      */
     void clear_commit_in_progress()
     {
-        assert(commit_state < invalid_state);
-        assert(commit_state == commit_in_progress);
-        commit_state = commit_not_running;
+        assert(commit_state != commit_state_t::INVALID);
+        assert(commit_state == commit_state_t::COMMIT_IN_PROGRESS);
+
+        commit_state = commit_state_t::COMMIT_NOT_NEEDED;
     }
 
     /**
@@ -1115,8 +1117,8 @@ public:
      */
     bool is_commit_progress() const
     {
-        assert(commit_state < invalid_state);
-        return (commit_state == commit_in_progress || commit_state == commit_pending);
+        assert(commit_state != commit_state_t::INVALID);
+        return (commit_state == commit_state_t::COMMIT_IN_PROGRESS);
     }
 
     /**
@@ -1236,14 +1238,6 @@ public:
                                          : get_actimeo_min();
     }
     
-
-    /**
-     * This is function check whether we need to switch to stable write or not.
-     * It checks if membuf is not in flushed/commit_pending state then we can safely
-     * overwrite that membuf otherwise we need to switch to stable write.
-     */
-    bool check_stable_write_required(bool overlapped_io, const struct membuf *mb) const;
-
     /**
      * Copy application data into the inode's file cache.
      *
