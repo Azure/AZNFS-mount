@@ -304,13 +304,17 @@ static void aznfsc_ll_open(fuse_req_t req,
      *       these values, we do it to highlight our intent.
      *
      * TODO: Explore kernel caching, its benefits and side-effects.
+     * Update: Kernel caching doesn't perform as well for our large files,
+     *         large IOs use case.
+     *
+     * Keep parallel_direct_writes disabled, so that fuse ensures that it
+     * doesn't send another write before the prev one completes. We depend
+     * on that.
      */
     fi->direct_io = !aznfsc_cfg.cache.data.kernel.enable;
     fi->keep_cache = aznfsc_cfg.cache.data.kernel.enable;
     fi->nonseekable = 0;
-#if 0
-    fi->parallel_direct_writes = 1;
-#endif
+    fi->parallel_direct_writes = 0;
     fi->noflush = 0;
 
     /*
@@ -692,9 +696,7 @@ static void aznfsc_ll_create(fuse_req_t req,
     fi->direct_io = !aznfsc_cfg.cache.data.kernel.enable;
     fi->keep_cache = aznfsc_cfg.cache.data.kernel.enable;
     fi->nonseekable = 0;
-#if 0
-    fi->parallel_direct_writes = 1;
-#endif
+    fi->parallel_direct_writes = 0;
     fi->noflush = 0;
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
@@ -810,8 +812,6 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
                fmt::ptr(req), ino, fmt::ptr(bufv), off, length, fmt::ptr(fi),
                fi->writepage ? 1 : 0, fi->flush ? 1 : 0);
 
-    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
-
     /*
      * Sanity assert. 1MiB is the max write size fuse will ever issue.
      * If fuse sends more we'd like to know.
@@ -819,6 +819,8 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
      * TODO: Remove this before going to production.
      */
     assert(length <= 1048576);
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
     client->write(req, ino, bufv, length, off);
 }
