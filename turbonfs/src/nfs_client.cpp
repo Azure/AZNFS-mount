@@ -1217,9 +1217,23 @@ bool nfs_client::silly_rename(
                    inode->get_silly_rename_level());
 
         AZLogInfo("silly_rename: Renaming {}/{} -> {}, ino={}"
-                  "rename_triggered_silly_rename={}",
+                  "rename_triggered_silly_rename={}, opencnt={}",
                   parent_ino, name, newname, inode->get_fuse_ino(),
-                  rename_triggered_silly_rename);
+                  rename_triggered_silly_rename,
+                  inode->opencnt.load());
+
+        /*
+         * Now that we have decided to proceed with the silly rename, we need
+         * to ensure that inode->release() does delete the silly renamed file
+         * when the last opencnt is dropped. If application drops the last
+         * opencnt after the is_open() call above and before we set
+         * inode->is_silly_renamed in the rename_callback(), then we will not
+         * get a chance to delete the silly renamed file, hence we increment
+         * the opencnt here and drop it in rename_callback(). If application
+         * had dropped its opencnt, this release will delete the silly renamed
+         * file.
+         */
+        inode->opencnt++;
 
         rename(req, parent_ino, name, parent_ino, newname,
                true /* silly_rename */, inode->get_fuse_ino(),

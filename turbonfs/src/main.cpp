@@ -332,6 +332,7 @@ int main(int argc, char *argv[])
     struct fuse_loop_config *loop_config = fuse_loop_cfg_create();
     int ret = -1;
     bool client_started = false;
+    int wait_iter;
 
     /* Don't mask creation mode, kernel already did that */
     umask(0);
@@ -476,6 +477,30 @@ int main(int argc, char *argv[])
      * We come here when user unmounts the fuse filesystem.
      */
     AZLogInfo("Shutting down!");
+
+    /*
+     * After we exit the fuse session loop above, libfuse won't read any more
+     * messages from kernel, but we may have some fuse messages that we have
+     * received but still not responded. We must wait for those fuse messages
+     * to be responded before proceeding with the tear down.
+     */
+    wait_iter = 0;
+    while (rpc_stats_az::fuse_responses_awaited) {
+        if (wait_iter++ == 100) {
+            AZLogWarn("Giving up on {} pending fuse requests",
+                      rpc_stats_az::fuse_responses_awaited.load());
+            break;
+        }
+
+        AZLogWarn("Waiting for {} pending fuse requests to complete",
+                  rpc_stats_az::fuse_responses_awaited.load());
+
+        /*
+         * 100ms wait should be large enough to let those requests complete
+         * and small enough to not make unmount wait unnecessarily long.
+         */
+        ::usleep(100 * 1000);
+    }
 
 err_out4:
     fuse_loop_cfg_destroy(loop_config);
