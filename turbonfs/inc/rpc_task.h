@@ -498,11 +498,11 @@ struct bc_iovec
                  * less than or equal to bytes_allocated.
                  */
                 mb->clear_dirty();
+                mb->clear_flushing();
+
                 if (is_unstable_write) {
                     mb->set_commit_pending();
                 }
-
-                mb->clear_flushing();
                 mb->clear_locked();
                 mb->clear_inuse();
                 iov++;

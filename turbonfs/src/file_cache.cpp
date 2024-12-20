@@ -336,8 +336,9 @@ void membuf::set_commit_pending()
     // MUST be uptodate .
     assert(is_uptodate());
 
-    // We mark commit pending after the outstanding flush/write completes, but before we clear flushing.
-    assert(is_flushing());
+    // We mark commit pending after the outstanding flush/write completes.
+    assert(!is_dirty());
+    assert(!is_flushing());
 
     flag |= MB_Flag::CommitPending;
 
@@ -432,7 +433,12 @@ void membuf::set_flushing()
  */
 void membuf::clear_flushing()
 {
+    // The reason for checking not using is_flushing() is that,
+    // it expects if the membuf is dirty then it must be flushing.
+    // But in case of write completion we clear dirty first and then
+    // clear flushing. So, we can't use the is_flushing() here.
     const bool was_flushing = (flag & MB_Flag::Flushing);
+
     // See comment in set_flushing() above.
     assert(is_locked());
     assert(is_inuse());
