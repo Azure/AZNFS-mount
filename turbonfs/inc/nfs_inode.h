@@ -255,6 +255,15 @@ private:
      */
     struct stat attr;
 
+    /*
+     * Has this inode seen any non-append write?
+     * This starts as false and remains false as long as copy_to_cache() only
+     * adds writes to the end of file. Once any write either adds data beyond
+     * eof or overwrites some existing bytes of the file, this is set to true.
+     * Once set to true it never goes back to false.
+     */
+    bool non_append_writes_seen = false;
+
 public:
     /*
      * Fuse inode number.
@@ -831,7 +840,7 @@ public:
      * to change, on_cached_write() updates the file size in attr.size so that
      * get_file_size() returns the correct size.
      *
-     * NOte: It doesn't update attr.ctime and attr.mtime deliberately as this
+     * Note: It doesn't update attr.ctime and attr.mtime deliberately as this
      *       is not authoritative info and we would want to fetch attributes
      *       from server when needed. This size updation helps get_file_size()
      *       call made from run_read() in solowriter mode so that we don't
@@ -842,6 +851,20 @@ public:
         const off_t new_size = offset + length;
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
+
+        /*
+         * TODO: Need to correctly handle the case when attr.st_size is updated
+         *       from write_iov_callback() with the postop attr received.
+         *       We might want to maintain cached file size which won't be
+         *       updated from postop attributes. We will need to correctly
+         *       update that when file is truncated f.e.
+         */
+        if (!non_append_writes_seen && (offset != attr.st_size)) {
+            non_append_writes_seen = true;
+            AZLogInfo("[{}] Non-append write seen [{}, {}), file size: {}",
+                      ino, offset, offset+length, attr.st_size);
+        }
+
         if (new_size > attr.st_size) {
             attr.st_size = new_size;
         }
