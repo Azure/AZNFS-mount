@@ -336,9 +336,16 @@ int main(int argc, char *argv[])
     std::string log_file_name;
     std::string log_file_path;
 
+    /* 
+     * There can only be 1 reader of this pipe. Hence, we should ensure we 
+     * don't send messages multiple times to avoid wait loops.
+     */
+    bool status_pipe_closed = false;
+
     // Check if the status mount pipe is set.
     const char* pipe_name = std::getenv("MOUNT_STATUS_PIPE");
     if (!pipe_name) {
+        status_pipe_closed = true;
         AZLogError("MOUNT_STATUS_PIPE environment variable is not set.");
     }
 
@@ -478,9 +485,10 @@ int main(int argc, char *argv[])
     AZLogInfo("==> Aznfsclient fuse driver ready to serve requests!");
     
     // Open the pipe for writing.
-    if (pipe_name != nullptr) {
+    if (!status_pipe_closed) {
         std::ofstream pipe(pipe_name);
         pipe<<0;
+        status_pipe_closed = true;
     }
 
     if (opts.singlethread) {
@@ -539,7 +547,7 @@ err_out1:
     free(opts.mountpoint);
     fuse_opt_free_args(&args);
 err_out0:
-    if (pipe_name != nullptr && ret != 0) {
+    if (!status_pipe_closed && ret != 0) {
         // Open the pipe for writing.
         std::ofstream pipe(pipe_name);
         
