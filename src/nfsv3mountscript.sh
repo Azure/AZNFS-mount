@@ -943,8 +943,8 @@ aznfsclient_mount()
 
     pecho "Waiting for mount to complete (timeout: 10 seconds)..."
     # Read from named pipe with timeout
-    read -t 10 mount_status < $MOUNT_STATUS_PIPE
-
+    timeout 10 bash -c "read mount_status < $MOUNT_STATUS_PIPE"
+    
     #
     # Check the exit status to determine if it timed out.
     # If its not timed the the client should have sent either "0"
@@ -952,7 +952,7 @@ aznfsclient_mount()
     # 
     # TODO: Improve this with better error codes and messages.
     #
-    if [ $? -eq 142 ]; then
+    if [ $? -eq 124 ]; then
         eecho "Mount did not complete within 10 seconds."
         return $?
     elif [ "$mount_status" -eq "1" ]; then
