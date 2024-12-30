@@ -333,6 +333,14 @@ int main(int argc, char *argv[])
     int ret = -1;
     bool client_started = false;
     int wait_iter;
+    std::string log_file_name;
+    std::string log_file_path;
+
+    // Check if the status mount pipe is set.
+    const char* pipe_name = std::getenv("MOUNT_STATUS_PIPE");
+    if (!pipe_name) {
+        AZLogError("MOUNT_STATUS_PIPE environment variable is not set.");
+    }
 
     /* Don't mask creation mode, kernel already did that */
     umask(0);
@@ -342,13 +350,14 @@ int main(int argc, char *argv[])
      * and debug level arguments.
      */
     if (fuse_parse_cmdline(&args, &opts) != 0) {
-        return 1;
+        ret = 1;
+        goto err_out0;
     }
 
-    std::string log_file_name = opts.mountpoint;
+    log_file_name = opts.mountpoint;
     std::replace(log_file_name.begin(), log_file_name.end(), '/', '_');
 
-    std::string log_file_path = optdirdata + "/turbo" + log_file_name + ".log";
+    log_file_path = optdirdata + "/turbo" + log_file_name + ".log";
     set_file_logger(log_file_path);
 
     AZLogInfo("Logfile: {}", log_file_path);
@@ -358,7 +367,8 @@ int main(int argc, char *argv[])
      * TODO: Make this configurable?
      */
     if (fuse_opt_add_arg(&args, "-oallow_other,default_permissions") == -1) {
-        return 1;
+        ret = 1;
+        goto err_out0;
     }
 
     if (opts.show_help) {
@@ -388,7 +398,8 @@ int main(int argc, char *argv[])
 
     // Parse aznfsclient specific options.
     if (fuse_opt_parse(&args, &aznfsc_cfg, aznfsc_opts, NULL) == -1) {
-        return 1;
+        ret = 1;
+        goto err_out0;
     }
 
     /*
@@ -398,7 +409,8 @@ int main(int argc, char *argv[])
 
     // Parse config yaml if --config-yaml option provided.
     if (!aznfsc_cfg.parse_config_yaml()) {
-        return 1;
+        ret = 1;
+        goto err_out0;
     }
 
     /*
@@ -407,12 +419,14 @@ int main(int argc, char *argv[])
      */
     if (aznfsc_cfg.account == nullptr) {
         AZLogError("Account name must be set either from cmdline or config yaml!");
-        return 1;
+        ret = 1;
+        goto err_out0;
     }
 
     if (aznfsc_cfg.container == nullptr) {
         AZLogError("Container name must be set either from cmdline or config yaml!");
-        return 1;
+        ret = 1;
+        goto err_out0;
     }
 
     aznfsc_cfg.mountpoint = opts.mountpoint;
@@ -462,6 +476,12 @@ int main(int argc, char *argv[])
 
     client_started = true;
     AZLogInfo("==> Aznfsclient fuse driver ready to serve requests!");
+    
+    // Open the pipe for writing.
+    if (pipe_name != nullptr) {
+        std::ofstream pipe(pipe_name);
+        pipe<<0;
+    }
 
     if (opts.singlethread) {
         ret = fuse_session_loop(se);
@@ -518,6 +538,15 @@ err_out2:
 err_out1:
     free(opts.mountpoint);
     fuse_opt_free_args(&args);
+err_out0:
+    if (pipe_name != nullptr && ret != 0) {
+        // Open the pipe for writing.
+        std::ofstream pipe(pipe_name);
+        
+        // TODO: Extend this with meaningful error codes in the future.
+        pipe<<1;
+        return 1;
+    }
 
     /*
      * Shutdown the client after fuse cleanup is performed so that we don't

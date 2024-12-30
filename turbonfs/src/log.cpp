@@ -26,9 +26,12 @@ void init_log()
 }
 
 void set_file_logger(const std::string& log_file_path) {
-    // Create new file sink for logging to file.
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>
-                     (log_file_path, false /* truncate */);
+    // Rotate when file size exceeds 10MB.
+    std::size_t max_size = 10 * 1024 * 1024;
+    std::size_t max_files = 5;
+    auto rotating_file_sink =
+            std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+                    log_file_path, max_size, max_files);
     
     auto log_level = spdlog::get_level();
 
@@ -43,7 +46,7 @@ void set_file_logger(const std::string& log_file_path) {
      * the old default logger.
      */
     auto logger = std::make_shared<spdlog::logger>
-                  ("multi_sink", spdlog::sinks_init_list{file_sink, console_sink});
+                  ("multi_sink", spdlog::sinks_init_list{rotating_file_sink, console_sink});
     
     /*
      * We need to register this logger, set it as default and set the flush_on level
