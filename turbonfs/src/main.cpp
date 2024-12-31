@@ -343,10 +343,10 @@ int main(int argc, char *argv[])
     bool status_pipe_closed = false;
 
     // Check if the status mount pipe is set.
-    const char* pipe_name = std::getenv("MOUNT_STATUS_PIPE");
+    const char *pipe_name = std::getenv("MOUNT_STATUS_PIPE");
     if (!pipe_name) {
         status_pipe_closed = true;
-        AZLogError("MOUNT_STATUS_PIPE environment variable is not set.");
+        AZLogWarn("MOUNT_STATUS_PIPE environment variable is not set.");
     }
 
     /* Don't mask creation mode, kernel already did that */
@@ -487,8 +487,12 @@ int main(int argc, char *argv[])
     // Open the pipe for writing.
     if (!status_pipe_closed) {
         std::ofstream pipe(pipe_name);
-        pipe<<0;
-        status_pipe_closed = true;
+        if (!pipe.is_open()) {
+            AZLogError("Aznfsclient unable to send mount status on pipe.");
+        } else {
+            pipe << 0;
+            status_pipe_closed = true;
+        }
     }
 
     if (opts.singlethread) {
@@ -550,9 +554,14 @@ err_out0:
     if (!status_pipe_closed && ret != 0) {
         // Open the pipe for writing.
         std::ofstream pipe(pipe_name);
-        
-        // TODO: Extend this with meaningful error codes in the future.
-        pipe<<1;
+        if (!pipe.is_open()) {
+            AZLogError("Aznfsclient unable to send mount status on pipe.");
+        } else {
+            
+            // TODO: Extend this with meaningful error codes.
+            pipe << 1;
+            status_pipe_closed = true;
+        }
         return 1;
     }
 
