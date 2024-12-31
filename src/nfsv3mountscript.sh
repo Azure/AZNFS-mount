@@ -956,7 +956,7 @@ aznfsclient_mount()
 
     # Read from named pipe with timeout
     if command -v timeout >/dev/null; then
-        timeout 30 bash -c "read mount_status < $MOUNT_STATUS_PIPE"
+        mount_status=$(timeout 30 bash -c "read mount_status < $MOUNT_STATUS_PIPE; echo \$mount_status")
     else
         wecho "'timeout' command not found waiting indefinitely for mount status!"
         read mount_status < $MOUNT_STATUS_PIPE
