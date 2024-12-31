@@ -357,7 +357,6 @@ int main(int argc, char *argv[])
      * and debug level arguments.
      */
     if (fuse_parse_cmdline(&args, &opts) != 0) {
-        ret = 1;
         goto err_out0;
     }
 
@@ -374,7 +373,6 @@ int main(int argc, char *argv[])
      * TODO: Make this configurable?
      */
     if (fuse_opt_add_arg(&args, "-oallow_other,default_permissions") == -1) {
-        ret = 1;
         goto err_out0;
     }
 
@@ -405,7 +403,6 @@ int main(int argc, char *argv[])
 
     // Parse aznfsclient specific options.
     if (fuse_opt_parse(&args, &aznfsc_cfg, aznfsc_opts, NULL) == -1) {
-        ret = 1;
         goto err_out0;
     }
 
@@ -416,7 +413,6 @@ int main(int argc, char *argv[])
 
     // Parse config yaml if --config-yaml option provided.
     if (!aznfsc_cfg.parse_config_yaml()) {
-        ret = 1;
         goto err_out0;
     }
 
@@ -426,13 +422,11 @@ int main(int argc, char *argv[])
      */
     if (aznfsc_cfg.account == nullptr) {
         AZLogError("Account name must be set either from cmdline or config yaml!");
-        ret = 1;
         goto err_out0;
     }
 
     if (aznfsc_cfg.container == nullptr) {
         AZLogError("Container name must be set either from cmdline or config yaml!");
-        ret = 1;
         goto err_out0;
     }
 
@@ -557,9 +551,8 @@ err_out0:
         if (!pipe.is_open()) {
             AZLogError("Aznfsclient unable to send mount status on pipe.");
         } else {
-            
             // TODO: Extend this with meaningful error codes.
-            pipe << 1;
+            pipe << ret;
             status_pipe_closed = true;
         }
         return 1;

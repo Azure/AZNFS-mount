@@ -944,27 +944,40 @@ aznfsclient_mount()
 
     rm -f $MOUNT_STATUS_PIPE
     mkfifo $MOUNT_STATUS_PIPE
-    
+
+    if [ ! -p "$MOUNT_STATUS_PIPE" ]; then
+        eecho "Unable to create status pipe!"
+        return 1
+    fi
+
     $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS
 
     vecho "Waiting for mount to complete (timeout: 30 seconds)..."
+
     # Read from named pipe with timeout
-    timeout 30 bash -c "read mount_status < $MOUNT_STATUS_PIPE"
-    
+    if command -v timeout >/dev/null; then
+        timeout 30 bash -c "read mount_status < $MOUNT_STATUS_PIPE"
+    else
+        wecho "'timeout' command not found waiting indefinitely for mount status"
+        read mount_status < $MOUNT_STATUS_PIPE
+    fi
+
+    timeout_status=$?
+
     # Delete the pipe because this is the only reader.
     rm -f $MOUNT_STATUS_PIPE
 
     #
     # Check the exit status to determine if it timed out.
-    # If its not timed the the client should have sent either "0"
+    # If it's not timed out the client should have sent either "0"
     # indicating success or a "1" indicating failure.
     # 
     # TODO: Improve this with better error codes and messages.
     #
-    if [ $? -eq 124 ]; then
+    if [ $timeout_status -eq 124 ]; then
         eecho "Mount timed out, check for details!"
-        return $?
-    elif [ "$mount_status" -eq "1" ]; then
+        return $timeout_status
+    elif [ "$mount_status" -ne "0" ]; then
         return 1
     else
         vecho "Mounted successfully."
