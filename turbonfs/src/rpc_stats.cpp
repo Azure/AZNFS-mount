@@ -143,6 +143,10 @@ void rpc_stats_az::dump_stats()
                   " release calls\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_release_g) +
                   " bytes released\n";
+    str += "  " + std::to_string(bytes_chunk_cache::num_truncate_g) +
+                  " truncate calls\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_truncate_g) +
+                  " bytes truncated\n";
 
     str += "Application statistics:\n";
     str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_read)) +

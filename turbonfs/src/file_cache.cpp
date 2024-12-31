@@ -34,6 +34,8 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_get_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_release_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_release_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_truncate_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_truncate_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_allocated_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_cached_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_dirty_g = 0;
@@ -76,11 +78,19 @@ membuf::~membuf()
     // bytes_chunk_cache backlink must be set.
     assert(bcc);
 
-    // inuse membuf must never be destroyed.
+    /*
+     * inuse membuf must never be destroyed.
+     * Caller must be holding a shared_ptr ref on membuf, so it cannot be
+     * freed.
+     */
     assert(!is_inuse());
 
-    // dirty membuf must never be destroyed.
-    assert(!is_dirty());
+    /*
+     * dirty membuf must not be destroyed, unless it's due to file being
+     * truncated, in which case we don't care about losing the unflushed
+     * data.
+     */
+    assert(!is_dirty() || is_truncated());
 
     // locked membuf must never be destroyed.
     assert(!is_locked());
@@ -537,6 +547,21 @@ void membuf::clear_dirty()
                offset, offset+length, backing_file_fd);
 }
 
+void membuf::set_truncated()
+{
+    /*
+     * Literally any membuf can be truncated.
+     * Note that it's not the membuf that's truncated but the bytes_chunk
+     * referring to the membuf.
+     * This should only be called when file region covering "entire" membuf
+     * is truncated.
+     */
+    flag |= MB_Flag::Truncated;
+
+    AZLogDebug("Set truncated membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
 void membuf::set_inuse()
 {
     bcc->bytes_inuse_g += length;
@@ -673,10 +698,26 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     }
 #endif
 
+    /*
+     * We need to perform the same action for both release and truncate, just
+     * that truncate is always allowed while release is allowed only if
+     * safe_to_release() returns true.
+     */
+    const bool do_truncate = (action == scan_action::SCAN_ACTION_TRUNCATE);
+    if (do_truncate) {
+        action = scan_action::SCAN_ACTION_RELEASE;
+    }
+
     assert(offset < AZNFSC_MAX_FILE_SIZE);
     assert(length > 0);
-    // Cannot write more than AZNFSC_MAX_CHUNK_SIZE in a single call.
-    assert(length <= AZNFSC_MAX_CHUNK_SIZE);
+    assert((int64_t) (offset + length) == ((int64_t) offset + (int64_t) length));
+    /*
+     * Cannot write more than AZNFSC_MAX_CHUNK_SIZE in a single call so get()
+     * must not ask for more than that. release() or truncate() can ask for
+     * more than AZNFSC_MAX_CHUNK_SIZE to be released.
+     */
+    assert(length <= AZNFSC_MAX_CHUNK_SIZE ||
+           (action == scan_action::SCAN_ACTION_RELEASE));
     assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
     assert((action == scan_action::SCAN_ACTION_GET) ||
            (action == scan_action::SCAN_ACTION_RELEASE));
@@ -1150,7 +1191,7 @@ do { \
                              chunk_offset, chunk_offset + chunk_length,
                              fmt::ptr(chunkvec.back().get_buffer()),
                              fmt::ptr(bc->alloc_buffer->get()));
-            } else if (bc->safe_to_release()) {
+            } else if (do_truncate || bc->safe_to_release()) {
                 assert (action == scan_action::SCAN_ACTION_RELEASE);
 
                 /*
@@ -1311,7 +1352,7 @@ do { \
                              chunk_offset, chunk_offset + chunk_length,
                              fmt::ptr(chunkvec.back().get_buffer()),
                              fmt::ptr(bc->alloc_buffer->get()));
-            } else if (bc->safe_to_release()) {
+            } else if (do_truncate || bc->safe_to_release()) {
                 assert(action == scan_action::SCAN_ACTION_RELEASE);
                 assert(chunk_length <= remaining_length);
 
@@ -1564,7 +1605,7 @@ allocate_only_chunk:
                  * Not all chunks from begin_delete to end_delete are
                  * guaranteed safe-to-delete, so check before deleting.
                  */
-                if (bc->safe_to_release()) {
+                if (do_truncate || bc->safe_to_release()) {
                     AZLogVerbose("<Release [{}, {})> (freeing chunk) [{},{}) "
                                  "b:{} a:{}",
                                  offset, offset + length,
@@ -1585,6 +1626,9 @@ allocate_only_chunk:
 
                     bytes_released_tmp += bc->length;
 
+                    if (do_truncate) {
+                        bc->get_membuf()->set_truncated();
+                    }
                     chunkmap.erase(_it);
                 }
             }
@@ -2930,12 +2974,70 @@ do { \
     PRINT_CHUNKMAP();
 
     /*
+     * Mark the entire range as dirty so that release() fails to release any
+     * byte.
+     */
+    for (int i = 0; i < 4; i++) {
+        v[i].get_membuf()->set_inuse();
+        v[i].get_membuf()->set_locked();
+        v[i].get_membuf()->set_dirty();
+        v[i].get_membuf()->set_uptodate();
+        v[i].get_membuf()->clear_locked();
+        v[i].get_membuf()->clear_inuse();
+        assert(!v[i].safe_to_release());
+    }
+
+    v.clear();
+
+    AZLogInfo("========== [Release] --> (0, 500) ==========");
+    // All bytes are dirty, release() will return 0.
+    assert(cache.release(0, 500) == 0);
+
+    AZLogInfo("========== [Truncate] --> (75) ==========");
+    // truncate() should be able to release dirty bytes.
+    assert(cache.truncate(75) == 125);
+
+    /*
+     * Get cache chunks covering range [5, 200).
+     * This should return following chunks:
+     * 1. Existing chunk [5, 30).
+     * 2. Existing chunk [30, 50).
+     * 3. Existing chunk [50, 75).
+     * 4. Newly allocated chunk [75, 200).
+     *
+     * The largest contiguous block containing the requested chunk is
+     * [5, 200).
+     */
+    AZLogInfo("========== [Get] --> (5, 195) ==========");
+    v = cache.getx(5, 195, &l, &r);
+    assert(v.size() == 4);
+
+    ASSERT_EXTENT(5, 200);
+    ASSERT_EXISTING(v[0], 5, 30);
+    ASSERT_EXISTING(v[1], 30, 50);
+    ASSERT_EXISTING(v[2], 50, 75);
+    ASSERT_NEW(v[3], 75, 200);
+
+    for (int i = 0; i < 3; i++) {
+        v[i].get_membuf()->set_inuse();
+        v[i].get_membuf()->set_locked();
+        v[i].get_membuf()->set_uptodate();
+        v[i].get_membuf()->set_flushing();
+        v[i].get_membuf()->clear_dirty();
+        v[i].get_membuf()->clear_flushing();
+        v[i].get_membuf()->clear_locked();
+        v[i].get_membuf()->clear_inuse();
+    }
+
+    v.clear();
+
+    /*
      * Release [0, 500) should cover the entire cache and release all 195
      * bytes:
      * [5, 30)
      * [30, 50)
-     * [50, 100)
-     * [100, 200)
+     * [50, 75)
+     * [75, 200)
      */
     AZLogInfo("========== [Release] --> (0, 500) ==========");
     assert(cache.release(0, 500) == 195);

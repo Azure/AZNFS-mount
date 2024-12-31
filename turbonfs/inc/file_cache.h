@@ -106,8 +106,14 @@ namespace MB_Flag {
        Uptodate           = (1 << 0), // Fit for reading.
        Locked             = (1 << 1), // Exclusive access for updating membuf
                                       // data.
-       Dirty              = (1 << 2), // Data in membuf is newer than the Blob.
-       Flushing           = (1 << 3), // Data from dirty membuf is being synced
+       Truncated          = (1 << 2), // Entire byte range covered by membuf is
+                                      // truncated (shrink) from the file. Note
+                                      // that even Dirty and/or inuse membufs
+                                      // can be truncated, as we don't care
+                                      // for cached data belonging to the
+                                      // truncated region of the file.
+       Dirty              = (1 << 3), // Data in membuf is newer than the Blob.
+       Flushing           = (1 << 4), // Data from dirty membuf is being synced
                                       // to Blob.
     };
 }
@@ -307,6 +313,17 @@ struct membuf
 
     void set_dirty();
     void clear_dirty();
+
+    /**
+     * Is this membuf truncated as a result of file truncate/shrink?
+     * Truncated membufs are immediately removed from the cache, so this
+     * is mainly for asserting in ~membuf().
+     */
+    bool is_truncated() const
+    {
+        return (flag & MB_Flag::Truncated);
+    }
+    void set_truncated();
 
     bool is_flushing() const
     {
@@ -631,7 +648,17 @@ public:
     /**
      * Is it safe to release (remove from chunkmap) this bytes_chunk?
      * bytes_chunk whose underlying membuf is either inuse or dirty are not
-     * safe to release.
+     * safe to release because:
+     * - dirty indicates membuf has some data which needs to be flushed, so
+     *   we cannot release it w/o flushing the data.
+     * - inuse indicates some other thread is doing something with the membuf,
+     *   maybe it's writing fresh data to it and may mark it dirty. If we
+     *   allow such membuf to be released, future readers who get() the cache
+     *   will miss those changes.
+     *
+     * Note: For truncate none of the above matters, i.e., we don't care about
+     *       losing cached writes to truncated region of the file, hence we
+     *       don't need to do safe_to_release() check when truncating file_cache.
      */
     bool safe_to_release() const
     {
@@ -764,12 +791,17 @@ public:
 /**
  * bytes_chunk_cache::scan() can behave differently depending on the scan_action
  * passed.
+ *
+ * Note: SCAN_ACTION_TRUNCATE is same as SCAN_ACTION_RELEASE just that
+ *       safe_to_release() check is bypassed and we force release, bytes_chunk
+ *       even if they are dirty or o/w.
  */
 enum class scan_action
 {
     SCAN_ACTION_INVALID = 0,
     SCAN_ACTION_GET,
     SCAN_ACTION_RELEASE,
+    SCAN_ACTION_TRUNCATE,
 };
 
 /**
@@ -1013,6 +1045,32 @@ public:
         bytes_release_g += bytes_released;
 
         return bytes_released;
+    }
+
+    /**
+     * Truncate the cache to not exceed 'length' bytes.
+     * Any bytes_chunk beyond 'length' will be:
+     * - Removed fully, if all their bytes are truncated.
+     * - Trimmed, if some of their bytes are still valid after truncate.
+     *
+     * Once truncate() completes, subsequent get() call will not return
+     * cache data for any byte in the truncated region.
+     */
+    uint64_t truncate(uint64_t length)
+    {
+        uint64_t bytes_truncated;
+
+        num_truncate++;
+        num_truncate_g++;
+
+        scan(length, AZNFSC_MAX_FILE_SIZE-length,
+             scan_action::SCAN_ACTION_TRUNCATE, &bytes_truncated);
+        assert(bytes_truncated <= (AZNFSC_MAX_FILE_SIZE-length));
+
+        bytes_truncate += bytes_truncated;
+        bytes_truncate_g += bytes_truncated;
+
+        return bytes_truncated;
     }
 
     /*
@@ -1294,6 +1352,8 @@ public:
     std::atomic<uint64_t> bytes_get = 0;
     std::atomic<uint64_t> num_release = 0;
     std::atomic<uint64_t> bytes_release = 0;
+    std::atomic<uint64_t> num_truncate = 0;
+    std::atomic<uint64_t> bytes_truncate = 0;
     std::atomic<uint64_t> bytes_allocated = 0;
     std::atomic<uint64_t> bytes_cached = 0;
     std::atomic<uint64_t> bytes_dirty = 0;
@@ -1310,6 +1370,8 @@ public:
     static std::atomic<uint64_t> bytes_get_g;
     static std::atomic<uint64_t> num_release_g;
     static std::atomic<uint64_t> bytes_release_g;
+    static std::atomic<uint64_t> num_truncate_g;
+    static std::atomic<uint64_t> bytes_truncate_g;
     static std::atomic<uint64_t> bytes_allocated_g;
     static std::atomic<uint64_t> bytes_cached_g;
     static std::atomic<uint64_t> bytes_dirty_g;
