@@ -936,8 +936,14 @@ aznfsclient_mount()
     create_aznfsclient_mount_args
 
     # Create named pipe to hold mount status from aznfsclient.
-    export MOUNT_STATUS_PIPE="/tmp/mount_status_pipe"
-    mkfifo -p $MOUNT_STATUS_PIPE
+    if [ -d /run ]; then
+        export MOUNT_STATUS_PIPE="/run/mount_status_pipe.$$"
+    else
+        export MOUNT_STATUS_PIPE="/tmp/mount_status_pipe.$$"
+    fi
+
+    rm -f $MOUNT_STATUS_PIPE
+    mkfifo $MOUNT_STATUS_PIPE
     
     $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS
 
@@ -945,6 +951,9 @@ aznfsclient_mount()
     # Read from named pipe with timeout
     timeout 30 bash -c "read mount_status < $MOUNT_STATUS_PIPE"
     
+    # Delete the pipe because this is the only reader.
+    rm -f $MOUNT_STATUS_PIPE
+
     #
     # Check the exit status to determine if it timed out.
     # If its not timed the the client should have sent either "0"
