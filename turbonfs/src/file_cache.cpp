@@ -555,7 +555,10 @@ void membuf::set_truncated()
      * referring to the membuf.
      * This should only be called when file region covering "entire" membuf
      * is truncated.
+     * Once truncated the corresponding bytes_chunk must be removed from
+     * chunkmap, so future users should not get it.
      */
+    assert(!is_truncated());
     flag |= MB_Flag::Truncated;
 
     AZLogDebug("Set truncated membuf [{}, {}), fd={}",

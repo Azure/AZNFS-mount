@@ -793,7 +793,7 @@ public:
  * passed.
  *
  * Note: SCAN_ACTION_TRUNCATE is same as SCAN_ACTION_RELEASE just that
- *       safe_to_release() check is bypassed and we force release, bytes_chunk
+ *       safe_to_release() check is bypassed and we force release bytes_chunk
  *       even if they are dirty or o/w.
  */
 enum class scan_action
@@ -1055,6 +1055,10 @@ public:
      *
      * Once truncate() completes, subsequent get() call will not return
      * cache data for any byte in the truncated region.
+     *
+     * Note: Caller MUST make sure that there are no ongoing flush operations
+     *       on the file, else they can change the file size back to a higher
+     *       value.
      */
     uint64_t truncate(uint64_t length)
     {
