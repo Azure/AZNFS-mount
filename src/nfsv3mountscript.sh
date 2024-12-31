@@ -958,7 +958,7 @@ aznfsclient_mount()
     if command -v timeout >/dev/null; then
         timeout 30 bash -c "read mount_status < $MOUNT_STATUS_PIPE"
     else
-        wecho "'timeout' command not found waiting indefinitely for mount status"
+        wecho "'timeout' command not found waiting indefinitely for mount status!"
         read mount_status < $MOUNT_STATUS_PIPE
     fi
 
@@ -970,7 +970,7 @@ aznfsclient_mount()
     #
     # Check the exit status to determine if it timed out.
     # If it's not timed out the client should have sent either "0"
-    # indicating success or a "1" indicating failure.
+    # indicating success or a "-1" indicating failure.
     # 
     # TODO: Improve this with better error codes and messages.
     #

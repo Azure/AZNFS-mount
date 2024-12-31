@@ -481,6 +481,7 @@ int main(int argc, char *argv[])
     // Open the pipe for writing.
     if (!status_pipe_closed) {
         std::ofstream pipe(pipe_name);
+
         if (!pipe.is_open()) {
             AZLogError("Aznfsclient unable to send mount status on pipe.");
         } else {
@@ -548,6 +549,7 @@ err_out0:
     if (!status_pipe_closed && ret != 0) {
         // Open the pipe for writing.
         std::ofstream pipe(pipe_name);
+
         if (!pipe.is_open()) {
             AZLogError("Aznfsclient unable to send mount status on pipe.");
         } else {
