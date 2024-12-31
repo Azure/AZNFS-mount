@@ -1062,8 +1062,6 @@ public:
      */
     uint64_t truncate(uint64_t length)
     {
-        AZLogDebug("Truncating cache to size {}", length);
-
         uint64_t bytes_truncated;
 
         num_truncate++;

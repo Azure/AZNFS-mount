@@ -2553,7 +2553,12 @@ void rpc_task::run_setattr()
 
         if (valid & FUSE_SET_ATTR_SIZE) {
             // Truncate the cache to reflect the size.
-            inode->get_filecache()->truncate(attr->st_size);
+            if (inode->has_filecache()) {
+                AZLogDebug("[{}]: Truncating file size to {}", 
+                    ino,
+                    attr->st_size);
+                inode->get_filecache()->truncate(attr->st_size);
+            }
             
             AZLogDebug("Setting size to {}", attr->st_size);
             args.new_attributes.size.set_it = 1;
