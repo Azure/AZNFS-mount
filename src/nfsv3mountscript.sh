@@ -29,6 +29,14 @@ AZNFS_PORT="${AZNFS_PORT:-2048}"
 # Default to checking azure nconnect support.
 AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
 
+# 
+# Default maximum value of nconnect.
+# Users can modify the AZNFS_MAX_NCONNECT variable to a lower value.
+# This allows mounting more than 20 accounts (with the same endpoint IP) 
+# from a single VM by restricting the nconnect value to a lower limit.
+#
+AZNFS_MAX_NCONNECT="${AZNFS_MAX_NCONNECT:-16}"
+
 # Default to fixing mount options passed in to help the user.
 AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 
@@ -124,6 +132,21 @@ check_nconnect()
                 modprobe sunrpc
             fi
 
+            # Check if AZNFS_MAX_NCONNECT is defined, numeric, and within the allowed range.
+            if [[ "$AZNFS_MAX_NCONNECT" =~ ^[0-9]+$ ]]; then
+
+                if [[ "$AZNFS_MAX_NCONNECT" -lt 1 || "$AZNFS_MAX_NCONNECT" -gt 16 ]]; then
+                    eecho "[ERROR] Incorrect value $AZNFS_MAX_NCONNECT for the environment variable AZNFS_MAX_NCONNECT. It must be between 1 and 16"
+                    exit 1
+                fi
+            else
+                wecho "AZNFS_MAX_NCONNECT=$AZNFS_MAX_NCONNECT is not defined or invalid. Defaulting to 16."
+                AZNFS_MAX_NCONNECT=16
+            fi
+
+            # Calculate the maximum accounts mountable from a single tenant.
+            MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT=$((320 / AZNFS_MAX_NCONNECT))
+
             #
             # W/o server side nconnect, we need the azure nconnect support,
             # turn it on. OTOH, if Server side nconnect is being used turn off
@@ -147,6 +170,12 @@ check_nconnect()
                     vvecho "Azure nconnect not enabled, enabling!"
                     echo Y > /sys/module/sunrpc/parameters/enable_azure_nconnect
                 fi
+
+                # Check if the current nconnect value in use is suboptimal.
+                if [[ "$value" -gt "$AZNFS_MAX_NCONNECT" ]]; then
+                    pecho "Suboptimal nconnect value $value, limiting nconnect to the advised value by AZNFS_MAX_NCONNECT: $AZNFS_MAX_NCONNECT."
+                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=$AZNFS_MAX_NCONNECT/g")
+                fi
             else
                 if has_2048_nconnect_mounts; then
                     eecho "One or more mounts to port 2048 are using nconnect."
@@ -166,10 +195,14 @@ check_nconnect()
                 # Higher nconnect values don't work well for server side
                 # nconnect, limit to optimal value 4.
                 #
-                if [ $value -gt 4 ]; then
-                    pecho "Suboptimal nconnect value $value, forcing nconnect=4!"
-                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=4/g")
+                OPTIMAL_SERVER_SIDE_NCONNECT=4
+                if [ -n "$AZNFS_MAX_NCONNECT" ] && [ "$AZNFS_MAX_NCONNECT" -lt "$OPTIMAL_SERVER_SIDE_NCONNECT" ]; then
+                    OPTIMAL_SERVER_SIDE_NCONNECT=$AZNFS_MAX_NCONNECT
                 fi
+
+                if [ "$value" -gt "$OPTIMAL_SERVER_SIDE_NCONNECT" ]; then
+                    pecho "Suboptimal nconnect value $value, forcing nconnect=$OPTIMAL_SERVER_SIDE_NCONNECT!"
+                    MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=$OPTIMAL_SERVER_SIDE_NCONNECT/g")
             fi
         fi
     fi
