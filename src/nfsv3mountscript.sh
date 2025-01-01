@@ -203,6 +203,7 @@ check_nconnect()
                 if [ "$value" -gt "$OPTIMAL_SERVER_SIDE_NCONNECT" ]; then
                     pecho "Suboptimal nconnect value $value, forcing nconnect=$OPTIMAL_SERVER_SIDE_NCONNECT!"
                     MOUNT_OPTIONS=$(echo "$MOUNT_OPTIONS" | sed "s/\<nconnect\>=$value/nconnect=$OPTIMAL_SERVER_SIDE_NCONNECT/g")
+                fi
             fi
         fi
     fi
