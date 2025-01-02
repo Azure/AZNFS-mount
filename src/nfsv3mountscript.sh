@@ -957,7 +957,7 @@ aznfsclient_mount()
     # Read from named pipe with timeout
     read -t 30 mount_status <> $MOUNT_STATUS_PIPE
 
-    timeout_status=$?
+    read_status=$?
 
     # Delete the pipe because this is the only reader.
     rm -f $MOUNT_STATUS_PIPE
@@ -969,7 +969,7 @@ aznfsclient_mount()
     # 
     # TODO: Improve this with better error codes and messages.
     #
-    if [ $timeout_status -eq 124 ]; then
+    if [ $read_status -gt 128 ]; then
         eecho "Mount timed out, check for details!"
         return $timeout_status
     elif [ "$mount_status" != "0" ]; then
