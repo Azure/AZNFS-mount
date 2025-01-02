@@ -283,7 +283,7 @@ target_include_directories(${CMAKE_PROJECT_NAME}
 target_link_libraries(${CMAKE_PROJECT_NAME}
                       ${fuse3_LIBRARY}
                       jsoncpp_lib
-		              Azure::azure-identity Azure::azure-storage-blobs)
+                      Azure::azure-identity Azure::azure-storage-blobs)
 endif()
 
 target_compile_options(${CMAKE_PROJECT_NAME}
