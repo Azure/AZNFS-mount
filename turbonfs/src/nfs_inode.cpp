@@ -683,6 +683,85 @@ try_copy:
 }
 
 /**
+ * Note: Caller should call with iflush_lock_3 held.
+ */
+int nfs_inode::wait_for_flush_complete(uint64_t start_off, uint64_t end_off)
+{
+    /*
+     * MUST be called only for regular files.
+     * Leave the assert to catch if fuse ever calls flush() on non-reg files.
+     */
+    if (!is_regfile()) {
+        assert(0);
+        return 0;
+    }
+
+    /*
+     * If flush() is called w/o open(), there won't be any cache, skip.
+     */
+    if (!has_filecache()) {
+        return 0;
+    }
+
+    if (get_filecache()->bytes_flushing == 0) {
+        return 0;
+    }
+
+    /*
+     * Get the flushing bytes_chunk from the filecache handle.
+     * This will grab an exclusive lock on the file cache and return the list
+     * of flushing bytes_chunks at that point. Note that we can have new dirty
+     * bytes_chunks created but we don't want to wait for those.
+     */
+    std::vector<bytes_chunk> bc_vec =
+        filecache_handle->get_flushing_bc_range(start_off, end_off);
+
+    /*
+     * Our caller expects us to return only after the flush completes.
+     * Wait for all the membufs to flush and get result back.
+     */
+    for (bytes_chunk &bc : bc_vec) {
+        struct membuf *mb = bc.get_membuf();
+
+        assert(mb != nullptr);
+        assert(mb->is_inuse());
+        mb->set_locked();
+
+        /*
+         * If still dirty after we get the lock, it may mean two things:
+         * - Write failed.
+         * - Some other thread got the lock before us and it made the
+         *   membuf dirty again.
+         */
+        if (mb->is_dirty() && get_write_error()) {
+            AZLogError("[{}] Flush [{}, {}) failed with error: {}",
+                       ino,
+                       bc.offset, bc.offset + bc.length,
+                       get_write_error());
+        }
+
+        mb->clear_locked();
+        mb->clear_inuse();
+
+        /*
+         * Release the bytes_chunk back to the filecache.
+         * These bytes_chunks are not needed anymore as the flush is done.
+         *
+         * Note: We come here for bytes_chunks which were found dirty by the
+         *       above loop. These writes may or may not have been issued by
+         *       us (if not issued by us it was because some other thread,
+         *       mostly the writer issued the write so we found it flushing
+         *       and hence didn't issue). In any case since we have an inuse
+         *       count, release() called from write_callback() would not have
+         *       released it, so we need to release it now.
+         */
+        filecache_handle->release(bc.offset, bc.length);
+    }
+
+    return get_write_error();
+}
+
+/**
  * Note: This takes shared lock on ilock_1.
  */
 int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
@@ -714,6 +793,13 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     if (!has_filecache()) {
         return 0;
     }
+
+    /*
+     * Grab the exclusive lock on the iflush_lock_3, so that no new sync_membufs
+     * can be issued till truncate() completes. As truncate remove the membufs
+     * from the byte_cache_map which are beyond the truncate set_size attribute.
+     */
+    std::unique_lock<std::shared_mutex> lock(iflush_lock_3);
 
     /*
      * Get the dirty bytes_chunk from the filecache handle.

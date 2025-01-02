@@ -433,11 +433,11 @@ void membuf::set_flushing()
  */
 void membuf::clear_flushing()
 {
-    // The reason for checking not using is_flushing() is that,
-    // it expects if the membuf is dirty then it must be flushing.
-    // But in case of write completion we clear dirty first and then
-    // clear flushing. So, we can't use the is_flushing() here.
-    const bool was_flushing = (flag & MB_Flag::Flushing);
+    /*
+     * clear_flushing() called after clear_dirty(), hence is_flushing()
+     * not used as it checks for membuf being dirty as well.
+     */
+    [[maybe_unused]] const bool was_flushing = (flag & MB_Flag::Flushing);
 
     // See comment in set_flushing() above.
     assert(is_locked());
@@ -2224,6 +2224,29 @@ bytes_chunk_cache::get_commit_pending_bc_range() const
             mb->set_locked();
             assert(!mb->is_dirty());
             assert(mb->is_uptodate());
+            bc_vec.emplace_back(bc);
+        }
+
+        ++it;
+    }
+
+    return bc_vec;
+}
+
+std::vector<bytes_chunk> bytes_chunk_cache::get_flushing_bc_range(uint64_t start_off, uint64_t end_off) const
+{
+    std::vector<bytes_chunk> bc_vec;
+
+    // TODO: Make it shared lock.
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+    auto it = chunkmap.lower_bound(start_off);
+
+    while (it != chunkmap.cend() && it->first <= end_off) {
+        const struct bytes_chunk& bc = it->second;
+        struct membuf *mb = bc.get_membuf();
+
+        if (mb->is_dirty() && mb->is_flushing()) {
+            mb->set_inuse();
             bc_vec.emplace_back(bc);
         }
 

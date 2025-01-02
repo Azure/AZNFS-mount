@@ -2097,6 +2097,12 @@ void rpc_task::run_write()
         }
     }
 
+    /*
+     * We need to flush the extent now, get the membufs for the dirty data.
+     * Note as there can be race condition with truncate and flushing we must
+     * take the exclusive lock on iflush_lock_3().
+     */
+    std::unique_lock<mutex> lock(inode->iflush_lock_3());
     std::vector<bytes_chunk> bc_vec =
         inode->get_filecache()->get_dirty_bc_range(extent_left, extent_right);
 

@@ -111,6 +111,13 @@ struct nfs_inode
     mutable std::shared_mutex ilock_1;
 
     /*
+     * Inode flush lock.
+     * Flush must be started only when this lock is held. This is needed as
+     * while Flush is in progress, truncate can be issued on this inode.
+     */
+    mutable std::shared_mutex iflush_lock_3;
+
+    /*
      * S_IFREG, S_IFDIR, etc.
      * 0 is not a valid file type.
      */
@@ -1279,8 +1286,19 @@ public:
      *       filecache_handle lock and get the list of dirty membufs at this
      *       instant and flush those. Any new dirty membufs added after it
      *       queries the dirty membufs list, are not flushed.
+     *
+     * Note: This take the inode iflush_lock_3 to ensure that no new membufs are added
+     *       while truncate call is in progress.
      */
     int flush_cache_and_wait(uint64_t start_off = 0,
+                             uint64_t end_off = UINT64_MAX);
+
+    /**
+     * Wait for currently flushing membufs to complete.
+     * Note : Caller must hold the inode iflush_lock_3 to ensure that
+     *        no new membufs are added till this call completes.
+     */
+    int wait_for_flush_complete(uint64_t start_off = 0,
                              uint64_t end_off = UINT64_MAX);
 
     /**

@@ -347,7 +347,6 @@ struct membuf
          * membuf can be marked flushing only if it's dirty already.
          * If membuf is in flushing state, it means it can't be in commit pending state.
          */
-        assert(!flushing || (flag & MB_Flag::Dirty));
         assert(!flushing || !(flag & MB_Flag::CommitPending));
 
         return flushing;
@@ -1125,6 +1124,14 @@ public:
      * clear_inuse().
      */
     std::vector<bytes_chunk> get_dirty_bc_range(uint64_t st_off, uint64_t end_off) const;
+
+    /*
+     * Returns all dirty chunks which are currently flushing for a given range in chunkmap.
+     * Before returning it increases the inuse count of underlying membuf(s).
+     * Caller will typically wait for these membuf(s) complete flushing to Blob and once done
+     * must call clear_inuse().
+     */
+    std::vector<bytes_chunk> get_flushing_bc_range(uint64_t st_off, uint64_t end_off) const;
 
     /*
      * Returns all commit pending chunks for a given range in chunkmap.
