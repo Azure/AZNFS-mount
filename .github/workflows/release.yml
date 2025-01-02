@@ -61,7 +61,7 @@ jobs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt install -y gcc-aarch64-linux-gnu
+        sudo apt install -y gcc-aarch64-linux-gnu libunwind-dev
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Run Package.sh
