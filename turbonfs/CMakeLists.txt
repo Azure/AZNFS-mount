@@ -216,26 +216,6 @@ else()
     message(STATUS "Using zlib include dir ${ZLIB_INCLUDE_DIRS}")
 endif()
 
-#
-# Find jsoncpp and if not found try to install.
-#
-find_package(jsoncpp QUIET)
-if(NOT jsoncpp_FOUND)
-    message(STATUS "jsoncpp not found, trying to install libjsoncpp-dev!")
-    execute_process(COMMAND sudo apt install -y libjsoncpp-dev
-                    RESULT_VARIABLE jsoncpp_INSTALL_RESULT)
-    if(NOT jsoncpp_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install libjsoncpp-dev failed with ${jsoncpp_INSTALL_RESULT}, try installing libjsoncpp-dev manually and then run cmake again")
-    else()
-        # Call once more to ensure above install completed fine and also
-        # will set jsoncpp_INCLUDE_DIR and jsoncpp_LIBRARY variables.
-        find_package(jsoncpp REQUIRED)
-    endif()
-else()
-    message(STATUS "Using jsoncpp lib ${jsoncpp_LIBRARY}")
-    message(STATUS "Using jsoncpp include dir ${jsoncpp_INCLUDE_DIR}")
-endif()
-
 # Build libnfs (with multithreading enabled).
 set(ENABLE_MULTITHREADING ON)
 set(ENABLE_EXAMPLES ON)
@@ -279,7 +259,6 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/inc"
                            PRIVATE "${PROJECT_BINARY_DIR}/inc"
                            PRIVATE "${ZLIB_INCLUDE_DIRS}"
-                           PRIVATE "${jsoncpp_INCLUDE_DIR}"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/nfs"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include/nfsc"
@@ -307,8 +286,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       nfs
                       yaml-cpp
                       spdlog
-                      ${jsoncpp_LIBRARY}
-                      Azure::azure-identity Azure::azure-storage-blobs)
+                      Azure::azure-identity 
+                      Azure::azure-storage-blobs)
 
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
