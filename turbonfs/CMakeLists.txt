@@ -225,7 +225,7 @@ if(NOT jsoncpp_FOUND)
     execute_process(COMMAND sudo apt install -y libjsoncpp-dev
                     RESULT_VARIABLE jsoncpp_INSTALL_RESULT)
     if(NOT jsoncpp_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install libjsoncpp-dev failed with ${jsoncpp_INSTALL_RESULT}, try installing libjsoncpp-dev manually and then run cmake again.")
+        message(FATAL_ERROR "apt install libjsoncpp-dev failed with ${jsoncpp_INSTALL_RESULT}, try installing libjsoncpp-dev manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set jsoncpp_INCLUDE_DIR and jsoncpp_LIBRARY variables.
@@ -279,6 +279,7 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/inc"
                            PRIVATE "${PROJECT_BINARY_DIR}/inc"
                            PRIVATE "${ZLIB_INCLUDE_DIRS}"
+                           PRIVATE "${jsoncpp_INCLUDE_DIR}"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/nfs"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include/nfsc"
@@ -289,9 +290,7 @@ if(NOT ENABLE_NO_FUSE)
 target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${fuse3_INCLUDE_DIR}")
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${fuse3_LIBRARY}
-                      jsoncpp_lib
-                      Azure::azure-identity Azure::azure-storage-blobs)
+                      ${fuse3_LIBRARY})
 endif()
 
 target_compile_options(${CMAKE_PROJECT_NAME}
@@ -307,7 +306,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       pthread
                       nfs
                       yaml-cpp
-                      spdlog)
+                      spdlog
+                      ${jsoncpp_LIBRARY}
+                      Azure::azure-identity Azure::azure-storage-blobs)
 
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
