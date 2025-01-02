@@ -185,8 +185,9 @@ if [ "${BUILD_TYPE}" == "Debug" ]; then
 fi
 
 pushd ${SOURCE_DIR}/turbonfs
+export VCPKG_ROOT=${SOURCE_DIR}/turbonfs/extern/vcpkg
 mkdir -p build && cd build
-cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DENABLE_TCMALLOC=$enable_tcmalloc ..
+cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DENABLE_TCMALLOC=$enable_tcmalloc -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
 make
 popd
 
