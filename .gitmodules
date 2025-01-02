@@ -10,3 +10,6 @@
 [submodule "turbonfs/extern/libfuse"]
 	path = turbonfs/extern/libfuse
 	url = https://github.com/libfuse/libfuse.git
+[submodule "turbonfs/extern/vcpkg"]
+	path = turbonfs/extern/vcpkg
+	url = https://github.com/microsoft/vcpkg.git
