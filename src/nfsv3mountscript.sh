@@ -955,8 +955,7 @@ aznfsclient_mount()
     vecho "Waiting for mount to complete (timeout: 30 seconds)..."
 
     # Read from named pipe with timeout
-    exec 99<> $MOUNT_STATUS_PIPE
-    read -t 30 -u 99 mount_status
+    read -t 30 mount_status <> $MOUNT_STATUS_PIPE
 
     timeout_status=$?
 
