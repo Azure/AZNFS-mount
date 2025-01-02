@@ -485,7 +485,7 @@ int main(int argc, char *argv[])
         if (!pipe.is_open()) {
             AZLogError("Aznfsclient unable to send mount status on pipe.");
         } else {
-            pipe << 0;
+            pipe << 0 <<endl;
             status_pipe_closed = true;
         }
     }
@@ -554,7 +554,7 @@ err_out0:
             AZLogError("Aznfsclient unable to send mount status on pipe.");
         } else {
             // TODO: Extend this with meaningful error codes.
-            pipe << ret;
+            pipe << ret << endl;
             status_pipe_closed = true;
         }
         return 1;

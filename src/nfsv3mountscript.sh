@@ -955,12 +955,8 @@ aznfsclient_mount()
     vecho "Waiting for mount to complete (timeout: 30 seconds)..."
 
     # Read from named pipe with timeout
-    if command -v timeout >/dev/null; then
-        mount_status=$(timeout 30 bash -c "read mount_status < $MOUNT_STATUS_PIPE; echo \$mount_status")
-    else
-        wecho "'timeout' command not found waiting indefinitely for mount status!"
-        read mount_status < $MOUNT_STATUS_PIPE
-    fi
+    exec 99<> $MOUNT_STATUS_PIPE
+    read -t 30 -u 99 mount_status
 
     timeout_status=$?
 
@@ -977,7 +973,7 @@ aznfsclient_mount()
     if [ $timeout_status -eq 124 ]; then
         eecho "Mount timed out, check for details!"
         return $timeout_status
-    elif [ "$mount_status" -ne "0" ]; then
+    elif [ "$mount_status" != "0" ]; then
         return 1
     else
         vecho "Mounted successfully."
