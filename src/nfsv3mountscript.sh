@@ -971,7 +971,7 @@ aznfsclient_mount()
     #
     if [ $read_status -gt 128 ]; then
         eecho "Mount timed out, check for details!"
-        return $timeout_status
+        return $read_status
     elif [ "$mount_status" != "0" ]; then
         return 1
     else
