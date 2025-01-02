@@ -935,10 +935,48 @@ aznfsclient_mount()
 {   
     create_aznfsclient_mount_args
 
-    #
-    # TODO: Use named pipe to get mount status here.
-    #
+    # Create named pipe to hold mount status from aznfsclient.
+    if [ -d /run ]; then
+        export MOUNT_STATUS_PIPE="/run/mount_status_pipe.$$"
+    else
+        export MOUNT_STATUS_PIPE="/tmp/mount_status_pipe.$$"
+    fi
+
+    rm -f $MOUNT_STATUS_PIPE
+    mkfifo $MOUNT_STATUS_PIPE
+
+    if [ ! -p "$MOUNT_STATUS_PIPE" ]; then
+        eecho "Unable to create status pipe!"
+        return 1
+    fi
+
     $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS
+
+    vecho "Waiting for mount to complete (timeout: 30 seconds)..."
+
+    # Read from named pipe with timeout
+    read -t 30 mount_status <> $MOUNT_STATUS_PIPE
+
+    read_status=$?
+
+    # Delete the pipe because this is the only reader.
+    rm -f $MOUNT_STATUS_PIPE
+
+    #
+    # Check the exit status to determine if it timed out.
+    # If it's not timed out the client should have sent either "0"
+    # indicating success or a "-1" indicating failure.
+    # 
+    # TODO: Improve this with better error codes and messages.
+    #
+    if [ $read_status -gt 128 ]; then
+        eecho "Mount timed out, check for details!"
+        return $read_status
+    elif [ "$mount_status" != "0" ]; then
+        return 1
+    else
+        vecho "Mounted successfully."
+    fi
 }
 
 # Check if aznfswatchdog service is running.
