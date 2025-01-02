@@ -222,10 +222,11 @@ endif()
 find_package(jsoncpp QUIET)
 if(NOT jsoncpp_FOUND)
     message(STATUS "jsoncpp not found, trying to install libjsoncpp-dev!")
-    execute_process(COMMAND sudo apt-get install libjsoncpp-dev
+    execute_process(COMMAND sudo apt install -y libjsoncpp-dev
                     RESULT_VARIABLE jsoncpp_INSTALL_RESULT)
     if(NOT jsoncpp_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt-get install libjsoncpp-dev failed with ${jsoncpp_INSTALL_RESULT}, try installing libjsoncpp-dev manually")
+        message(FATAL_ERROR "apt install libjsoncpp-dev failed with ${jsoncpp_INSTALL_RESULT}, try installing libjsoncpp-dev manually and then run cmake again.")
+    else()
         # Call once more to ensure above install completed fine and also
         # will set jsoncpp_INCLUDE_DIR and jsoncpp_LIBRARY variables.
         find_package(jsoncpp REQUIRED)
