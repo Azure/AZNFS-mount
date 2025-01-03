@@ -302,7 +302,7 @@ struct bc_iovec
      */
     bc_iovec(struct nfs_inode *_inode) :
         inode(_inode),
-        max_iosize(inode->is_stable_write() ? AZNFSCFG_WSIZE_MIN : inode->get_client()->mnt_options.wsize_adj)
+        max_iosize(inode->is_stable_write() ? inode->get_client()->mnt_options.wsize_adj : AZNFSCFG_WSIZE_MAX)
     {
         assert(inode->magic == NFS_INODE_MAGIC);
         assert(inode->is_regfile());
