@@ -1285,7 +1285,7 @@ public:
      * This excludes dirty data which is not flushed/written yet or in process of flushing.
      * It gets incremented on write completion of dirty data flushed to BLOB with unstable parameter.
      *
-     * Note: The number of bytes to commit may change after the calls returns.
+     * Note: The number of bytes to commit may change after the call returns.
      *       Caller should use it as a hint, and not as a hard limit.
      */
     uint64_t get_bytes_to_commit() const

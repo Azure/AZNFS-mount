@@ -891,7 +891,7 @@ bool nfs_inode::truncate_start(size_t size)
      * or commit operations in progress, we need to wait for them to complete.
      */
     iflush_lock_3.lock();
-    wait_for_flush_complete(0, UINT64_MAX);
+    wait_for_ongoing_flush(0, UINT64_MAX);
 
     /*
      * Now there are no ongoing flush or commit operations in progress.
