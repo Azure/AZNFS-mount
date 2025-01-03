@@ -284,8 +284,9 @@ private:
 
     /*
      * In start we set the stable_write flag to false as write pattern is unknown.
-     * At the time of flushing cached writes to Blob we check if the cached writes
-     * are not append to a file. If so, we need to send stable writes.
+     * At the time of flushing cached writes to Blob we check if the cached write
+     * causes the append write on the Blob. Append write can be send as unstable write,
+     * while non-append write goes as a stable write.
      * Once set to true, it will remain true for the life of the inode.
      * 
      * Note: As of now, we are not using this flag as commit changes not yet integrated.
@@ -401,7 +402,7 @@ public:
         COMMIT_IN_PROGRESS,
     };
 
-    commit_state_t commit_state = commit_state_t::COMMIT_NOT_NEEDED;
+    std::atomic<commit_state_t> commit_state = commit_state_t::COMMIT_NOT_NEEDED;
 
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
@@ -1110,41 +1111,21 @@ public:
     /**
      * Is commit pending for this inode?
      */
-    bool is_commit_pending()
+    bool is_commit_pending() const
     {
         assert(commit_state != commit_state_t::INVALID);
         return (commit_state == commit_state_t::NEEDS_COMMIT);
     }
 
     /**
-     * Set commit_in_progress state for this inode under the lock.
-     */
-    void set_commit_in_progress()
-    {
-        assert(commit_state != commit_state_t::INVALID);
-        assert(commit_state != commit_state_t::COMMIT_IN_PROGRESS);
-        commit_state = commit_state_t::COMMIT_IN_PROGRESS;
-    }
-
-    /**
-     * Set needs_commit state for this inode.
+     * set needs_commit state for this inode.
      * Note this is set to let flushing task know that commit is pending and start commit task.
      */
-    void set_needs_commit()
+    void set_commit_pending()
     {
         // Commit can be set to pending only if it is in commit_not_needed state.
         assert(commit_state == commit_state_t::COMMIT_NOT_NEEDED);
         commit_state = commit_state_t::NEEDS_COMMIT;
-    }
-
-    /**
-     * Clear commit_in_progress state for this inode.
-     */
-    void clear_commit_in_progress()
-    {
-        assert(commit_state == commit_state_t::COMMIT_IN_PROGRESS);
-
-        commit_state = commit_state_t::COMMIT_NOT_NEEDED;
     }
 
     /**
@@ -1154,6 +1135,25 @@ public:
     {
         assert(commit_state != commit_state_t::INVALID);
         return (commit_state == commit_state_t::COMMIT_IN_PROGRESS);
+    }
+
+    /**
+     * Set commit_in_progress state for this inode.
+     */
+    void set_commit_in_progress()
+    {
+        assert(commit_state != commit_state_t::INVALID);
+        assert(commit_state != commit_state_t::COMMIT_IN_PROGRESS);
+        commit_state = commit_state_t::COMMIT_IN_PROGRESS;
+    }
+
+    /**
+     * Clear commit_in_progress state for this inode.
+     */
+    void clear_commit_in_progress()
+    {
+        assert(commit_state == commit_state_t::COMMIT_IN_PROGRESS);
+        commit_state = commit_state_t::COMMIT_NOT_NEEDED;
     }
 
     /**
@@ -1315,8 +1315,9 @@ public:
      *       instant and flush those. Any new dirty membufs added after it
      *       queries the dirty membufs list, are not flushed.
      *
-     * Note: This take the inode iflush_lock_3 to ensure that no new membufs are added
-     *       while truncate call is in progress.
+     * Note: This take the inode iflush_lock_3 lock to ensure that it doesn't initiate
+     *       new flush operation while some truncate call is in progress (which must have
+     *       taken the iflush_lock_3).
      */
     int flush_cache_and_wait(uint64_t start_off = 0,
                              uint64_t end_off = UINT64_MAX);
@@ -1326,7 +1327,7 @@ public:
      * Note : Caller must hold the inode iflush_lock_3 to ensure that
      *        no new membufs are added till this call completes.
      */
-    int wait_for_flush_complete(uint64_t start_off = 0,
+    int wait_for_ongoing_flush(uint64_t start_off = 0,
                              uint64_t end_off = UINT64_MAX);
 
     /**

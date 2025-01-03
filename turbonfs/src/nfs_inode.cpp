@@ -685,8 +685,11 @@ try_copy:
 /**
  * Note: Caller should call with iflush_lock_3 held.
  */
-int nfs_inode::wait_for_flush_complete(uint64_t start_off, uint64_t end_off)
+int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 {
+    assert(start_off < end_off);
+    assert(end_off <= AZNFSC_MAX_CHUNK_SIZE);
+
     /*
      * MUST be called only for regular files.
      * Leave the assert to catch if fuse ever calls flush() on non-reg files.
@@ -703,7 +706,7 @@ int nfs_inode::wait_for_flush_complete(uint64_t start_off, uint64_t end_off)
         return 0;
     }
 
-    if (get_filecache()->bytes_flushing == 0) {
+    if (!get_filecache()->is_flushing_in_progress()) {
         return 0;
     }
 
@@ -795,9 +798,9 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     }
 
     /*
-     * Grab the exclusive lock on the iflush_lock_3, so that no new sync_membufs
-     * can be issued till truncate() completes. As truncate remove the membufs
-     * from the byte_cache_map which are beyond the truncate set_size attribute.
+     * This take the inode iflush_lock_3 lock to ensure that it doesn't initiate
+     * new flush operation while some truncate call is in progress (which must have
+     * taken the iflush_lock_3).
      */
     std::unique_lock<std::shared_mutex> lock(iflush_lock_3);
 

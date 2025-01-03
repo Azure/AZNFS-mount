@@ -296,8 +296,8 @@ struct bc_iovec
      * It takes nfs_inode for releasing the cache chunks as IOs get completed
      * for the queued bytes_chunks.
      *
-     * Note: If the inode is stable write then we set max_iosize to AZNFSCFG_WSIZE_MIN as
-     *       server can handle writes of this size. Else we set it to wsize_adj.
+     * Note: If the inode is stable write then we set max_iosize to wsize_adj
+     *       as advertised by the server. Else we set it to AZNFSCFG_WSIZE_MAX.
      * Note: This takes shared lock on ilock_1.
      */
     bc_iovec(struct nfs_inode *_inode) :

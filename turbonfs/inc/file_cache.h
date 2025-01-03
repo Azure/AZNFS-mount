@@ -344,7 +344,6 @@ struct membuf
         const bool flushing = (flag & MB_Flag::Flushing);
 
         /*
-         * membuf can be marked flushing only if it's dirty already.
          * If membuf is in flushing state, it means it can't be in
          * commit pending state. Only after successfully flushing
          * (using UNSTABLE writes) it goes to commit pending state.
@@ -362,8 +361,9 @@ struct membuf
         const bool commit_pending = (flag & MB_Flag::CommitPending);
 
         /*
-         * membuf can be marked CommitPending only after it's successfully written to the server as unstable
-         * write. Till it's committed we cannot copy new data to the membuf else we risk overwriting data
+         * membuf can be marked CommitPending only after it's successfully
+         * written to the server as unstable write. Till it's committed we
+         * cannot copy new data to the membuf else we risk overwriting data
          * which is not yet committed to the server.
          */
         assert(!commit_pending || !(flag & MB_Flag::Dirty));
@@ -1157,11 +1157,14 @@ public:
     std::vector<bytes_chunk> get_flushing_bc_range(uint64_t st_off, uint64_t end_off) const;
 
     /*
-     * Returns all commit pending chunks for a given range in chunkmap.
+     * Returns all commit pending chunks in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s)
      * and sets the membufs locked. Caller will typically commit the returned
      * membuf(s) to Blob and once done must call clear_commit_pending, clear_locked()
      * and clear_inuse() in that order.
+     *
+     * Note: We don't have use case where we need to commit for given range as
+     *       server on commiting delete all the temporary Put Blocks.
      *
      * Note: The returned membuf(s) were found pending commit when
      *       get_commit_pending_bcs() scanned the chunmap while holding the
@@ -1278,24 +1281,11 @@ public:
     }
 
     /**
-     * Get the amount of dirty data which which currently being flushed/written to the Blob.
-     * These could be either being written as stable or unstable writes.
-     *
-     * Note: bytes_flushing returned by get_bytes_flushing() change anytime after this call returns.
-     *       Caller should use it as a hint, and not as a hard limit. It can return false positives,
-     *       but never false negatives, i.e., it never returns false when bytes_flushing is non-zero.
-     */
-    uint64_t get_bytes_flushing() const
-    {
-        return bytes_flushing;
-    }
-
-    /**
      * Get the amount of data which has been written as unstable writes, but not yet committed.
      * This excludes dirty data which is not flushed/written yet or in process of flushing.
      * It gets incremented on write completion of dirty data flushed to BLOB with unstable parameter.
      *
-     * Note: bytes_commit_pending returned by get_bytes_commit_pending() change anytime after this call returns.
+     * Note: The number of bytes to commit may change after the calls returns.
      *       Caller should use it as a hint, and not as a hard limit.
      */
     uint64_t get_bytes_to_commit() const
