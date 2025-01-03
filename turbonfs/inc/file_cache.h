@@ -318,6 +318,8 @@ struct membuf
          * Make sure is_dirty returns true only when is_uptodate() is true
          * otherwise we may write garbage data to Blob.
          * If membuf is dirty, it must not be in commit pending state.
+         * A membuf goes to commit pending state only after it's successfully
+         * flushed to the server (using UNSTABLE writes), and then it's no longer dirty.
          */
         assert(!dirty || is_uptodate());
         assert(!dirty || !(flag & MB_Flag::CommitPending));
@@ -345,7 +347,9 @@ struct membuf
 
         /*
          * membuf can be marked flushing only if it's dirty already.
-         * If membuf is in flushing state, it means it can't be in commit pending state.
+         * If membuf is in flushing state, it means it can't be in
+         * commit pending state. Only after successfully flushing
+         * (using UNSTABLE writes) it goes to commit pending state.
          */
         assert(!flushing || !(flag & MB_Flag::CommitPending));
 
@@ -687,14 +691,18 @@ public:
 
     /**
      * Is it safe to release (remove from chunkmap) this bytes_chunk?
-     * bytes_chunk whose underlying membuf is either inuse or dirty are not
-     * safe to release because:
+     * bytes_chunk whose underlying membuf is either inuse or dirty or commit
+     * pending are not safe to release because:
      * - dirty indicates membuf has some data which needs to be flushed, so
      *   we cannot release it w/o flushing the data.
      * - inuse indicates some other thread is doing something with the membuf,
      *   maybe it's writing fresh data to it and may mark it dirty. If we
      *   allow such membuf to be released, future readers who get() the cache
      *   will miss those changes.
+     * - commit pending means those membuf are sitting in the TBL of the Blob,
+     *   not yet committed, server may fail the commit in which case we might
+     *   have to resend those to the server and hence we cannot free those
+     *   till successful commit.
      *
      * Note: For truncate none of the above matters, i.e., we don't care about
      *       losing cached writes to truncated region of the file, hence we
@@ -1122,6 +1130,15 @@ public:
      * Before returning it increases the inuse count of underlying membuf(s).
      * Caller will typically sync dirty membuf to Blob and once done must call
      * clear_inuse().
+     *
+     * Note: The returned membuf(s) were found dirty when get_dirty_bc_range()
+     *       scanned the chunmap while holding the chunkmap lock. They may or
+     *       may not be flushing.
+     *       Since returned membuf(s) are not locked by get_dirty_bc_range(),
+     *       some other thread may already be flushing them or may start
+     *       flushing anytime after the call returns, hence the caller MUST
+     *       check for that after holding the lock, before it tries to flush
+     *       those membuf(s).
      */
     std::vector<bytes_chunk> get_dirty_bc_range(uint64_t st_off, uint64_t end_off) const;
 
@@ -1130,6 +1147,14 @@ public:
      * Before returning it increases the inuse count of underlying membuf(s).
      * Caller will typically wait for these membuf(s) complete flushing to Blob and once done
      * must call clear_inuse().
+     *
+     * Note: The returned membuf(s) were found flushing when get_flushing_bc_range()
+     *       scanned the chunmap while holding the chunkmap lock.
+     *       Since returned membuf(s) are not locked by get_flushing_bc_range(),
+     *       they may complete flushing and (optionally) marked commit pending
+     *       if they were flushed using UNSTABLE write, hence the caller MUST
+     *       check for that after holding the lock, before it tries to commit
+     *       those membuf(s).
      */
     std::vector<bytes_chunk> get_flushing_bc_range(uint64_t st_off, uint64_t end_off) const;
 
@@ -1139,8 +1164,16 @@ public:
      * and sets the membufs locked. Caller will typically commit the returned
      * membuf(s) to Blob and once done must call clear_commit_pending, clear_locked()
      * and clear_inuse() in that order.
+     *
+     * Note: The returned membuf(s) were found pending commit when
+     *       get_commit_pending_bcs() scanned the chunmap while holding the
+     *       chunkmap lock. Since returned membuf(s) are not locked by
+     *       get_commit_pending_bcs(), some other thread may already start
+     *       committing them anytime after the call returns, hence the caller
+     *       MUST check for that after holding the lock, before it tries to
+     *       commit those membuf(s).
      */
-    std::vector<bytes_chunk> get_commit_pending_bc_range() const;
+    std::vector<bytes_chunk> get_commit_pending_bcs() const;
 
     /**
      * Drop cached data in the given range.
@@ -1249,6 +1282,10 @@ public:
     /**
      * Get the amount of dirty data which which currently being flushed/written to the Blob.
      * These could be either being written as stable or unstable writes.
+     *
+     * Note: bytes_flushing returned by get_bytes_flushing() change anytime after this call returns.
+     *       Caller should use it as a hint, and not as a hard limit. It can return false positives,
+     *       but never false negatives, i.e., it never returns false when bytes_flushing is non-zero.
      */
     uint64_t get_bytes_flushing() const
     {
@@ -1259,6 +1296,9 @@ public:
      * Get the amount of data which has been written as unstable writes, but not yet committed.
      * This excludes dirty data which is not flushed/written yet or in process of flushing.
      * It gets incremented on write completion of dirty data flushed to BLOB with unstable parameter.
+     *
+     * Note: bytes_commit_pending returned by get_bytes_commit_pending() change anytime after this call returns.
+     *       Caller should use it as a hint, and not as a hard limit.
      */
     uint64_t get_bytes_to_commit() const
     {
@@ -1269,6 +1309,12 @@ public:
      * Returns true if there are bytes_flushing.
      * bytes_flushing non-zero tells that there are dirty membufs which are in
      * process of being flushed to the Blob.
+     *
+     * Note: is_flushing_in_progress() should be called under iflush_lock_3 lock held.
+     *
+     * Note: is_flushing_in_progress() can return false positives, i.e., it can return true
+     *       as bytes_flushing can change anytime after this call returns. But it never returns
+     *       false negatives, i.e., it never returns false when bytes_flushing is non-zero.
      */
     bool is_flushing_in_progress() const
     {

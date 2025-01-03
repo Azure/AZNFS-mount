@@ -436,15 +436,13 @@ void membuf::clear_flushing()
     /*
      * clear_flushing() called after clear_dirty(), hence is_flushing()
      * not used as it checks for membuf being dirty as well.
+     * No spurious calls to clear_flushing().
      */
-    [[maybe_unused]] const bool was_flushing = (flag & MB_Flag::Flushing);
+    assert(flag & MB_Flag::Flushing);
 
     // See comment in set_flushing() above.
     assert(is_locked());
     assert(is_inuse());
-
-    // No spurious calls to clear_flushing().
-    assert(was_flushing);
 
     /*
      * clear_flushing() must be called after clear_dirty().
@@ -2206,8 +2204,7 @@ void bytes_chunk_cache::clear_nolock()
     }
 }
 
-std::vector<bytes_chunk>
-bytes_chunk_cache::get_commit_pending_bc_range() const
+std::vector<bytes_chunk> bytes_chunk_cache::get_commit_pending_bcs() const
 {
     std::vector<bytes_chunk> bc_vec;
 

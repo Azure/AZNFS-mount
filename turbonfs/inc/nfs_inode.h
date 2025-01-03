@@ -273,7 +273,8 @@ private:
 
     /*
      * In start we set the stable_write flag to false as write pattern is unknown.
-     * stable_write flag is set to true in case of new write is not append to a file.
+     * At the time of flushing cached writes to Blob we check if the cached writes
+     * are not append to a file. If so, we need to send stable writes.
      * Once set to true, it will remain true for the life of the inode.
      * 
      * Note: As of now, we are not using this flag as commit changes not yet integrated.
@@ -916,9 +917,10 @@ public:
     }
 
     /*
-     * This function checks, whether new io is overlapping/sparse write with the existing data
-     * in the file or not.
-     * For overlapping/sparse write, we need to switch to stable write.
+     * offset is start offset of contigious cached write request which needs to be flushed
+     * to the Blob. This function checks, whether given offset is append to the end of the file
+     * or not. If offset is not append to the end of the file, we need to switch to stable write.
+     * For overlapping/sparse write, we need to send stable writes.
      */
     bool check_stable_write_required(off_t offset) const
     {
@@ -1098,10 +1100,10 @@ public:
     }
 
     /**
-     * Set commit_in_pending state for this inode.
+     * Set needs_commit state for this inode.
      * Note this is set to let flushing task know that commit is pending and start commit task.
      */
-    void set_commit_in_pending()
+    void set_needs_commit()
     {
         // Commit can be set to pending only if it is in commit_not_needed state.
         assert(commit_state == commit_state_t::COMMIT_NOT_NEEDED);
@@ -1113,7 +1115,6 @@ public:
      */
     void clear_commit_in_progress()
     {
-        assert(commit_state != commit_state_t::INVALID);
         assert(commit_state == commit_state_t::COMMIT_IN_PROGRESS);
 
         commit_state = commit_state_t::COMMIT_NOT_NEEDED;
@@ -1122,7 +1123,7 @@ public:
     /**
      * Is commit in progress for this inode?
      */
-    bool is_commit_progress() const
+    bool is_commit_in_progress() const
     {
         assert(commit_state != commit_state_t::INVALID);
         return (commit_state == commit_state_t::COMMIT_IN_PROGRESS);
