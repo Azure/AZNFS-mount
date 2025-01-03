@@ -67,6 +67,7 @@ jobs:
     - name: Run Package.sh
       shell: bash
       run: |
+        git submodule update --recursive
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
         export STG_DIR=$GITHUB_WORKSPACE
         export SOURCE_DIR=$GITHUB_WORKSPACE
