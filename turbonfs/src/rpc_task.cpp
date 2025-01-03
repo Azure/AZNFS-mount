@@ -1178,9 +1178,18 @@ static void setattr_callback(
 
     const fuse_ino_t ino =
         task->rpc_api->setattr_task.get_ino();
+    const int valid = task->rpc_api->setattr_task.get_attr_flags_to_set();
     struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * We need to call truncate_end() unconditionally to release iflush_lock_3
+     * held by truncate_start().
+     */
+    if (valid & FUSE_SET_ATTR_SIZE) {
+            inode->truncate_end();
+    }
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -2564,12 +2573,13 @@ void rpc_task::run_setattr()
                 AZLogDebug("[{}]: Truncating file size to {}", 
                     ino,
                     attr->st_size);
-                inode->get_filecache()->truncate(attr->st_size);
+                inode->truncate_start(attr->st_size);
             }
             
             AZLogDebug("Setting size to {}", attr->st_size);
             args.new_attributes.size.set_it = 1;
             args.new_attributes.size.set_size3_u.size = attr->st_size;
+
         }
 
         if (valid & FUSE_SET_ATTR_ATIME) {

@@ -861,6 +861,42 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     return get_write_error();
 }
 
+void nfs_inode::truncate_end()
+{
+    /*
+     * Caller must call truncate_end() for regular files only.
+     */
+    assert(has_filecache());
+
+    iflush_lock_3.unlock();
+}
+
+/*
+ * Note: This takes exclusive lock on iflush_lock_3.
+ */
+bool nfs_inode::truncate_start(size_t size)
+{
+    /*
+     * Caller must call truncate_start() for regular files only.
+     */
+    assert(has_filecache());
+    assert(size <= AZNFSC_MAX_FILE_SIZE);
+
+    /*
+     * Grab exclusive lock on iflush_lock_3, so that no new flush or commit
+     * can be issued till truncate() completes. There could be ongoing flush
+     * or commit operations in progress, we need to wait for them to complete.
+     */
+    iflush_lock_3.lock();
+    wait_for_flush_complete(0, UINT64_MAX);
+
+    /*
+     * Now there are no ongoing flush or commit operations in progress.
+     * we can safely truncate the filecache.
+     */
+    return filecache_handle->truncate(size);
+}
+
 bool nfs_inode::release(fuse_req_t req)
 {
     assert(opencnt > 0);

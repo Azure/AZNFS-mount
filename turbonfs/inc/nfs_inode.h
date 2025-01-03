@@ -112,8 +112,19 @@ struct nfs_inode
 
     /*
      * Inode flush lock.
-     * Flush must be started only when this lock is held. This is needed as
-     * while Flush is in progress, truncate can be issued on this inode.
+     * This is used for synchronizing changes to backend file size as a result
+     * of flush/commit and application initiated truncate calls forcing a
+     * specific file size. Note that ilock_1 is for synchronizing the
+     * application visible state of the inode (attr cache, etc), while
+     * iflush_lock_3 synchronizes changes to the on-disk file (through flush,
+     * commit and truncate).
+     * Any flush done to an inode will mark all the to-be-flushed membufs as
+     * flushing while holding this lock and any truncate call will hold this
+     * lock to ensure no new flush/commit operations are started while it
+     * updates the file size using SETATTR RPC.
+     *
+     * Note: Though it's called flush lock, but it protects backend file size
+     *       changes through both flush and/or commit.
      */
     mutable std::shared_mutex iflush_lock_3;
 
@@ -481,6 +492,22 @@ public:
             filecache_alloced = true;
         }
     }
+
+    /**
+     * We split the truncate operation in two separate apis truncate_start()
+     * and truncate_end(). truncate_start() must be called before issuing the
+     * SETATTR RPC and truncate_end() must be called from SETATTR callback.
+     * truncate_start() grabs the exclusive iflush_lock_3 lock to ensure no
+     * new flush/commit operations can be issued for this inode, and waits for
+     * any ongoing flush/commit operations to complete, before truncating the
+     * filecache to the new size.
+     * truncate_end() simply releases the iflush_lock_3 lock held by
+     * truncate_start().
+     * This two apis together ensure that any flush/commit operation cannot
+     * change the file size after truncate sets it.
+     */
+    bool truncate_start(size_t size);
+    void truncate_end();
 
     /**
      * This MUST be called only after has_filecache() returns true, else

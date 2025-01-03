@@ -122,10 +122,8 @@ namespace MB_Flag {
                                       // for cached data belonging to the
                                       // truncated region of the file.
        Dirty              = (1 << 3), // Data in membuf is newer than the Blob.
-       Flushing           = (1 << 4), // Data from dirty membuf is being synced
-                                      // to Blob.
-       CommitPending      = (1 << 5), // Data from dirty membuf is being synced to Blob (as UNSTABLE/FILE_SYNC Write).
-                                      // Data from dirty membuf was synced using UNSTABLE Write but
+       Flushing           = (1 << 4), // Data from dirty membuf is being synced to Blob (as UNSTABLE/FILE_SYNC Write).
+       CommitPending      = (1 << 5), // Data from dirty membuf was synced using UNSTABLE Write but
                                       // it has not yet been committed to the server.
     };
 }
