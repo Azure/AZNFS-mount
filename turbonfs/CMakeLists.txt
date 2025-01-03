@@ -102,6 +102,20 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/libfuse/meson.build")
     message(FATAL_ERROR "The libfuse submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/vcpkg/bootstrap-vcpkg.sh")
+    message(FATAL_ERROR "The vcpkg submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+endif()
+
+find_package(azure-identity-cpp CONFIG QUIET)
+if(NOT azure-identity-cpp_FOUND)
+    message(FATAL_ERROR "azure-identity-cpp not found! Did you run cmake with -DCMAKE_TOOLCHAIN_FILE?")
+endif()
+
+find_package(azure-storage-blobs-cpp CONFIG QUIET)
+if(NOT azure-storage-blobs-cpp_FOUND)
+    message(FATAL_ERROR "azure-storage-blobs-cpp not found! Did you run cmake with -DCMAKE_TOOLCHAIN_FILE?")
+endif()
+
 #
 # We need meson to compile libfuse.
 #
@@ -271,7 +285,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       pthread
                       nfs
                       yaml-cpp
-                      spdlog)
+                      spdlog
+                      Azure::azure-identity 
+                      Azure::azure-storage-blobs)
 
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
