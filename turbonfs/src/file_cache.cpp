@@ -2240,7 +2240,6 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_flushing_bc_range(uint64_t start
 {
     std::vector<bytes_chunk> bc_vec;
     assert(start_off < end_off);
-    assert(end_off <= AZNFSC_MAX_CHUNK_SIZE);
 
     // TODO: Make it shared lock.
     const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
@@ -2265,7 +2264,6 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc_range(uint64_t start_of
 {
     std::vector<bytes_chunk> bc_vec;
     assert(start_off < end_off);
-    assert(end_off <= AZNFSC_MAX_CHUNK_SIZE);
 
     // TODO: Make it shared lock.
     const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);

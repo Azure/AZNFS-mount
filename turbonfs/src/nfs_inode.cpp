@@ -688,7 +688,6 @@ try_copy:
 int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 {
     assert(start_off < end_off);
-    assert(end_off <= AZNFSC_MAX_CHUNK_SIZE);
 
     /*
      * MUST be called only for regular files.
