@@ -218,6 +218,8 @@ typedef struct aznfsc_cfg
     // Fuse max_background config value.
     int fuse_max_background = -1;
 
+    const char *xprtsec = nullptr;
+
     /*************************************************
      **              Cconsistency config            **
      *************************************************/

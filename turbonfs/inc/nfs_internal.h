@@ -31,6 +31,8 @@ struct mount_options
     // Same as mount_port.
     const int nfs_port;
 
+    const std::string xprtsec;
+
     /*
      * nconnect option.
      * Number of connections to be established to the server.
@@ -81,6 +83,7 @@ struct mount_options
         nfs_version(3),
         mount_port(aznfsc_cfg.port),
         nfs_port(aznfsc_cfg.port),
+        xprtsec(aznfsc_cfg.xprtsec),
         num_connections(aznfsc_cfg.nconnect),
         readonly(false),
         rsize(aznfsc_cfg.rsize),
@@ -121,10 +124,11 @@ struct mount_options
             size = std::snprintf(
                                 const_cast<char*>(url.data()),
                                 url.size(),
-                                "nfs://%s%s/?version=3&debug=%d&dircache=0&xprtsec=none&nfsport=%d&mountport=%d&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
+                                "nfs://%s%s/?version=3&debug=%d&dircache=0&xprtsec=%s&nfsport=%d&mountport=%d&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
                                 server.c_str(),
                                 export_path.c_str(),
                                 debug,
+                                xprtsec.c_str(),
                                 nfs_port,
                                 mount_port,
                                 timeo,
@@ -136,10 +140,11 @@ struct mount_options
             size = std::snprintf(
                                 const_cast<char*>(url.data()),
                                 url.size(),
-                                "nfs://%s%s/?version=3&debug=%d&dircache=0&xprtsec=none&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
+                                "nfs://%s%s/?version=3&debug=%d&dircache=0&xprtsec=%s&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
                                 server.c_str(),
                                 export_path.c_str(),
                                 debug,
+                                xprtsec.c_str(),
                                 timeo,
                                 retrans,
                                 rsize,
