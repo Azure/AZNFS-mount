@@ -1188,7 +1188,8 @@ static void setattr_callback(
      * held by truncate_start().
      */
     if (valid & FUSE_SET_ATTR_SIZE) {
-            inode->truncate_end();
+        AZLogDebug("setattr_callback: truncate_end");
+        inode->truncate_end();
     }
 
     /*
@@ -2111,7 +2112,7 @@ void rpc_task::run_write()
      * Note as there can be race condition with truncate and flushing we must
      * take the exclusive lock on iflush_lock_3().
      */
-    std::unique_lock<std::shared_mutex> lock(inode->iflush_lock_3);
+    inode->flush_lock();
 
     std::vector<bytes_chunk> bc_vec =
         inode->get_filecache()->get_dirty_bc_range(extent_left, extent_right);
@@ -2126,7 +2127,7 @@ void rpc_task::run_write()
      * before returning.
      */
     inode->sync_membufs(bc_vec, false /* is_flush */);
-
+    inode->flush_unlock();
     // Send reply to original request without waiting for the backend write to complete.
     reply_write(length);
 }
@@ -2570,7 +2571,7 @@ void rpc_task::run_setattr()
         if (valid & FUSE_SET_ATTR_SIZE) {
             // Truncate the cache to reflect the size.
             if (inode->has_filecache()) {
-                AZLogDebug("[{}]: Truncating file size to {}", 
+                AZLogDebug("[{}]: Truncating file size to {}",
                     ino,
                     attr->st_size);
                 inode->truncate_start(attr->st_size);
@@ -2628,6 +2629,18 @@ void rpc_task::run_setattr()
 
             AZLogWarn("rpc_nfs3_setattr_task failed to issue, retrying "
                       "after 5 secs!");
+
+            /*
+             * Release iflush_lock_3 lock, before retrying.
+             */
+            if (valid & FUSE_SET_ATTR_SIZE) {
+                if (inode->has_filecache()) {
+                    AZLogDebug("[{}]: Truncating file size to {}",
+                        ino,
+                        attr->st_size);
+                    inode->truncate_end();
+                }
+            }
             ::sleep(5);
         }
     } while (rpc_retry);

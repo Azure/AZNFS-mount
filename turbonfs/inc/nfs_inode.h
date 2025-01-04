@@ -2,6 +2,7 @@
 #define __NFS_INODE_H__
 
 #include <atomic>
+#include <chrono>
 #include "aznfsc.h"
 #include "rpc_readdir.h"
 #include "file_cache.h"
@@ -127,6 +128,8 @@ struct nfs_inode
      *       changes through both flush and/or commit.
      */
     mutable std::shared_mutex iflush_lock_3;
+    std::condition_variable_any cv_flush;
+    std::atomic<bool> is_flushing = false;
 
     /*
      * S_IFREG, S_IFDIR, etc.
@@ -1343,6 +1346,13 @@ public:
      * initiated an unlink of the inode.
      */
     bool release(fuse_req_t req);
+
+    /**
+     * Lock the inode for flushing.
+     */
+    void flush_lock();
+    void flush_unlock();
+    bool flush_trylock();
 
     /**
      * Revalidate the inode.
