@@ -112,24 +112,27 @@ struct nfs_inode
     mutable std::shared_mutex ilock_1;
 
     /*
-     * Inode flush lock.
-     * This is used for synchronizing changes to backend file size as a result
-     * of flush/commit and application initiated truncate calls forcing a
-     * specific file size. Note that ilock_1 is for synchronizing the
-     * application visible state of the inode (attr cache, etc), while
-     * iflush_lock_3 synchronizes changes to the on-disk file (through flush,
-     * commit and truncate).
+     * Note on inode flush locking.
+     * is_flushing atomic boolean (aided by iflush_lock_3 and flush_cv) is used
+     * for synchronizing changes to backend file size as a result of
+     * flush/commit along with application initiated truncate calls forcing a
+     * specific file size. Note that the inode lock ilock_1 is for synchronizing
+     * the application visible state of the inode (attr cache, etc), while inode
+     * flush locking is for synchronizing changes to the on-disk file (through
+     * flush, commit and truncate).
      * Any flush done to an inode will mark all the to-be-flushed membufs as
      * flushing while holding this lock and any truncate call will hold this
      * lock to ensure no new flush/commit operations are started while it
      * updates the file size using SETATTR RPC.
      *
+     * See flush_lock()/flush_unlock() for the actual locking.
+     *
      * Note: Though it's called flush lock, but it protects backend file size
      *       changes through both flush and/or commit.
      */
-    mutable std::shared_mutex iflush_lock_3;
-    std::condition_variable_any cv_flush;
-    std::atomic<bool> is_flushing = false;
+    mutable std::atomic<bool> is_flushing = false;
+    mutable std::condition_variable_any flush_cv;
+    mutable std::mutex iflush_lock_3;
 
     /*
      * S_IFREG, S_IFDIR, etc.
@@ -501,11 +504,11 @@ public:
      * We split the truncate operation in two separate apis truncate_start()
      * and truncate_end(). truncate_start() must be called before issuing the
      * SETATTR RPC and truncate_end() must be called from SETATTR callback.
-     * truncate_start() grabs the exclusive iflush_lock_3 lock to ensure no
+     * truncate_start() grabs the exclusive flush_lock lock to ensure no
      * new flush/commit operations can be issued for this inode, and waits for
      * any ongoing flush/commit operations to complete, before truncating the
      * filecache to the new size.
-     * truncate_end() simply releases the iflush_lock_3 lock held by
+     * truncate_end() simply releases the flush_lock lock held by
      * truncate_start().
      * This two apis together ensure that any flush/commit operation cannot
      * change the file size after truncate sets it.
@@ -1318,16 +1321,16 @@ public:
      *       instant and flush those. Any new dirty membufs added after it
      *       queries the dirty membufs list, are not flushed.
      *
-     * Note: This take the inode iflush_lock_3 lock to ensure that it doesn't initiate
+     * Note: This take the inode flush_lock lock to ensure that it doesn't initiate
      *       new flush operation while some truncate call is in progress (which must have
-     *       taken the iflush_lock_3).
+     *       taken the flush_lock).
      */
     int flush_cache_and_wait(uint64_t start_off = 0,
                              uint64_t end_off = UINT64_MAX);
 
     /**
      * Wait for currently flushing membufs to complete.
-     * Note : Caller must hold the inode iflush_lock_3 to ensure that
+     * Note : Caller must hold the inode flush_lock to ensure that
      *        no new membufs are added till this call completes.
      */
     int wait_for_ongoing_flush(uint64_t start_off = 0,
@@ -1350,9 +1353,8 @@ public:
     /**
      * Lock the inode for flushing.
      */
-    void flush_lock();
-    void flush_unlock();
-    bool flush_trylock();
+    void flush_lock() const;
+    void flush_unlock() const;
 
     /**
      * Revalidate the inode.

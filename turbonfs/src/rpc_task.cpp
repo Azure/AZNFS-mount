@@ -1184,7 +1184,7 @@ static void setattr_callback(
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
-     * We need to call truncate_end() unconditionally to release iflush_lock_3
+     * We need to call truncate_end() unconditionally to release flush_lock lock
      * held by truncate_start().
      */
     if (valid & FUSE_SET_ATTR_SIZE) {
@@ -2110,7 +2110,7 @@ void rpc_task::run_write()
     /*
      * We need to flush the extent now, get the membufs for the dirty data.
      * Note as there can be race condition with truncate and flushing we must
-     * take the exclusive lock on iflush_lock_3().
+     * take the exclusive flush_lock lock.
      */
     inode->flush_lock();
 
@@ -2119,6 +2119,7 @@ void rpc_task::run_write()
 
     if (bc_vec.size() == 0) {
         reply_write(length);
+        inode->flush_unlock();
         return;
     }
 
@@ -2128,6 +2129,7 @@ void rpc_task::run_write()
      */
     inode->sync_membufs(bc_vec, false /* is_flush */);
     inode->flush_unlock();
+
     // Send reply to original request without waiting for the backend write to complete.
     reply_write(length);
 }
@@ -2631,16 +2633,15 @@ void rpc_task::run_setattr()
                       "after 5 secs!");
 
             /*
-             * Release iflush_lock_3 lock, before retrying.
+             * Release flush_lock, before retrying.
              */
             if (valid & FUSE_SET_ATTR_SIZE) {
                 if (inode->has_filecache()) {
-                    AZLogDebug("[{}]: Truncating file size to {}",
-                        ino,
-                        attr->st_size);
+                    AZLogDebug("[{}]: Releasing flush_lock", ino);
                     inode->truncate_end();
                 }
             }
+
             ::sleep(5);
         }
     } while (rpc_retry);

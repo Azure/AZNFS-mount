@@ -1298,7 +1298,7 @@ public:
      * bytes_flushing non-zero tells that there are dirty membufs which are in
      * process of being flushed to the Blob.
      *
-     * Note: is_flushing_in_progress() should be called under iflush_lock_3 lock held.
+     * Note: is_flushing_in_progress() should be called under flush_lock lock held.
      *
      * Note: is_flushing_in_progress() can return false positives, i.e., it can return true
      *       as bytes_flushing can change anytime after this call returns. But it never returns

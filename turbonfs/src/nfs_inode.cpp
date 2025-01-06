@@ -684,11 +684,14 @@ try_copy:
 }
 
 /**
- * Note: Caller should call with iflush_lock_3 held.
+ * Note: Caller should call with flush_lock() held.
  */
 int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 {
     assert(start_off < end_off);
+
+    // Caller must call us with flush_lock lock held.
+    assert(is_flushing);
 
     /*
      * MUST be called only for regular files.
@@ -706,9 +709,12 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
         return 0;
     }
 
+    /*
+     * Flushing not in progress and no new flushing can be started as we hold
+     * the flush_lock().
+     */
     if (!get_filecache()->is_flushing_in_progress()) {
-        AZLogDebug("[{}] No flush in progress, returning with error: {}",
-                  ino, get_write_error());
+        AZLogDebug("[{}] No flush in progress, returning", ino);
         return 0;
     }
 
@@ -801,9 +807,9 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     }
 
     /*
-     * This take the inode iflush_lock_3 lock to ensure that it doesn't initiate
+     * This take the inode flush_lock lock to ensure that it doesn't initiate
      * new flush operation while some truncate call is in progress (which must have
-     * taken the iflush_lock_3).
+     * taken the flush_lock).
      */
     flush_lock();
 
@@ -868,7 +874,7 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     return get_write_error();
 }
 
-void nfs_inode::flush_lock()
+void nfs_inode::flush_lock() const
 {
     AZLogDebug("[{}] flush_lock() called", ino);
     /*
@@ -877,11 +883,11 @@ void nfs_inode::flush_lock()
     assert(has_filecache());
 
     while (std::atomic_exchange(&is_flushing, true)) {
-        std::unique_lock<std::shared_mutex> _lock(iflush_lock_3);
+        std::unique_lock<std::mutex> _lock(iflush_lock_3);
 
-        if (!cv_flush.wait_for(_lock, std::chrono::seconds(120),
+        if (!flush_cv.wait_for(_lock, std::chrono::seconds(120),
                                 [this]() { return is_flushing == false; })) {
-            AZLogError("Timed out waiting flush lock, re-trying!");
+            AZLogError("Timed out waiting for flush lock, re-trying!");
         }
     }
 
@@ -890,7 +896,7 @@ void nfs_inode::flush_lock()
     return;
 }
 
-void nfs_inode::flush_unlock()
+void nfs_inode::flush_unlock() const
 {
     AZLogDebug("[{}] flush_unlock() called", ino);
     /*
@@ -900,11 +906,11 @@ void nfs_inode::flush_unlock()
     assert(is_flushing == true);
 
     {
-        std::unique_lock<std::shared_mutex> _lock(iflush_lock_3);
+        std::unique_lock<std::mutex> _lock(iflush_lock_3);
         is_flushing = false;
     }
 
-    cv_flush.notify_one();
+    flush_cv.notify_one();
 }
 
 void nfs_inode::truncate_end()
@@ -919,7 +925,7 @@ void nfs_inode::truncate_end()
 }
 
 /*
- * Note: This takes exclusive lock on iflush_lock_3.
+ * Note: This takes exclusive lock on flush_lock.
  */
 bool nfs_inode::truncate_start(size_t size)
 {
@@ -931,7 +937,7 @@ bool nfs_inode::truncate_start(size_t size)
     assert(size <= AZNFSC_MAX_FILE_SIZE);
 
     /*
-     * Grab exclusive lock on iflush_lock_3, so that no new flush or commit
+     * Grab exclusive lock on flush_lock, so that no new flush or commit
      * can be issued till truncate() completes. There could be ongoing flush
      * or commit operations in progress, we need to wait for them to complete.
      */
