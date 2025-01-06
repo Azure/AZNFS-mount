@@ -18,6 +18,7 @@
  * - nfs_client::inode_map_lock_0
  * - nfs_inode::ilock_1
  * - nfs_inode::readdircache_lock_2
+ * - nfs_inode::iflush_lock_3
  * - nfs_client::jukebox_seeds_lock_39
  * +++++++++++++++++++++++++++++++++
  * - ra_state::ra_lock_40

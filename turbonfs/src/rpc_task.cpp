@@ -1178,9 +1178,19 @@ static void setattr_callback(
 
     const fuse_ino_t ino =
         task->rpc_api->setattr_task.get_ino();
+    const int valid = task->rpc_api->setattr_task.get_attr_flags_to_set();
     struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * We need to call truncate_end() unconditionally to release flush_lock lock
+     * held by truncate_start().
+     */
+    if (valid & FUSE_SET_ATTR_SIZE) {
+        AZLogDebug("setattr_callback: truncate_end");
+        inode->truncate_end();
+    }
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -2097,11 +2107,19 @@ void rpc_task::run_write()
         }
     }
 
+    /*
+     * We need to flush the extent now, get the membufs for the dirty data.
+     * Note as there can be race condition with truncate and flushing we must
+     * take the exclusive flush_lock lock.
+     */
+    inode->flush_lock();
+
     std::vector<bytes_chunk> bc_vec =
         inode->get_filecache()->get_dirty_bc_range(extent_left, extent_right);
 
     if (bc_vec.size() == 0) {
         reply_write(length);
+        inode->flush_unlock();
         return;
     }
 
@@ -2110,6 +2128,7 @@ void rpc_task::run_write()
      * before returning.
      */
     inode->sync_membufs(bc_vec, false /* is_flush */);
+    inode->flush_unlock();
 
     // Send reply to original request without waiting for the backend write to complete.
     reply_write(length);
@@ -2554,15 +2573,16 @@ void rpc_task::run_setattr()
         if (valid & FUSE_SET_ATTR_SIZE) {
             // Truncate the cache to reflect the size.
             if (inode->has_filecache()) {
-                AZLogDebug("[{}]: Truncating file size to {}", 
+                AZLogDebug("[{}]: Truncating file size to {}",
                     ino,
                     attr->st_size);
-                inode->get_filecache()->truncate(attr->st_size);
+                inode->truncate_start(attr->st_size);
             }
             
             AZLogDebug("Setting size to {}", attr->st_size);
             args.new_attributes.size.set_it = 1;
             args.new_attributes.size.set_size3_u.size = attr->st_size;
+
         }
 
         if (valid & FUSE_SET_ATTR_ATIME) {
@@ -2611,6 +2631,17 @@ void rpc_task::run_setattr()
 
             AZLogWarn("rpc_nfs3_setattr_task failed to issue, retrying "
                       "after 5 secs!");
+
+            /*
+             * Release flush_lock, before retrying.
+             */
+            if (valid & FUSE_SET_ATTR_SIZE) {
+                if (inode->has_filecache()) {
+                    AZLogDebug("[{}]: Releasing flush_lock", ino);
+                    inode->truncate_end();
+                }
+            }
+
             ::sleep(5);
         }
     } while (rpc_retry);

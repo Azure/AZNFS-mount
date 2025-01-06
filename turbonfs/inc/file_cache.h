@@ -97,8 +97,17 @@ namespace aznfsc {
 // Forward declaration.
 class bytes_chunk_cache;
 
-/**
- * membuf::flag bits.
+/*
+ * Note on membuf flags Dirty/Flushing/CommitPending
+ * =================================================
+ * When application data is copied to a membuf it becomes Dirty.
+ * Dirty membufs are flushed to the server either when dirty data exceeds some threshold or when
+ * the file is closed. While membuf is being flushed Flushing bit is set.
+ * Once the membuf is successfully flushed, Dirty and Flushing bits are cleared. If the flush was
+ * done using Unstable Write then CommitPending bit is set. Once the membuf is successfully committed
+ * to the server, CommitPending bit is cleared.
+ * Till any of these bits is set, the membuf contains data which may not yet be saved on the server
+ * and hence releasing the membuf may cause data loss.
  */
 namespace MB_Flag {
     enum : uint32_t
@@ -113,8 +122,9 @@ namespace MB_Flag {
                                       // for cached data belonging to the
                                       // truncated region of the file.
        Dirty              = (1 << 3), // Data in membuf is newer than the Blob.
-       Flushing           = (1 << 4), // Data from dirty membuf is being synced
-                                      // to Blob.
+       Flushing           = (1 << 4), // Data from dirty membuf is being synced to Blob (as UNSTABLE/FILE_SYNC Write).
+       CommitPending      = (1 << 5), // Data from dirty membuf was synced using UNSTABLE Write but
+                                      // it has not yet been committed to the server.
     };
 }
 
@@ -305,8 +315,12 @@ struct membuf
         /*
          * Make sure is_dirty returns true only when is_uptodate() is true
          * otherwise we may write garbage data to Blob.
+         * If membuf is dirty, it must not be in commit pending state.
+         * A membuf goes to commit pending state only after it's successfully
+         * flushed to the server (using UNSTABLE writes), and then it's no longer dirty.
          */
         assert(!dirty || is_uptodate());
+        assert(!dirty || !(flag & MB_Flag::CommitPending));
 
         return dirty;
     }
@@ -327,11 +341,39 @@ struct membuf
 
     bool is_flushing() const
     {
-        return (flag & MB_Flag::Flushing);
+        const bool flushing = (flag & MB_Flag::Flushing);
+
+        /*
+         * If membuf is in flushing state, it means it can't be in
+         * commit pending state. Only after successfully flushing
+         * (using UNSTABLE writes) it goes to commit pending state.
+         */
+        assert(!flushing || !(flag & MB_Flag::CommitPending));
+
+        return flushing;
     }
 
     void set_flushing();
     void clear_flushing();
+
+    bool is_commit_pending() const
+    {
+        const bool commit_pending = (flag & MB_Flag::CommitPending);
+
+        /*
+         * membuf can be marked CommitPending only after it's successfully
+         * written to the server as unstable write. Till it's committed we
+         * cannot copy new data to the membuf else we risk overwriting data
+         * which is not yet committed to the server.
+         */
+        assert(!commit_pending || !(flag & MB_Flag::Dirty));
+        assert(!commit_pending || !(flag & MB_Flag::Flushing));
+
+        return commit_pending;
+    }
+
+    void set_commit_pending();
+    void clear_commit_pending();
 
     bool is_inuse() const
     {
@@ -647,14 +689,18 @@ public:
 
     /**
      * Is it safe to release (remove from chunkmap) this bytes_chunk?
-     * bytes_chunk whose underlying membuf is either inuse or dirty are not
-     * safe to release because:
+     * bytes_chunk whose underlying membuf is either inuse or dirty or commit
+     * pending are not safe to release because:
      * - dirty indicates membuf has some data which needs to be flushed, so
      *   we cannot release it w/o flushing the data.
      * - inuse indicates some other thread is doing something with the membuf,
      *   maybe it's writing fresh data to it and may mark it dirty. If we
      *   allow such membuf to be released, future readers who get() the cache
      *   will miss those changes.
+     * - commit pending means those membuf are sitting in the TBL of the Blob,
+     *   not yet committed, server may fail the commit in which case we might
+     *   have to resend those to the server and hence we cannot free those
+     *   till successful commit.
      *
      * Note: For truncate none of the above matters, i.e., we don't care about
      *       losing cached writes to truncated region of the file, hence we
@@ -663,7 +709,7 @@ public:
     bool safe_to_release() const
     {
         const struct membuf *mb = get_membuf();
-        return !mb->is_inuse() && !mb->is_dirty();
+        return !mb->is_inuse() && !mb->is_dirty() && !mb->is_commit_pending();
     }
 
     /**
@@ -1078,12 +1124,57 @@ public:
     }
 
     /*
-     * Returns all dirty chunks for a given range in chunkmap .
+     * Returns all dirty chunks for a given range in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s).
      * Caller will typically sync dirty membuf to Blob and once done must call
      * clear_inuse().
+     *
+     * Note: The returned membuf(s) were found dirty when get_dirty_bc_range()
+     *       scanned the chunmap while holding the chunkmap lock. They may or
+     *       may not be flushing.
+     *       Since returned membuf(s) are not locked by get_dirty_bc_range(),
+     *       some other thread may already be flushing them or may start
+     *       flushing anytime after the call returns, hence the caller MUST
+     *       check for that after holding the lock, before it tries to flush
+     *       those membuf(s).
      */
     std::vector<bytes_chunk> get_dirty_bc_range(uint64_t st_off, uint64_t end_off) const;
+
+    /*
+     * Returns all dirty chunks which are currently flushing for a given range in chunkmap.
+     * Before returning it increases the inuse count of underlying membuf(s).
+     * Caller will typically wait for these membuf(s) complete flushing to Blob and once done
+     * must call clear_inuse().
+     *
+     * Note: The returned membuf(s) were found flushing when get_flushing_bc_range()
+     *       scanned the chunmap while holding the chunkmap lock.
+     *       Since returned membuf(s) are not locked by get_flushing_bc_range(),
+     *       they may complete flushing and (optionally) marked commit pending
+     *       if they were flushed using UNSTABLE write, hence the caller MUST
+     *       check for that after holding the lock, before it tries to commit
+     *       those membuf(s).
+     */
+    std::vector<bytes_chunk> get_flushing_bc_range(uint64_t st_off, uint64_t end_off) const;
+
+    /*
+     * Returns all commit pending chunks in chunkmap.
+     * Before returning it increases the inuse count of underlying membuf(s)
+     * and sets the membufs locked. Caller will typically commit the returned
+     * membuf(s) to Blob and once done must call clear_commit_pending, clear_locked()
+     * and clear_inuse() in that order.
+     *
+     * Note: We don't have use case where we need to commit for given range as
+     *       server on commiting delete all the temporary Put Blocks.
+     *
+     * Note: The returned membuf(s) were found pending commit when
+     *       get_commit_pending_bcs() scanned the chunmap while holding the
+     *       chunkmap lock. Since returned membuf(s) are not locked by
+     *       get_commit_pending_bcs(), some other thread may already start
+     *       committing them anytime after the call returns, hence the caller
+     *       MUST check for that after holding the lock, before it tries to
+     *       commit those membuf(s).
+     */
+    std::vector<bytes_chunk> get_commit_pending_bcs() const;
 
     /**
      * Drop cached data in the given range.
@@ -1187,6 +1278,35 @@ public:
          * bytes_dirty < bytes_flushing, hence we need the protection.
          */
         return std::max((int64_t)(bytes_dirty - bytes_flushing), int64_t(0));
+    }
+
+    /**
+     * Get the amount of data which has been written as unstable writes, but not yet committed.
+     * This excludes dirty data which is not flushed/written yet or in process of flushing.
+     * It gets incremented on write completion of dirty data flushed to BLOB with unstable parameter.
+     *
+     * Note: The number of bytes to commit may change after the call returns.
+     *       Caller should use it as a hint, and not as a hard limit.
+     */
+    uint64_t get_bytes_to_commit() const
+    {
+        return bytes_commit_pending;
+    }
+
+    /**
+     * Returns true if there are bytes_flushing.
+     * bytes_flushing non-zero tells that there are dirty membufs which are in
+     * process of being flushed to the Blob.
+     *
+     * Note: is_flushing_in_progress() should be called under flush_lock lock held.
+     *
+     * Note: is_flushing_in_progress() can return false positives, i.e., it can return true
+     *       as bytes_flushing can change anytime after this call returns. But it never returns
+     *       false negatives, i.e., it never returns false when bytes_flushing is non-zero.
+     */
+    bool is_flushing_in_progress() const
+    {
+        return bytes_flushing > 0;
     }
 
     /**
@@ -1362,6 +1482,7 @@ public:
     std::atomic<uint64_t> bytes_cached = 0;
     std::atomic<uint64_t> bytes_dirty = 0;
     std::atomic<uint64_t> bytes_flushing = 0;
+    std::atomic<uint64_t> bytes_commit_pending = 0;
     std::atomic<uint64_t> bytes_uptodate = 0;
     std::atomic<uint64_t> bytes_inuse = 0;
     std::atomic<uint64_t> bytes_locked = 0;
@@ -1380,6 +1501,7 @@ public:
     static std::atomic<uint64_t> bytes_cached_g;
     static std::atomic<uint64_t> bytes_dirty_g;
     static std::atomic<uint64_t> bytes_flushing_g;
+    static std::atomic<uint64_t> bytes_commit_pending_g;
     static std::atomic<uint64_t> bytes_uptodate_g;
     static std::atomic<uint64_t> bytes_inuse_g;
     static std::atomic<uint64_t> bytes_locked_g;
