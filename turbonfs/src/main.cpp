@@ -316,6 +316,21 @@ static void handle_usr1([[maybe_unused]] int signum)
     errno = saved_errno;
 }
 
+static std::string get_logdir()
+{
+    const char *logdir = ::getenv("AZNFSC_LOGDIR");
+
+    /*
+     * spdlog will create the dir if it doesn't exist, so we don't need to
+     * check for existence,
+     */
+    if (logdir) {
+        return logdir;
+    }
+
+    return optdirdata;
+}
+
 int main(int argc, char *argv[])
 {
     // Initialize logger first thing.
@@ -363,7 +378,7 @@ int main(int argc, char *argv[])
     log_file_name = opts.mountpoint;
     std::replace(log_file_name.begin(), log_file_name.end(), '/', '_');
 
-    log_file_path = optdirdata + "/turbo" + log_file_name + ".log";
+    log_file_path = get_logdir() + "/turbo" + log_file_name + ".log";
     set_file_logger(log_file_path);
 
     AZLogInfo("Logfile: {}", log_file_path);
