@@ -118,6 +118,18 @@ membuf::~membuf()
 
         assert(bcc->bytes_allocated >= allocated_length);
         assert(bcc->bytes_allocated_g >= allocated_length);
+
+        /*
+         * If this is a truncated dirty membuf, we need to update the dirty metrics.
+         * We can safely do that as it's membuf destructor and nobody hold it's reference.
+         */
+        if (is_truncated() && is_dirty()) {
+            assert(bcc->bytes_dirty >= allocated_length);
+            assert(bcc->bytes_dirty_g >= allocated_length);
+            bcc->bytes_dirty -= allocated_length;
+            bcc->bytes_dirty_g -= allocated_length;
+        }
+
         bcc->bytes_allocated -= allocated_length;
         bcc->bytes_allocated_g -= allocated_length;
 
