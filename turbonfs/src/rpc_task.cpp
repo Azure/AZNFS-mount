@@ -1184,11 +1184,10 @@ static void setattr_callback(
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
-     * We need to call truncate_end() unconditionally to release flush_lock lock
-     * held by truncate_start().
+     * We need to call truncate_end() unconditionally to release is_flushing
+     * inode lock held by truncate_start().
      */
     if (valid & FUSE_SET_ATTR_SIZE) {
-        AZLogDebug("setattr_callback: truncate_end");
         inode->truncate_end();
     }
 
@@ -2108,9 +2107,9 @@ void rpc_task::run_write()
     }
 
     /*
-     * We need to flush the extent now, get the membufs for the dirty data.
-     * Note as there can be race condition with truncate and flushing we must
-     * take the exclusive flush_lock lock.
+     * We need to flush the dirty data now, get the membufs for the dirty data.
+     * We don't want to run over an inprogress truncate and resetting the file
+     * size set by truncate, so grab the is_flushing lock.
      */
     inode->flush_lock();
 
@@ -2118,8 +2117,8 @@ void rpc_task::run_write()
         inode->get_filecache()->get_dirty_bc_range(extent_left, extent_right);
 
     if (bc_vec.size() == 0) {
-        reply_write(length);
         inode->flush_unlock();
+        reply_write(length);
         return;
     }
 
@@ -2574,8 +2573,7 @@ void rpc_task::run_setattr()
             // Truncate the cache to reflect the size.
             if (inode->has_filecache()) {
                 AZLogDebug("[{}]: Truncating file size to {}",
-                    ino,
-                    attr->st_size);
+                           ino, attr->st_size);
                 inode->truncate_start(attr->st_size);
             }
             
@@ -2633,7 +2631,7 @@ void rpc_task::run_setattr()
                       "after 5 secs!");
 
             /*
-             * Release flush_lock, before retrying.
+             * Undo truncate_start(), before retrying.
              */
             if (valid & FUSE_SET_ATTR_SIZE) {
                 if (inode->has_filecache()) {

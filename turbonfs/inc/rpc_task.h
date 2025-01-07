@@ -296,13 +296,16 @@ struct bc_iovec
      * It takes nfs_inode for releasing the cache chunks as IOs get completed
      * for the queued bytes_chunks.
      *
-     * Note: If the inode is stable write then we set max_iosize to wsize_adj
-     *       as advertised by the server. Else we set it to AZNFSCFG_WSIZE_MAX.
+     * Note: If the inode has stable writes enabled then we set max_iosize to
+     *       wsize_adj as advertised by the server (since server can only deal
+     *       with that big write size), else writes are sent as UNSTABLE writes
+     *       for which we use AZNFSCFG_WSIZE_MAX.
      * Note: This takes shared lock on ilock_1.
      */
     bc_iovec(struct nfs_inode *_inode) :
         inode(_inode),
-        max_iosize(inode->is_stable_write() ? inode->get_client()->mnt_options.wsize_adj : AZNFSCFG_WSIZE_MAX)
+        max_iosize(inode->is_stable_write() ?
+                inode->get_client()->mnt_options.wsize_adj : AZNFSCFG_WSIZE_MAX)
     {
         assert(inode->magic == NFS_INODE_MAGIC);
         assert(inode->is_regfile());
@@ -493,9 +496,11 @@ struct bc_iovec
 
                 /**
                  * Update the membuf flags.
-                 * Set the commit_pending flag so that this membuf accounted for commit RPC.
-                 * Clear the dirty flag first so that bytes_dirty + bytes_commit_pending is always
-                 * less than or equal to bytes_allocated.
+                 * If this is an UNSTABLE write, the membuf must be scheduled
+                 * for COMMIT.
+                 * Clear the dirty flag first so that bytes_dirty +
+                 * bytes_commit_pending is always less than or equal to
+                 * bytes_allocated.
                  */
                 mb->clear_dirty();
                 mb->clear_flushing();
@@ -2173,12 +2178,6 @@ public:
     }
 
     struct nfs_context *get_nfs_context() const;
-
-    /*
-     * Set the task connection scheduling type depending 
-     * on whether the task is a stable write or not.
-     */
-    void set_task_csched(bool stable_write);
 
     struct rpc_context *get_rpc_ctx() const
     {

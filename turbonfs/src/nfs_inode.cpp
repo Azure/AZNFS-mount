@@ -690,7 +690,7 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 {
     assert(start_off < end_off);
 
-    // Caller must call us with flush_lock lock held.
+    // Caller must call us with is_flushing lock held.
     assert(is_flushing);
 
     /*
@@ -807,9 +807,12 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     }
 
     /*
-     * This take the inode flush_lock lock to ensure that it doesn't initiate
-     * new flush operation while some truncate call is in progress (which must have
-     * taken the flush_lock).
+     * Grab the inode is_flushing lock to ensure that we doen't initiate
+     * any new flush operation while some truncate call is in progress
+     * (which must have taken the is_flushing lock).
+     * Once flush_lock() returns we have the is_flushing lock and we are
+     * guaranteed that no new truncate operation can start till we release
+     * the is_flushing lock. We can safely start the flush then.
      */
     flush_lock();
 
@@ -823,8 +826,9 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
         filecache_handle->get_dirty_bc_range(start_off, end_off);
 
     /*
-     * sync_membufs() iterate over the bc_vec and start flushing the dirty membufs.
-     * It batches the contigious dirty membufs and issues a single write RPC for them.
+     * sync_membufs() iterate over the bc_vec and starts flushing the dirty
+     * membufs. It batches the contiguous dirty membufs and issues a single
+     * write RPC for them.
      */
     sync_membufs(bc_vec, true);
 
@@ -877,6 +881,7 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
 void nfs_inode::flush_lock() const
 {
     AZLogDebug("[{}] flush_lock() called", ino);
+
     /*
      * Caller must call flush_lock() for regular files only.
      */
@@ -893,12 +898,14 @@ void nfs_inode::flush_lock() const
 
     assert(is_flushing == true);
     AZLogDebug("[{}] flush_lock() acquired", ino);
+
     return;
 }
 
 void nfs_inode::flush_unlock() const
 {
     AZLogDebug("[{}] flush_unlock() called", ino);
+
     /*
      * Caller must call flush_unlock() for regular files only.
      */
@@ -910,12 +917,14 @@ void nfs_inode::flush_unlock() const
         is_flushing = false;
     }
 
+    // Wakeup anyone waiting for the lock.
     flush_cv.notify_one();
 }
 
-void nfs_inode::truncate_end()
+void nfs_inode::truncate_end() const
 {
     AZLogDebug("[{}] truncate_end() called", ino);
+
     /*
      * Caller must call truncate_end() for regular files only.
      */
@@ -930,6 +939,7 @@ void nfs_inode::truncate_end()
 bool nfs_inode::truncate_start(size_t size)
 {
     AZLogDebug("[{}] truncate_start() called, size={}", ino, size);
+
     /*
      * Caller must call truncate_start() for regular files only.
      */
@@ -937,12 +947,14 @@ bool nfs_inode::truncate_start(size_t size)
     assert(size <= AZNFSC_MAX_FILE_SIZE);
 
     /*
-     * Grab exclusive lock on flush_lock, so that no new flush or commit
-     * can be issued till truncate() completes. There could be ongoing flush
-     * or commit operations in progress, we need to wait for them to complete.
+     * Grab is_flushing lock, so that no new flush or commit can be issued
+     * till truncate() completes. There could be ongoing flush or commit
+     * operations in progress, we need to wait for them to complete.
      */
     flush_lock();
+
     wait_for_ongoing_flush(0, UINT64_MAX);
+
     AZLogDebug("[{}] Ongoing flush operations completed", ino);
 
     /*
@@ -950,6 +962,7 @@ bool nfs_inode::truncate_start(size_t size)
      * we can safely truncate the filecache.
      */
     auto truncate_size = filecache_handle->truncate(size);
+
     AZLogDebug("[{}] Filecache truncated to size={}", ino, truncate_size);
 
     return true;

@@ -116,12 +116,11 @@ membuf::~membuf()
         assert(buffer == allocated_buffer);
         assert(length == allocated_length);
 
-        assert(bcc->bytes_allocated >= allocated_length);
-        assert(bcc->bytes_allocated_g >= allocated_length);
-
         /*
-         * If this is a truncated dirty membuf, we need to update the dirty metrics.
-         * We can safely do that as it's membuf destructor and nobody hold it's reference.
+         * If this is a truncated dirty membuf, we need to update the dirty
+         * metrics.
+         * We can safely do that as it's membuf destructor and nobody holds
+         * a reference on it.
          */
         if (is_truncated() && is_dirty()) {
             assert(bcc->bytes_dirty >= allocated_length);
@@ -129,6 +128,9 @@ membuf::~membuf()
             bcc->bytes_dirty -= allocated_length;
             bcc->bytes_dirty_g -= allocated_length;
         }
+
+        assert(bcc->bytes_allocated >= allocated_length);
+        assert(bcc->bytes_allocated_g >= allocated_length);
 
         bcc->bytes_allocated -= allocated_length;
         bcc->bytes_allocated_g -= allocated_length;
@@ -301,6 +303,8 @@ void membuf::set_uptodate()
         bcc->bytes_uptodate_g += length;
         bcc->bytes_uptodate += length;
 
+        assert(bcc->bytes_uptodate <= AZNFSC_MAX_FILE_SIZE);
+
         AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
                    offset, offset+length, backing_file_fd);
     }
@@ -334,8 +338,8 @@ void membuf::clear_uptodate()
 }
 
 /**
- * Must be called to mark membuf commit_pending after writing
- * dirty data to Blob with unstable flag.
+ * Must be called to mark membuf commit_pending after finishing flushing
+ * of dirty data to Blob as UNSTABLE write.
  */
 void membuf::set_commit_pending()
 {
@@ -352,10 +356,15 @@ void membuf::set_commit_pending()
     assert(!is_dirty());
     assert(!is_flushing());
 
+    // Must not be called for an already commit pending membuf.
+    assert(!(flag & MB_Flag::CommitPending));
+
     flag |= MB_Flag::CommitPending;
 
     bcc->bytes_commit_pending_g += length;
     bcc->bytes_commit_pending += length;
+
+    assert(bcc->bytes_commit_pending <= AZNFSC_MAX_FILE_SIZE);
 
     AZLogDebug("Set commit pending membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
@@ -428,13 +437,16 @@ void membuf::set_flushing()
      */
     assert(is_locked());
     assert(is_inuse());
-    // Dirty MUST be uptodate.
+
+    // Only dirty membuf must be flushed and dirty MUST be uptodate.
     assert(is_dirty() && is_uptodate());
 
     flag |= MB_Flag::Flushing;
 
     bcc->bytes_flushing_g += length;
     bcc->bytes_flushing += length;
+
+    assert(bcc->bytes_flushing <= AZNFSC_MAX_FILE_SIZE);
 
     AZLogDebug("Set flushing membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
@@ -450,8 +462,8 @@ void membuf::clear_flushing()
     assert(is_inuse());
 
     /*
-     * clear_flushing() called after clear_dirty(), hence is_flushing()
-     * not used as it checks for membuf being dirty as well.
+     * clear_flushing() is called after clear_dirty(), hence we don't call
+     * is_flushing() as it checks for membuf being dirty as well.
      * No spurious calls to clear_flushing().
      */
     assert(flag & MB_Flag::Flushing);
@@ -491,6 +503,8 @@ bool membuf::try_lock()
     if (locked) {
         bcc->bytes_locked_g += length;
         bcc->bytes_locked += length;
+
+        assert(bcc->bytes_locked <= AZNFSC_MAX_FILE_SIZE);
     }
 
     return locked;
@@ -591,9 +605,6 @@ void membuf::clear_locked()
 
 void membuf::set_dirty()
 {
-    // Check if membuf is already dirty.
-    const bool was_dirty = (flag & MB_Flag::Dirty);
-
     /*
      * Must be locked and inuse.
      * Note that following is the correct sequence of operations.
@@ -610,13 +621,15 @@ void membuf::set_dirty()
     assert(is_inuse());
     assert(is_uptodate());
 
-    // Must not be flushing dirty data to Blob.
+    /*
+     * We must not be writing application data to a membuf that's currently
+     * flushing or pending commit.
+     */
     assert(!is_flushing());
-
-    // Must not be in commit pending state.
     assert(!is_commit_pending());
 
-    if (was_dirty) {
+    // If already dirty, skip the metrics update for accurate accounting.
+    if (flag & MB_Flag::Dirty) {
         return;
     }
 
@@ -624,6 +637,8 @@ void membuf::set_dirty()
 
     bcc->bytes_dirty_g += length;
     bcc->bytes_dirty += length;
+
+    assert(bcc->bytes_dirty <= AZNFSC_MAX_FILE_SIZE);
 
     AZLogDebug("Set dirty membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
@@ -1915,6 +1930,7 @@ void bytes_chunk_cache::inline_prune()
 
         /*
          * Data written to blob but not yet committed.
+         * Cannot safely drop this from the cache.
          */
         if (mb->is_commit_pending()) {
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
@@ -2036,12 +2052,13 @@ void bytes_chunk_cache::clear_nolock()
     assert(bytes_cached <= bytes_cached_g);
     assert((bytes_dirty + bytes_commit_pending) <= bytes_allocated);
 
-    /**
-     * All the data sitting in the cache either dirty or commit pending.
+    /*
+     * All the data sitting in the cache is either dirty pending commit
      * We can't release any of this data so return early.
      */
     if ((bytes_dirty + bytes_commit_pending) == bytes_allocated) {
-        AZLogDebug("[{}] Cache purge: backing_file_name={} is already clean",
+        AZLogDebug("[{}] Cache purge: backing_file_name={} has no purgeable "
+                   "data",
                    CACHE_TAG, backing_file_name);
         return;
     }
@@ -2111,9 +2128,20 @@ void bytes_chunk_cache::clear_nolock()
          * Has data to be written to Blob.
          * Cannot safely drop this from the cache.
          */
-        if (mb->is_dirty() || mb->is_commit_pending()) {
-            AZLogDebug("[{}] Cache purge: skipping dirty/commit_pending membuf(offset={}, "
+        if (mb->is_dirty()) {
+            AZLogDebug("[{}] Cache purge: skipping dirty membuf(offset={}, "
                        "length={})",
+                       CACHE_TAG, mb->offset, mb->length);
+            continue;
+        }
+
+        /*
+         * Has data not yet committed.
+         * Cannot safely drop this from the cache.
+         */
+        if (mb->is_commit_pending()) {
+            AZLogDebug("[{}] Cache purge: skipping commit_pending "
+                       "membuf(offset={}, length={})",
                        CACHE_TAG, mb->offset, mb->length);
             continue;
         }
@@ -2216,10 +2244,10 @@ void bytes_chunk_cache::clear_nolock()
     }
 }
 
-/*
+/**
  * All the bcs returned by this function are guaranteed to be inuse and locked.
  *
- * TODO: As bcs returned by this function locked, it block parallel read
+ * TODO: As bcs returned by this function are locked, it block parallel read
  *       on these bcs. Need to check if we can relax lock condition.
  */
 std::vector<bytes_chunk> bytes_chunk_cache::get_commit_pending_bcs() const
@@ -2248,7 +2276,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_commit_pending_bcs() const
     return bc_vec;
 }
 
-std::vector<bytes_chunk> bytes_chunk_cache::get_flushing_bc_range(uint64_t start_off, uint64_t end_off) const
+std::vector<bytes_chunk> bytes_chunk_cache::get_flushing_bc_range(
+        uint64_t start_off, uint64_t end_off) const
 {
     std::vector<bytes_chunk> bc_vec;
     assert(start_off < end_off);
@@ -2257,6 +2286,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_flushing_bc_range(uint64_t start
     const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
     auto it = chunkmap.lower_bound(start_off);
 
+    // TODO: Do we want membufs that completely lie within end_off?
     while (it != chunkmap.cend() && it->first <= end_off) {
         const struct bytes_chunk& bc = it->second;
         struct membuf *mb = bc.get_membuf();

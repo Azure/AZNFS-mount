@@ -289,14 +289,16 @@ private:
     bool non_append_writes_seen = false;
 
     /*
-     * In start we set the stable_write flag to false as write pattern is unknown.
-     * At the time of flushing cached writes to Blob we check if the cached write
-     * causes the append write on the Blob. Append write can be send as unstable write,
-     * while non-append write goes as a stable write.
-     * Once set to true, it will remain true for the life of the inode.
+     * For any file stable_write starts as false as write pattern is unknown.
+     * At the time of flushing cached writes to Blob we check if the given
+     * write causes an append write on the Blob, or an overwrite or sparse
+     * write. Append writes can be sent as unstable write, while non-append
+     * writes (either overwrite or sparse write) must go as a stable write
+     * (since server knows best how to allocate blocks for them).
+     * Once set to true, it remains true for the life of the inode.
      * 
-     * Note: As of now, we are not using this flag as commit changes not yet integrated.
-     *       So, we are setting this flag to true.
+     * Note: As of now, we are not using this flag as commit changes not yet
+     *       integrated, so we are setting this flag to true.
      */
     bool stable_write = true;
 
@@ -384,16 +386,22 @@ public:
 
     /*
      * Commit state for this inode.
-     * This is used to track the state of commit operation for this inode, which can be one of:
-     * COMMIT_NOT_NEEDED:  No or not enough uncommitted (written using unstable writes) data.
-     *                     Note that we want to commit multiple blocks at a time to amortize the latency
-     *                     introduced by commit, given the fact that all writes have to stop till the commit
+     * This is used to track the state of commit operation for this inode, which
+     * can be one of:
+     * COMMIT_NOT_NEEDED:  No or not enough uncommitted (written using unstable
+     *                     writes) data.
+     *                     Note that we want to commit multiple blocks at a time
+     *                     to amortize the latency introduced by commit, given the
+     *                     fact that all writes have to stop till the commit
      *                     completes.
-     * NEEDS_COMMIT:       There's enough uncommitted data that needs to be committed.
-     *                     This indicates running write(flush) task to start commit task when flushing completes
-     *                     (bytes_flushing == 0).
+     * NEEDS_COMMIT:       There's enough uncommitted data that needs to be
+     *                     committed.
+     *                     This indicates to the running write(flush) task that
+     *                     it must start the commit task when ongoing flushing
+     *                     completes (bytes_flushing == 0).
      * COMMIT_IN_PROGRESS: There's an outstanding commit operation.
-     *                     Till it completes no write or commit for this inode can be sent to the server.
+     *                     Till it completes no write or commit for this inode
+     *                     can be sent to the server.
      *
      * Valid state transitions:
      * COMMIT_NOT_NEEDED -> NEEDS_COMMIT -> COMMIT_IN_PROGRESS
@@ -504,17 +512,17 @@ public:
      * We split the truncate operation in two separate apis truncate_start()
      * and truncate_end(). truncate_start() must be called before issuing the
      * SETATTR RPC and truncate_end() must be called from SETATTR callback.
-     * truncate_start() grabs the exclusive flush_lock lock to ensure no
-     * new flush/commit operations can be issued for this inode, and waits for
-     * any ongoing flush/commit operations to complete, before truncating the
-     * filecache to the new size.
-     * truncate_end() simply releases the flush_lock lock held by
-     * truncate_start().
+     * truncate_start() grabs the is_flushing lock to ensure no new flush/commit
+     * operations can be issued for this inode, and waits for any ongoing
+     * flush/commit operations to complete, before truncating the filecache to
+     * the new size.
+     * truncate_end() simply calls flush_unlock() to release the is_flushing
+     * lock held by truncate_start().
      * This two apis together ensure that any flush/commit operation cannot
      * change the file size after truncate sets it.
      */
     bool truncate_start(size_t size);
-    void truncate_end();
+    void truncate_end() const;
 
     /**
      * This MUST be called only after has_filecache() returns true, else
@@ -950,24 +958,6 @@ public:
         }
     }
 
-    /*
-     * offset is start offset of contigious cached write request which needs to be flushed
-     * to the Blob. This function checks, whether given offset is append to the end of the file
-     * or not. If offset is not append to the end of the file, we need to switch to stable write.
-     * For overlapping/sparse write, we need to send stable writes.
-     */
-    bool check_stable_write_required(off_t offset) const
-    {
-        if (offset != attr.st_size) {
-            AZLogDebug("offset:{} is either overlapping/sparse_write with the existing data in the"
-             "file with end_offset: {}", offset, attr.st_size);
-
-            return true;
-        }
-
-        return false;
-    }
-
     /**
      * Check if [offset, offset+length) lies within the current RA window.
      * bytes_chunk_cache would call this to find out if a particular membuf
@@ -1321,20 +1311,22 @@ public:
      *       instant and flush those. Any new dirty membufs added after it
      *       queries the dirty membufs list, are not flushed.
      *
-     * Note: This take the inode flush_lock lock to ensure that it doesn't initiate
-     *       new flush operation while some truncate call is in progress (which must have
-     *       taken the flush_lock).
+     * Note: This grabs the inode is_flushing lock to ensure that it doesn't
+     *       initiate any new flush operations while some truncate call is in
+     *       progress (which must have held the is_flushing lock).
      */
     int flush_cache_and_wait(uint64_t start_off = 0,
                              uint64_t end_off = UINT64_MAX);
 
     /**
      * Wait for currently flushing membufs to complete.
-     * Note : Caller must hold the inode flush_lock to ensure that
+     * Returns 0 on success and a positive errno value on error.
+     *
+     * Note : Caller must hold the inode is_flushing lock to ensure that
      *        no new membufs are added till this call completes.
      */
     int wait_for_ongoing_flush(uint64_t start_off = 0,
-                             uint64_t end_off = UINT64_MAX);
+                               uint64_t end_off = UINT64_MAX);
 
     /**
      * Sync the dirty membufs in the file cache to the NFS server.
