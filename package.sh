@@ -142,38 +142,94 @@ sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_D
 # Generate .deb package #
 #########################
 
-# Create the directory to hold the package control and data files for deb package.
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
+# Define target architectures using Debian's naming conventions
+architectures=("amd64" "arm64")  # Add other architectures as needed
 
-# Copy the debian control file(s) and maintainer scripts.
-cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
-chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
+# Determine host architecture and map it to Debian-Package naming
+host_arch_raw=$(uname -m)
+declare -A arch_map=( ["x86_64"]="amd64" ["aarch64"]="arm64" )
 
-# Insert current release number.
-sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+# Map the host architecture to Debian's naming
+host_arch="${arch_map[$host_arch_raw]}"
+if [ -z "$host_arch" ]; then
+    echo "Unsupported host architecture: $host_arch_raw"
+    exit 1
+fi
 
-# Copy other static package file(s).
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
-cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+# Iterate over each architecture
+for ARCH in "${architectures[@]}"; do
+    echo "Building package for architecture: $ARCH"
+    
+    # Determine the appropriate compiler
+    if [ "$ARCH" == "$host_arch" ]; then
+        compiler="gcc"
+    else
+        compiler="${ARCH}-linux-gnu-gcc"
+    fi
 
-# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
-gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+    # Check if the compiler exists
+    if ! command -v "$compiler" &> /dev/null; then
+        echo "Compiler $compiler not found. Please install it before proceeding."
+        exit 1
+    fi
 
-mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
-cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+    # Set up architecture-specific staging directory
+    ARCH_STG_DIR="${STG_DIR}/deb/${pkg_dir}_${ARCH}"
+    mkdir -p "${ARCH_STG_DIR}/DEBIAN"
 
-mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
-cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
+    # Copy the Debian control file(s) and maintainer scripts
+    cp -avf "${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/"* "${ARCH_STG_DIR}/DEBIAN/"
+    chmod +x "${ARCH_STG_DIR}/DEBIAN/"*
 
-# Create the deb package.
-dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
+    # Insert current release number and architecture into the control file
+    sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}-${ARCH}/g" "${ARCH_STG_DIR}/DEBIAN/control"
+    sed -i -e "s/Architecture: any/Architecture: ${ARCH}/g" "${ARCH_STG_DIR}/DEBIAN/control"
+
+    # Copy other static package files
+    mkdir -p "${ARCH_STG_DIR}/usr/sbin"
+    cp -avf "${SOURCE_DIR}/src/aznfswatchdog" "${ARCH_STG_DIR}/usr/sbin/"
+    cp -avf "${SOURCE_DIR}/src/aznfswatchdogv4" "${ARCH_STG_DIR}/usr/sbin/"
+
+    # Compile mount.aznfs.c for the target architecture and place the executable into sbin
+    mkdir -p "${ARCH_STG_DIR}/sbin"
+    echo "Compiling mount.aznfs.c using $compiler"
+    $compiler -static "${SOURCE_DIR}/src/mount.aznfs.c" -o "${ARCH_STG_DIR}/sbin/mount.aznfs"
+    
+    # Verify if compilation was successful
+    if [ $? -ne 0 ]; then
+        echo "Compilation failed for architecture: $ARCH"
+        exit 1
+    fi
+
+    # Copy optional scripts and libraries
+    mkdir -p "${ARCH_STG_DIR}${opt_dir}"
+    cp -avf "${SOURCE_DIR}/lib/common.sh" "${ARCH_STG_DIR}${opt_dir}/"
+    cp -avf "${SOURCE_DIR}/src/mountscript.sh" "${ARCH_STG_DIR}${opt_dir}/"
+    cp -avf "${SOURCE_DIR}/src/nfsv3mountscript.sh" "${ARCH_STG_DIR}${opt_dir}/"
+    cp -avf "${SOURCE_DIR}/src/nfsv4mountscript.sh" "${ARCH_STG_DIR}${opt_dir}/"
+    cp -avf "${SOURCE_DIR}/scripts/aznfs_install.sh" "${ARCH_STG_DIR}${opt_dir}/"
+
+    # Copy systemd service files
+    mkdir -p "${ARCH_STG_DIR}${system_dir}"
+    cp -avf "${SOURCE_DIR}/src/aznfswatchdog.service" "${ARCH_STG_DIR}${system_dir}/"
+    cp -avf "${SOURCE_DIR}/src/aznfswatchdogv4.service" "${ARCH_STG_DIR}${system_dir}/"
+
+    # Build the Debian package
+    dpkg-deb -Zgzip --root-owner-group --build "${ARCH_STG_DIR}" "${ARCH_STG_DIR}.deb"
+    
+    # Check if dpkg-deb succeeded
+    if [ $? -ne 0 ]; then
+        echo "dpkg-deb failed for architecture: $ARCH"
+        exit 1
+    fi
+
+    # Move the package to a designated output directory
+    OUTPUT_DIR="${STG_DIR}/packages"
+    mkdir -p "${OUTPUT_DIR}"
+    mv "${ARCH_STG_DIR}.deb" "${OUTPUT_DIR}/${pkg_dir}_${ARCH}.deb"
+
+    echo "Package for $ARCH built successfully: ${OUTPUT_DIR}/${pkg_dir}_${ARCH}.deb"
+done
 
 #########################
 # Generate .rpm package #
