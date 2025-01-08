@@ -217,7 +217,8 @@ do { \
             str += "        Errors encountered: \n"; \
             for (const auto& entry : ops.error_map) { \
                 str += "            " + \
-                        std::string(nfsstat3_to_str(entry.first)) +  ": " + \
+                        std::string((entry.first == NFS3ERR_RPC_ERROR) ? \
+                                    "RPC Errors" : nfsstat3_to_str(entry.first)) +  ": " + \
                         std::to_string(entry.second) + "\n"; \
             } \
         } \

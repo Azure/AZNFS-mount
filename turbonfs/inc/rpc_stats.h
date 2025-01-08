@@ -9,6 +9,15 @@
 
 namespace aznfsc {
 
+/*
+ * This should not match any valid nfsstat3 enum value.
+ * This special value is used to convey "RPC error" to on_rpc_complete().
+ */
+static const int NFS3ERR_RPC_ERROR = 999999;
+
+#define NFS_STATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
+#define NFS_STATUSX(rpc_status, r) (((rpc_status) == RPC_STATUS_SUCCESS) ? NFS_STATUS(r) : (nfsstat3) NFS3ERR_RPC_ERROR)
+
 /**
  * Stats for a specific RPC (actually FUSE_*) type.
  */
@@ -158,7 +167,8 @@ public:
         // FUSE_FLUSH is never issued as an RPC task to the server. FUSE_WRITE is issued instead.
         assert(optype != FUSE_FLUSH);
 
-        assert(nfsstat3_to_errno(status) != -ERANGE);
+        assert((status == NFS3ERR_RPC_ERROR) ||
+               (nfsstat3_to_errno(status) != -ERANGE));
 
         req_size = rpc_pdu_get_req_size(pdu);
         // 40 is the size of NFS NULL RPC request.

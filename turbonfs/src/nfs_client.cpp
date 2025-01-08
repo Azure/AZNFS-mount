@@ -4,8 +4,6 @@
 #include "rpc_task.h"
 #include "rpc_readdir.h"
 
-#define NFS_STATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
-
 // The user should first init the client class before using it.
 bool nfs_client::init()
 {
@@ -900,7 +898,7 @@ static void lookup_sync_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     {
         std::unique_lock<std::mutex> lock(ctx->mutex);
@@ -1905,7 +1903,7 @@ static void getattr_sync_callback(
          * Now that the request has completed, we can query libnfs for the
          * dispatch time.
          */
-        task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+        task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
     }
 
     {

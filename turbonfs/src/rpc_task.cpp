@@ -22,8 +22,6 @@
  */
 #define RELEASE_CHUNK_AFTER_APPLICATION_READ
 
-#define NFS_STATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
-
 #ifdef ENABLE_PRESSURE_POINTS
 #define INJECT_JUKEBOX(res, task) \
 do { \
@@ -675,7 +673,7 @@ static void getattr_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         // Got fresh attributes, update the attributes cached in the inode.
@@ -727,7 +725,7 @@ static void lookup_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (((rpc_status == RPC_STATUS_SUCCESS) &&
          (NFS_STATUS(res) == NFS3ERR_NOENT)) && cache_negative) {
@@ -782,7 +780,7 @@ void access_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
@@ -832,9 +830,7 @@ static void write_iov_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(
-        rpc_get_pdu(rpc),
-        NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     // Success case.
     if (status == 0) {
@@ -1044,7 +1040,7 @@ static void statfs_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         UPDATE_INODE_ATTR(inode, res->FSSTAT3res_u.resok.obj_attributes);
@@ -1109,7 +1105,7 @@ static void createfile_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         if (!res->CREATE3res_u.resok.obj.handle_follows) {
@@ -1195,7 +1191,7 @@ static void setattr_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         if (!res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow) {
@@ -1273,7 +1269,7 @@ void mknod_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         if (!res->CREATE3res_u.resok.obj.handle_follows) {
@@ -1351,7 +1347,7 @@ void mkdir_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         if (!res->MKDIR3res_u.resok.obj.handle_follows) {
@@ -1429,7 +1425,7 @@ void unlink_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
@@ -1503,7 +1499,7 @@ void rmdir_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
@@ -1554,7 +1550,7 @@ void symlink_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         if (!res->SYMLINK3res_u.resok.obj.handle_follows) {
@@ -1638,7 +1634,7 @@ void rename_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     /*
      * If this rename is a silly rename for an unlink/rename operation, we need
@@ -1802,7 +1798,7 @@ void readlink_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         UPDATE_INODE_ATTR(inode, res->READLINK3res_u.resok.symlink_attributes);
@@ -3100,7 +3096,7 @@ static void read_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
         UPDATE_INODE_ATTR(inode, res->READ3res_u.resok.file_attributes);
@@ -3660,7 +3656,7 @@ static void readdir_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (cookie_gap) {
         AZLogWarn("[{}] readdir_callback: GAP in cookie requested ({} -> {})",
@@ -4069,7 +4065,7 @@ static void readdirplus_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (cookie_gap) {
         AZLogWarn("[{}] readdirplus_callback: GAP in cookie requested ({} -> {})",
