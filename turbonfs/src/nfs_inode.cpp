@@ -958,6 +958,15 @@ bool nfs_inode::truncate_start(size_t size)
     AZLogDebug("[{}] Ongoing flush operations completed", ino);
 
     /*
+     * Invalidate attribute cache for the inode as a successful truncate call
+     * will reduce the file size.
+     * Note that we don't explicitly update attr.st_size as the SETATTR may
+     * fail and we don't want to end up with an incorrect file size in that
+     * case.
+     */
+    invalidate_attribute_cache();
+
+    /*
      * Now there are no ongoing flush or commit operations in progress.
      * we can safely truncate the filecache.
      */
