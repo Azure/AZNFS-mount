@@ -128,7 +128,7 @@ generate_tarball_package() {
 
 #STG_DIR, RELEASE_NUMBER and SOURCE_DIR will be taken as env var.
 pkg_name="aznfs"
-pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
+pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1"
 rpm_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.x86_64"
 opt_dir="/opt/microsoft/${pkg_name}"
 system_dir="/lib/systemd/system"
@@ -147,7 +147,7 @@ architectures=("amd64" "arm64")  # Add other architectures as needed
 
 # Determine host architecture and map it to Debian-Package naming
 host_arch_raw=$(uname -m)
-declare -A arch_map=( ["x86_64"]="amd64" ["aarch64"]="arm64" )
+declare -A arch_map=( ["x86_64"]="amd64" ["aarch64"]="aarch64" )
 
 # Map the host architecture to Debian's naming
 host_arch="${arch_map[$host_arch_raw]}"
@@ -164,7 +164,7 @@ for ARCH in "${architectures[@]}"; do
     if [ "$ARCH" == "$host_arch" ]; then
         compiler="gcc"
     else
-        compiler="${ARCH}-linux-gnu-gcc"
+        compiler="${host_arch_raw}-linux-gnu-gcc"
     fi
 
     # Check if the compiler exists
