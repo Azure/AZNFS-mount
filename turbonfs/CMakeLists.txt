@@ -18,6 +18,7 @@ option(ENABLE_PARANOID "Enable paranoid checking in the code" ON)
 option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" OFF)
 option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
+option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" OFF)
 
 #
 # Enable paranoid checks only in debug builds.
@@ -220,6 +221,7 @@ endif()
 set(ENABLE_MULTITHREADING ON)
 set(ENABLE_EXAMPLES ON)
 add_subdirectory(extern/libnfs)
+
 add_subdirectory(extern/yaml-cpp)
 
 # Build static library for spdlog.
