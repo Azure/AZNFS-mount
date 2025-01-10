@@ -11,10 +11,12 @@ set -e
 generate_rpm_package()
 {
 	rpm_dir=$1
+	is_suse=0
 
 	# Overwrite rpm_pkg_dir in case of SUSE.
 	if [ "$rpm_dir" == "suse" ]; then
 		rpm_pkg_dir="${pkg_name}_sles-${RELEASE_NUMBER}-1.x86_64"
+		is_suse=1
 	fi
 
 	# Create the directory to hold the package spec and data files for RPM package.
@@ -68,7 +70,7 @@ generate_rpm_package()
 	fi
 
 	# Create the rpm package.
-	rpmbuild --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	rpmbuild --define "suse $is_suse" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 }
 
 generate_tarball_package() {
