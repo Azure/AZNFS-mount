@@ -54,11 +54,12 @@ get_host_from_share()
 
     account="${hostparts[0]}"
 
-    if [[ "${hostparts[1]}" == "privatelink" ]]; then
-        hostprefix="${hostparts[2]}"
-    else
-        hostprefix="${hostparts[1]}"
-    fi
+    for part in "${hostparts[@]}"; do
+       if [[ "$part" == "file" || "$part" == "blob" ]]; then
+            hostprefix="$part"
+            break
+        fi
+    done
 
     # Check if the prefix matches the expected azprefix
     if [ "$hostprefix" != "$azprefix" ]; then
