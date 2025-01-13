@@ -92,7 +92,7 @@ void rpc_stats_az::dump_stats()
            ",timeo=" + std::to_string(mo.timeo) +
            ",retrans=" + std::to_string(mo.retrans) +
            std::string(",sec=sys") +
-           std::string(",xprtsec=none") +
+           std::string(",xprtsec=") + mo.xprtsec +
            std::string(",mountaddr=") +
            ::inet_ntoa(((struct sockaddr_in *)saddr)->sin_addr) +
            ",mountport=" + std::to_string(mo.mount_port) +
