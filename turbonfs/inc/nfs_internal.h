@@ -33,8 +33,8 @@ struct mount_options
 
     /*
      * Option to use transport security (TLS), it takes following values:
-     * tls: to use encryption.
-     * none: to not use encryption.
+     * tls: use TLS encryption.
+     * none: do not use TLS encryption.
      */
     const std::string xprtsec;
 

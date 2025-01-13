@@ -28,6 +28,13 @@ rsize: 1048576
 wsize: 1048576
 
 #
+# Option controlling transport security, takes following values:
+# none: do not use TLS encryption.
+# tls: use TLS encryption, as defined in RPC-with-TLS RFC 9289.
+#
+xprtsec: none
+
+#
 # Consistency config.
 # This controls the consistency level desired wrt updates from other clients.
 # Following values are supported (from lowest to highest consistency):
@@ -67,13 +74,6 @@ consistency: solowriter
 #
 readdir_maxcount: 1048576
 fuse_max_background: 4096
-
-#
-# Option to use transport security, takes following values:
-# tls: to use encryption.
-# none: to not use encryption
-#
-xprtsec: none
 
 #
 # Cache config
