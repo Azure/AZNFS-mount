@@ -69,6 +69,13 @@ readdir_maxcount: 1048576
 fuse_max_background: 4096
 
 #
+# Option to use transport security, takes following values:
+# tls: to use encryption.
+# none: to not use encryption
+#
+xprtsec: none
+
+#
 # Cache config
 #
 # We cache the following:

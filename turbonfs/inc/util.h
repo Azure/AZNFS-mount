@@ -61,6 +61,12 @@ bool is_valid_cloud_suffix(const std::string& cloud_suffix)
 }
 
 static inline
+bool is_valid_xprtsec(const std::string& xprtsec)
+{
+    return (xprtsec == "tls" || xprtsec == "none");
+}
+
+static inline
 bool is_valid_cachedir(const std::string& cachedir)
 {
     struct stat statbuf;

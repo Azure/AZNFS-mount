@@ -218,6 +218,9 @@ typedef struct aznfsc_cfg
     // Fuse max_background config value.
     int fuse_max_background = -1;
 
+    // Whether to use TLS or not.
+    const char *xprtsec = nullptr;
+
     /*************************************************
      **              Cconsistency config            **
      *************************************************/

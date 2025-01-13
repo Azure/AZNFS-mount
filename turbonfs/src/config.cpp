@@ -138,6 +138,8 @@ do { \
         _CHECK_INTZ(readahead_kb, AZNFSCFG_READAHEAD_KB_MIN, AZNFSCFG_READAHEAD_KB_MAX);
         _CHECK_INT(fuse_max_background, AZNFSCFG_FUSE_MAX_BG_MIN, AZNFSCFG_FUSE_MAX_BG_MAX);
 
+        _CHECK_STR(xprtsec);
+
         _CHECK_BOOL(cache.attr.user.enable);
         _CHECK_BOOL(cache.readdir.kernel.enable);
         _CHECK_BOOL(cache.readdir.user.enable);
@@ -304,6 +306,9 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     if (cloud_suffix == nullptr)
         cloud_suffix = ::strdup("blob.core.windows.net");
 
+    if (xprtsec == nullptr)
+        xprtsec = ::strdup("none");
+
     assert(account != nullptr);
     assert(container != nullptr);
 
@@ -321,6 +326,7 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("rsize = {}", rsize);
     AZLogDebug("wsize = {}", wsize);
     AZLogDebug("retrans = {}", retrans);
+    AZLogDebug("xprtsec = {}", xprtsec);
     AZLogDebug("timeo = {}", timeo);
     AZLogDebug("acregmin = {}", acregmin);
     AZLogDebug("acregmax = {}", acregmax);
