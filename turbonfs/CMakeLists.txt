@@ -72,6 +72,8 @@ set(LIBFUSE_BUILD_DIR "${CMAKE_BINARY_DIR}/extern/libfuse")
 # git submodule add https://github.com/jbeder/yaml-cpp.git extern/yaml-cpp
 # git submodule add https://github.com/gabime/spdlog.git extern/spdlog
 # git submodule add https://github.com/libfuse/libfuse.git extern/libfuse
+# git submodule add https://github.com/microsoft/vcpkg.git extern/vcpkg
+# git submodule add https://github.com/nlohmann/json.git extern/json
 #
 find_package(Git QUIET)
 if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/../.git")
@@ -105,6 +107,10 @@ endif()
 
 if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/vcpkg/bootstrap-vcpkg.sh")
     message(FATAL_ERROR "The vcpkg submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+endif()
+
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/json/CMakeLists.txt")
+    message(FATAL_ERROR "The json submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
 find_package(azure-identity-cpp CONFIG QUIET)
@@ -227,6 +233,9 @@ add_subdirectory(extern/yaml-cpp)
 # Build static library for spdlog.
 add_subdirectory(extern/spdlog)
 
+# Need to add this run nlohmann_json cmake which will correctly add the include directory.
+add_subdirectory(extern/json)
+
 configure_file(inc/aznfsc_config.h.in inc/aznfsc_config.h)
 
 set(sources
@@ -289,7 +298,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       yaml-cpp
                       spdlog
                       Azure::azure-identity 
-                      Azure::azure-storage-blobs)
+                      Azure::azure-storage-blobs
+                      nlohmann_json::nlohmann_json)
 
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}

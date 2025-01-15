@@ -152,6 +152,27 @@ typedef struct aznfsc_cfg
      **                   Misc                      **
      *************************************************/
 
+    
+    /**********************************************************************
+     **                          Auth config                             **
+     **********************************************************************/
+
+    /*
+     * Whether auth should be performed. If this is set to true, tenant id, 
+     * subscription id and authtype should be set. 
+     */
+    bool auth = false;
+
+    /*
+     * Tenant id for which the token needs to be fetched. 
+     */
+    const char *tenantid = nullptr;
+
+    /*
+     * Subscription id in which the account/container lies. 
+     */
+    const char *subscriptionid = nullptr;
+
     /**********************************************************************
      **                          Mount options                           **
      ** These are deliberately named after the popular NFS mount options **

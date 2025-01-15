@@ -75,6 +75,18 @@ struct mount_options
 
     // readdir_maxcount adjusted as per server advertised value.
     int readdir_maxcount_adj = 0;
+    
+    // Whether auth is required.
+    const bool auth;
+
+    // Tenant id in which the account/container mounted lies. 
+    const std::string tenantid;
+
+    // Subscription id in which the account/container mounted lies. 
+    const std::string subscriptionid;
+
+    // AuthType: Currently we only support AzAuthAAD. 
+    const std::string authtype = "AzAuthAAD";
 
     // Add any other options as needed.
 
@@ -101,11 +113,16 @@ struct mount_options
         acdirmax(aznfsc_cfg.acdirmax),
         actimeo(aznfsc_cfg.actimeo),
         readdir_maxcount(aznfsc_cfg.readdir_maxcount),
-        readahead_kb(aznfsc_cfg.readahead_kb)
+        readahead_kb(aznfsc_cfg.readahead_kb),
+        auth(aznfsc_cfg.auth),
+        tenantid(aznfsc_cfg.tenantid ? aznfsc_cfg.tenantid : ""),
+        subscriptionid(aznfsc_cfg.subscriptionid ? aznfsc_cfg.subscriptionid : "")
     {
         assert(!server.empty());
         assert(!export_path.empty());
         assert(!mountpoint.empty());
+        assert(tenantid.empty() == !auth);
+        assert(subscriptionid.empty() == !auth);
     }
 
     /**

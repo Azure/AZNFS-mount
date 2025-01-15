@@ -34,6 +34,48 @@ bool nfs_connection::open()
 
     nfs_destroy_url(url);
 
+    if (mo.auth) {
+        // 16 should be sufficient to hold the version string.
+        char client_version[16];
+
+        [[maybe_unused]]
+        const uint64_t n = snprintf(client_version, sizeof(client_version), 
+                               "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR, 
+                               AZNFSCLIENT_VERSION_MINOR, 
+                               AZNFSCLIENT_VERSION_PATCH);
+        assert(n < sizeof(client_version));
+
+        // TODO: Update this string.
+        std::string client_id = "12345678";
+
+        assert(!mo.export_path.empty());
+        assert(!mo.tenantid.empty());
+        assert(!mo.subscriptionid.empty());
+        assert(!mo.authtype.empty());
+        assert(strlen(client_version) > 0);
+        assert(!client_id.empty());
+
+        const int ret = nfs_set_auth_context(nfs_context, 
+                                             mo.export_path.c_str(), 
+                                             mo.tenantid.c_str(), 
+                                             mo.subscriptionid.c_str(),
+                                             mo.authtype.c_str(),
+                                             client_version,
+                                             client_id.c_str());
+        if (ret != 0) {
+            AZLogError("Failed to set auth values in nfs context, "
+                       "exportpath={} tenantid={} subid={} authtype={} " 
+                       "clientversion={} clientid={}",
+                       mo.export_path.c_str(),
+                       mo.tenantid.c_str(),
+                       mo.subscriptionid.c_str(),
+                       mo.authtype.c_str(),
+                       client_version,
+                       client_id.c_str());
+            goto destroy_context;
+        }
+    }
+
     /*
      * Call libnfs for mounting the share.
      * This will create a connection to the NFS server and perform mount.

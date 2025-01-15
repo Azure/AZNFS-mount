@@ -13,3 +13,6 @@
 [submodule "turbonfs/extern/vcpkg"]
 	path = turbonfs/extern/vcpkg
 	url = https://github.com/microsoft/vcpkg.git
+[submodule "turbonfs/extern/json"]
+	path = turbonfs/extern/json
+	url = https://github.com/nlohmann/json.git

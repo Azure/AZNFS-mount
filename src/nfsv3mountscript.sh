@@ -965,13 +965,17 @@ aznfsclient_mount()
     #
     # Check the exit status to determine if it timed out.
     # If it's not timed out the client should have sent either "0"
-    # indicating success or a "-1" indicating failure.
+    # indicating success or one of the following -ve values indicating failure:
+    # -2 -> auth enabled in config but "az login" not found.
+    # -1 -> some other error in mounting.
     # 
-    # TODO: Improve this with better error codes and messages.
-    #
     if [ $read_status -gt 128 ]; then
         eecho "Mount timed out, check for details!"
         return $read_status
+    elif [ "$mount_status" == "-2"]; then
+        eecho "Auth enabled in config but 'az login' not detected"
+        eecho "Please perform 'az login' and then try to mount again!"
+        return 1
     elif [ "$mount_status" != "0" ]; then
         return 1
     else

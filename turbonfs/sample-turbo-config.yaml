@@ -3,10 +3,19 @@
 # These will ONLY be used if the user runs the binary directly or passes
 # "none" as source in the mount command
 #
-account: sjc22prdste06hnfsv3acc1
-container: nfsv3test
+account: amsprdsty01enfs25
+container: testcont
 cloud_suffix: blob.preprod.core.windows.net
 port: 2047
+
+#
+# Auth Config
+# This tenant id and subscription id MUST match what was given in "az login".
+# TODO: Remove these config parameters and query it from the current "az login".
+#
+auth: true
+tenantid: ad304624-d4a2-4f1e-8f5f-9b8ba34e22f9
+subscriptionid: 7bb33dc9-b004-4fb6-96af-df9bcc1c222b
 
 #
 # NFS mount options

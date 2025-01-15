@@ -118,6 +118,13 @@ do { \
         _CHECK_INT(actimeo, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
         _CHECK_STR(lookupcache);
         _CHECK_STR(consistency);
+        
+        _CHECK_BOOL(auth);
+        if (auth) {
+            _CHECK_STR(tenantid);
+            _CHECK_STR(subscriptionid);
+        }
+
 
         /*
          * bc_iovec::add_bc() does not accept bytes_chunk larger than wsize.
@@ -321,6 +328,11 @@ void aznfsc_cfg::set_defaults_and_sanitize()
 #ifdef ENABLE_PRESSURE_POINTS
     AZLogDebug("inject_err_prob_pct_def = {}", inject_err_prob_pct_def);
 #endif
+    AZLogDebug("auth = {}", auth);
+    if (auth) {
+        AZLogDebug("tenantid = {}", tenantid);
+        AZLogDebug("subscriptionid = {}", subscriptionid);
+    }
     AZLogDebug("port = {}", port);
     AZLogDebug("nconnect = {}", nconnect);
     AZLogDebug("rsize = {}", rsize);
