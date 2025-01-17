@@ -977,11 +977,27 @@ bool nfs_inode::truncate_start(size_t size)
     return true;
 }
 
-bool nfs_inode::release(fuse_req_t req)
+void nfs_inode::release(fuse_req_t req)
 {
     assert(opencnt > 0);
+
+    AZLogDebug("[{}] nfs_inode::release(), new opencnt is {}",
+               ino, opencnt - 1);
+
+    /*
+     * If regular file and last opencnt is being dropped, we should flush
+     * the cache. This is required for CTO consistency.
+     * If this is a silly renamed file for which the last opencnt is being
+     * dropped, then we simply drop the cache and proceed to unlink the file.
+     * We do the flush() only if 'req' is valid. This ensures that we never
+     * call flush when called from rename_callback(), which is a libnfs thread.
+     */
+    if (is_regfile() && !is_silly_renamed && req && (opencnt == 1)) {
+        client->flush(req, get_fuse_ino());
+    }
+
     if (--opencnt != 0 || !is_silly_renamed) {
-        return false;
+        return;
     }
 
     /*
@@ -999,13 +1015,13 @@ bool nfs_inode::release(fuse_req_t req)
 
     /*
      * Since the inode is now truly getting deleted, invalidate the attribute
-     * cache.
+     * cache and clear the data cache.
      */
+    invalidate_cache(true /* purge_now */);
     invalidate_attribute_cache();
 
     client->unlink(req, parent_ino,
                    silly_renamed_name.c_str(), true /* for_silly_rename */);
-    return true;
 }
 
 void nfs_inode::revalidate(bool force)

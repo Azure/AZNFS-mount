@@ -1690,7 +1690,7 @@ void rename_callback(
          * dropped its opencnt before silly rename could complete, it'll delete
          * the silly renamed file.
          */
-        silly_rename_inode->release(nullptr);
+        silly_rename_inode->release();
     }
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
@@ -2134,6 +2134,11 @@ void rpc_task::run_flush()
     const fuse_ino_t ino = rpc_api->flush_task.get_ino();
     struct nfs_inode *const inode = get_client()->get_nfs_inode_from_ino(ino);
 
+    /*
+     * Flush must always be done in a fuse request context, as it may have
+     * to wait. Waiting in libnfs thread context will cause deadlocks.
+     */
+    assert(get_fuse_req() != nullptr);
     reply_error(inode->flush_cache_and_wait());
 }
 
