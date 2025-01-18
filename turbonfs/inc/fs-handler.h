@@ -479,7 +479,9 @@ static void aznfsc_ll_release(fuse_req_t req,
      *   cache and unlinks the file.
      * - If not a silly-renamed file, then it flushes the cache.
      */
-    inode->release(req);
+    if (inode->release(req)) {
+        FUSE_REPLY_ERR(req, 0);
+    }
 }
 
 [[maybe_unused]]
@@ -586,9 +588,13 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
      *       traverse a directory just once.
      */
 
-    inode->release(req);
+    if (inode->release(req)) {
+        FUSE_REPLY_ERR(req, 0);
+        return;
+    }
 
-    FUSE_REPLY_ERR(req, 0);
+    // For directory inodes, release() must always return true.
+    assert(0);
 }
 
 [[maybe_unused]]
