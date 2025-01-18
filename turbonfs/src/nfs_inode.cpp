@@ -875,6 +875,16 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     }
 
     flush_unlock();
+
+    /*
+     * If the file is deleted while we still have data in the cache, don't
+     * treat it as a failure to flush. The file has gone and we don't really
+     * care about the unwritten data.
+     */
+    if (get_write_error() == ENOENT || get_write_error() == ESTALE) {
+        return 0;
+    }
+
     return get_write_error();
 }
 
@@ -980,8 +990,52 @@ bool nfs_inode::truncate_start(size_t size)
 bool nfs_inode::release(fuse_req_t req)
 {
     assert(opencnt > 0);
-    if (--opencnt != 0 || !is_silly_renamed) {
-        return false;
+
+    AZLogDebug("[{}:{}] nfs_inode::release({}), new opencnt is {}",
+               get_filetype_coding(), ino, fmt::ptr(req), opencnt - 1);
+
+    /*
+     * If regular file and last opencnt is being dropped, we should flush
+     * the cache. This is required for CTO consistency.
+     * If this is a silly renamed file for which the last opencnt is being
+     * dropped, then we simply drop the cache and proceed to unlink the file.
+     * We do the flush() only if 'req' is valid. This ensures that we never
+     * call flush when called from rename_callback(), which is a libnfs thread.
+     * If not last opencnt and not silly renamed file or inode belongs to a
+     * dir, then simply reduce opencnt and return. Caller will call the fuse
+     * callback.
+     */
+    if (is_regfile() && !is_silly_renamed && req && (opencnt == 1)) {
+        client->flush(req, get_fuse_ino());
+        /*
+         * flush() would call the fuse callback, so we do not want unlink()
+         * below to call it again, also we don't want caller to call the fuse
+         * callback.
+         */
+        req = nullptr;
+    }
+
+    /*
+     * Check once more while decrementing opencnt atomically, in case multiple
+     * threads race with release() and all find opencnt!=1 above.
+     *
+     * Note: With opencnt dropped to 0, if some other thread unlinks the file
+     *       we won't do silly-rename and go ahead and unlink the file at the
+     *       server. This means the following flush may result in NFS WRITEs
+     *       being sent for a deleted file. Server will fail these writes.
+     *       flush_cache_and_wait() ignores these failures.
+     */
+    if ((--opencnt == 0) && req && is_regfile() && !is_silly_renamed) {
+        client->flush(req, get_fuse_ino());
+        req = nullptr;
+    }
+
+    if (!is_silly_renamed) {
+        /*
+         * If we didn't call flush() above, then caller must call the fuse
+         * callback.
+         */
+        return (req != nullptr);
     }
 
     /*
@@ -994,18 +1048,24 @@ bool nfs_inode::release(fuse_req_t req)
     assert(parent_ino != 0);
     assert(is_regfile());
 
-    AZLogInfo("[{}] Deleting silly renamed file, {}/{}",
-              ino, parent_ino, silly_renamed_name);
+    AZLogDebug("[{}] Deleting silly renamed file, {}/{}, req: {}",
+               ino, parent_ino, silly_renamed_name, fmt::ptr(req));
 
     /*
      * Since the inode is now truly getting deleted, invalidate the attribute
-     * cache.
+     * cache and clear the data cache.
      */
+    invalidate_cache(true /* purge_now */);
     invalidate_attribute_cache();
 
     client->unlink(req, parent_ino,
                    silly_renamed_name.c_str(), true /* for_silly_rename */);
-    return true;
+
+    /*
+     * Either flush() would have called the fuse callback, or unlink() would
+     * call when it completes, caller should not.
+     */
+    return false;
 }
 
 void nfs_inode::revalidate(bool force)

@@ -472,13 +472,15 @@ static void aznfsc_ll_release(fuse_req_t req,
     assert(inode->is_open());
 
     /*
-     * inode release() will return true if the inode was silly renamed and it
-     * initiated an unlink of the inode. In that case fuse will be sent a
-     * response based on the unlink outcome. Also, we don't flush in that case
-     * as the file is going to be unlinked anyways.
+     * inode release() will drop an opencnt on the inode.
+     * If this was not the last opencnt, then it doesn't do anything more, else
+     * it does the following for regular files:
+     * - If release is called for a silly-renamed file, then it drops the
+     *   cache and unlinks the file.
+     * - If not a silly-renamed file, then it flushes the cache.
      */
-    if (!inode->release(req)) {
-        client->flush(req, ino);
+    if (inode->release(req)) {
+        FUSE_REPLY_ERR(req, 0);
     }
 }
 
@@ -586,9 +588,13 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
      *       traverse a directory just once.
      */
 
-    inode->release(req);
+    if (inode->release(req)) {
+        FUSE_REPLY_ERR(req, 0);
+        return;
+    }
 
-    FUSE_REPLY_ERR(req, 0);
+    // For directory inodes, release() must always return true.
+    assert(0);
 }
 
 [[maybe_unused]]

@@ -731,6 +731,9 @@ public:
 
         opencnt++;
 
+        AZLogDebug("[{}:{}] on_fuse_open({}), new opencnt is {}",
+                   get_filetype_coding(), ino, (int) optype, opencnt.load());
+
         if (is_regfile()) {
             /*
              * Allocate filecache_handle after readahead_state as we assert
@@ -1336,11 +1339,25 @@ public:
     void sync_membufs(std::vector<bytes_chunk> &bcs, bool is_flush);
 
     /**
-     * Called when last open fd is closed for a file.
-     * release() will return true if the inode was silly renamed and it
-     * initiated an unlink of the inode.
+     * Called when last open fd is closed for a file/dir.
+     * inode release() drops an opencnt on the inode.
+     * If this was not the last opencnt or if it's called for a dir, then it
+     * doesn't do anything more, else it does the following for regular files:
+     * - If release is called for a silly-renamed file, then it drops the
+     *   cache (no need to flush as the file ie being deleted anyways) and
+     *   unlinks the file.
+     * - If not a silly-renamed file, then it flushes the cache.
+     *   This is needed for CTO consistency.
+     *
+     * When called from a fuse handler, req parameter must be passed and it'll
+     * arrange to call the fuse callback for req, once it completes the above.
+     * When not called from a fuse handler, req must not be passed.
+     *
+     * It returns true if it wants the caller to call the fuse callback, else
+     * it has already arranged to call the fuse callback and caller doesn't
+     * need to call.
      */
-    bool release(fuse_req_t req);
+    bool release(fuse_req_t req = nullptr);
 
     /**
      * Lock the inode for flushing.
@@ -1474,9 +1491,11 @@ public:
 
     /**
      * Returns the error, saved by prior call to set_write_error().
+     * Can be 0 for success, or a +ve errno value.
      */
     int get_write_error() const
     {
+        assert(write_error >= 0);
         return write_error;
     }
 
