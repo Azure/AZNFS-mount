@@ -1025,12 +1025,13 @@ bool nfs_inode::release(fuse_req_t req)
      *       being sent for a deleted file. Server will fail these writes.
      *       flush_cache_and_wait() ignores these failures.
      */
-    if ((--opencnt == 0) && req && is_regfile() && !is_silly_renamed) {
+    const bool last_close = (--opencnt == 0);
+    if (last_close && req && is_regfile() && !is_silly_renamed) {
         client->flush(req, get_fuse_ino());
         req = nullptr;
     }
 
-    if (!is_silly_renamed) {
+    if (!last_close || !is_silly_renamed) {
         /*
          * If we didn't call flush() above, then caller must call the fuse
          * callback.
