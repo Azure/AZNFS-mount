@@ -368,6 +368,15 @@ void rpc_task::init_getattr(fuse_req *request,
 
 void rpc_task::do_proxy_getattr() const
 {
+    struct nfs_inode *inode =
+        get_client()->get_nfs_inode_from_ino(rpc_api->get_ino());
+
+    /*
+     * Caller calls us to fetch attributes from the server and not return
+     * the cached attributes, force attributes to be fetched from the server.
+     */
+    inode->invalidate_attribute_cache();
+
     AZLogWarn("Sending proxy getattr on behalf of {}: req: {}, ino: {}",
               rpc_task::fuse_opcode_to_string(get_op_type()),
               fmt::ptr(get_fuse_req()),
@@ -1216,12 +1225,6 @@ static void setattr_callback(
 
         struct stat st = {};
 
-        /*
-         * TODO For NFS the postop attributes are optional, but fuse expects
-         *      us to pass attributes in the callback. If NFS server fails to
-         *      return the postop attributes we must query the attributes using
-         *      a GETATTR RPC.
-         */
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
         nfs_client::stat_from_fattr3(
             st, res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
