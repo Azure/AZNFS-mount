@@ -274,14 +274,15 @@ process_nfsv4_nontlsmounts()
     # fi
 
     #do we need to findmnt? copy from nfsv4 or nfsv3 watchdog.
+    findmnt=$(findmnt | grep 'nfs4' | grep -v "$LOCALHOST")
 
     #the bulk of this logic could be shared between v3 and v4 but would need to parameterize the file names
+
 
     for line in $lines; do
         if [ -z "$line" ]; then
             continue
         fi
-
         #
         # MOUNTMAPv4nontls line is of the form:
         # account.blob.preprod.core.windows.net <local ip> <public ip> [<PID>]
