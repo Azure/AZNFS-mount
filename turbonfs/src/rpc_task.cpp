@@ -3259,11 +3259,9 @@ static void read_callback(
 
         if (bc->maps_full_membuf() && (bc->length == bc->pvt)) {
             /*
-             * Only the first read which got hold of the complete membuf
-             * will have this byte_chunk set to empty.
-             * Only such reads should set the uptodate flag.
-             * Also the uptodate flag should be set only if we have read
-             * the entire membuf.
+             * If this bc maps the entire chunkmap bytes_chunk and we have
+             * read the entire range represented by this bc, then we can
+             * mark it uptodate.
              */
 #ifdef ENABLE_PRESSURE_POINTS
             if (inject_error()) {

@@ -632,6 +632,14 @@ public:
      *       it changes the corresponding bytes_chunk in the chunkmap[], so
      *       is_whole indicates whether a bytes_chunk returned by get()
      *       refers to the complete bytes_chunk in the chunkmap[] or part of it.
+     *
+     * Note: This is set at the time when the bytes_chunk is created (and
+     *       returned by get()/getx()/scan()), depending on whether the
+     *       returned bytes_chunk fully covers the corresponding chunkmap
+     *       bytes_chunk or it refers to only partial chunkmap bytes_chunk.
+     *       If chunkmap bytes_chunk changes afterwards, this may not be
+     *       correct. Note that an inuse chunkmap bytes_chunk can (only) be
+     *       updated by a truncate() call.
      */
     bool is_whole = false;
 
@@ -1113,11 +1121,36 @@ public:
      * - Trimmed, if some of their bytes are still valid after truncate.
      *
      * Once truncate() completes, subsequent get() call will not return
-     * cache data for any byte in the truncated region.
+     * cached data for any byte in the truncated region.
+     *
+     * Note: truncate() can update one or more bytes_chunk in chunkmap while
+     *       there are users who may be using the bytes_chunk they got by a
+     *       prior call to scan()/get()/getx(). This is because truncate(),
+     *       unlike release(), does not do the safe_to_release() check.
+     *       The update may include dropping chunkmap's reference (users who
+     *       got a prior reference can still safely use their bytes_chunk) or
+     *       shrinking the bytes_chunk. Since it's the bytes_chunk that is
+     *       shrunk and not the membuf, users who have prior references to
+     *       these bytes_chunk will not note the difference. They can safely
+     *       read and write the membuf but all of the data may not be part of
+     *       the file cache.
+     *       If truncate() only drops or shrinks membufs, then it cannot cause
+     *       data consistency issues when an existing reader reads into such
+     *       a bytes_chunk and marks it uptodate, as the new partial bytes_chunk
+     *       will also be uptodate. For the writers, who have done a get()
+     *       before the truncate that removed or shrunk some of the bytes_chunk
+     *       from the chunkmap, if they later copy to those bytes_chunk, that
+     *       data would not be written to the file as that data will not be
+     *       returned by get_dirty_bc_range().
      *
      * Note: Caller MUST make sure that there are no ongoing flush operations
      *       on the file, else they can change the file size back to a higher
      *       value.
+     *
+     * Note: We can have two typical usages of truncate():
+     *       1. Truncate done by local application.
+     *       2. Truncate the cache when postop attrs carry a size
+     *          smaller than attr.st_size.
      */
     uint64_t truncate(uint64_t length)
     {

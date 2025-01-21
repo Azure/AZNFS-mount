@@ -980,9 +980,11 @@ bool nfs_inode::truncate_start(size_t size)
      * Now there are no ongoing flush or commit operations in progress.
      * we can safely truncate the filecache.
      */
-    auto truncate_size = filecache_handle->truncate(size);
+    [[maybe_unused]]
+    const uint64_t bytes_truncated = filecache_handle->truncate(size);
 
-    AZLogDebug("[{}] Filecache truncated to size={}", ino, truncate_size);
+    AZLogDebug("[{}] Filecache truncated to size={} (bytes truncated: {})",
+               ino, size, bytes_truncated);
 
     return true;
 }
@@ -1228,6 +1230,23 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
                    attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
                    postattr->mtime.seconds, postattr->mtime.nseconds,
                    attr.st_size, postattr->size);
+
+        /*
+         * TODO: Nitin to uncomment this along with his change that defines
+         *       cached file size.
+         */
+#if 0
+        /*
+         * If the file has been truncated in the server (mostly by some other
+         * client), we need to drop the extra cached data that we may have, else
+         * a subsequent reader may be incorrectly returned that extra data which
+         * is no longer part of the file.
+         */
+        if (has_filecache() &&
+            (postattr->size < (uint64_t) attr.st_size)) {
+            get_filecache()->truncate(postattr->size);
+        }
+#endif
 
         nfs_client::stat_from_fattr3(attr, *postattr);
         attr_timeout_secs = get_actimeo_min();
