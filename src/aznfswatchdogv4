@@ -127,7 +127,9 @@ process_nfsv4_mounts()
     # MOUNTMAPv4 entry whose all nfs file shares are unmounted, we know
     # for sure that it's not in use by any mount and can be removed.
     #
-    findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
+    #findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
+    findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
+
 
     #
     # For no matching mounts also, findmnt exits with a failure return, so check
@@ -441,7 +443,7 @@ fi
 while :; do
     sleep $MONITOR_INTERVAL_SECS
     process_nfsv4_mounts
-    #process_nfsv4_nontlsmounts
+    process_nfsv4_nontlsmounts
     #daniewo process nontlsmounts and track for migration
 
 done
