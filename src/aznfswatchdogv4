@@ -268,10 +268,10 @@ process_nfsv4_nontlsmounts()
 
     #can tune this, but hardcode to true for now. 
     do_ip_change_detection=false
-    # if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
-    #     do_ip_change_detection=true
-    #     next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)
-    # fi
+    if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
+        do_ip_change_detection=true
+            next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)
+    fi
 
     #do we need to findmnt? copy from nfsv4 or nfsv3 watchdog.
     findmnt=$(findmnt | grep 'nfs4' | grep -v "$LOCALHOST")
