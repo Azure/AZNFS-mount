@@ -267,7 +267,7 @@ process_nfsv4_nontlsmounts()
     exec {fd}<&-
 
     #can tune this, but hardcode to true for now. 
-    do_ip_change_detection=false
+    do_ip_change_detection=true
     if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
         do_ip_change_detection=true
             next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)
