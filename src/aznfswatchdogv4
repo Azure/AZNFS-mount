@@ -267,6 +267,8 @@ process_nfsv4_nontlsmounts()
     exec {fd}<&-
 
     #can tune this, but hardcode to true for now. 
+    vecho "now: $epoch_now"
+    vecho "next: $next_ip_change_detection_epoch"
     do_ip_change_detection=true
     if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
         do_ip_change_detection=true
