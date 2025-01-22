@@ -364,6 +364,8 @@ process_nfsv4_nontlsmounts()
             continue
         fi
 
+        vecho "Daniewo, now to ip change detection"
+
         #
         # See if the account is regional account and we need to skip IP change detection for that.
         #
@@ -393,7 +395,7 @@ process_nfsv4_nontlsmounts()
         # nfs_ip=$(grep -m 1 "^$fqdn_to_find " $VIRTUALFSLOCATION | awk '{print $2}')
 
         IFS=" " read l_fqdn l_nfsip l_prt <<< $fslocation_entry
-        eecho "daniewo $l_fqdn, $l_nfsip, $l_prt"
+        vecho "daniewo $l_fqdn, $l_nfsip, $l_prt"
         $new_ip = $l_nfsip
 
         # If we fail to resolve the host name, try next time.
