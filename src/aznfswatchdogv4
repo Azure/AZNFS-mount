@@ -367,9 +367,9 @@ process_nfsv4_nontlsmounts()
         #
         # See if the account is regional account and we need to skip IP change detection for that.
         #
-        if should_skip_regional_account "$l_host"; then
-            continue
-        fi
+        # if should_skip_regional_account "$l_host"; then
+        #     continue
+        # fi
 
         #
         # Check if blob endpoint IP address changed.
@@ -392,8 +392,9 @@ process_nfsv4_nontlsmounts()
         # fqdn_to_find=$l_host
         # nfs_ip=$(grep -m 1 "^$fqdn_to_find " $VIRTUALFSLOCATION | awk '{print $2}')
 
-        IFS=" " read l_fqdn l_nfsip l_prt <<< "$line"
+        IFS=" " read l_fqdn l_nfsip l_prt <<< $fslocation_entry
         eecho "daniewo $l_fqdn, $l_nfsip, $l_prt"
+        $new_ip = $l_nfsip
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then
