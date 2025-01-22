@@ -351,6 +351,7 @@ process_nfsv4_nontlsmounts()
             #
             reconcile_conntrack "$l_ip" "$l_nfsip"
             verify_iptable_entry "$l_ip" "$l_nfsip"
+            vecho "Daniewo, we are at reconcile and verify IP table, sunny path"
 
         fi
 
@@ -376,15 +377,23 @@ process_nfsv4_nontlsmounts()
         # Daniewo (within this migration check here, we can force an update to the previous IP in the file so that it shows as a different IP now
         # and forces the IP to be different. )
         #
-        new_ip=$(resolve_ipv4 "$l_host" "false")
+        #new_ip=$(resolve_ipv4 "$l_host" "false")
         # this new_ip will be read from fslocation
         #use a grep for the line. the format right now will be fqdn nfs_ip
 
+
+        fqdn_to_find=$l_host
         # local fslocation_entry=$grep -m1 "^${fqdn} " $MOUNTMAPv3
+        
+        local fslocation_entry=$grep -m1 $fqdn_to_find $VIRTUALFSLOCATION
+        # FSLOCATION file will have format 
+        #lock FSLOCATION and find the line that has the matching FQDN == L_HOST
+        # FQDN DestinationIP PRT
         # fqdn_to_find=$l_host
         # nfs_ip=$(grep -m 1 "^$fqdn_to_find " $VIRTUALFSLOCATION | awk '{print $2}')
 
-        #IFS=" " read l_host l_nfsip <<< "$line"
+        IFS=" " read l_fqdn l_nfsip l_prt <<< "$line"
+        eecho "daniewo $l_fqdn, $l_nfsip, $l_prt"
 
         # If we fail to resolve the host name, try next time.
         if [ $? -ne 0 ]; then
