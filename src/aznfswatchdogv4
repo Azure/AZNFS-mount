@@ -270,10 +270,10 @@ process_nfsv4_nontlsmounts()
     vecho "now: $epoch_now"
     vecho "next: $next_ip_change_detection_epoch"
     do_ip_change_detection=true
-    if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
-        do_ip_change_detection=true
-            next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)
-    fi
+    # if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
+    #     do_ip_change_detection=true
+    #         next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)
+    # fi
 
     #do we need to findmnt? copy from nfsv4 or nfsv3 watchdog.
     findmnt=$(findmnt | grep 'nfs4' | grep -v "$LOCALHOST")
@@ -290,6 +290,8 @@ process_nfsv4_nontlsmounts()
         # account.blob.preprod.core.windows.net <local ip> <public ip> [<PID>]
         #
         IFS=" " read l_host l_ip l_nfsip <<< "$line"
+
+        eecho "l_host: $l_host"
 
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NONTLS: [$line]!"
@@ -353,7 +355,7 @@ process_nfsv4_nontlsmounts()
             #
             reconcile_conntrack "$l_ip" "$l_nfsip"
             verify_iptable_entry "$l_ip" "$l_nfsip"
-            vecho "Daniewo, we are at reconcile and verify IP table, sunny path"
+            eecho "Daniewo, we are at reconcile and verify IP table, sunny path"
 
         fi
 
@@ -366,7 +368,7 @@ process_nfsv4_nontlsmounts()
             continue
         fi
 
-        vecho "Daniewo, now to ip change detection"
+        eecho "Daniewo, now to ip change detection"
 
         #
         # See if the account is regional account and we need to skip IP change detection for that.
@@ -385,7 +387,7 @@ process_nfsv4_nontlsmounts()
         # this new_ip will be read from fslocation
         #use a grep for the line. the format right now will be fqdn nfs_ip
 
-        vecho "daniewo local_host is $l_host"
+        eecho "daniewo local_host is $l_host"
 
         fqdn_to_find=$l_host
         # local fslocation_entry=$grep -m1 "^${fqdn} " $MOUNTMAPv3
@@ -398,7 +400,7 @@ process_nfsv4_nontlsmounts()
         # nfs_ip=$(grep -m 1 "^$fqdn_to_find " $VIRTUALFSLOCATION | awk '{print $2}')
 
         IFS=" " read l_fqdn l_nfsip l_prt <<< $fslocation_entry
-        vecho "daniewo $l_fqdn, $l_nfsip, $l_prt"
+        eecho "daniewo $l_fqdn, $l_nfsip, $l_prt"
         $new_ip = $l_nfsip
 
         # If we fail to resolve the host name, try next time.
