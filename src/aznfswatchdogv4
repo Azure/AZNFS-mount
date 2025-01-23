@@ -385,6 +385,7 @@ process_nfsv4_nontlsmounts()
         # this new_ip will be read from fslocation
         #use a grep for the line. the format right now will be fqdn nfs_ip
 
+        vecho "daniewo local_host is $l_host"
 
         fqdn_to_find=$l_host
         # local fslocation_entry=$grep -m1 "^${fqdn} " $MOUNTMAPv3
