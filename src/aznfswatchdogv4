@@ -392,7 +392,7 @@ process_nfsv4_nontlsmounts()
         fqdn_to_find=$l_host
         # local fslocation_entry=$grep -m1 "^${fqdn} " $MOUNTMAPv3
         
-        local fslocation_entry=$grep -m1 $fqdn_to_find $VIRTUALFSLOCATION
+        local fslocation_entry=$(grep -m1 $fqdn_to_find $VIRTUALFSLOCATION)
 
         eecho "daniewo fslocation_entry = $fslocation_entry"
         # FSLOCATION file will have format 
