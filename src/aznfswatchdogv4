@@ -393,6 +393,8 @@ process_nfsv4_nontlsmounts()
         # local fslocation_entry=$grep -m1 "^${fqdn} " $MOUNTMAPv3
         
         local fslocation_entry=$grep -m1 $fqdn_to_find $VIRTUALFSLOCATION
+
+        eecho "daniewo fslocation_entry = $fslocation_entry"
         # FSLOCATION file will have format 
         #lock FSLOCATION and find the line that has the matching FQDN == L_HOST
         # FQDN DestinationIP PRT
