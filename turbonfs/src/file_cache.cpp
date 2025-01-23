@@ -2302,7 +2302,33 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_flushing_bc_range(
     return bc_vec;
 }
 
-std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc_range(uint64_t start_off, uint64_t end_off) const
+std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_nonflushing_bcs_range(
+        uint64_t start_off, uint64_t end_off) const
+{
+    std::vector<bytes_chunk> bc_vec;
+    assert(start_off < end_off);
+
+    // TODO: Make it shared lock.
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+    auto it = chunkmap.lower_bound(start_off);
+
+    while (it != chunkmap.cend() && it->first <= end_off) {
+        const struct bytes_chunk& bc = it->second;
+        struct membuf *mb = bc.get_membuf();
+
+        if (mb->is_dirty() && !mb->is_flushing()) {
+            mb->set_inuse();
+            bc_vec.emplace_back(bc);
+        }
+
+        ++it;
+    }
+
+    return bc_vec;
+}
+
+std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc_range(
+        uint64_t start_off, uint64_t end_off) const
 {
     std::vector<bytes_chunk> bc_vec;
     assert(start_off < end_off);

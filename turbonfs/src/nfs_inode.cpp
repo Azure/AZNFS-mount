@@ -375,8 +375,22 @@ int nfs_inode::get_actimeo_max() const
     }
 }
 
-void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
+void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
+                             bool is_flush,
+                             struct rpc_task *parent_task)
 {
+    /*
+     * If parent_task is passed, it must refer to the fuse write task that
+     * trigerred the inline sync.
+     */
+    if (parent_task) {
+        // Must be a frontend write task.
+        assert(parent_task->get_op_type() == FUSE_WRITE);
+        assert(parent_task->rpc_api->write_task.is_fe());
+        // Must not already have num_ongoing_backend_writes set.
+        assert(parent_task->num_ongoing_backend_writes == 0);
+    }
+
     if (bc_vec.empty()) {
         return;
     }
@@ -462,6 +476,16 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
             write_task->init_write_be(ino);
             assert(write_task->rpc_api->pvt == nullptr);
+            assert(write_task->rpc_api->parent_task == nullptr);
+
+            /*
+             * Set the parent_task pointer for this child task, so that we can
+             * complete the parent task when all issued writes complete.
+             */
+            if (parent_task) {
+                write_task->rpc_api->parent_task = parent_task;
+                parent_task->num_ongoing_backend_writes++;
+            }
             write_task->rpc_api->pvt = new bc_iovec(this);
         }
 
@@ -485,6 +509,11 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
             write_task->init_write_be(ino);
             assert(write_task->rpc_api->pvt == nullptr);
+
+            if (parent_task) {
+                write_task->rpc_api->parent_task = parent_task;
+                parent_task->num_ongoing_backend_writes++;
+            }
             write_task->rpc_api->pvt = new bc_iovec(this);
 
             // Single bc addition should not fail.

@@ -904,6 +904,16 @@ static void write_iov_callback(
             // Hand over the remaining bciov to the new write_task.
             assert(write_task->rpc_api->pvt == nullptr);
             write_task->rpc_api->pvt = task->rpc_api->pvt;
+
+            /*
+             * If this (child) write_rpc was issued as part of a another
+             * (parent) write task, then set the parent_task in the new
+             * child write too.
+             */
+            if (task->rpc_api->parent_task) {
+                write_task->rpc_api->parent_task = task->rpc_api->parent_task;
+            }
+
             task->rpc_api->pvt = nullptr;
 
             // Issue write for the remaining data.
@@ -954,6 +964,30 @@ static void write_iov_callback(
     delete bciov;
     task->rpc_api->pvt = nullptr;
 
+    /*
+     * If this write_rpc was issued as part of a parent write task, then
+     * decrement the ongoing write count and if it is the last write then
+     * complete the parent task. This will call the fuse callback.
+     */
+    if (task->rpc_api->parent_task) {
+        struct rpc_task *parent_task = task->rpc_api->parent_task;
+
+        assert(parent_task->magic == RPC_TASK_MAGIC);
+        assert(parent_task->get_op_type() == FUSE_WRITE);
+        assert(parent_task->rpc_api->write_task.is_fe());
+        assert(parent_task->num_ongoing_backend_writes > 0);
+
+        if (--parent_task->num_ongoing_backend_writes == 0) {
+            if (inode->get_write_error() == 0) {
+                assert(parent_task->rpc_api->write_task.get_size() > 0);
+                parent_task->reply_write(
+                        parent_task->rpc_api->write_task.get_size());
+            } else {
+                parent_task->reply_error(inode->get_write_error());
+            }
+        }
+    }
+
     // Release the task.
     task->free_rpc_task();
 }
@@ -974,6 +1008,19 @@ void rpc_task::issue_write_rpc()
     assert(get_op_type() == FUSE_WRITE);
     // Must only be called for a BE task.
     assert(rpc_api->write_task.is_be());
+    [[maybe_unused]]
+    const struct rpc_task *parent_task = rpc_api->parent_task;
+
+    /*
+     * If parent_task is set, it must refer to the fuse write task that
+     * trigerred the inline sync.
+     */
+    if (parent_task) {
+        // Must be a frontend write task.
+        assert(parent_task->get_op_type() == FUSE_WRITE);
+        assert(parent_task->rpc_api->write_task.is_fe());
+        assert(parent_task->num_ongoing_backend_writes > 0);
+    }
 
     const fuse_ino_t ino = rpc_api->write_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
@@ -1924,8 +1971,6 @@ void rpc_task::run_access()
     } while (rpc_retry);
 }
 
-
-
 void rpc_task::run_write()
 {
     // This must be called only for front end tasks.
@@ -2023,97 +2068,169 @@ void rpc_task::run_write()
     assert(extent_right >= (extent_left + length));
 
     /*
-     * If this is a sparse write beyond eof we perform inline write, w/o this
-     * we can have some reader read from the sparse part of the file which is
-     * not yet in the bytes_chunk_cache. This read will be issued to the server
-     * and since server doesn't know the updated file size (as the write may
-     * still be sitting in our bytes_chunk_cache) it will return eof.
-     * This is not correct as such reads issued after successful write, are
-     * valid and should return 0 bytes for the sparse range.
+     * We have successfully copied the user data into the cache.
+     * We can have the following cases:
+     * 1. This new write caused a contiguous extent to be greater than
+     *    max_dirty_extent_bytes(), aka MDEB.
+     *    In this case we begin flush of this contiguous extent (in multiple
+     *    parallel wsize sized blocks) since there's no benefit in waiting more
+     *    as the data is sufficient for the server scheduler to effectively
+     *    write, in optimal sized blocks.
+     *    We complete the application write rightaway without waiting for the
+     *    flush to complete as we are not under memory pressure.
+     *    This will happen when user is sequentially writing to the file.
+     * 2. A single contiguous extent is not greater than MDEB but total dirty
+     *    bytes waiting to be flushed is more than MDEB.
+     *    In this case we begin flush of the entire dirty data from the cache
+     *    as we have sufficient data for the server scheduler to perform
+     *    batched writes effectively.
+     *    We complete the application write rightaway without waiting for the
+     *    flush to complete as we are not under memory pressure.
+     *    This will happen when user is writing to the file in a random or
+     *    pseudo-sequential fashion.
+     * 3. Cache has dirty data beyond the "inline write" threshold, ref
+     *    do_inline_write().
+     *    In this case we begin flush of the entire dirty data.
+     *    This is a memory pressure situation and hence we do not complete the
+     *    application write till all the backend writes complete.
+     *    This will happen when user is writing faster than our backend write
+     *    throughput, eventually dirty data will grow beyond the "inline write"
+     *    threshold and then we have to slow down the writers by delaying
+     *    completion.
+     *
+     * Other than this we have a special case of "write beyond eof" (termed
+     * sparse write). In sparse write case also we perform "inline write" of
+     * all the dirty data. This is needed for correct read behaviour. Imagine
+     * a reader reading from the sparse part of the file which is not yet in
+     * the bytes_chunk_cache. This read will be issued to the server and since
+     * server doesn't know the updated file size (as the write may still be
+     * sitting in our bytes_chunk_cache) it will return eof. This is not correct
+     * as such reads issued after successful write, are valid and should return
+     * 0 bytes for the sparse range.
      */
-    if (!sparse_write) {
-        /*
-         * If the extent size exceeds the max allowed dirty size as returned by
-         * max_dirty_extent_bytes(), then it's time to flush the extent.
-         * Note that this will cause sequential writes to be flushed at just the
-         * right intervals to optimize fewer write calls and also allowing the
-         * server scheduler to merge better.
-         * See bytes_to_flush for how random writes are flushed.
-         *
-         * Note: max_dirty_extent is static as it doesn't change after it's
-         *       queried for the first time.
-         */
-        static const uint64_t max_dirty_extent =
-            inode->get_filecache()->max_dirty_extent_bytes();
-        assert(max_dirty_extent > 0);
-
-        /*
-         * How many bytes in the cache need to be flushed.
-         */
-        const uint64_t bytes_to_flush =
-            inode->get_filecache()->get_bytes_to_flush();
-
-        AZLogDebug("[{}] extent_left: {}, extent_right: {}, size: {}, "
-                   "bytes_to_flush: {} (max_dirty_extent: {})",
-                   ino, extent_left, extent_right,
-                   (extent_right - extent_left),
-                   bytes_to_flush,
-                   max_dirty_extent);
-
-        if ((extent_right - extent_left) < max_dirty_extent) {
-            /*
-             * Current extent is not big enough to be flushed, see if we have
-             * enough dirty data that needs to be flushed. This is to cause
-             * random writes to be periodically flushed.
-             */
-            if (bytes_to_flush < max_dirty_extent) {
-                AZLogDebug("Reply write without syncing to Blob");
-                reply_write(length);
-                return;
-            }
-
-            /*
-             * This is the case of non-sequential writes causing enough dirty
-             * data to be accumulated, need to flush all of that.
-             */
-            extent_left = 0;
-            extent_right = UINT64_MAX;
-        }
-    }
 
     /*
-     * Ok, we need to flush the extent now, check if we must do it inline.
+     * Do we need to perform "inline write"?
+     * Inline write implies, we flush all the dirty data and wait for all the
+     * corresponding backend writes to complete.
      */
-    if (sparse_write || inode->get_filecache()->do_inline_write()) {
+    const bool need_inline_write =
+        (sparse_write || inode->get_filecache()->do_inline_write());
+
+    if (need_inline_write) {
         INC_GBL_STATS(inline_writes, 1);
 
         AZLogDebug("[{}] Inline write (sparse={}), {} bytes, extent @ [{}, {})",
                    ino, sparse_write, (extent_right - extent_left),
                    extent_left, extent_right);
 
-        const int err = inode->flush_cache_and_wait(extent_left, extent_right);
-        if (err == 0) {
+        /*
+         * Grab flush_lock to get exclusive list of dirty chunks, which are not
+         * already being flushed. This also protects us racing with a truncate
+         * call and growing the file size after truncate shrinks the file.
+         */
+        inode->flush_lock();
+
+        std::vector<bytes_chunk> bc_vec =
+            inode->get_filecache()->get_dirty_nonflushing_bcs_range();
+
+        if (bc_vec.empty()) {
+            /*
+             * Another application write raced with us and it got to do the
+             * inline write before us, job done, return.
+             */
+            inode->flush_unlock();
+
+            AZLogDebug("[{}] <inline write> Some other thread performed the "
+                       "inline write, nothing to do", ino);
+
+            // Complete the application write and free up the fuse thread.
             reply_write(length);
             return;
-        } else {
-            AZLogError("[{}] Inline write, {} bytes extent @ [{}, {}), failed "
-                       "with err {}",
-                       ino, (extent_right - extent_left),
-                       extent_left, extent_right, err);
-            reply_error(err);
-            return;
         }
+
+        /*
+         * Perform inline sync.
+         * Since we pass the 3rd arg to sync_membufs, it tells sync_membufs()
+         * to call the fuse callback after all the issued backend writes
+         * complete. This will be done asynchronously while the sync_membufs()
+         * call will return after issuing the writes.
+         */
+        inode->sync_membufs(bc_vec, false /* is_flush */, this);
+        inode->flush_unlock();
+
+        // Free up the fuse thread without completing the application write.
+        return;
     }
 
     /*
-     * We need to flush the dirty data now, get the membufs for the dirty data.
+     * Ok, we don't need to do inline writes. See if we have enough dirty
+     * data and we need to start async flush.
+     */
+
+    /*
+     * If the extent size exceeds the max allowed dirty size as returned by
+     * max_dirty_extent_bytes(), then it's time to flush the extent.
+     * Note that this will cause sequential writes to be flushed at just the
+     * right intervals to optimize fewer write calls and also allowing the
+     * server scheduler to merge better.
+     * See bytes_to_flush for how random writes are flushed.
+     *
+     * Note: max_dirty_extent is static as it doesn't change after it's
+     *       queried for the first time.
+     */
+    static const uint64_t max_dirty_extent =
+        inode->get_filecache()->max_dirty_extent_bytes();
+    assert(max_dirty_extent > 0);
+
+    /*
+     * How many bytes in the cache need to be flushed. These are dirty chunks
+     * which have not started flushing yet.
+     */
+    const uint64_t bytes_to_flush =
+        inode->get_filecache()->get_bytes_to_flush();
+
+    AZLogDebug("[{}] extent_left: {}, extent_right: {}, size: {}, "
+               "bytes_to_flush: {} (max_dirty_extent: {})",
+               ino, extent_left, extent_right,
+               (extent_right - extent_left),
+               bytes_to_flush,
+               max_dirty_extent);
+
+    if ((extent_right - extent_left) < max_dirty_extent) {
+        /*
+         * Current extent is not large enough to be flushed, see if we have
+         * enough total dirty data that needs to be flushed. This is to cause
+         * random writes to be periodically flushed.
+         */
+        if (bytes_to_flush < max_dirty_extent) {
+            /*
+             * No memory pressure.
+             */
+            AZLogDebug("Reply write without syncing to Blob");
+            reply_write(length);
+            return;
+        }
+
+        /*
+         * This is the case of non-sequential writes causing enough dirty
+         * data to be accumulated, need to flush all of that.
+         */
+        extent_left = 0;
+        extent_right = UINT64_MAX;
+    }
+
+    /*
+     * We need to flush the dirty data in the range [extent_left, extent_right),
+     * get the membufs for the dirty data.
      * We don't want to run over an inprogress truncate and resetting the file
      * size set by truncate, so grab the is_flushing lock.
      */
     inode->flush_lock();
 
     std::vector<bytes_chunk> bc_vec =
-        inode->get_filecache()->get_dirty_bc_range(extent_left, extent_right);
+        inode->get_filecache()->get_dirty_nonflushing_bcs_range(extent_left,
+                                                                extent_right);
 
     if (bc_vec.size() == 0) {
         inode->flush_unlock();

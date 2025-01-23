@@ -1188,6 +1188,25 @@ public:
                                                 uint64_t end_off) const;
 
     /*
+     * Returns dirty chunks which are not already flushing, in the given range,
+     * from chunkmap
+     * Before returning it increases the inuse count of underlying membuf(s).
+     * Caller will typically sync dirty membuf to Blob and once done must call
+     * clear_inuse().
+     *
+     * Note: Caller MUST call get_dirty_nonflushing_bcs_range() with flush_lock
+     *       held.
+     *       This ensures that none of the chunks returned starts flushing by
+     *       any other thread (as any new flush will wait for the flush_lock).
+     *       flush_lock can be released after sync_membufs() is called for the
+     *       returned chunks. It'll set dirty membufs to flushing, and issue
+     *       write_rpc. These chunks won't be returned by a subsequent call to
+     *       get_dirty_nonflushing_bcs_range().
+     */
+    std::vector<bytes_chunk> get_dirty_nonflushing_bcs_range(
+            uint64_t st_off = 0, uint64_t end_off = UINT64_MAX) const;
+
+    /*
      * Returns all dirty chunks which are currently flushing for a given range
      * in chunkmap. Before returning it increases the inuse count of underlying
      * membuf(s).

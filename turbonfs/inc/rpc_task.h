@@ -1476,7 +1476,7 @@ struct api_task_info
 
 
     /*
-     * Only valid for FUSE_READ.
+     * Only valid for FUSE_READ and FUSE_WRITE.
      *
      * This will refer to the parent task for a child task.
      * This will be nullptr for parent task.
@@ -1492,16 +1492,24 @@ struct api_task_info
      * outstanding RPCs to the backend.
      *
      * When do we need multiple backend RPCs to serve a single fuse RPC?
-     * The only known case is of fuse read when bytes_chunk_cache::get()
-     * returns more than one bytes_chunk for a given fuse read. Note that each
-     * of these bytes_chunk is issued as an individual RPC READ to the NFS
-     * server. We allocate child rpc_task structures for each of these READs
-     * and the fuse read is tracked by the parent rpc_task.
-     * Note that we can make use of rpc_nfs3_readv_task() API to issue a
-     * single RPC READ, but if the to-be-read data is not contiguous inside
-     * the file (this can happen if some data in the middle is already in the
-     * cache) we may still need multiple RPC READs.
-     * This should not be very common though.
+     * We have the following known cases:
+     * 1. Used by fuse read when bytes_chunk_cache::get() returns more than
+     *    one bytes_chunk for a given fuse read. Note that each of these
+     *    bytes_chunk is issued as an individual RPC READ to the NFS server.
+     *    We allocate child rpc_task structures for each of these READs and
+     *    the fuse read is tracked by the parent rpc_task. Note that we can
+     *    make use of rpc_nfs3_readv_task() API to issue a single RPC READ,
+     *    but if the to-be-read data is not contiguous inside the file (this
+     *    can happen if some data in the middle is already in the cache) we
+     *    may still need multiple RPC READs.
+     *    This should not be very common though.
+     * 2. Used by fuse write in case where we copy a user write request into
+     *    the cache and find out that we are under memory pressure and need to
+     *    hold the fuse request till we flush enough dirty data to release the
+     *    memory pressure. Each of the dirty chunks will be issued as a child
+     *    rpc_task, while the frontend write RPC will be tracked by the parent
+     *    rpc_task. The parent RPC task will be completed, causing fuse callback
+     *    to be called, when all the child RPC tasks complete.
      */
     rpc_task *parent_task = nullptr;
 
@@ -1785,6 +1793,21 @@ public:
      */
     std::atomic<int> num_ongoing_backend_reads = 0;
     std::atomic<int> read_status = 0;
+
+    /*
+     * Valid only for write RPC tasks.
+     * When under memory pressure we do not complete fuse write requests
+     * immediately after copying the user data to the cache, instead we want
+     * to slow down application writes by delaying fuse callback till we flush
+     * sufficient dirty chunks to relieve the memory pressure. To achieve that
+     * we issue one or more write RPCs to flush the dirty data and complete the
+     * fuse callback only when all these write RPCs complete.
+     *
+     * num_ongoing_backend_writes tracks how many of these backend writes are
+     * currently pending. We complete the application write only after all
+     * writes complete (either success or failure).
+     */
+    std::atomic<int> num_ongoing_backend_writes = 0;
 
     /*
      * This is currently valid only for reads.

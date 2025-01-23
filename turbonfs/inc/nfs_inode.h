@@ -1335,8 +1335,13 @@ public:
      * Sync the dirty membufs in the file cache to the NFS server.
      * All contiguous dirty membufs are clubbed together and sent to the
      * NFS server in a single write call.
+     * If parent_task is non-null, it's the frontend write task that must be
+     * be completed once all these flushes complete. This can be used by the
+     * caller in case of memory pressure when we want to delay fuse callbacks
+     * to slow down writes which can cause more memory to be dirtied.
      */
-    void sync_membufs(std::vector<bytes_chunk> &bcs, bool is_flush);
+    void sync_membufs(std::vector<bytes_chunk> &bcs, bool is_flush,
+                      struct rpc_task *parent_task = nullptr);
 
     /**
      * Called when last open fd is closed for a file/dir.
