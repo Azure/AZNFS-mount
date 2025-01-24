@@ -87,6 +87,11 @@ membuf::~membuf()
     assert(!is_inuse());
 
     /*
+     * waiting_tasks_flush must be empty, all tasks must have been dequeued.
+     */
+    assert(waiting_tasks_flush == nullptr);
+
+    /*
      * dirty membuf must not be destroyed, unless it's due to file being
      * truncated, in which case we don't care about losing the unflushed
      * data.
@@ -704,6 +709,32 @@ void membuf::clear_inuse()
 
     assert(inuse > 0);
     inuse--;
+}
+
+std::vector<struct rpc_task *> membuf::get_waiting_tasks_flush()
+{
+    /*
+     * assert for !is_dirty() not added as in case of write failure
+     * we don't clear dirty flag, so we can have waiting tasks even
+     * when membuf is dirty.
+     */
+    assert(is_locked());
+    assert(!is_flushing());
+
+    std::unique_lock<std::mutex> _lock(waiting_tasks_flush_lock);
+    std::vector<struct rpc_task *> tasks;
+
+    if (waiting_tasks_flush) {
+        tasks.swap(*waiting_tasks_flush);
+
+        /*
+         * Free the waiting_tasks_flush vector.
+         */
+        delete waiting_tasks_flush;
+        waiting_tasks_flush = nullptr;
+    }
+
+    return tasks;
 }
 
 bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
@@ -2325,6 +2356,35 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_nonflushing_bcs_range(
     }
 
     return bc_vec;
+}
+
+bool bytes_chunk_cache::add_waiting_task_membuf(uint64_t offset, uint64_t length, struct rpc_task *task)
+{
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+    auto it = chunkmap.lower_bound(offset);
+    struct bytes_chunk *prev_bc = nullptr;
+
+    // Get the last bc for the given range.
+    while (it != chunkmap.cend() && it->first < (offset + length)) {
+        struct bytes_chunk *bc = &(it->second);
+        prev_bc = bc;
+        ++it;
+    }
+
+    if (prev_bc != nullptr) {
+        struct membuf *mb = prev_bc->get_membuf();
+        std::unique_lock<std::mutex> _lock2(mb->waiting_tasks_flush_lock);
+        if (mb->is_dirty()) {
+            if (mb->waiting_tasks_flush == nullptr) {
+                mb->waiting_tasks_flush = new std::vector<struct rpc_task *>();
+            }
+
+            mb->waiting_tasks_flush->emplace_back(task);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc_range(

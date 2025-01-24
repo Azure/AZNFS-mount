@@ -401,7 +401,7 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
     struct rpc_task *write_task = nullptr;
 
     // Flush dirty membufs to backend.
-    for (bytes_chunk &bc : bc_vec) {
+    for (bytes_chunk& bc : bc_vec) {
         /*
          * Get the underlying membuf for bc.
          * Note that we write the entire membuf, even though bc may be referring

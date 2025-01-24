@@ -17,6 +17,7 @@
 #include "aznfsc.h"
 
 struct nfs_inode;
+struct rpc_task;
 
 /*
  * Reminder to audit use of asserts to ensure we don't depend on assert
@@ -216,6 +217,18 @@ struct membuf
     uint8_t *buffer = nullptr;
     uint8_t *allocated_buffer = nullptr;
 
+    /**
+     * waiting_tasks_flush is a list of tasks waiting for this membuf flushed
+     * to the BLOB. Tasks are added to this list when there is memory
+     * pressure and we need to do inline-writes. As part of inline-write
+     * we flush all the dirty membufs to the BLOB and wait for them to
+     * complete. As we can't wait in fuse context(due to limited fuse
+     * threads), we add tasks to the concern membufs. Once membuf is flushed
+     * to the BLOB, we complete the tasks.
+     */
+    std::vector<struct rpc_task *> *waiting_tasks_flush = nullptr;
+    std::mutex waiting_tasks_flush_lock;
+
     /*
      * If is_file_backed() is true then 'allocated_buffer' is the mmap()ed
      * address o/w it's the heap allocation address.
@@ -303,6 +316,12 @@ struct membuf
     void set_locked();
     void clear_locked();
     bool try_lock();
+
+    /*
+     * get_waiting_tasks_flush() returns the list of tasks waiting for this
+     * membuf to be flushed to the BLOB.
+     */
+    std::vector<struct rpc_task *> get_waiting_tasks_flush();
 
     /**
      * A membuf is marked dirty when the membuf data is updated, making it
@@ -1169,6 +1188,7 @@ public:
         return bytes_truncated;
     }
 
+    bool add_waiting_task_membuf(uint64_t offset, uint64_t length, struct rpc_task *task);
     /*
      * Returns all dirty chunks for a given range in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s).
