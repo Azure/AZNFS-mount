@@ -401,36 +401,40 @@ process_nfsv4_nontlsmounts()
         # fqdn_to_find=$l_host
         # nfs_ip=$(grep -m 1 "^$fqdn_to_find " $VIRTUALFSLOCATION | awk '{print $2}')
 
-        IFS=" " read l_fqdn l_nfsip l_prt <<< $fslocation_entry
-        eecho "daniewo $l_fqdn, $l_nfsip, $l_prt"
-        $new_ip = $l_nfsip
+        IFS=" " read l_fqdn new_ip l_prt <<< $fslocation_entry
+        eecho "daniewo $l_fqdn, $new_ip, $l_prt"
 
-        # If we fail to resolve the host name, try next time.
-        if [ $? -ne 0 ]; then
-            #
-            # If account is deleted then we need to delete the MOUNTMAPv3 entry along
-            # with the proxy iptable entry created for that account.
-            # Note that we don't delete if the MOUNTMAPv3 was changed recently since
-            # the account may have been re-created after the dns lookup failure.
-            #
-            if [ "$new_ip" == "NXDOMAIN" ]; then
-                pecho "Account corresponding to $l_host seems to have been deleted, deleting from ${MOUNTMAPv3} [$line]!"
+        #daniewo check why this error code is not working
 
-                l_mtime=$(ensure_mountmapv3_not_exist "$line" "$mtime_mountmap")
-                [ $? -eq 0 ] && mtime_mountmap=$l_mtime
-            else
-                eecho "resolve_ipv4($l_host) failed: $new_ip"
-            fi
-            continue
-        fi
+        # # If we fail to resolve the host name, try next time.
+        # if [ $? -ne 0 ]; then
+        #     #
+        #     # If account is deleted then we need to delete the MOUNTMAPv3 entry along
+        #     # with the proxy iptable entry created for that account.
+        #     # Note that we don't delete if the MOUNTMAPv3 was changed recently since
+        #     # the account may have been re-created after the dns lookup failure.
+        #     #
+        #     if [ "$new_ip" == "NXDOMAIN" ]; then
+        #         pecho "Account corresponding to $l_host seems to have been deleted, deleting from ${MOUNTMAPv3} [$line]!"
+
+        #         l_mtime=$(ensure_mountmapv3_not_exist "$line" "$mtime_mountmap")
+        #         [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+        #     else
+        #         eecho "resolve_ipv4($l_host) failed: $new_ip"
+        #     fi
+        #     continue
+        # fi
+
+        #daniewo skip check_for_regional_account and then create share in ZRS tenant, change IP to map to another tenant.
+        #then check IP detection change to see if it updates DNAT rules etc.
 
         #
         # If the IP changed for the Blob endpoint, we need to update the DNAT rule.
         # This will take care of migration/failover causing the Blob endpoint IP to change.
         #
         if [ "$new_ip" != "$l_nfsip" ]; then
-            pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
-            check_for_regional_account "$l_host"
+            eecho "daniewwo IP for $l_host changed [$l_nfsip -> $new_ip]."
+            #check_for_regional_account "$l_host"
 
             # This will update DNAT rule as well.
             if ! update_mountmapv3_entry "$line" "$l_host $l_ip $new_ip"; then
