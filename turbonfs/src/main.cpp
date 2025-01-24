@@ -46,6 +46,14 @@ static const struct fuse_opt aznfsc_opts[] =
     FUSE_OPT_END
 };
 
+struct auth_info
+{
+    std::string tenantid;
+    std::string subscriptionid;
+    std::string username;
+    std::string usertype;
+};
+
 void aznfsc_help(const char *argv0)
 {
     printf("usage: %s [options] <mountpoint>\n\n", argv0);
@@ -341,6 +349,97 @@ static std::string get_logdir()
     return optdirdata;
 }
 
+std::string run_command(const std::string& command)
+{
+    /*
+     * Currently we only use this to run 'az account show' command.
+     * 4KB should be sufficient to store the output of above command.
+     */
+    constexpr size_t BUFFER_SIZE = 4096;
+    std::string output(BUFFER_SIZE, '\0');
+
+    // Open a pipe to execute the command
+    FILE *pipe = ::popen(command.c_str(), "r");
+    if (!pipe) {
+        AZLogError("Failed to open pipe for command execution: {}", command);
+        return "";
+    }
+
+    size_t bytes_read = ::fread(const_cast<char *>(output.data()), 1,
+                                BUFFER_SIZE, pipe);
+    if (::ferror(pipe) || (bytes_read <= 0)) {
+        AZLogError("Failed to read from the pipe: {}, command: {}",
+                   bytes_read, command);
+        bytes_read = 0;
+        goto close_pipe;
+    }
+
+    // We expect the entire command output to fit in BUFFER_SIZE bytes.
+    if (!::feof(pipe)) {
+        AZLogError("Command output exceeds {} bytes, command: {}",
+                   BUFFER_SIZE, command);
+        bytes_read = 0;
+        goto close_pipe;
+    }
+
+close_pipe:
+    const int ret = ::pclose(pipe);
+    if (ret != 0) {
+        AZLogError("Command failed with return code: {}, command: {}",
+                   ret, command);
+        return "";
+    }
+
+    if (bytes_read > 0) {
+        output.resize(bytes_read);
+        return output;
+    }
+
+    return "";
+}
+
+int get_authinfo_data(struct auth_info& auth_info)
+{
+    const std::string output = run_command("az account show --output json");
+    if (output.empty()) {
+        AZLogError("'az account show --output json' failed to get auth data");
+        return -1;
+    }
+
+    // Extract tenantid, subscriptionid, and user details from the output json.
+    try {
+        const auto json_data = json::parse(output);
+
+        auth_info.tenantid = json_data["tenantId"].get<std::string>();
+        auth_info.subscriptionid = json_data["id"].get<std::string>();
+        auth_info.username = json_data["user"]["name"].get<std::string>();
+        auth_info.usertype = json_data["user"]["type"].get<std::string>();
+    } catch (json::parse_error& ev) {
+        AZLogError("Failed to parse json: {}, error: {}", output, ev.what());
+        return -1;
+    }
+
+    // Caller expects valid values for tenantid and subscriptionid.
+    if (auth_info.tenantid.empty() || auth_info.subscriptionid.empty()) {
+        AZLogError("'az account show --output json' returned: "
+                   "tenantid: {} subscriptionid: {} username: {} usertype: {}",
+                   auth_info.tenantid,
+                   auth_info.subscriptionid,
+                   auth_info.username,
+                   auth_info.usertype);
+        return -1;
+    }
+
+    AZLogDebug("'az account show --output json' returned: "
+               "tenantid: {} subscriptionid: {} username: {} usertype: {}",
+               auth_info.tenantid,
+               auth_info.subscriptionid,
+               auth_info.username,
+               auth_info.usertype);
+
+    return 0;
+}
+
 /*
  *  Generates an authentication token, sets the necessary arguments, 
  *  and returns a response structure.
@@ -370,11 +469,20 @@ auth_token_cb_res *get_auth_token_and_setargs_cb(struct auth_context *auth)
         return nullptr;
     }
 
-    AZLogInfo("get_auth_token_and_setargs_cb: tenantid: {} subscriptionid: {}", 
-               nfs_get_tenantid(auth),
-               nfs_get_subscriptionid(auth));
+    struct auth_info auth_info;
 
-    assert(nfs_get_tenantid(auth));
+    if (get_authinfo_data(auth_info) == -1) {
+        AZLogError("Failed to get auth data from az cli");
+        free(cb_res);
+        return nullptr;
+    }
+
+    AZLogInfo("get_auth_token_and_setargs_cb: tenantid: {} subscriptionid: {}", 
+               auth_info.tenantid.c_str(),
+               auth_info.subscriptionid.c_str());
+
+    assert(!auth_info.tenantid.empty());
+    assert(!auth_info.subscriptionid.empty());
 
     Azure::Core::Credentials::AccessToken token;
 
@@ -409,8 +517,8 @@ auth_token_cb_res *get_auth_token_and_setargs_cb(struct auth_context *auth)
     // Prepare the authdata object. 
     json authdataObject = {
         {"AuthToken", token.Token},
-        {"SubscriptionId", nfs_get_subscriptionid(auth)},
-        {"TenantId", nfs_get_tenantid(auth)},
+        {"SubscriptionId", auth_info.subscriptionid},
+        {"TenantId", auth_info.tenantid},
         {"AuthorizedTill", std::to_string(expirytime)}
     };
 
@@ -421,8 +529,8 @@ auth_token_cb_res *get_auth_token_and_setargs_cb(struct auth_context *auth)
         AZLogError("Unable to create jsonObject with token related information, "
                    "token: {} SubscriptionID: {} TenantID: {} AuthorizedTill: {}",
                    token.Token,
-                   nfs_get_subscriptionid(auth),
-                   nfs_get_tenantid(auth),
+                   auth_info.subscriptionid,
+                   auth_info.tenantid,
                    expirytime);
         free(cb_res);
         return nullptr;

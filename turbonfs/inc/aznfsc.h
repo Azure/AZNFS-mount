@@ -163,16 +163,6 @@ typedef struct aznfsc_cfg
      */
     bool auth = false;
 
-    /*
-     * Tenant id for which the token needs to be fetched. 
-     */
-    const char *tenantid = nullptr;
-
-    /*
-     * Subscription id in which the account/container lies. 
-     */
-    const char *subscriptionid = nullptr;
-
     /**********************************************************************
      **                          Mount options                           **
      ** These are deliberately named after the popular NFS mount options **

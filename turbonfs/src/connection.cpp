@@ -4,6 +4,70 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <arpa/inet.h>
+
+/*
+ * Return a unique id to identify this client to the server.
+ * As of now we use the interface IPv4 address string, 
+ * but it can be changed to anything else in future.
+ */
+std::string get_clientid() {
+    struct ifaddrs *ifaddr = nullptr;
+    struct ifaddrs *ifa = nullptr;
+    char ip[INET_ADDRSTRLEN] = {0};
+    static std::string client_id = std::to_string(get_current_usecs()) + "-";
+
+    /*
+     * Whatever is encoded here should not exceed the maximum possible that can be 
+     * encoded in AZAuth RPC
+     */
+    constexpr size_t MAX_IP_LENGTH = 64;
+
+    // Get the list of network interfaces
+    if (::getifaddrs(&ifaddr) == -1) {
+        AZLogError("Failed to get network interfaces: {}", strerror(errno));
+        goto failed_get_clientip;
+    }
+
+    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+
+        if (ifa->ifa_addr == nullptr)
+            continue;
+        // Skip non IPv4 address. 
+        if (ifa->ifa_addr->sa_family != AF_INET) 
+            continue;
+        // Skip loopback interface.
+        if (::strcmp(ifa->ifa_name, "lo") == 0) 
+            continue;
+
+        struct sockaddr_in *addr = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
+
+        // Convert binary address to string.
+        if (::inet_ntop(AF_INET, &addr->sin_addr, ip, sizeof(ip)) == nullptr) {
+            AZLogError("Failed to convert binary IP to string: {}", strerror(errno));
+            goto failed_get_clientip;
+        }
+        break;
+    }
+
+    freeifaddrs(ifaddr);
+
+    if (ip[0] == '\0') {
+        AZLogError("No valid IPv4 address found.");
+        goto failed_get_clientip;
+    }
+
+    client_id += std::string(ip);
+
+failed_get_clientip:
+    // We cannot send clientid of size more than MAX_IP_LENGTH.
+    assert(client_id.length() <= MAX_IP_LENGTH);
+    AZLogDebug("Using clientid {}", client_id);
+
+    return client_id;
+}
 
 bool nfs_connection::open()
 {
@@ -39,36 +103,29 @@ bool nfs_connection::open()
         char client_version[16];
 
         [[maybe_unused]]
-        const uint64_t n = snprintf(client_version, sizeof(client_version), 
-                               "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR, 
-                               AZNFSCLIENT_VERSION_MINOR, 
-                               AZNFSCLIENT_VERSION_PATCH);
+        const uint64_t n = snprintf(client_version, sizeof(client_version),
+                                    "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
+                                    AZNFSCLIENT_VERSION_MINOR,
+                                    AZNFSCLIENT_VERSION_PATCH);
         assert(n < sizeof(client_version));
 
-        // TODO: Update this string.
-        std::string client_id = "12345678";
+        std::string client_id = get_clientid();
 
         assert(!mo.export_path.empty());
-        assert(!mo.tenantid.empty());
-        assert(!mo.subscriptionid.empty());
         assert(!mo.authtype.empty());
         assert(strlen(client_version) > 0);
         assert(!client_id.empty());
 
-        const int ret = nfs_set_auth_context(nfs_context, 
-                                             mo.export_path.c_str(), 
-                                             mo.tenantid.c_str(), 
-                                             mo.subscriptionid.c_str(),
+        const int ret = nfs_set_auth_context(nfs_context,
+                                             mo.export_path.c_str(),
                                              mo.authtype.c_str(),
                                              client_version,
                                              client_id.c_str());
         if (ret != 0) {
             AZLogError("Failed to set auth values in nfs context, "
-                       "exportpath={} tenantid={} subid={} authtype={} " 
+                       "exportpath={} authtype={} "
                        "clientversion={} clientid={}",
                        mo.export_path.c_str(),
-                       mo.tenantid.c_str(),
-                       mo.subscriptionid.c_str(),
                        mo.authtype.c_str(),
                        client_version,
                        client_id.c_str());
