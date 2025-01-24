@@ -425,7 +425,6 @@ process_nfsv4_nontlsmounts()
         #     continue
         # fi
 
-        #daniewo skip check_for_regional_account and then create share in ZRS tenant, change IP to map to another tenant.
         #then check IP detection change to see if it updates DNAT rules etc.
 
         #
@@ -434,17 +433,24 @@ process_nfsv4_nontlsmounts()
         #
         if [ "$new_ip" != "$l_nfsip" ]; then
             eecho "daniewwo IP for $l_host changed [$l_nfsip -> $new_ip]."
-            #check_for_regional_account "$l_host"
+
+            #if IP changed, still update the DNAT Rule but also see if this ends up being a ZRS tenant.
+            #Not sure what we will do for ZRS though, as we probably should not mount and only detect IP changes from fslocation
+            #but maybe FS location can return some sort of flag that says "hey we are ZRS FYI"
+            check_for_regional_account "$l_host"
+
+            #danniewo, watch out for this as if we are mounting a ZRS account,
+            # this can potentially be noisy.
 
             # This will update DNAT rule as well.
             if ! update_mountmapv3_entry "$line" "$l_host $l_ip $new_ip"; then
                 eecho "Will reattempt the operation in next iteration."
             else
-                mountpoint2048=$(echo "$findmnt" 2>/dev/null | egrep -m1 " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}')
-                mountpoint2048=$(echo -e "$mountpoint2048")
-                if [ -n "$mountpoint2048" ]; then
-                    ping_new_endpoint "$mountpoint2048" &
-                fi
+                # mountpoint2048=$(echo "$findmnt" 2>/dev/null | egrep -m1 " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}')
+                # mountpoint2048=$(echo -e "$mountpoint2048")
+                # if [ -n "$mountpoint2048" ]; then
+                #     ping_new_endpoint "$mountpoint2048" &
+                # fi
             fi
         fi
     done
