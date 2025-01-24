@@ -795,6 +795,10 @@ void access_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
+            /*
+             * Post-op attributes are optional, if server returns then
+             * update the inode attribute cache.
+             */
             UPDATE_INODE_ATTR(inode, res->ACCESS3res_u.resok.obj_attributes);
         }
         task->reply_error(status);
@@ -843,6 +847,18 @@ static void write_iov_callback(
 
     // Success case.
     if (status == 0) {
+        if (!res->WRITE3res_u.resok.file_wcc.after.attributes_follow) {
+            AZLogDebug("[{}] Postop attributes not received for write, "
+                       "invalidating attribute cache", ino);
+
+            /*
+             * Since the post-op attributes are not populated for the file,
+             * invalidate the cache as the attributes may no longer
+             * be valid since write() would have changed the file attributes.
+             */
+            inode->invalidate_attribute_cache();
+        }
+
         /*
          * WCC implementation.
          * If pre-op attributes indicate that the file changed since we cached,
@@ -1099,6 +1115,10 @@ static void statfs_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
+        /*
+         * Post-op attributes are optional, if server returns then
+         * update the inode attribute cache.
+         */
         UPDATE_INODE_ATTR(inode, res->FSSTAT3res_u.resok.obj_attributes);
 
         struct statvfs st;
@@ -1181,6 +1201,19 @@ static void createfile_callback(
             return;
         }
 
+        if (!res->CREATE3res_u.resok.dir_wcc.after.attributes_follow) {
+            AZLogDebug("[{}] Postop attributes not received for create, "
+                       "invalidating parent attribute cache", ino);
+
+            /*
+             * Since the post-op attributes are not populated for the parent
+             * directory, invalidate the cache as the attributes may no longer
+             * be valid since create() would have changed the parent directory
+             * attributes.
+             */
+            inode->invalidate_attribute_cache();
+        }
+    
         /*
          * See comment above readdirectory_cache::lookuponly, why we don't need
          * to call UPDATE_INODE_ATTR() to invalidate the readdirectory_cache,
@@ -1240,7 +1273,18 @@ static void setattr_callback(
      * inode lock held by truncate_start().
      */
     if (valid & FUSE_SET_ATTR_SIZE) {
-        inode->truncate_end();
+        /*
+         * Application can call truncate only on an open fd, hence when we come
+         * here we must have the filecache allocated (refer on_fuse_open()), but
+         * if fuse filesytem is being exported by NFS server then we can have a
+         * scenario where the server calls FUSE_MKNOD to create regular file and
+         * then calls FUSE_SETATTR on it without calling open().
+         */
+        if (inode->has_filecache()) {
+            inode->truncate_end();
+        } else {
+            AZLogDebug("[{}] Filecache not present for truncate_end()", ino);
+        }
     }
 
     /*
@@ -1339,6 +1383,19 @@ void mknod_callback(
             return;
         }
 
+        if (!res->CREATE3res_u.resok.dir_wcc.after.attributes_follow) {
+            AZLogDebug("[{}] Postop attributes not received for mknod, "
+                       "invalidating parent attribute cache", ino);
+
+            /*
+             * Since the post-op attributes are not populated for the parent
+             * directory, invalidate the cache as the attributes may no longer
+             * be valid since mknod() would have changed the parent directory
+             * attributes.
+             */
+            inode->invalidate_attribute_cache();
+        }
+
         /*
          * See comment above readdirectory_cache::lookuponly, why we don't need
          * to call UPDATE_INODE_ATTR() to invalidate the readdirectory_cache,
@@ -1416,6 +1473,20 @@ void mkdir_callback(
 
             return;
         }
+
+        if (!res->MKDIR3res_u.resok.dir_wcc.after.attributes_follow) {
+            AZLogDebug("[{}] Postop attributes not received for mkdir, "
+                       "invalidating parent attribute cache", ino);
+
+            /*
+             * Since the post-op attributes are not populated for the parent
+             * directory, invalidate the cache as the attributes may no longer
+             * be valid since mkdir() would have changed the parent directory
+             * attributes.
+             */
+            inode->invalidate_attribute_cache();
+        }
+    
         /*
          * See comment above readdirectory_cache::lookuponly, why we don't need
          * to call UPDATE_INODE_ATTR() to invalidate the readdirectory_cache,
@@ -1481,6 +1552,19 @@ void unlink_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
+            if (!res->REMOVE3res_u.resok.dir_wcc.after.attributes_follow) {
+                AZLogDebug("[{}] Postop attributes not received for unlink, "
+                           "invalidating parent attribute cache", parent_ino);
+
+                /*
+                 * Since the post-op attributes are not populated for the parent
+                 * directory, invalidate the cache as the attributes may no longer
+                 * be valid since unlink() would have changed the parent directory
+                 * attributes.
+                 */
+                parent_inode->invalidate_attribute_cache();
+            }
+
             /*
              * See comment above readdirectory_cache::lookuponly, why we don't
              * need to call UPDATE_INODE_ATTR() to invalidate the
@@ -1555,6 +1639,19 @@ void rmdir_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
+            if (!res->RMDIR3res_u.resok.dir_wcc.after.attributes_follow) {
+                AZLogDebug("[{}] Postop attributes not received for rmdir, "
+                           "invalidating parent attribute cache", ino);
+
+                /*
+                 * Since the post-op attributes are not populated for the parent
+                 * directory, invalidate the cache as the attributes may no longer
+                 * be valid since rmdir() would have changed the parent directory
+                 * attributes.
+                 */
+                inode->invalidate_attribute_cache();
+            }
+
             /*
              * See comment above readdirectory_cache::lookuponly, why we don't
              * need to call UPDATE_INODE_ATTR() to invalidate the
@@ -1618,6 +1715,19 @@ void symlink_callback(
             task->free_rpc_task();
 
             return;
+        }
+
+        if (!res->SYMLINK3res_u.resok.dir_wcc.after.attributes_follow) {
+            AZLogDebug("[{}] Postop attributes not received for symlink, "
+                       "invalidating parent attribute cache", ino);
+
+            /*
+             * Since the post-op attributes are not populated for the parent
+             * directory, invalidate the cache as the attributes may no longer
+             * be valid since symlink() would have changed the parent directory
+             * attributes.
+             */
+            inode->invalidate_attribute_cache();
         }
 
         /*
@@ -1747,6 +1857,19 @@ void rename_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
+            if (!res->RENAME3res_u.resok.fromdir_wcc.after.attributes_follow) {
+                AZLogDebug("[{}] Postop attributes not received for rename, "
+                           "invalidating old parent attribute cache", parent_ino);
+
+                /*
+                 * Since the post-op attributes are not populated for the parent
+                 * directory, invalidate the cache as the attributes may no longer
+                 * be valid since rename() would have changed the parent directory
+                 * attributes.
+                 */
+                parent_inode->invalidate_attribute_cache();
+            }
+
             /*
              * We cannot use UPDATE_INODE_WCC() here as we cannot update our
              * readdir cache with the newly created file/dir, as the readdir
@@ -1758,6 +1881,19 @@ void rename_callback(
                               res->RENAME3res_u.resok.fromdir_wcc.after);
 
             if (newparent_ino != parent_ino) {
+                if (!res->RENAME3res_u.resok.todir_wcc.after.attributes_follow) {
+                    AZLogDebug("[{}] Postop attributes not received for rename, "
+                               "invalidating new parent attribute cache", newparent_ino);
+
+                    /*
+                     * Since the post-op attributes are not populated for the parent
+                     * directory, invalidate the cache as the attributes may no longer
+                     * be valid since rename() would have changed the parent directory
+                     * attributes.
+                     */
+                    newparent_inode->invalidate_attribute_cache();
+                }
+
                 UPDATE_INODE_ATTR(newparent_inode,
                                   res->RENAME3res_u.resok.todir_wcc.after);
             }
@@ -1851,6 +1987,10 @@ void readlink_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
+        /*
+         * Post-op attributes are optional, if server returns then
+         * update the inode attribute cache.
+         */
         UPDATE_INODE_ATTR(inode, res->READLINK3res_u.resok.symlink_attributes);
 
         task->reply_readlink(res->READLINK3res_u.resok.data);
@@ -3224,6 +3364,10 @@ static void read_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
     if (status == 0) {
+        /*
+         * Post-op attributes are optional, if server returns then
+         * update the inode attribute cache.
+         */
         UPDATE_INODE_ATTR(inode, res->READ3res_u.resok.file_attributes);
 
 #ifdef ENABLE_PRESSURE_POINTS
