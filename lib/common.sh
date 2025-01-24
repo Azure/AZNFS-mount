@@ -633,6 +633,8 @@ update_mountmapv3_entry()
             fi
         fi
 
+        eecho "Daniewo updated ip table"
+
         chattr -f -i $MOUNTMAPFILE
         #
         # We do this thing instead of inplace update by sed as that has a
@@ -692,6 +694,7 @@ ensure_iptable_entry()
             wecho "Deleted undesired conntrack entry [$1 -> $1]!"
         fi
     fi
+    eecho "Daniewo updated Ip Table"
 }
 
 #
