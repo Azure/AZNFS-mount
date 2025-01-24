@@ -1336,7 +1336,7 @@ public:
      * All contiguous dirty membufs are clubbed together and sent to the
      * NFS server in a single write call.
      * If parent_task is non-null, it's the frontend write task that must be
-     * be completed once all these flushes complete. This can be used by the
+     * completed once all these flushes complete. This can be used by the
      * caller in case of memory pressure when we want to delay fuse callbacks
      * to slow down writes which can cause more memory to be dirtied.
      */

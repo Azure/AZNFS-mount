@@ -463,6 +463,18 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
             continue;
         }
 
+        /*
+         * We hold the membuf lock here for the following reasons:
+         * - Only one thread can flush a membuf. Once it takes the lock
+         *   it calls set_flushing() to mark the membuf as flushing and
+         *   then no other thread would attempt to flush it.
+         * - It also prevents writers from updating the membuf content
+         *   while it's being flushed (though this is not mandatory).
+         *
+         * This is released only when the backend write completes, thus
+         * wait_for_ongoing_flush() can simply wait for the membuf lock to
+         * get notified when the flush completes.
+         */
         mb->set_locked();
         if (mb->is_flushing() || !mb->is_dirty()) {
             mb->clear_locked();
@@ -765,6 +777,12 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 
         assert(mb != nullptr);
         assert(mb->is_inuse());
+
+        /*
+         * sync_membufs() would have taken the membuf lock for the duration
+         * of the backend wite that flushes the membuf, so once we get the
+         * lock we know that the flush write has completed.
+         */
         mb->set_locked();
 
         /*
