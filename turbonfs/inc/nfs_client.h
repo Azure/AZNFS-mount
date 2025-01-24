@@ -26,6 +26,7 @@
  * - rpc_stats_az::stats_lock_42
  * - bytes_chunk_cache::chunkmap_lock_43
  * - membuf::mb_lock_44
+ * - membuf::flush_waiters_lock_44
  */
 
 extern "C" {

@@ -6,6 +6,7 @@
 #include "aznfsc.h"
 #include "file_cache.h"
 #include "nfs_inode.h"
+#include "rpc_task.h"
 
 /*
  * This enables debug logs and also runs the self tests.
@@ -87,9 +88,9 @@ membuf::~membuf()
     assert(!is_inuse());
 
     /*
-     * waiting_tasks_flush must be empty, all tasks must have been dequeued.
+     * flush_waiters must be empty, all tasks must have been dequeued.
      */
-    assert(waiting_tasks_flush == nullptr);
+    assert(flush_waiters == nullptr);
 
     /*
      * dirty membuf must not be destroyed, unless it's due to file being
@@ -711,27 +712,30 @@ void membuf::clear_inuse()
     inuse--;
 }
 
-std::vector<struct rpc_task *> membuf::get_waiting_tasks_flush()
+std::vector<struct rpc_task *> membuf::get_flush_waiters()
 {
     /*
-     * assert for !is_dirty() not added as in case of write failure
-     * we don't clear dirty flag, so we can have waiting tasks even
-     * when membuf is dirty.
+     * We cannot assert for !is_dirty() as in case of write failure
+     * we complete flush_waiters w/o clearing dirty flag.
      */
+    assert(is_inuse());
     assert(is_locked());
     assert(!is_flushing());
 
-    std::unique_lock<std::mutex> _lock(waiting_tasks_flush_lock);
+    std::unique_lock<std::mutex> _lock(flush_waiters_lock_44);
     std::vector<struct rpc_task *> tasks;
 
-    if (waiting_tasks_flush) {
-        tasks.swap(*waiting_tasks_flush);
+    if (flush_waiters) {
+        // flush_waiters is dynamically allocated when first task is added.
+        assert(!flush_waiters->empty());
+        tasks.swap(*flush_waiters);
+        assert(flush_waiters->empty());
 
         /*
-         * Free the waiting_tasks_flush vector.
+         * Free the flush_waiters vector.
          */
-        delete waiting_tasks_flush;
-        waiting_tasks_flush = nullptr;
+        delete flush_waiters;
+        flush_waiters = nullptr;
     }
 
     return tasks;
@@ -2358,28 +2362,46 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_nonflushing_bcs_range(
     return bc_vec;
 }
 
-bool bytes_chunk_cache::add_waiting_task_membuf(uint64_t offset, uint64_t length, struct rpc_task *task)
+bool bytes_chunk_cache::add_flush_waiter(uint64_t offset,
+                                         uint64_t length,
+                                         struct rpc_task *task)
 {
+    assert(offset < AZNFSC_MAX_FILE_SIZE);
+    assert(length > 0);
+
+    // Only frontend write tasks must ever wait.
+    assert(task->magic == RPC_TASK_MAGIC);
+    assert(task->get_op_type() == FUSE_WRITE);
+    assert(task->rpc_api->write_task.is_fe());
+
     const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
     auto it = chunkmap.lower_bound(offset);
-    struct bytes_chunk *prev_bc = nullptr;
+    struct bytes_chunk *last_bc = nullptr;
 
     // Get the last bc for the given range.
-    while (it != chunkmap.cend() && it->first < (offset + length)) {
-        struct bytes_chunk *bc = &(it->second);
-        prev_bc = bc;
+    while (it != chunkmap.cend() && (it->first < (offset + length))) {
+        last_bc = &(it->second);
         ++it;
     }
 
-    if (prev_bc != nullptr) {
-        struct membuf *mb = prev_bc->get_membuf();
-        std::unique_lock<std::mutex> _lock2(mb->waiting_tasks_flush_lock);
+    if (last_bc != nullptr) {
+        // membuf must have at least one byte in the requested range.
+        assert(last_bc->offset >= offset &&
+               last_bc->offset < (offset + length));
+
+        struct membuf *mb = last_bc->get_membuf();
+
+        std::unique_lock<std::mutex> _lock2(mb->flush_waiters_lock_44);
+        /*
+         * Only add flush waiters to dirty membufs, else it may have already
+         * completed flush and we don't want the task to be waiting forever.
+         */
         if (mb->is_dirty()) {
-            if (mb->waiting_tasks_flush == nullptr) {
-                mb->waiting_tasks_flush = new std::vector<struct rpc_task *>();
+            if (mb->flush_waiters == nullptr) {
+                mb->flush_waiters = new std::vector<struct rpc_task *>();
             }
 
-            mb->waiting_tasks_flush->emplace_back(task);
+            mb->flush_waiters->emplace_back(task);
             return true;
         }
     }

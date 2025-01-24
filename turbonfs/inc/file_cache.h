@@ -218,16 +218,34 @@ struct membuf
     uint8_t *allocated_buffer = nullptr;
 
     /**
-     * waiting_tasks_flush is a list of tasks waiting for this membuf flushed
-     * to the BLOB. Tasks are added to this list when there is memory
-     * pressure and we need to do inline-writes. As part of inline-write
-     * we flush all the dirty membufs to the BLOB and wait for them to
-     * complete. As we can't wait in fuse context(due to limited fuse
-     * threads), we add tasks to the concern membufs. Once membuf is flushed
-     * to the BLOB, we complete the tasks.
+     * flush_waiters is a list of task(s) waiting for this membuf to be flushed
+     * to the backing Blob. These are frontend write task(s) which were created
+     * to execute the fuse write request(s). In normal "no memory pressure"
+     * condition these tasks would be completed immediately after copying the
+     * application data to the cache, but when under memory pressure we don't
+     * want to call the fuse callback immediately, else it'll issue more writes,
+     * causing memory pressure to become worse. What we want is to slow down
+     * fuse/application by completing the write callback only when the data is
+     * flushed to the Blob and not after it's just copied to the file cache.
+     * At the same time we don't want to block the fuse thread as that affects
+     * other interactive requests like readdir, getattr, etc. So, we add the
+     * fuse write task(s) to this list and complete the fuse handler/thread
+     * immediately so that it can handle other interactive requests (note that
+     * fuse threads are very limited). Later when the flush/write to Blob
+     * actually completes, it completes the fuse task(s) queued in this list.
      */
-    std::vector<struct rpc_task *> *waiting_tasks_flush = nullptr;
-    std::mutex waiting_tasks_flush_lock;
+    std::vector<struct rpc_task *> *flush_waiters = nullptr;
+    std::mutex flush_waiters_lock_44;
+
+    /**
+     * get_flush_waiters() returns the list of tasks waiting for this
+     * membuf to be flushed to the Blob. All these tasks must be completed
+     * appropriately when membuf flush completes (success or failure).
+     *
+     * Note: This splices the flush_waiters list and returns, and hence
+     *       it's not idempotent.
+     */
+    std::vector<struct rpc_task *> get_flush_waiters();
 
     /*
      * If is_file_backed() is true then 'allocated_buffer' is the mmap()ed
@@ -316,12 +334,6 @@ struct membuf
     void set_locked();
     void clear_locked();
     bool try_lock();
-
-    /*
-     * get_waiting_tasks_flush() returns the list of tasks waiting for this
-     * membuf to be flushed to the BLOB.
-     */
-    std::vector<struct rpc_task *> get_waiting_tasks_flush();
 
     /**
      * A membuf is marked dirty when the membuf data is updated, making it
@@ -1188,7 +1200,28 @@ public:
         return bytes_truncated;
     }
 
-    bool add_waiting_task_membuf(uint64_t offset, uint64_t length, struct rpc_task *task);
+    /**
+     * Add 'task' to the flush_waiters list for membuf covering the region
+     * [offset, offset+list). If the region is covered by more than one membuf
+     * then 'task' is added to the flush_waiters list of the last membuf.
+     *
+     * Returns true if task was successfully added. This will happen when the
+     * following conditions are met:
+     * 1. There is a membuf with at least one byte overlapping with the given
+     *    region [offset, offset+list).
+     * 2. The membuf is dirty.
+     *
+     * If it returns true, caller need not call the fuse callback as it'll
+     * get called when the flush completes.
+     * If task cannot be added to the flush_waiters list, it returns false,
+     * and in that case caller must complete the fuse callback.
+     *
+     * LOCK: This takes chunkmap_lock_43 lock exclusively.
+     */
+    bool add_flush_waiter(uint64_t offset,
+                          uint64_t length,
+                          struct rpc_task *task);
+
     /*
      * Returns all dirty chunks for a given range in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s).

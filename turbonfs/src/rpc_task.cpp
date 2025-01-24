@@ -866,14 +866,21 @@ void bc_iovec::on_io_complete(uint64_t bytes_completed, bool is_unstable_write)
             mb->clear_flushing();
 
             /*
-             * Check if any task waiting for this membuf to be flushed.
+             * This membuf has completed flushing successfully, check if any
+             * task is waiting for this membuf to be flushed.
              */
-            std::vector<struct rpc_task *> tvec = mb->get_waiting_tasks_flush();
-            for (auto task : tvec) {
+            std::vector<struct rpc_task *> tvec = mb->get_flush_waiters();
+            for (auto& task : tvec) {
                 assert(task->magic == RPC_TASK_MAGIC);
                 assert(task->get_op_type() == FUSE_WRITE);
                 assert(task->rpc_api->write_task.is_fe());
+                assert(task->rpc_api->write_task.get_size() > 0);
 
+                AZLogDebug("Completing flush waiter task {} for [{}, {})",
+                           fmt::ptr(task),
+                           task->rpc_api->write_task.get_offset(),
+                           task->rpc_api->write_task.get_offset() +
+                           task->rpc_api->write_task.get_size());
                 task->reply_write(task->rpc_api->write_task.get_size());
             }
 
@@ -958,13 +965,22 @@ void bc_iovec::on_io_fail(int status)
         mb->clear_flushing();
 
         /*
-         * Check if any task waiting for this membuf to be flushed.
+         * This membuf has completed flushing albeit with failure, check if any
+         * task is waiting for this membuf to be flushed.
          */
-        std::vector<struct rpc_task *> tvec = mb->get_waiting_tasks_flush();
-        for (auto task : tvec) {
+        std::vector<struct rpc_task *> tvec = mb->get_flush_waiters();
+        for (auto& task : tvec) {
             assert(task->magic == RPC_TASK_MAGIC);
             assert(task->get_op_type() == FUSE_WRITE);
             assert(task->rpc_api->write_task.is_fe());
+
+            AZLogError("Completing flush waiter task {} for [{}, {}), "
+                       "failed: {}",
+                       fmt::ptr(task),
+                       task->rpc_api->write_task.get_offset(),
+                       task->rpc_api->write_task.get_offset() +
+                       task->rpc_api->write_task.get_size(),
+                       status);
 
             task->reply_error(status);
         }
@@ -2456,15 +2472,29 @@ void rpc_task::run_write()
         if (bc_vec.empty()) {
             /*
              * Another application write raced with us and it got to do the
-             * inline write before us, job done, return.
+             * inline write before us. Try adding this task to the flush_waiters
+             * list for the membuf where we copied the application data. If
+             * we are able to add successfully, then we will call the fuse
+             * callback when the flush completes at the backend. This will
+             * slow down the writer application, thus relieving the memory
+             * pressure.
+             * If add_flush_waiter() returns false, that means this membuf
+             * is already flushed by that other thread and we can complete
+             * the fuse callback in this context.
              */
             inode->flush_unlock();
-            if (inode->get_filecache()->add_waiting_task_membuf(offset, length, this)) {
-                AZLogDebug("[{}] Inline write, membuf not flushed, write will be"
-                 " completed when membuf flushed", ino);
+
+            if (inode->get_filecache()->add_flush_waiter(offset,
+                                                         length,
+                                                         this)) {
+                AZLogDebug("[{}] Inline write, membuf not flushed, write "
+                           "[{}, {}) will be completed when membuf is flushed",
+                           ino, offset, offset+length);
                 return;
             } else {
-                AZLogDebug("[{}] Inline write, Membuf already flushed completing the write", ino);
+                AZLogDebug("[{}] Inline write, membuf already flushed, "
+                           "completing fuse write [{}, {})",
+                           ino, offset, offset+length);
                 reply_write(length);
                 return;
             }
