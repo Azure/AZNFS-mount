@@ -23,6 +23,7 @@ std::string get_clientid() {
      * Whatever is encoded here should not exceed the maximum possible that can be 
      * encoded in AZAuth RPC
      */
+    [[maybe_unused]]
     constexpr size_t MAX_IP_LENGTH = 64;
 
     // Get the list of network interfaces
