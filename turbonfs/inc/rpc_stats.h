@@ -68,6 +68,18 @@ struct rpc_opstat
     std::atomic<uint64_t> total_usec = 0;
 
     /*
+     * Cumulative time spent by the fuse request handler from the time fuse
+     * called our registered handler and till we returned from the handler.
+     * Note that this is the time fuse thread was occupied, and not the time
+     * taken to serve the request, the fuse req will mostly be completed later
+     * asynchronously.
+     * If this time is high that would mean handler for the specific request
+     * type is blocking fuse threads and this would mean increased latency for
+     * other requests as fuse has limited threads.
+     */
+    std::atomic<uint64_t> fuse_handler_usec = 0;
+
+    /*
      * Error map to store all the errors encountered by the given api.
      * This is guarded by rpc_stats_az::stats_lock_42.
      */
@@ -82,6 +94,8 @@ struct rpc_opstat
  */
 class rpc_stats_az
 {
+    friend struct fuse_req_stats;
+
 public:
     rpc_stats_az() = default;
 
@@ -346,6 +360,28 @@ public:
 #define INC_GBL_STATS(var, inc)  rpc_stats_az::var += (inc)
 #define DEC_GBL_STATS(var, dec)  {assert(rpc_stats_az::var >= dec); rpc_stats_az::var -= (dec);}
 #define GET_GBL_STATS(var)       rpc_stats_az::var
+
+struct fuse_req_stats
+{
+    fuse_req_stats(enum fuse_opcode _optype) :
+        optype(_optype),
+        issue(get_current_usecs())
+    {
+    }
+
+    ~fuse_req_stats()
+    {
+        const uint64_t handler_usec = get_current_usecs() - issue;
+        assert((int64_t) handler_usec >= 0);
+
+        rpc_stats_az::opstats[optype].fuse_handler_usec += handler_usec;
+    }
+
+    const enum fuse_opcode optype = (fuse_opcode) 0;
+    const uint64_t issue;
+};
+
+#define FUSE_STATS_TRACKER(optype) struct fuse_req_stats _frs(optype)
 
 }
 
