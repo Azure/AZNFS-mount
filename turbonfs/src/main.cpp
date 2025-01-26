@@ -667,6 +667,26 @@ int main(int argc, char *argv[])
     // Set default values for config variables not set using the above.
     aznfsc_cfg.set_defaults_and_sanitize();
 
+    /*
+     * Honour "-o max_threads=" cmdline option, else use the fuse_max_threads
+     * value from the config, if set.
+     */
+    if (opts.max_threads == 10 /* FUSE_LOOP_MT_DEF_MAX_THREADS */) {
+        if (aznfsc_cfg.fuse_max_threads != -1) {
+            opts.max_threads = aznfsc_cfg.fuse_max_threads;
+        }
+    }
+
+    /*
+     * Honour "-o max_idle_threads=" cmdline option, else use the
+     * fuse_max_idle_threads value from the config, if set.
+     */
+    if (opts.max_idle_threads == (UINT_MAX) -1 /* FUSE_LOOP_MT_DEF_IDLE_THREADS */) {
+        if (aznfsc_cfg.fuse_max_idle_threads != -1) {
+            opts.max_idle_threads = aznfsc_cfg.fuse_max_idle_threads;
+        }
+    }
+
     se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops),
                           &nfs_client::get_instance());
     if (se == NULL) {

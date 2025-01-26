@@ -48,6 +48,10 @@ static_assert(AZNFSCFG_WSIZE_MAX == AZNFSCFG_RSIZE_MAX);
 #define AZNFSCFG_FUSE_MAX_BG_MIN 1
 #define AZNFSCFG_FUSE_MAX_BG_MAX 65536
 #define AZNFSCFG_FUSE_MAX_BG_DEF 4096
+#define AZNFSCFG_FUSE_MAX_THR_MIN -1 // Implies fuse default.
+#define AZNFSCFG_FUSE_MAX_THR_MAX 65536
+#define AZNFSCFG_FUSE_MAX_IDLE_THR_MIN -1 // Implies fuse default.
+#define AZNFSCFG_FUSE_MAX_IDLE_THR_MAX INT_MAX
 #define AZNFSCFG_CACHE_MAX_MB_MIN 512
 #define AZNFSCFG_CACHE_MAX_MB_MAX (1024 * 1024)
 #define AZNFSCFG_CACHE_MAX_MB_DEF (4 * 1024)
@@ -228,6 +232,12 @@ typedef struct aznfsc_cfg
 
     // Fuse max_background config value.
     int fuse_max_background = -1;
+
+    // Fuse max_threads config value.
+    int fuse_max_threads = -1;
+
+    // Fuse max_idle_threads config value.
+    int fuse_max_idle_threads = -1;
 
     // Whether to use TLS or not.
     const char *xprtsec = nullptr;

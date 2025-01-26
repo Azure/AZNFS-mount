@@ -139,6 +139,8 @@ do { \
          */
         _CHECK_INTZ(readahead_kb, AZNFSCFG_READAHEAD_KB_MIN, AZNFSCFG_READAHEAD_KB_MAX);
         _CHECK_INT(fuse_max_background, AZNFSCFG_FUSE_MAX_BG_MIN, AZNFSCFG_FUSE_MAX_BG_MAX);
+        _CHECK_INT(fuse_max_threads, AZNFSCFG_FUSE_MAX_THR_MIN, AZNFSCFG_FUSE_MAX_THR_MAX);
+        _CHECK_INT(fuse_max_idle_threads, AZNFSCFG_FUSE_MAX_IDLE_THR_MIN, AZNFSCFG_FUSE_MAX_IDLE_THR_MAX);
 
         _CHECK_STR(xprtsec);
 
@@ -341,6 +343,8 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("readdir_maxcount = {}", readdir_maxcount);
     AZLogDebug("readahead_kb = {}", readahead_kb);
     AZLogDebug("fuse_max_background = {}", fuse_max_background);
+    AZLogDebug("fuse_max_threads = {}", fuse_max_threads);
+    AZLogDebug("fuse_max_idle_threads = {}", fuse_max_idle_threads);
     AZLogDebug("cache.attr.user.enable = {}", cache.attr.user.enable);
     AZLogDebug("cache.readdir.kernel.enable = {}", cache.readdir.kernel.enable);
     AZLogDebug("cache.readdir.user.enable = {}", cache.readdir.user.enable);

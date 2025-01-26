@@ -76,8 +76,14 @@ consistency: solowriter
 
 #
 # Misc options
+# fuse_* config variables control some fuse configurable value.
+# fuse_max_threads has the same effect as fuse cmdline option "-o max_threads=".
+# fuse_max_idle_threads has the same effect as fuse cmdline option "-o max_idle_threads=".
+# Value of -1 for these imply "use fuse defaults". Fuse defaults must be fine for most cases.
 #
 readdir_maxcount: 1048576
+fuse_max_threads: -1
+fuse_max_idle_threads: -1
 fuse_max_background: 4096
 
 #

@@ -211,8 +211,8 @@ do { \
                         std::to_string(ops.dispatch_usec / (ops.count * 1000.0)) + \
                         " msec\n"; \
         str += "        Avg fuse issue time: " + \
-                        std::to_string(ops.fuse_handler_usec / ((double) ops.count)) + \
-                        " usec\n"; \
+                        std::to_string(ops.fuse_handler_usec / (ops.count * 1000.0)) + \
+                        " msec\n"; \
         str += "        Avg Total execute time: " + \
                         std::to_string(ops.total_usec / (ops.count * 1000.0)) + \
                         " msec\n"; \
