@@ -119,6 +119,17 @@ void rpc_stats_az::dump_stats()
                   " Reconnect attempts\n";
 
     str += "File Cache statistics:\n";
+    if (aznfsc_cfg.cache.data.user.enable) {
+        str += "  " + std::to_string(aznfsc_cfg.cache.data.user.max_size_mb) +
+                      " MB, max user cache size configured\n";
+    } else {
+        str += "  user cache disabled\n";
+    }
+    if (aznfsc_cfg.cache.data.kernel.enable) {
+        str += "  kernel cache enabled\n";
+    } else {
+        str += "  kernel cache disabled\n";
+    }
     str += "  " + std::to_string(bytes_chunk_cache::get_num_caches()) +
                   " file caches\n";
     str += "  " + std::to_string(bytes_chunk_cache::num_chunks_g) +
@@ -129,24 +140,28 @@ void rpc_stats_az::dump_stats()
                   " bytes cached\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_dirty_g) +
                   " bytes dirty\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_flushing_g) +
+                  " bytes currently flushing\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_commit_pending_g) +
+                  " bytes pending commit\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_uptodate_g) +
                   " bytes uptodate\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_inuse_g) +
                   " bytes inuse\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_locked_g) +
                   " bytes locked\n";
-    str += "  " + std::to_string(bytes_chunk_cache::num_get_g) +
-                  " get calls\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_get_g) +
-                  " bytes mapped\n";
-    str += "  " + std::to_string(bytes_chunk_cache::num_release_g) +
-                  " release calls\n";
+                  " bytes mapped via " +
+                  std::to_string(bytes_chunk_cache::num_get_g) +
+                  " get calls\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_release_g) +
-                  " bytes released\n";
-    str += "  " + std::to_string(bytes_chunk_cache::num_truncate_g) +
-                  " truncate calls\n";
+                  " bytes released via " +
+                  std::to_string(bytes_chunk_cache::num_release_g) +
+                  " release calls\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_truncate_g) +
-                  " bytes truncated\n";
+                  " bytes truncated via " +
+                  std::to_string(bytes_chunk_cache::num_truncate_g) +
+                  " truncate calls\n";
 
     str += "Application statistics:\n";
     str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_read)) +
