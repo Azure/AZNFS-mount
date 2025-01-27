@@ -164,7 +164,7 @@ void rpc_stats_az::dump_stats()
     str += "File Cache statistics:\n";
     if (aznfsc_cfg.cache.data.user.enable) {
         str += "  " + std::to_string(aznfsc_cfg.cache.data.user.max_size_mb) +
-                      " MB, max user cache size configured\n";
+                      " MB user cache size configured\n";
     } else {
         str += "  user cache disabled\n";
     }

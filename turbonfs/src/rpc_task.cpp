@@ -337,6 +337,7 @@ void rpc_task::init_write_fe(fuse_req *request,
 
     assert(rpc_api->write_task.is_fe());
     assert(!rpc_api->write_task.is_be());
+    assert(num_ongoing_backend_writes == 0);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
@@ -2326,6 +2327,9 @@ void rpc_task::run_write()
      */
     assert(inode->has_filecache());
 
+    // There should not be any writes running for this RPC task initially.
+    assert(num_ongoing_backend_writes == 0);
+
     // Update cached write timestamp, if needed.
     inode->stamp_cached_write();
 
@@ -3989,6 +3993,10 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
 void rpc_task::free_rpc_task()
 {
     assert(get_op_type() <= FUSE_OPCODE_MAX);
+
+    // We shouldn't be freeing any task still not complete.
+    assert(num_ongoing_backend_writes == 0);
+    assert(num_ongoing_backend_reads == 0);
 
     /*
      * Destruct anything allocated by the RPC API specific structs.

@@ -2152,6 +2152,12 @@ public:
          */
         assert(count <= 1048576);
 
+        /*
+         * We should not respond to fuse when there are still ongoing
+         * backend writes.
+         */
+        assert(num_ongoing_backend_writes == 0);
+
         const int fre = fuse_reply_write(get_fuse_req(), count);
         if (fre != 0) {
             INC_GBL_STATS(fuse_reply_failed, 1);
@@ -2545,6 +2551,10 @@ public:
 #ifdef ENABLE_PARANOID
         task->issuing_tid = ::gettid();
 #endif
+
+        // New task must have these as 0.
+        assert(task->num_ongoing_backend_writes == 0);
+        assert(task->num_ongoing_backend_reads == 0);
 
         INC_GBL_STATS(rpc_tasks_allocated, 1);
         return task;
