@@ -29,7 +29,7 @@ permissions:
 jobs:
   verify_branch_name:
     name: Verify Branch Name
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - name: Extract Branch Name
       run: | 
@@ -46,7 +46,7 @@ jobs:
         exit 1
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: verify_branch_name
     steps:
     - name: Check Version Number

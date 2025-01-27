@@ -6,4 +6,4 @@ Origin: Microsoft
 Maintainer: Azure Storage XNFS Team <aznfs@microsoft.com>
 Homepage: https://github.com/Azure/AZNFS-mount/blob/main/README.md
 Description: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
-Depends: bash, procps, conntrack, iptables, bind9-host, iproute2, util-linux, nfs-common, netcat, sysvinit-utils, whiptail, stunnel4, net-tools, libasan6
+Depends: bash, procps, conntrack, iptables, bind9-host, iproute2, util-linux, nfs-common, netcat, sysvinit-utils, whiptail, stunnel4, net-tools, libasan6, libunwind-dev, libgoogle-perftools-dev

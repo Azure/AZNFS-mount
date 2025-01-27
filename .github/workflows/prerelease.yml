@@ -29,7 +29,7 @@ permissions:
 jobs:
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }} (Test Release)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - name: Check Version Number
       shell: bash
