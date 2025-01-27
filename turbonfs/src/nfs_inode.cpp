@@ -384,6 +384,7 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
      * trigerred the inline sync.
      */
     if (parent_task) {
+        assert(parent_task->magic == RPC_TASK_MAGIC);
         // Must be a frontend write task.
         assert(parent_task->get_op_type() == FUSE_WRITE);
         assert(parent_task->rpc_api->write_task.is_fe());

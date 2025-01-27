@@ -1229,6 +1229,7 @@ void rpc_task::issue_write_rpc()
      */
     if (parent_task) {
         // Must be a frontend write task.
+        assert(parent_task->magic == RPC_TASK_MAGIC);
         assert(parent_task->get_op_type() == FUSE_WRITE);
         assert(parent_task->rpc_api->write_task.is_fe());
         assert(parent_task->num_ongoing_backend_writes > 0);
