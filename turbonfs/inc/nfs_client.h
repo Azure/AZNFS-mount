@@ -94,7 +94,7 @@ private:
      *    is referring to it.
      */
     std::multimap<uint64_t /* fileid */, struct nfs_inode*> inode_map;
-    std::shared_mutex inode_map_lock_0;
+    mutable std::shared_mutex inode_map_lock_0;
 
     /*
      * Every RPC request is represented by an rpc_task which is created when
@@ -296,6 +296,22 @@ public:
 
 #define get_nfs_inode(fh, fattr, ...) \
     __get_nfs_inode(LOC_VAL fh, fattr, ## __VA_ARGS__)
+
+    /**
+     * Get various stats related to inodes/files.
+     */
+    void get_inode_stats(uint64_t& total_inodes,
+                         uint64_t& num_files,
+                         uint64_t& num_dirs,
+                         uint64_t& num_symlinks,
+                         uint64_t& open_files,
+                         uint64_t& open_dirs,
+                         uint64_t& num_files_cache_empty,
+                         uint64_t& num_dirs_cache_empty,
+                         uint64_t& num_forgotten,
+                         uint64_t& expecting_forget,
+                         uint64_t& num_dircached,
+                         uint64_t& num_silly_renamed) const;
 
     /**
      * Release the given inode, called when fuse FORGET call causes the

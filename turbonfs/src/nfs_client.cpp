@@ -746,6 +746,95 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
     return new_inode;
 }
 
+void nfs_client::get_inode_stats(uint64_t& total_inodes,
+                                 uint64_t& num_files,
+                                 uint64_t& num_dirs,
+                                 uint64_t& num_symlinks,
+                                 uint64_t& open_files,
+                                 uint64_t& open_dirs,
+                                 uint64_t& num_files_cache_empty,
+                                 uint64_t& num_dirs_cache_empty,
+                                 uint64_t& num_forgotten,
+                                 uint64_t& expecting_forget,
+                                 uint64_t& num_dircached,
+                                 uint64_t& num_silly_renamed) const
+{
+    total_inodes = 0;
+    num_files = 0;
+    num_dirs = 0;
+    num_symlinks = 0;
+    open_files = 0;
+    open_dirs = 0;
+    num_files_cache_empty = 0;
+    num_dirs_cache_empty = 0;
+    num_forgotten = 0;
+    expecting_forget = 0;
+    num_dircached = 0;
+    num_silly_renamed = 0;
+
+    /*
+     * Go over all inodes in inode_map.
+     */
+    std::shared_lock<std::shared_mutex> _lock(inode_map_lock_0);
+    for (auto it = inode_map.cbegin(); it != inode_map.cend(); ++it) {
+        const struct nfs_inode *inode = it->second;
+        assert(inode->magic == NFS_INODE_MAGIC);
+
+        total_inodes++;
+
+        switch (inode->file_type) {
+            case S_IFREG:
+                num_files++;
+                if (inode->is_open()) {
+                    open_files++;
+                }
+                if (inode->is_cache_empty()) {
+                    num_files_cache_empty++;
+                }
+                break;
+            case S_IFDIR:
+                num_dirs++;
+                if (inode->is_open()) {
+                    open_dirs++;
+                }
+                if (inode->is_cache_empty()) {
+                    num_dirs_cache_empty++;
+                }
+                break;
+            case S_IFLNK:
+                num_symlinks++;
+                break;
+        }
+
+        // This inode is cached in one or more readdir caches?
+        if (inode->is_dircached()) {
+            num_dircached++;
+        }
+
+        // Fuse has called forget for this inode?
+        if (inode->is_forgotten()) {
+            assert(!inode->forget_expected);
+            num_forgotten++;
+        }
+
+        // Do we expect a forget from fuse for this inode?
+        if (inode->forget_expected > 0) {
+            assert(!inode->is_forgotten());
+            expecting_forget++;
+        }
+
+        // Is this inode silly-renamed?
+        if (inode->is_silly_renamed) {
+            num_silly_renamed++;
+        }
+    }
+
+    /*
+     * Let's perform some sanity checks.
+     */
+    assert(total_inodes == (num_files + num_dirs + num_symlinks));
+}
+
 // Caller must hold inode_map_lock_0.
 void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
                                       size_t dropcnt)

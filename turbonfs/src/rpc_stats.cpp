@@ -34,6 +34,23 @@ void rpc_stats_az::dump_stats()
     const struct sockaddr_storage *saddr = nullptr;
     struct rpc_stats cum_stats = {};
     std::string str;
+    uint64_t total_inodes, num_files, num_dirs, num_symlinks,
+             open_files, open_dirs, num_files_cache_empty, num_dirs_cache_empty,
+             num_forgotten, expecting_forget, num_dircached, num_silly_renamed;
+
+    // Gather files/inode related stats.
+    client.get_inode_stats(total_inodes,
+                           num_files,
+                           num_dirs,
+                           num_symlinks,
+                           open_files,
+                           open_dirs,
+                           num_files_cache_empty,
+                           num_dirs_cache_empty,
+                           num_forgotten,
+                           expecting_forget,
+                           num_dircached,
+                           num_silly_renamed);
 
     /*
      * Take exclusive lock to avoid mixing dump from simultaneous dump
@@ -117,6 +134,32 @@ void rpc_stats_az::dump_stats()
                   " RPC requests retransmitted\n";
     str += "  " + std::to_string(cum_stats.num_reconnects) +
                   " Reconnect attempts\n";
+
+    str += "File/Inode statistics:\n";
+    str += "  " + std::to_string(total_inodes) +
+                  " total inodes\n";
+    str += "  " + std::to_string(num_files) +
+                  " regular files\n";
+    str += "  " + std::to_string(num_dirs) +
+                  " directories\n";
+    str += "  " + std::to_string(num_symlinks) +
+                  " symlinks\n";
+    str += "  " + std::to_string(open_files) +
+                  " files currently open\n";
+    str += "  " + std::to_string(open_dirs) +
+                  " directories currently open\n";
+    str += "  " + std::to_string(num_files_cache_empty) +
+                  " files have empty cache\n";
+    str += "  " + std::to_string(num_dirs_cache_empty) +
+                  " directories have empty cache\n";
+    str += "  " + std::to_string(num_forgotten) +
+                  " inodes forgotten by fuse, still in inode cache\n";
+    str += "  " + std::to_string(expecting_forget) +
+                  " inodes not yet forgotten by fuse\n";
+    str += "  " + std::to_string(num_dircached) +
+                  " inodes cached by one or more readdir cache\n";
+    str += "  " + std::to_string(num_silly_renamed) +
+                  " inodes silly-renamed (waiting for last close)\n";
 
     str += "File Cache statistics:\n";
     if (aznfsc_cfg.cache.data.user.enable) {
