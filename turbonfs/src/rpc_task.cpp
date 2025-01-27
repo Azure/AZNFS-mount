@@ -2511,6 +2511,10 @@ void rpc_task::run_write()
          * to call the fuse callback after all the issued backend writes
          * complete. This will be done asynchronously while the sync_membufs()
          * call will return after issuing the writes.
+         *
+         * Note: sync_membufs() can free this rpc_task if all issued backend
+         *       writes complete before sync_membufs() can return.
+         *       DO NOT access rpc_task after sync_membufs() call.
          */
         inode->sync_membufs(bc_vec, false /* is_flush */, this);
         inode->flush_unlock();

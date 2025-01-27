@@ -1339,6 +1339,10 @@ public:
      * completed once all these flushes complete. This can be used by the
      * caller in case of memory pressure when we want to delay fuse callbacks
      * to slow down writes which can cause more memory to be dirtied.
+     *
+     * Note: sync_membufs() can free parent_task if all issued backend
+     *       writes complete before sync_membufs() could return.
+     *       DO NOT access parent_task after sync_membufs() returns.
      */
     void sync_membufs(std::vector<bytes_chunk> &bcs, bool is_flush,
                       struct rpc_task *parent_task = nullptr);

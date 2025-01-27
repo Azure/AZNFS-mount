@@ -379,6 +379,10 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
                              bool is_flush,
                              struct rpc_task *parent_task)
 {
+    if (bc_vec.empty()) {
+        return;
+    }
+
     /*
      * If parent_task is passed, it must refer to the fuse write task that
      * trigerred the inline sync.
@@ -390,10 +394,17 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
         assert(parent_task->rpc_api->write_task.is_fe());
         // Must not already have num_ongoing_backend_writes set.
         assert(parent_task->num_ongoing_backend_writes == 0);
-    }
 
-    if (bc_vec.empty()) {
-        return;
+        /*
+         * Set num_ongoing_backend_writes to 1 before issuing the first backend
+         * write. Note that bc_vec may result in possibly multiple backend
+         * writes to be issued. After issuing some of those writes and before we
+         * could issue all if write_iov_callback() is called for all the writes
+         * issued till that point, then we may mistake it for "all issued writes
+         * have completed" and wrongly complete the parent_task.
+         * This protective ref is decremented at the end of this function.
+         */
+        parent_task->num_ongoing_backend_writes = 1;
     }
 
     /*
@@ -538,6 +549,37 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
     // Dispatch the leftover bytes (or full write).
     if (write_task) {
         write_task->issue_write_rpc();
+    }
+
+    /*
+     * Drop the protective num_ongoing_backend_writes count taken at the start
+     * of this function, and if it's the only one remaining that means all
+     * backend writes have completed and we can complete the parent_task, else
+     * (for the common case) we will complete parent_task when the last backend
+     * write completes, in write_iov_callback().
+     */
+    if (parent_task) {
+        assert(parent_task->magic == RPC_TASK_MAGIC);
+        assert(parent_task->get_op_type() == FUSE_WRITE);
+        assert(parent_task->rpc_api->write_task.is_fe());
+        assert(parent_task->num_ongoing_backend_writes > 0);
+        assert(parent_task->rpc_api->write_task.get_ino() == get_fuse_ino());
+
+        if (--parent_task->num_ongoing_backend_writes == 0) {
+            if (get_write_error() == 0) {
+                assert(parent_task->rpc_api->write_task.get_size() > 0);
+                parent_task->reply_write(
+                        parent_task->rpc_api->write_task.get_size());
+            } else {
+                parent_task->reply_error(get_write_error());
+            }
+        }
+
+        /*
+         * Note: parent_task could be freed by the above reply callback.
+         *       Don't access parent_task after this, either here or the
+         *       caller.
+         */
     }
 }
 
