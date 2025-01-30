@@ -219,9 +219,16 @@ bool nfs_connection::open()
      * requester's context, we use eventfd to notify the service thread when
      * a new PDU is queued for sending. Use infinite poll timeout in debug
      * builds to catch any bugs with eventfd notification.
+     *
+     * XXX We cannot safely do this as setting infinite poll timeout causes
+     *     libnfs to not handle RPC timeouts. Note that for libnfs to detect
+     *     RPC timeouts it must run the rpc_service() loop and if there is
+     *     say request(s) lying only in the waitpdu queue and no incoming
+     *     data then poll() will never come out.
      */
 #ifdef ENABLE_DEBUG
-    nfs_set_poll_timeout(nfs_context, INT_MAX);
+    //nfs_set_poll_timeout(nfs_context, INT_MAX);
+    nfs_set_poll_timeout(nfs_context, 1000);
 #else
     nfs_set_poll_timeout(nfs_context, 1000);
 #endif

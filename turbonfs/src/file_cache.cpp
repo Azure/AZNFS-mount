@@ -2078,10 +2078,11 @@ int64_t bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
 /**
  * Caller MUST hold exclusive lock on chunkmap_lock_43.
  */
-void bytes_chunk_cache::clear_nolock()
+void bytes_chunk_cache::clear_nolock(bool shutdown)
 {
-    AZLogDebug("[{}] Cache purge: chunkmap.size()={}, backing_file_name={}",
-               CACHE_TAG, chunkmap.size(), backing_file_name);
+    AZLogDebug("[{}] Cache purge(shutdown={}): chunkmap.size()={}, "
+               "backing_file_name={}",
+               CACHE_TAG, shutdown, chunkmap.size(), backing_file_name);
 
     assert(bytes_allocated <= bytes_allocated_g);
     assert(bytes_cached <= bytes_cached_g);
@@ -2091,7 +2092,7 @@ void bytes_chunk_cache::clear_nolock()
      * All the data sitting in the cache is either dirty pending commit
      * We can't release any of this data so return early.
      */
-    if ((bytes_dirty + bytes_commit_pending) == bytes_allocated) {
+    if (!shutdown && ((bytes_dirty + bytes_commit_pending) == bytes_allocated)) {
         AZLogDebug("[{}] Cache purge: backing_file_name={} has no purgeable "
                    "data",
                    CACHE_TAG, backing_file_name);
@@ -2100,7 +2101,7 @@ void bytes_chunk_cache::clear_nolock()
 
     /*
      * We go over all the bytes_chunk to see if they can be freed. Following
-     * bytes_chunk cannot be freed:
+     * bytes_chunk cannot be freed (when shutdown is false):
      * 1. If it's marked dirty, i.e., it has data which needs to be sync'ed to
      *    the Blob. This is application data which need to be written to the
      *    Blob and freeing the bytes_chunk w/o that will cause data consistency
@@ -2137,12 +2138,24 @@ void bytes_chunk_cache::clear_nolock()
          *       may be fetched for read. Technically these shouldn't be
          *       skipped.
          */
-        if (mb->is_inuse()) {
-            AZLogDebug("[{}] Cache purge: skipping inuse membuf(offset={}, "
-                       "length={}) (inuse count={}, dirty={})",
-                       CACHE_TAG, mb->offset, mb->length,
-                       mb->get_inuse(), mb->is_dirty());
-            continue;
+        if (!shutdown) {
+            if (mb->is_inuse()) {
+                AZLogDebug("[{}] Cache purge: skipping inuse membuf(offset={}, "
+                           "length={}) (inuse count={}, dirty={})",
+                           CACHE_TAG, mb->offset, mb->length,
+                           mb->get_inuse(), mb->is_dirty());
+                continue;
+            }
+        } else {
+            if (mb->is_inuse()) {
+                AZLogError("[{}] Cache purge: Got inuse membuf(offset={}, "
+                           "length={}) (inuse count={}, dirty={}) when shutting "
+                           "down cache",
+                           CACHE_TAG, mb->offset, mb->length,
+                           mb->get_inuse(), mb->is_dirty());
+                // No membufs should be in use when file is closed.
+                assert(0);
+            }
         }
 
         /*
@@ -2151,34 +2164,73 @@ void bytes_chunk_cache::clear_nolock()
          * release() some chunk while holding the lock may drop their inuse
          * count to allow release() to release the bytes_chunk.
          */
-        if (mb->is_locked()) {
-            AZLogDebug("[{}] Cache purge: skipping locked membuf(offset={}, "
-                       "length={}) (inuse count={}, dirty={})",
-                       CACHE_TAG, mb->offset, mb->length,
-                       mb->get_inuse(), mb->is_dirty());
-            continue;
+        if (!shutdown) {
+            if (mb->is_locked()) {
+                AZLogDebug("[{}] Cache purge: skipping locked membuf(offset={}, "
+                           "length={}) (inuse count={}, dirty={})",
+                           CACHE_TAG, mb->offset, mb->length,
+                           mb->get_inuse(), mb->is_dirty());
+                continue;
+            }
+        } else {
+            if (mb->is_locked()) {
+                AZLogError("[{}] Cache purge: Got locked membuf(offset={}, "
+                           "length={}) (inuse count={}, dirty={}) when shutting "
+                           "down cache",
+                           CACHE_TAG, mb->offset, mb->length,
+                           mb->get_inuse(), mb->is_dirty());
+                // No membufs should be locked when file is closed.
+                assert(0);
+            }
         }
 
         /*
          * Has data to be written to Blob.
          * Cannot safely drop this from the cache.
          */
-        if (mb->is_dirty()) {
-            AZLogDebug("[{}] Cache purge: skipping dirty membuf(offset={}, "
-                       "length={})",
-                       CACHE_TAG, mb->offset, mb->length);
-            continue;
+        if (!shutdown) {
+            if (mb->is_dirty()) {
+                AZLogDebug("[{}] Cache purge: skipping dirty membuf(offset={}, "
+                           "length={})",
+                           CACHE_TAG, mb->offset, mb->length);
+                continue;
+            }
+        } else {
+            /*
+             * This can happen f.e., when we have dirty membufs due to write
+             * failures, log and proceed with freeing.
+             */
+            if (mb->is_dirty()) {
+                AZLogWarn("[{}] Cache purge: Got dirty membuf(offset={}, "
+                          "length={}) when shutting down cache, freeing it. "
+                          "THIS MAY CAUSE FILE DATA TO BE INCONSISTENT!",
+                          CACHE_TAG, mb->offset, mb->length);
+            }
         }
 
         /*
          * Has data not yet committed.
          * Cannot safely drop this from the cache.
          */
-        if (mb->is_commit_pending()) {
-            AZLogDebug("[{}] Cache purge: skipping commit_pending "
-                       "membuf(offset={}, length={})",
-                       CACHE_TAG, mb->offset, mb->length);
-            continue;
+        if (!shutdown) {
+            if (mb->is_commit_pending()) {
+                AZLogDebug("[{}] Cache purge: skipping commit_pending "
+                           "membuf(offset={}, length={})",
+                           CACHE_TAG, mb->offset, mb->length);
+                continue;
+            }
+        } else {
+            /*
+             * This can happen f.e., when we have uncommitted membufs due to
+             * write failures, log and proceed with freeing.
+             */
+            if (mb->is_commit_pending()) {
+                AZLogWarn("[{}] Cache purge: Got commit_pending "
+                          "membuf(offset={}, length={}) when shutting down "
+                          "cache, freeing it. "
+                          "THIS MAY CAUSE FILE DATA TO BE INCONSISTENT!",
+                          CACHE_TAG, mb->offset, mb->length);
+            }
         }
 
         AZLogDebug("[{}] Cache purge: deleting membuf(offset={}, length={}), "
@@ -2188,7 +2240,7 @@ void bytes_chunk_cache::clear_nolock()
                    start_size - chunkmap.size(), start_size);
 
         // Make sure the compound check also passes.
-        assert(bc->safe_to_release());
+        assert(bc->safe_to_release() || shutdown);
 
         /*
          * Release the chunk.
@@ -2215,6 +2267,8 @@ void bytes_chunk_cache::clear_nolock()
                    "as chunkmap not empty (still present {} of {})",
                    CACHE_TAG, backing_file_name,
                    chunkmap.size(), start_size);
+        // On file close, we should free all chunks.
+        assert(!shutdown);
         assert(bytes_allocated > 0);
         return;
     }

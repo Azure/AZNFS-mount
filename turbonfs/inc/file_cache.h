@@ -1325,20 +1325,26 @@ public:
      * For file-backed cache, this also releases all the file blocks.
      * This will be called for invalidating the cache for a file, typically
      * when we detect that file has changed (through getattr or preop attrs
-     * telling that mtime is different than what we have cached).
+     * telling that mtime is different than what we have cached) or when
+     * the file inode is forgotten by fuse and we don't want to keep the cache
+     * anymore. For the latter case, clear_nolock() must be called with
+     * shutdown param as true.
      *
-     * Following chunks won't be released.
+     * When shutdown is false, following chunks won't be released.
      * - Which are inuse.
      *   These may have ongoing IOs, so not safe to release.
      * - Which are dirty.
      *   These need to be flushed to the Blob, else we lose data.
+     * When shutdown is true it means the caller wants to purge the cache and
+     * the file is no longer being used, so we release all chunks irrespective
+     * of their current state.
      */
-    void clear_nolock();
+    void clear_nolock(bool shutdown = false);
 
-    void clear()
+    void clear(bool shutdown = false)
     {
         const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
-        clear_nolock();
+        clear_nolock(shutdown);
     }
 
     void invalidate()

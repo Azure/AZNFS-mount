@@ -1478,7 +1478,7 @@ public:
 
                 if (purge_now) {
                     AZLogDebug("[{}] (Purgenow) Purging filecache", get_fuse_ino());
-                    filecache_handle->clear();
+                    filecache_handle->clear(true /* shutdown */);
                     AZLogDebug("[{}] (Purgenow) Purged filecache", get_fuse_ino());
                 }
             }
