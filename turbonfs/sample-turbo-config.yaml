@@ -3,15 +3,15 @@
 # These will ONLY be used if the user runs the binary directly or passes
 # "none" as source in the mount command
 #
-account: amsprdsty01enfs25
-container: testcont
+account: sjc22prdste06hnfsv3acc1
+container: nfsv3test
 cloud_suffix: blob.preprod.core.windows.net
 port: 2047
 
 #
 # Auth Config
 #
-auth: true
+auth: false
 
 #
 # NFS mount options
