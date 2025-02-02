@@ -217,36 +217,6 @@ struct membuf
     uint8_t *buffer = nullptr;
     uint8_t *allocated_buffer = nullptr;
 
-    /**
-     * flush_waiters is a list of task(s) waiting for this membuf to be flushed
-     * to the backing Blob. These are frontend write task(s) which were created
-     * to execute the fuse write request(s). In normal "no memory pressure"
-     * condition these tasks would be completed immediately after copying the
-     * application data to the cache, but when under memory pressure we don't
-     * want to call the fuse callback immediately, else it'll issue more writes,
-     * causing memory pressure to become worse. What we want is to slow down
-     * fuse/application by completing the write callback only when the data is
-     * flushed to the Blob and not after it's just copied to the file cache.
-     * At the same time we don't want to block the fuse thread as that affects
-     * other interactive requests like readdir, getattr, etc. So, we add the
-     * fuse write task(s) to this list and complete the fuse handler/thread
-     * immediately so that it can handle other interactive requests (note that
-     * fuse threads are very limited). Later when the flush/write to Blob
-     * actually completes, it completes the fuse task(s) queued in this list.
-     */
-    std::vector<struct rpc_task *> *flush_waiters = nullptr;
-    std::mutex flush_waiters_lock_44;
-
-    /**
-     * get_flush_waiters() returns the list of tasks waiting for this
-     * membuf to be flushed to the Blob. All these tasks must be completed
-     * appropriately when membuf flush completes (success or failure).
-     *
-     * Note: This splices the flush_waiters list and returns, and hence
-     *       it's not idempotent.
-     */
-    std::vector<struct rpc_task *> get_flush_waiters();
-
     /*
      * If is_file_backed() is true then 'allocated_buffer' is the mmap()ed
      * address o/w it's the heap allocation address.
@@ -1200,28 +1170,6 @@ public:
         return bytes_truncated;
     }
 
-    /**
-     * Add 'task' to the flush_waiters list for membuf covering the region
-     * [offset, offset+list). If the region is covered by more than one membuf
-     * then 'task' is added to the flush_waiters list of the last membuf.
-     *
-     * Returns true if task was successfully added. This will happen when the
-     * following conditions are met:
-     * 1. There is a membuf with at least one byte overlapping with the given
-     *    region [offset, offset+list).
-     * 2. The membuf is dirty.
-     *
-     * If it returns true, caller need not call the fuse callback as it'll
-     * get called when the flush completes.
-     * If task cannot be added to the flush_waiters list, it returns false,
-     * and in that case caller must complete the fuse callback.
-     *
-     * LOCK: This takes chunkmap_lock_43 lock exclusively.
-     */
-    bool add_flush_waiter(uint64_t offset,
-                          uint64_t length,
-                          struct rpc_task *task);
-
     /*
      * Returns all dirty chunks for a given range in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s).
@@ -1242,7 +1190,8 @@ public:
 
     /*
      * Returns dirty chunks which are not already flushing, in the given range,
-     * from chunkmap
+     * from chunkmap. If bytes pointer is passed it's populated with the total
+     * number of bytes included in the returned bytes_chunk vector.
      * Before returning it increases the inuse count of underlying membuf(s).
      * Caller will typically sync dirty membuf to Blob and once done must call
      * clear_inuse().
@@ -1257,7 +1206,8 @@ public:
      *       get_dirty_nonflushing_bcs_range().
      */
     std::vector<bytes_chunk> get_dirty_nonflushing_bcs_range(
-            uint64_t st_off = 0, uint64_t end_off = UINT64_MAX) const;
+            uint64_t st_off = 0, uint64_t end_off = UINT64_MAX,
+            uint64_t *bytes = nullptr) const;
 
     /*
      * Returns all dirty chunks which are currently flushing for a given range
@@ -1397,6 +1347,13 @@ public:
      * counter doesn't reduce till the writes complete but another thread
      * looking to flush should not account for those as they are already
      * being flushed.
+     *
+     * When called with inode->flush_lock() held, bytes to flush can go up
+     * after get_bytes_to_flush() returns but it cannot go down.
+     * This is because with flush_lock held no new flush can start and hence
+     * bytes_flushing cannot go up, but as ongoing flushes complete,
+     * bytes_flushing can go down. Otoh, bytes_dirty can go up as
+     * copy_to_cache() doesn't need the flush_lock.
      */
     uint64_t get_bytes_to_flush() const
     {

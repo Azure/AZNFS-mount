@@ -93,7 +93,7 @@ void rpc_stats_az::dump_stats()
 
     str += "---[RPC stats]----------\n";
     str += "Stats for " + mo.server + ":" + mo.export_path +
-           "mounted on " + mo.mountpoint + ":\n";
+           " mounted on " + mo.mountpoint + ":\n";
     str += "  NFS mount options:" +
            std::string(mo.readonly ? "ro" : "rw") +
            std::string(",vers=3") +

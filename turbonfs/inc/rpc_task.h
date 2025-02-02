@@ -427,6 +427,17 @@ struct bc_iovec
              * the bytes_chunk is removed from the queue.
              */
             bcq.emplace(bc);
+
+            /*
+             * Update fcsm::flushing_seq_num, as we have now arranged to flush
+             * bc.length bytes. They will be flushed later once we have
+             * accumulated enough, but they will definitely be flushed.
+             * We want to update flushing_seq_num before they are actually
+             * flushed as flush callbacks can start getting called anytime after
+             * this.
+             */
+            inode->get_fcsm()->add_flushing(bc.length);
+
             return true;
         } else if (((offset + length) == bc.offset) &&
                    ((length + bc.length) <= max_iosize) &&
@@ -438,6 +449,8 @@ struct bc_iovec
             iovcnt++;
             mb->set_flushing();
             bcq.emplace(bc);
+            inode->get_fcsm()->add_flushing(bc.length);
+
             return true;
         }
 

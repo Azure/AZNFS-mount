@@ -866,25 +866,6 @@ void bc_iovec::on_io_complete(uint64_t bytes_completed, bool is_unstable_write)
             mb->clear_dirty();
             mb->clear_flushing();
 
-            /*
-             * This membuf has completed flushing successfully, check if any
-             * task is waiting for this membuf to be flushed.
-             */
-            std::vector<struct rpc_task *> tvec = mb->get_flush_waiters();
-            for (auto& task : tvec) {
-                assert(task->magic == RPC_TASK_MAGIC);
-                assert(task->get_op_type() == FUSE_WRITE);
-                assert(task->rpc_api->write_task.is_fe());
-                assert(task->rpc_api->write_task.get_size() > 0);
-
-                AZLogDebug("Completing flush waiter task {} for [{}, {})",
-                           fmt::ptr(task),
-                           task->rpc_api->write_task.get_offset(),
-                           task->rpc_api->write_task.get_offset() +
-                           task->rpc_api->write_task.get_size());
-                task->reply_write(task->rpc_api->write_task.get_size());
-            }
-
             if (is_unstable_write) {
                 mb->set_commit_pending();
             }
@@ -964,28 +945,6 @@ void bc_iovec::on_io_fail(int status)
         assert(mb->is_flushing() && mb->is_dirty() && mb->is_uptodate());
 
         mb->clear_flushing();
-
-        /*
-         * This membuf has completed flushing albeit with failure, check if any
-         * task is waiting for this membuf to be flushed.
-         */
-        std::vector<struct rpc_task *> tvec = mb->get_flush_waiters();
-        for (auto& task : tvec) {
-            assert(task->magic == RPC_TASK_MAGIC);
-            assert(task->get_op_type() == FUSE_WRITE);
-            assert(task->rpc_api->write_task.is_fe());
-
-            AZLogError("Completing flush waiter task {} for [{}, {}), "
-                       "failed: {}",
-                       fmt::ptr(task),
-                       task->rpc_api->write_task.get_offset(),
-                       task->rpc_api->write_task.get_offset() +
-                       task->rpc_api->write_task.get_size(),
-                       status);
-
-            task->reply_error(status);
-        }
-
         mb->clear_locked();
         mb->clear_inuse();
         iov++;
@@ -1173,9 +1132,6 @@ static void write_iov_callback(
         bciov->on_io_fail(status);
     }
 
-    delete bciov;
-    task->rpc_api->pvt = nullptr;
-
     /*
      * If this write_rpc was issued as part of a parent write task, then
      * decrement the ongoing write count and if it is the last write then
@@ -1192,6 +1148,20 @@ static void write_iov_callback(
         if (--parent_task->num_ongoing_backend_writes == 0) {
             if (inode->get_write_error() == 0) {
                 assert(parent_task->rpc_api->write_task.get_size() > 0);
+#if 0
+                /*
+                 * XXX This assert is not valid as sync_membufs() may have
+                 *     divided the dirty membufs into multiple bc_iovec (each
+                 *     issues as a single WRITE RPC to the backend), some of
+                 *     these dirty membufs would have been added by parent_task,
+                 *     while most of it would come from other write tasks.
+                 *     Each of these will carry the parent_task and only the
+                 *     last one would come here, but this last bc_iovec need
+                 *     not correspond to the parent_task.
+                 */
+                assert(parent_task->rpc_api->write_task.get_size() <=
+                       bciov->orig_length);
+#endif
                 parent_task->reply_write(
                         parent_task->rpc_api->write_task.get_size());
             } else {
@@ -1199,6 +1169,24 @@ static void write_iov_callback(
             }
         }
     }
+
+    /*
+     * If this flush has completed successfully, call flush-commit state
+     * machine's on_flush_complete() handler.
+     *
+     * Note: We MUST ensure that on_flush_complete() doesn't block else it'll
+     *       block a libnfs thread which may stall further request processing
+     *       which may cause deadlock.
+     *
+     * TODO: Need to handle failure case and prevent state machine from
+     *       stalling.
+     */
+    if (inode->get_write_error() == 0) {
+        inode->get_fcsm()->on_flush_complete(bciov->orig_length);
+    }
+
+    delete bciov;
+    task->rpc_api->pvt = nullptr;
 
     // Release the task.
     task->free_rpc_task();
@@ -1220,6 +1208,7 @@ void rpc_task::issue_write_rpc()
     assert(get_op_type() == FUSE_WRITE);
     // Must only be called for a BE task.
     assert(rpc_api->write_task.is_be());
+
     [[maybe_unused]]
     const struct rpc_task *parent_task = rpc_api->parent_task;
 
@@ -1243,6 +1232,15 @@ void rpc_task::issue_write_rpc()
     assert(bciov != nullptr);
     assert(bciov->magic == BC_IOVEC_MAGIC);
 
+    // issue_write_rpc() can be called for partial writes too.
+    assert(bciov->length <= bciov->orig_length);
+    assert(bciov->offset >= bciov->orig_offset);
+    assert((bciov->orig_offset + bciov->orig_length) ==
+           (bciov->offset + bciov->length));
+
+    // FCSM must be marked running, if we are inside issue_write_rpc().
+    assert(inode->get_fcsm()->is_running());
+
     WRITE3args args;
     ::memset(&args, 0, sizeof(args));
     bool rpc_retry = false;
@@ -1265,10 +1263,10 @@ void rpc_task::issue_write_rpc()
         stats.on_rpc_issue();
 
         if (rpc_nfs3_writev_task(get_rpc_ctx(),
-                                        write_iov_callback, &args,
-                                        bciov->iov,
-                                        bciov->iovcnt,
-                                        this) == NULL) {
+                                 write_iov_callback, &args,
+                                 bciov->iov,
+                                 bciov->iovcnt,
+                                 this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -2327,6 +2325,7 @@ void rpc_task::run_write()
      * filecache must have been allocated when we reach here.
      */
     assert(inode->has_filecache());
+    assert(inode->has_fcsm());
 
     // There should not be any writes running for this RPC task initially.
     assert(num_ongoing_backend_writes == 0);
@@ -2465,59 +2464,10 @@ void rpc_task::run_write()
                    extent_left, extent_right);
 
         /*
-         * Grab flush_lock to get exclusive list of dirty chunks, which are not
-         * already being flushed. This also protects us racing with a truncate
-         * call and growing the file size after truncate shrinks the file.
+         * ensure_flush() will arrange to flush all the dirty data and complete
+         * the write task when the flush completes.
          */
-        inode->flush_lock();
-
-        std::vector<bytes_chunk> bc_vec =
-            inode->get_filecache()->get_dirty_nonflushing_bcs_range();
-
-        if (bc_vec.empty()) {
-            /*
-             * Another application write raced with us and it got to do the
-             * inline write before us. Try adding this task to the flush_waiters
-             * list for the membuf where we copied the application data. If
-             * we are able to add successfully, then we will call the fuse
-             * callback when the flush completes at the backend. This will
-             * slow down the writer application, thus relieving the memory
-             * pressure.
-             * If add_flush_waiter() returns false, that means this membuf
-             * is already flushed by that other thread and we can complete
-             * the fuse callback in this context.
-             */
-            inode->flush_unlock();
-
-            if (inode->get_filecache()->add_flush_waiter(offset,
-                                                         length,
-                                                         this)) {
-                AZLogDebug("[{}] Inline write, membuf not flushed, write "
-                           "[{}, {}) will be completed when membuf is flushed",
-                           ino, offset, offset+length);
-                return;
-            } else {
-                AZLogDebug("[{}] Inline write, membuf already flushed, "
-                           "completing fuse write [{}, {})",
-                           ino, offset, offset+length);
-                reply_write(length);
-                return;
-            }
-        }
-
-        /*
-         * Perform inline sync.
-         * Since we pass the 3rd arg to sync_membufs, it tells sync_membufs()
-         * to call the fuse callback after all the issued backend writes
-         * complete. This will be done asynchronously while the sync_membufs()
-         * call will return after issuing the writes.
-         *
-         * Note: sync_membufs() can free this rpc_task if all issued backend
-         *       writes complete before sync_membufs() can return.
-         *       DO NOT access rpc_task after sync_membufs() call.
-         */
-        inode->sync_membufs(bc_vec, false /* is_flush */, this);
-        inode->flush_unlock();
+        inode->get_fcsm()->ensure_flush(0, offset, length, this);
 
         // Free up the fuse thread without completing the application write.
         return;
@@ -2581,31 +2531,14 @@ void rpc_task::run_write()
     }
 
     /*
-     * We need to flush the dirty data in the range [extent_left, extent_right),
-     * get the membufs for the dirty data.
-     * We don't want to run over an inprogress truncate and resetting the file
-     * size set by truncate, so grab the is_flushing lock.
+     * Queue a non-blocking flush target for flushing all the dirty data.
      */
-    inode->flush_lock();
-
-    std::vector<bytes_chunk> bc_vec =
-        inode->get_filecache()->get_dirty_nonflushing_bcs_range(extent_left,
-                                                                extent_right);
-
-    if (bc_vec.size() == 0) {
-        inode->flush_unlock();
-        reply_write(length);
-        return;
-    }
+    inode->get_fcsm()->ensure_flush(0, offset, length, nullptr);
 
     /*
-     * Pass is_flush as false, since we don't want the writes to complete
-     * before returning.
+     * Complete the write request without waiting for the backend flush to
+     * complete.
      */
-    inode->sync_membufs(bc_vec, false /* is_flush */);
-    inode->flush_unlock();
-
-    // Send reply to original request without waiting for the backend write to complete.
     reply_write(length);
 }
 

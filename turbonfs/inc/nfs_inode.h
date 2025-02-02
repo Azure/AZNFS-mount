@@ -7,6 +7,7 @@
 #include "rpc_readdir.h"
 #include "file_cache.h"
 #include "readahead.h"
+#include "fcsm.h"
 
 #define NFS_INODE_MAGIC *((const uint32_t *)"NFSI")
 
@@ -251,6 +252,15 @@ private:
      */
     std::shared_ptr<ra_state> readahead_state;
     std::atomic<bool> rastate_alloced = false;
+
+    /*
+     * Flush-commit state machine, used for performing flush/commit to the
+     * backend file.
+     * Valid only for regular files.
+     * Also see comments above filecache_handle.
+     */
+    std::shared_ptr<struct fcsm> fcsm;
+    std::atomic<bool> fcsm_alloced = false;
 
     /*
      * Cached attributes for this inode.
@@ -641,7 +651,7 @@ public:
 
     /**
      * Allocate readahead_state if not already allocated.
-     * This must be called from code that returns an inode after a directory
+     * This must be called from code that returns an inode after a file
      * is opened or created.
      * It's a no-op if the rastate is already allocated.
      *
@@ -710,6 +720,76 @@ public:
     }
 
     /**
+     * Allocate fcsm (flush-commit state machine) if not already allocated.
+     * This must be called from code that returns an inode after a file
+     * is opened or created.
+     * It's a no-op if the fcsm is already allocated.
+     *
+     * LOCKS: If not already allocated it'll take exclusive ilock_1.
+     */
+    void alloc_fcsm()
+    {
+        assert(is_regfile());
+
+        if (fcsm_alloced) {
+            // Once allocated it cannot become null again.
+            assert(fcsm);
+            return;
+        }
+
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
+        /*
+         * fcsm MUST only be created if filecache_handle is set.
+         */
+        assert(filecache_handle);
+        if (!fcsm) {
+            assert(!fcsm_alloced);
+            fcsm = std::make_shared<struct fcsm>(client, this);
+            fcsm_alloced = true;
+        }
+    }
+
+    /**
+     * This MUST be called only after has_fcsm() returns true.
+     * See comment above get_filecache().
+     *
+     * Note: This MUST be called only when has_fcsm() returns true.
+     *
+     * LOCKS: None.
+     */
+    const std::shared_ptr<struct fcsm>& get_fcsm() const
+    {
+        assert(is_regfile());
+        assert(fcsm_alloced);
+        assert(fcsm);
+
+        return fcsm;
+    }
+
+    std::shared_ptr<struct fcsm>& get_fcsm()
+    {
+        assert(is_regfile());
+        assert(fcsm_alloced);
+        assert(fcsm);
+
+        return fcsm;
+    }
+
+    /**
+     * External users of this nfs_inode can check for presence of fcsm
+     * by calling has_fcsm().
+     *
+     * LOCKS: None.
+     */
+    bool has_fcsm() const
+    {
+        assert(is_regfile());
+        assert(!fcsm_alloced || fcsm);
+
+        return fcsm_alloced;
+    }
+
+    /**
      * This must be called from all paths where we respond to a fuse request
      * that amounts to open()ing a file/directory. Once a file/directory is
      * open()ed, application can call all the POSIX APIs that take an fd, so if
@@ -736,11 +816,12 @@ public:
 
         if (is_regfile()) {
             /*
-             * Allocate filecache_handle after readahead_state as we assert
-             * for filecache_handle in alloc_rastate().
+             * Allocate filecache_handle before readahead_state and fcsm as we
+             * assert for filecache_handle in alloc_rastate() and alloc_fcsm().
              */
             alloc_filecache();
             alloc_rastate();
+            alloc_fcsm();
         } else if (is_dir()) {
             alloc_dircache();
         }

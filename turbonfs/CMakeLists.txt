@@ -242,6 +242,7 @@ set(sources
     src/config.cpp
     src/util.cpp
     src/log.cpp
+    src/fcsm.cpp
     src/nfs_client.cpp
     src/rpc_transport.cpp
     src/rpc_task.cpp

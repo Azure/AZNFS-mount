@@ -72,6 +72,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     assert(!dircache_alloced);
     assert(!readahead_state);
     assert(!rastate_alloced);
+    assert(!fcsm_alloced);
 
     assert(lookupcnt == 0);
     assert(dircachecnt == 0);
@@ -118,6 +119,10 @@ nfs_inode::~nfs_inode()
     assert((readahead_state == nullptr) == (rastate_alloced == false));
     assert(((filecache_handle != nullptr) + (dircache_handle != nullptr)) < 2);
     assert(is_cache_empty());
+
+    assert((fcsm == nullptr) == (fcsm_alloced == false));
+    // FCSM state machine must not be running when inode is destroyed.
+    assert((fcsm == nullptr) || !fcsm->is_running());
 
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
     assert(client != nullptr);
@@ -375,10 +380,20 @@ int nfs_inode::get_actimeo_max() const
     }
 }
 
+/**
+ * Note: We dispatch WRITE RPCs as we gather full wsize sized data bytes,
+ *       while there may be more bcs that we have not yet processed. This means
+ *       those already dispatched writes may complete. We should be careful
+ *       not to consider the sync_membufs() as completed if all the dispatched
+ *       writes till a point complete, while we have more to send.
+ */
 void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
                              bool is_flush,
                              struct rpc_task *parent_task)
 {
+    // Caller must hold the flush_lock.
+    assert(is_flushing);
+
     if (bc_vec.empty()) {
         return;
     }
@@ -511,6 +526,12 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
                 parent_task->num_ongoing_backend_writes++;
             }
             write_task->rpc_api->pvt = new bc_iovec(this);
+
+            /*
+             * We have at least one flush/write to issue, mark fcsm as running,
+             * if not already marked.
+             */
+            get_fcsm()->mark_running();
         }
 
         /*
