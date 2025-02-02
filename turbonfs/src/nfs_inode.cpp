@@ -918,9 +918,9 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     }
 
     /*
-     * Grab the inode is_flushing lock to ensure that we doen't initiate
-     * any new flush operation while some truncate call is in progress
-     * (which must have taken the is_flushing lock).
+     * Grab the inode flush_lock to ensure that we don't initiate any new flush
+     * operation while some truncate call is in progress (which must have taken
+     * the flush_lock).
      * Once flush_lock() returns we have the is_flushing lock and we are
      * guaranteed that no new truncate operation can start till we release
      * the is_flushing lock. We can safely start the flush then.
@@ -942,6 +942,8 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
      * write RPC for them.
      */
     sync_membufs(bc_vec, true);
+
+    flush_unlock();
 
     /*
      * Our caller expects us to return only after the flush completes.
@@ -984,8 +986,6 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
          */
         filecache_handle->release(bc.offset, bc.length);
     }
-
-    flush_unlock();
 
     /*
      * If the file is deleted while we still have data in the cache, don't

@@ -1395,9 +1395,9 @@ public:
      *       instant and flush those. Any new dirty membufs added after it
      *       queries the dirty membufs list, are not flushed.
      *
-     * Note: This grabs the inode is_flushing lock to ensure that it doesn't
+     * Note: This grabs the inode flush_lock to ensure that it doesn't
      *       initiate any new flush operations while some truncate call is in
-     *       progress (which must have held the is_flushing lock).
+     *       progress (which must have held the flush_lock).
      */
     int flush_cache_and_wait(uint64_t start_off = 0,
                              uint64_t end_off = UINT64_MAX);
@@ -1451,6 +1451,10 @@ public:
 
     /**
      * Lock the inode for flushing.
+     *
+     * Note: DO NOT TAKE flush_lock WHILE WAITING FOR NFS WRITE RPC RESPONSE.
+     *       THIS CAN CAUSE A DEADLOCK AS write_iov_callback()->on_flush_complete()
+     *       TAKES THE flush_lock() TOO.
      */
     void flush_lock() const;
     void flush_unlock() const;
