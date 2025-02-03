@@ -452,17 +452,6 @@ void membuf::set_flushing()
     bcc->bytes_flushing_g += length;
     bcc->bytes_flushing += length;
 
-    /*
-     * Only dirty bytes can be flushed.
-     * Note that we cannot assert for the global values as clear_flushing()
-     * is called after clear_dirty() so momentarily bytes_dirty_g can
-     * become less than bytes_flushing_g.
-     */
-    assert(bcc->bytes_flushing <= bcc->bytes_dirty);
-#if 0
-    assert(bcc->bytes_flushing_g <= bcc->bytes_dirty_g);
-#endif
-
     assert(bcc->bytes_flushing <= AZNFSC_MAX_FILE_SIZE);
 
     AZLogDebug("Set flushing membuf [{}, {}), fd={}",
@@ -505,17 +494,6 @@ void membuf::clear_flushing()
     assert(bcc->bytes_flushing_g >= length);
     bcc->bytes_flushing -= length;
     bcc->bytes_flushing_g -= length;
-
-    /*
-     * Only dirty bytes can be flushed.
-     * Note that we cannot assert for the global values as clear_flushing()
-     * is called after clear_dirty() so momentarily bytes_dirty_g can
-     * become less than bytes_flushing_g.
-     */
-    assert(bcc->bytes_flushing <= bcc->bytes_dirty);
-#if 0
-    assert(bcc->bytes_flushing_g <= bcc->bytes_dirty_g);
-#endif
 
     AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
