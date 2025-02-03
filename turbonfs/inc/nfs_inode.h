@@ -522,7 +522,7 @@ public:
      * We split the truncate operation in two separate apis truncate_start()
      * and truncate_end(). truncate_start() must be called before issuing the
      * SETATTR RPC and truncate_end() must be called from SETATTR callback.
-     * truncate_start() grabs the is_flushing lock to ensure no new flush/commit
+     * truncate_start() grabs the flush_lock to ensure no new flush/commit
      * operations can be issued for this inode, and waits for any ongoing
      * flush/commit operations to complete, before truncating the filecache to
      * the new size.
@@ -1406,8 +1406,11 @@ public:
      * Wait for currently flushing membufs to complete.
      * Returns 0 on success and a positive errno value on error.
      *
-     * Note : Caller must hold the inode is_flushing lock to ensure that
+     * Note : Caller must hold the inode flush_lock to ensure that
      *        no new membufs are added till this call completes.
+     *        It may release the flush_lock() if it has to wait for ongoing
+     *        flush/write requests to complete, but it'll exit with flush_lock
+     *        held.
      */
     int wait_for_ongoing_flush(uint64_t start_off = 0,
                                uint64_t end_off = UINT64_MAX);

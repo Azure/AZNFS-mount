@@ -790,6 +790,8 @@ try_copy:
 
 /**
  * Note: Caller should call with flush_lock() held.
+ *       It will release the flush_lock if it has to wait for flush to
+ *       complete. Before returning it'll re-acquire the flush_lock.
  */
 int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 {
@@ -824,64 +826,112 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
     }
 
     /*
-     * Get the flushing bytes_chunk from the filecache handle.
-     * This will grab an exclusive lock on the file cache and return the list
-     * of flushing bytes_chunks at that point. Note that we can have new dirty
-     * bytes_chunks created but we don't want to wait for those.
+     * We don't want to hold flush_lock while we wait for the ongoing flush to
+     * complete, as this can cause deadlock as on_flush_complete() also takes
+     * flush_lock. We get the current flushing bcs atomically under flush_lock,
+     * and then release the flush_lock while waiting. We repeat the same till
+     * there are no flushing bcs. Technically we should not have back to back
+     * flushes started, but to be safe we try 10 times.
      */
-    std::vector<bytes_chunk> bc_vec =
-        filecache_handle->get_flushing_bc_range(start_off, end_off);
-
-    /*
-     * Our caller expects us to return only after the flush completes.
-     * Wait for all the membufs to flush and get result back.
-     */
-    for (bytes_chunk &bc : bc_vec) {
-        struct membuf *mb = bc.get_membuf();
-
-        assert(mb != nullptr);
-        assert(mb->is_inuse());
+    int retry, err = 0;
+    const int max_retry = 10;
+    for (retry = 0; retry < max_retry; retry++) {
+        assert(is_flushing);
 
         /*
-         * sync_membufs() would have taken the membuf lock for the duration
-         * of the backend wite that flushes the membuf, so once we get the
-         * lock we know that the flush write has completed.
+         * Get the flushing bytes_chunk from the filecache handle.
+         * This will grab an exclusive lock on the file cache and return the
+         * list of flushing bytes_chunks at that point. Note that we can have
+         * new dirty bytes_chunks created but we don't want to wait for those.
          */
-        mb->set_locked();
+        std::vector<bytes_chunk> bc_vec =
+            filecache_handle->get_flushing_bc_range(start_off, end_off);
 
-        /*
-         * If still dirty after we get the lock, it may mean two things:
-         * - Write failed.
-         * - Some other thread got the lock before us and it made the
-         *   membuf dirty again.
-         */
-        if (mb->is_dirty() && get_write_error()) {
-            AZLogError("[{}] Flush [{}, {}) failed with error: {}",
-                       ino,
-                       bc.offset, bc.offset + bc.length,
-                       get_write_error());
+        // Nothing to flush, job done!
+        if (bc_vec.empty()) {
+            assert(err == 0);
+            break;
         }
 
-        mb->clear_locked();
-        mb->clear_inuse();
+        flush_unlock();
+
+        AZLogDebug("[{}] wait_for_ongoing_flush(), attempt #{}, {} membufs",
+                   ino, retry+1, bc_vec.size());
 
         /*
-         * Release the bytes_chunk back to the filecache.
-         * These bytes_chunks are not needed anymore as the flush is done.
-         *
-         * Note: We come here for bytes_chunks which were found dirty by the
-         *       above loop. These writes may or may not have been issued by
-         *       us (if not issued by us it was because some other thread,
-         *       mostly the writer issued the write so we found it flushing
-         *       and hence didn't issue). In any case since we have an inuse
-         *       count, release() called from write_callback() would not have
-         *       released it, so we need to release it now.
+         * Our caller expects us to return only after the flush completes.
+         * Wait for all the membufs to flush and get result back.
          */
-        filecache_handle->release(bc.offset, bc.length);
+        for (bytes_chunk &bc : bc_vec) {
+            struct membuf *mb = bc.get_membuf();
+
+            assert(mb != nullptr);
+            assert(mb->is_inuse());
+
+            /*
+             * sync_membufs() would have taken the membuf lock for the duration
+             * of the backend wite that flushes the membuf, so once we get the
+             * lock we know that the flush write has completed.
+             */
+            mb->set_locked();
+
+            /*
+             * If still dirty after we get the lock, it may mean two things:
+             * - Write failed.
+             * - Some other thread got the lock before us and it made the
+             *   membuf dirty again.
+             */
+            if (mb->is_dirty() && get_write_error()) {
+                AZLogError("[{}] Flush [{}, {}) failed with error: {}",
+                        ino,
+                        bc.offset, bc.offset + bc.length,
+                        get_write_error());
+            }
+
+            mb->clear_locked();
+            mb->clear_inuse();
+
+            /*
+             * Release the bytes_chunk back to the filecache.
+             * These bytes_chunks are not needed anymore as the flush is done.
+             *
+             * Note: We come here for bytes_chunks which were found dirty by the
+             *       above loop. These writes may or may not have been issued by
+             *       us (if not issued by us it was because some other thread,
+             *       mostly the writer issued the write so we found it flushing
+             *       and hence didn't issue). In any case since we have an inuse
+             *       count, release() called from write_callback() would not
+             *       have released it, so we need to release it now.
+             */
+            filecache_handle->release(bc.offset, bc.length);
+        }
+
+        // Re-grab flush_lock, now that the wait is over.
+        flush_lock();
+
+        err = get_write_error();
+
+        if (err != 0) {
+            AZLogDebug("[{}] wait_for_ongoing_flush() failed with error: {}",
+                    ino, err);
+            break;
+        }
     }
-    AZLogDebug("[{}] wait_for_ongoing_flush() returning with error: {}",
-              ino, get_write_error());
-    return get_write_error();
+
+    if (retry == max_retry) {
+        err = EINPROGRESS;
+        AZLogError("[{}] wait_for_ongoing_flush(), failed after {} retries!",
+                   ino, retry);
+        assert(0);
+    } else if (err == 0) {
+        AZLogDebug("[{}] wait_for_ongoing_flush(), succeeded after {} "
+                   "retry(s)!", ino, retry);
+    }
+
+    // We should leave with flush_lock held.
+    assert(is_flushing);
+
+    return err;
 }
 
 /**
