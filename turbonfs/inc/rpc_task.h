@@ -374,6 +374,11 @@ struct bc_iovec
     bool add_bc(const struct bytes_chunk& bc)
     {
         /*
+         * Caller must be holding inode->flush_lock().
+         */
+        assert(inode->is_flushing);
+
+        /*
          * All bytes_chunks must be added in the beginning before dispatching
          * the first write, till then iov will be same as base.
          */

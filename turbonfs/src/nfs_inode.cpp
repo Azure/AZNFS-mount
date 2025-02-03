@@ -501,6 +501,16 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
          * This is released only when the backend write completes, thus
          * wait_for_ongoing_flush() can simply wait for the membuf lock to
          * get notified when the flush completes.
+         *
+         * TODO: This can block the fuse thread for longish times affecting
+         *       other interactive commands like readdir/stat.
+         *
+         * Note: Since we are holding flush_lock and flush_lock has a reqirement
+         *       that it should not be held while waiting for some write/commit
+         *       on that inode to complete, we must ensure that the following
+         *       set_locked() call won't wait for write to complete.
+         *       This is ensured because we only come here for membufs that are
+         *       currently not flushing and hence cannot be waiting for a write.
          */
         mb->set_locked();
         if (mb->is_flushing() || !mb->is_dirty()) {

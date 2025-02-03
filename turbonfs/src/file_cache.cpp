@@ -441,6 +441,14 @@ void membuf::set_flushing()
     assert(is_locked());
     assert(is_inuse());
 
+    /*
+     * Caller must hold inode->flush_lock().
+     * Typically caller will get the list of "dirty and not flushing" bcs from
+     * the chunkmap and then initiate flush on those, all while holding the
+     * inode->flush_lock(). Ref sync_membufs().
+     */
+    assert(!bcc->get_inode() || bcc->get_inode()->is_flushing);
+
     // We should never be flushing a membuf that's truncated.
     assert(!is_truncated());
 

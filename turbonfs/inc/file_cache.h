@@ -1597,6 +1597,11 @@ public:
         return num_caches;
     }
 
+    struct nfs_inode *get_inode() const
+    {
+        return inode;
+    }
+
 private:
     /**
      * Scan all chunks lying in the range [offset, offset+length) and perform
