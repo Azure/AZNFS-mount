@@ -67,6 +67,13 @@ void fcsm::clear_running()
     running = false;
 }
 
+void fcsm::add_flushing(uint64_t bytes)
+{
+    assert(inode->is_flushing);
+    assert(flushed_seq_num <= flushing_seq_num);
+    flushing_seq_num += bytes;
+}
+
 void fcsm::ensure_flush(uint64_t flush_bytes,
                         uint64_t write_off,
                         uint64_t write_len,

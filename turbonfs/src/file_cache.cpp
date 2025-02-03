@@ -119,11 +119,13 @@ membuf::~membuf()
 
         /*
          * If this is a truncated dirty membuf, we need to update the dirty
-         * metrics.
+         * metrics. Note that flushing membufs cannot be truncated, since
+         * truncate_start() waits for ongoing flush to complete.
          * We can safely do that as it's membuf destructor and nobody holds
          * a reference on it.
          */
         if (is_truncated() && is_dirty()) {
+            assert(!is_flushing());
             assert(bcc->bytes_dirty >= allocated_length);
             assert(bcc->bytes_dirty_g >= allocated_length);
             bcc->bytes_dirty -= allocated_length;
@@ -439,6 +441,9 @@ void membuf::set_flushing()
     assert(is_locked());
     assert(is_inuse());
 
+    // We should never be flushing a membuf that's truncated.
+    assert(!is_truncated());
+
     // Only dirty membuf must be flushed and dirty MUST be uptodate.
     assert(is_dirty() && is_uptodate());
 
@@ -447,9 +452,16 @@ void membuf::set_flushing()
     bcc->bytes_flushing_g += length;
     bcc->bytes_flushing += length;
 
-    // Only dirty bytes can be flushed.
+    /*
+     * Only dirty bytes can be flushed.
+     * Note that we cannot assert for the global values as clear_flushing()
+     * is called after clear_dirty() so momentarily bytes_dirty_g can
+     * become less than bytes_flushing_g.
+     */
     assert(bcc->bytes_flushing <= bcc->bytes_dirty);
+#if 0
     assert(bcc->bytes_flushing_g <= bcc->bytes_dirty_g);
+#endif
 
     assert(bcc->bytes_flushing <= AZNFSC_MAX_FILE_SIZE);
 
@@ -465,6 +477,9 @@ void membuf::clear_flushing()
     // See comment in set_flushing() above.
     assert(is_locked());
     assert(is_inuse());
+
+    // We should never be flushing a membuf that's truncated.
+    assert(!is_truncated());
 
     /*
      * clear_flushing() is called after clear_dirty(), hence we don't call
@@ -491,9 +506,16 @@ void membuf::clear_flushing()
     bcc->bytes_flushing -= length;
     bcc->bytes_flushing_g -= length;
 
-    // Only dirty bytes can be flushed.
+    /*
+     * Only dirty bytes can be flushed.
+     * Note that we cannot assert for the global values as clear_flushing()
+     * is called after clear_dirty() so momentarily bytes_dirty_g can
+     * become less than bytes_flushing_g.
+     */
     assert(bcc->bytes_flushing <= bcc->bytes_dirty);
+#if 0
     assert(bcc->bytes_flushing_g <= bcc->bytes_dirty_g);
+#endif
 
     AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
@@ -659,7 +681,10 @@ void membuf::clear_dirty()
     assert(is_locked());
     assert(is_inuse());
 
-    // We completed writing dirty data, flushing must have been set.
+    /*
+     * We completed writing dirty data, flushing must have been set.
+     * We call clear_flushing() after clear_dirty().
+     */
     assert(is_flushing());
 
     flag &= ~MB_Flag::Dirty;
@@ -685,6 +710,12 @@ void membuf::set_truncated()
      * chunkmap, so future users should not get it.
      */
     assert(!is_truncated());
+
+    /*
+     * truncate_start() waits for ongoing flush to complete before calling
+     * file_cache truncate(), so we should never truncate a flushing membuf.
+     */
+    assert(!is_flushing());
     flag |= MB_Flag::Truncated;
 
     AZLogDebug("Set truncated membuf [{}, {}), fd={}",

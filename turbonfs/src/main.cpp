@@ -763,6 +763,15 @@ int main(int argc, char *argv[])
     AZLogInfo("Shutting down!");
 
     /*
+     * Clear the stats signal, else it may cause a crash if received while
+     * we start cleaning up things.
+     */
+    if (set_signal_handler(SIGUSR1, SIG_DFL) != 0) {
+        AZLogWarn("set_signal_handler(SIG_DFL) failed: {}", ::strerror(errno));
+        /* Continue and hope we don't get the signal */
+    }
+
+    /*
      * After we exit the fuse session loop above, libfuse won't read any more
      * messages from kernel, but we may have some fuse messages that we have
      * received but still not responded. We must wait for those fuse messages

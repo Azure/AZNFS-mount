@@ -795,7 +795,7 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 {
     assert(start_off < end_off);
 
-    // Caller must call us with is_flushing lock held.
+    // Caller must call us with flush_lock held.
     assert(is_flushing);
 
     /*
@@ -921,9 +921,9 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
      * Grab the inode flush_lock to ensure that we don't initiate any new flush
      * operation while some truncate call is in progress (which must have taken
      * the flush_lock).
-     * Once flush_lock() returns we have the is_flushing lock and we are
+     * Once flush_lock() returns we have the flush_lock and we are
      * guaranteed that no new truncate operation can start till we release
-     * the is_flushing lock. We can safely start the flush then.
+     * the flush_lock. We can safely start the flush then.
      */
     flush_lock();
 
@@ -1017,7 +1017,7 @@ void nfs_inode::flush_lock() const
         }
     }
 
-    assert(is_flushing == true);
+    assert(is_flushing);
     AZLogDebug("[{}] flush_lock() acquired", ino);
 
     return;
@@ -1031,7 +1031,7 @@ void nfs_inode::flush_unlock() const
      * Caller must call flush_unlock() for regular files only.
      */
     assert(has_filecache());
-    assert(is_flushing == true);
+    assert(is_flushing);
 
     {
         std::unique_lock<std::mutex> _lock(iflush_lock_3);
@@ -1068,7 +1068,7 @@ bool nfs_inode::truncate_start(size_t size)
     assert(size <= AZNFSC_MAX_FILE_SIZE);
 
     /*
-     * Grab is_flushing lock, so that no new flush or commit can be issued
+     * Grab flush_lock, so that no new flush or commit can be issued
      * till truncate() completes. There could be ongoing flush or commit
      * operations in progress, we need to wait for them to complete.
      */

@@ -152,11 +152,7 @@ public:
      * Call when more writes are dispatched, or prepared to be dispatched.
      * This MUST be called before the write callback can be called.
      */
-    void add_flushing(uint64_t bytes)
-    {
-        assert(flushed_seq_num <= flushing_seq_num);
-        flushing_seq_num += bytes;
-    }
+    void add_flushing(uint64_t bytes);
 
     struct nfs_inode *get_inode() const
     {
