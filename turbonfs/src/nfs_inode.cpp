@@ -857,16 +857,33 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
         std::vector<bytes_chunk> bc_vec =
             filecache_handle->get_flushing_bc_range(start_off, end_off);
 
-        // Nothing to flush, job done!
-        if (bc_vec.empty()) {
+        /*
+         * Nothing to flush and callback drained, job done!
+         * Note that we unlock the membuf before calling on_flush_complete(),
+         * so there's a window where the callback is still running while all
+         * membufs have completed. We need to drain the callbacks too, else
+         * we can deadlock with on_flush_complete() trying to acquire the
+         * flush_lock which we would be holding and waiting. Once the current
+         * callback completes, there cannot be any other callback that can run
+         * as we have the flush_lock which will block any new flushes.
+         */
+        if (bc_vec.empty() && !get_fcsm()->fc_cb_running()) {
             assert(err == 0);
             break;
         }
 
         flush_unlock();
 
-        AZLogDebug("[{}] wait_for_ongoing_flush(), attempt #{}, {} membufs",
-                   ino, retry+1, bc_vec.size());
+        AZLogDebug("[{}] wait_for_ongoing_flush(), attempt #{}, {} membufs, "
+                   "fc_cb_count: {}",
+                   ino, retry+1, bc_vec.size(), get_fcsm()->fc_cb_count());
+
+        /*
+         * Give 10ms to the callback to drain completely.
+         */
+        if (bc_vec.empty() && get_fcsm()->fc_cb_running()) {
+            ::usleep(10 * 1000);
+        }
 
         /*
          * Our caller expects us to return only after the flush completes.
@@ -938,8 +955,11 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
                    "retry(s)!", ino, retry);
     }
 
-    // We should leave with flush_lock held.
+    /*
+     * We should leave with flush_lock held and flush callback drained.
+     */
     assert(is_flushing);
+    assert(!get_fcsm()->fc_cb_running());
 
     return err;
 }
