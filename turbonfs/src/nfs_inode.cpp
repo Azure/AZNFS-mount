@@ -430,6 +430,15 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
     // Flush dirty membufs to backend.
     for (bytes_chunk& bc : bc_vec) {
         /*
+         * We should never write a partial membuf, that will cause issues as
+         * membuf flags (dirty, flushing, in this case) are tracked at membuf
+         * granularity. Check maps_full_membuf() to see how the membuf itself
+         * may have been trimmed by a release() call, but the bc must refer to
+         * whatever membuf part is currently valid.
+         */
+        assert(bc.maps_full_membuf());
+
+        /*
          * Get the underlying membuf for bc.
          * Note that we write the entire membuf, even though bc may be referring
          * to a smaller window.
@@ -828,9 +837,10 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 
     /*
      * Flushing not in progress and no new flushing can be started as we hold
-     * the flush_lock().
+     * the flush_lock(), and callback drained.
      */
-    if (!get_filecache()->is_flushing_in_progress()) {
+    if (!get_filecache()->is_flushing_in_progress() &&
+        !get_fcsm()->fc_cb_running()) {
         AZLogDebug("[{}] No flush in progress, returning", ino);
         return 0;
     }

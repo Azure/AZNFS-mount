@@ -399,6 +399,15 @@ struct bc_iovec
         // pvt must start as 0.
         assert(bc.pvt == 0);
 
+        /*
+         * We should never write a partial membuf, that will cause issues as
+         * membuf flags (dirty, flushing, in this case) are tracked at membuf
+         * granularity. Check maps_full_membuf() to see how the membuf itself
+         * may have been trimmed by a release() call, but the bc must refer to
+         * whatever membuf part is currently valid.
+         */
+        assert(bc.maps_full_membuf());
+
         struct membuf *const mb = bc.get_membuf();
 
         /*

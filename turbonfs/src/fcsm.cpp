@@ -35,7 +35,7 @@ fcsm::fctgt::fctgt(struct fcsm *fcsm,
     // At least one of flush/commit goals must be set.
     assert((flush_seq != 0) || (commit_seq != 0));
 
-#ifdef NDEBUG
+#ifndef NDEBUG
     if (task) {
         // Only frontend write tasks must be specified.
         assert(task->magic == RPC_TASK_MAGIC);
@@ -109,7 +109,7 @@ void fcsm::ensure_flush(uint64_t flush_bytes,
     // flushed_seq_num can never be more than flushing_seq_num.
     assert(flushed_seq_num <= flushing_seq_num);
 
-#ifdef NDEBUG
+#ifndef NDEBUG
     if (task) {
         // task provided must be a frontend write task.
         assert(task->magic == RPC_TASK_MAGIC);
@@ -119,7 +119,7 @@ void fcsm::ensure_flush(uint64_t flush_bytes,
 
         // write_len and write_off must match that of the task.
         assert(task->rpc_api->write_task.get_size() == write_len);
-        assert(task->rpc_api->write_task.get_offset() == write_off);
+        assert(task->rpc_api->write_task.get_offset() == (off_t) write_off);
     }
 #endif
 
@@ -144,13 +144,31 @@ void fcsm::ensure_flush(uint64_t flush_bytes,
      * completes, this flush would be dispatched.
      */
     if (is_running()) {
-#ifdef NDEBUG
+#ifndef NDEBUG
         /*
          * Make sure flush targets are always added in an increasing flush_seq.
          */
         if (!ftgtq.empty()) {
             assert(ftgtq.front().flush_seq <= target_flushed_seq_num);
             assert(ftgtq.front().commit_seq == 0);
+        }
+#endif
+#ifdef ENABLE_PARANOID
+        /*
+         * Since we are adding a flush target make sure we have that much dirty
+         * data in the chunkmap.
+         */
+        {
+            uint64_t bytes;
+            std::vector<bytes_chunk> bc_vec =
+                inode->get_filecache()->get_dirty_nonflushing_bcs_range(
+                        0, UINT64_MAX, &bytes);
+            assert(bc_vec.empty() == (bytes == 0));
+            assert(bytes >= bytes_to_flush);
+
+            for (auto& bc : bc_vec) {
+                bc.get_membuf()->clear_inuse();
+            }
         }
 #endif
         ftgtq.emplace(this,
@@ -202,11 +220,17 @@ void fcsm::ensure_flush(uint64_t flush_bytes,
                inode->get_fuse_ino(),
                flushing_seq_num.load());
 
+#ifndef NDEBUG
+    const uint64_t flushing_seq_num_before = flushing_seq_num;
+#endif
+    assert(flushed_seq_num <= flushing_seq_num);
+
     // sync_membufs() will update flushing_seq_num() and mark fcsm running.
     inode->sync_membufs(bc_vec, false /* is_flush */, task);
 
     assert(is_running());
-    assert(flushing_seq_num >= bytes);
+    assert(flushing_seq_num == (flushing_seq_num_before + bytes));
+    assert(flushed_seq_num <= flushing_seq_num);
 
     inode->flush_unlock();
 }
@@ -329,7 +353,7 @@ void fcsm::on_flush_complete(uint64_t flush_bytes)
          * have the corresponding bcs in the file cache.
          */
         assert(!bc_vec.empty());
-        assert(bytes > 0);
+        assert(bytes >= (ftgtq.front().flush_seq - flushing_seq_num));
 
         // flushed_seq_num can never be more than flushing_seq_num.
         assert(flushed_seq_num <= flushing_seq_num);
