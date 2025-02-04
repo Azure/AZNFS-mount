@@ -1309,6 +1309,16 @@ public:
         return file_ptr;
     }
 
+    bool is_fe() const
+    {
+        return (file_ptr != nullptr);
+    }
+
+    bool is_be() const
+    {
+        return !is_fe();
+    }
+
 private:
     // Inode of the file.
     fuse_ino_t inode;
@@ -2003,11 +2013,15 @@ public:
     void run_readdirplus();
 
     // This function is responsible for setting up the members of read task.
-    void init_read(fuse_req *request,
-                   fuse_ino_t inode,
-                   size_t size,
-                   off_t offset,
-                   struct fuse_file_info *file);
+    void init_read_fe(fuse_req *request,
+                      fuse_ino_t inode,
+                      size_t size,
+                      off_t offset,
+                      struct fuse_file_info *file);
+
+    void init_read_be(fuse_ino_t inode,
+                      size_t size,
+                      off_t offset);
 
     void run_read();
 

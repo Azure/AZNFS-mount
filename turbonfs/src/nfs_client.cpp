@@ -1549,7 +1549,7 @@ void nfs_client::read(
     // Revalidate if attribute cache timeout expired.
     inode->revalidate();
 
-    tsk->init_read(req, ino, size, off, fi);
+    tsk->init_read_fe(req, ino, size, off, fi);
 
     if (size == 0) {
         tsk->reply_iov(nullptr, 0);
@@ -1648,19 +1648,21 @@ void nfs_client::jukebox_read(struct api_task_info *rpc_api)
     struct rpc_task *child_tsk =
         get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
 
-    child_tsk->init_read(
-        rpc_api->req,
+    child_tsk->init_read_be(
         rpc_api->read_task.get_ino(),
         rpc_api->read_task.get_size(),
-        rpc_api->read_task.get_offset(),
-        rpc_api->read_task.get_fuse_file());
+        rpc_api->read_task.get_offset());
 
     /*
-     * Read API calls will be issued only for child tasks, hence
+     * Read API calls will be issued only for BE tasks, hence
      * copy the parent info from the original task to this retry task.
      */
     assert(rpc_api->parent_task != nullptr);
     assert(rpc_api->parent_task->magic == RPC_TASK_MAGIC);
+    assert(rpc_api->parent_task->rpc_api->read_task.is_fe());
+    // At least this child task has not completed.
+    assert(rpc_api->parent_task->num_ongoing_backend_reads > 0);
+
     child_tsk->rpc_api->parent_task = rpc_api->parent_task;
 
     [[maybe_unused]]  const struct rpc_task *const parent_task =

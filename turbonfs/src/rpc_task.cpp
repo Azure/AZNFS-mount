@@ -339,7 +339,8 @@ void rpc_task::init_write_fe(fuse_req *request,
     assert(!rpc_api->write_task.is_be());
     assert(num_ongoing_backend_writes == 0);
 
-    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
+    // Frontend write task should not need fh_hash, set it to catch any bug.
+    fh_hash = UINT32_MAX;
 }
 
 void rpc_task::init_write_be(fuse_ino_t ino)
@@ -628,11 +629,11 @@ void rpc_task::init_readdirplus(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
-void rpc_task::init_read(fuse_req *request,
-                         fuse_ino_t ino,
-                         size_t size,
-                         off_t offset,
-                         struct fuse_file_info *file)
+void rpc_task::init_read_fe(fuse_req *request,
+                            fuse_ino_t ino,
+                            size_t size,
+                            off_t offset,
+                            struct fuse_file_info *file)
 {
     assert(get_op_type() == FUSE_READ);
     set_fuse_req(request);
@@ -640,6 +641,24 @@ void rpc_task::init_read(fuse_req *request,
     rpc_api->read_task.set_size(size);
     rpc_api->read_task.set_offset(offset);
     rpc_api->read_task.set_fuse_file(file);
+
+    // Frontend read task should not need fh_hash, set it to catch any bug.
+    fh_hash = UINT32_MAX;
+
+    assert(rpc_api->read_task.is_fe());
+    assert(!rpc_api->read_task.is_be());
+}
+
+void rpc_task::init_read_be(fuse_ino_t ino,
+                            size_t size,
+                            off_t offset)
+{
+    assert(get_op_type() == FUSE_READ);
+    set_fuse_req(nullptr);
+    rpc_api->read_task.set_ino(ino);
+    rpc_api->read_task.set_size(size);
+    rpc_api->read_task.set_offset(offset);
+    rpc_api->read_task.set_fuse_file(nullptr);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 
@@ -649,6 +668,9 @@ void rpc_task::init_read(fuse_req *request,
      * TODO: Control this with a config.
      */
     set_csched(CONN_SCHED_RR);
+
+    assert(!rpc_api->read_task.is_fe());
+    assert(rpc_api->read_task.is_be());
 }
 
 /*
@@ -3064,6 +3086,9 @@ void rpc_task::run_read()
     const fuse_ino_t ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
 
+    // run_read() must be called only for an fe task.
+    assert(rpc_api->read_task.is_fe());
+
     assert(inode->is_regfile());
     /*
      * aznfsc_ll_read() can only be called after aznfsc_ll_open() so filecache
@@ -3238,12 +3263,10 @@ void rpc_task::run_read()
             struct rpc_task *child_tsk =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_READ);
 
-            child_tsk->init_read(
-                rpc_api->req,
+            child_tsk->init_read_be(
                 rpc_api->read_task.get_ino(),
                 bc_vec[i].length,
-                bc_vec[i].offset,
-                rpc_api->read_task.get_fuse_file());
+                bc_vec[i].offset);
 
             // Set the parent task of the child to the current RPC task.
             child_tsk->rpc_api->parent_task = this;
@@ -3444,6 +3467,8 @@ static void read_callback(
     struct read_context *ctx = (read_context*) private_data;
     rpc_task *task = ctx->task;
     assert(task->magic == RPC_TASK_MAGIC);
+    // This must be a BE task.
+    assert(task->rpc_api->read_task.is_be());
 
     /*
      * Parent task corresponds to the fuse request that intiated the read.
@@ -3452,7 +3477,7 @@ static void read_callback(
     rpc_task *parent_task = task->rpc_api->parent_task;
 
     /*
-     * Only child tasks can issue the read RPC, hence the callback should
+     * Only BR tasks can issue the read RPC, hence the callback should
      * be called only for them.
      */
     assert(parent_task != nullptr);
@@ -3577,12 +3602,10 @@ static void read_callback(
             struct rpc_task *child_tsk =
                 task->get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_READ);
 
-            child_tsk->init_read(
-                task->rpc_api->req,
+            child_tsk->init_read_be(
                 task->rpc_api->read_task.get_ino(),
                 new_size,
-                new_offset,
-                task->rpc_api->read_task.get_fuse_file());
+                new_offset);
 
             /*
              * Set the parent task of the child to the parent of the
@@ -3840,6 +3863,9 @@ static void read_callback(
  */
 void rpc_task::read_from_server(struct bytes_chunk &bc)
 {
+    // Only BE tasks send requests to the server.
+    assert(rpc_api->read_task.is_be());
+
     bool rpc_retry;
     const auto ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
@@ -3856,10 +3882,12 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
     assert(bc.get_membuf()->is_locked());
 
     /*
-     * This should always be called from the child task as we will issue read
+     * This should always be called from a BE/child task as we will issue read
      * RPC to the backend.
      */
     assert(rpc_api->parent_task != nullptr);
+    // At least this child task has not completed.
+    assert(rpc_api->parent_task->num_ongoing_backend_reads > 0);
 
     /*
      * bc.pvt is the cursor holding the number of bytes that we have already

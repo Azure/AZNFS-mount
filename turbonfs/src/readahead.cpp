@@ -238,12 +238,10 @@ static void readahead_callback (
             struct rpc_task *partial_read_tsk =
                 task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
 
-            partial_read_tsk->init_read(
-                task->rpc_api->req,
+            partial_read_tsk->init_read_be(
                 task->rpc_api->read_task.get_ino(),
                 new_size,
-                new_offset,
-                task->rpc_api->read_task.get_fuse_file());
+                new_offset);
 
             ctx->task = partial_read_tsk;
 
@@ -551,11 +549,9 @@ int ra_state::issue_readaheads()
              * need to send response for readahead reads, it can be null.
              * fuse_file_info is not used too.
              */
-            tsk->init_read(nullptr,                /* fuse_req */
-                           inode->get_fuse_ino(),  /* ino */
-                           bc.length,              /* size */
-                           bc.offset,              /* offset */
-                           nullptr);               /* fuse_file_info */
+            tsk->init_read_be(inode->get_fuse_ino(),  /* ino */
+                              bc.length,              /* size */
+                              bc.offset);             /* offset */
 
             // No reads should be issued to backend at this point.
             assert(bc.num_backend_calls_issued == 0);
