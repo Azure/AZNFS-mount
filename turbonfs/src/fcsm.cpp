@@ -53,6 +53,20 @@ fcsm::fctgt::fctgt(struct fcsm *fcsm,
                fmt::ptr(task));
 }
 
+FC_CB_TRACKER::FC_CB_TRACKER(struct nfs_inode *_inode) :
+    inode(_inode)
+{
+    assert(inode->magic == NFS_INODE_MAGIC);
+    assert(inode->has_fcsm());
+
+    inode->get_fcsm()->fc_cb_enter();
+}
+
+FC_CB_TRACKER::~FC_CB_TRACKER()
+{
+    inode->get_fcsm()->fc_cb_exit();
+}
+
 void fcsm::mark_running()
 {
     assert(inode->is_flushing);
@@ -210,6 +224,8 @@ void fcsm::on_flush_complete(uint64_t flush_bytes)
     // Must be called only for success.
     assert(inode->get_write_error() == 0);
     assert(flush_bytes > 0);
+    // Must be called from flush/write callback.
+    assert(fc_cb_running());
 
     // Flush callback can only be called if FCSM is running.
     assert(is_running());

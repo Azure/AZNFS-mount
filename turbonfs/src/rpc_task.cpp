@@ -1015,6 +1015,7 @@ static void write_iov_callback(
     const int status = task->status(rpc_status, NFS_STATUS(res), &errstr);
     const fuse_ino_t ino = task->rpc_api->write_task.get_ino();
     struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+    FC_CB_TRACKER fccbt(inode);
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -1118,7 +1119,6 @@ static void write_iov_callback(
              * write completes.
              */
             task->free_rpc_task();
-
             return;
         } else {
             // Complete bc_iovec IO completed.

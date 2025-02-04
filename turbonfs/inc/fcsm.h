@@ -159,6 +159,27 @@ public:
         return inode;
     }
 
+    void fc_cb_enter()
+    {
+        ++in_fc_callback;
+    }
+
+    void fc_cb_exit()
+    {
+        assert(fc_cb_running());
+        --in_fc_callback;
+    }
+
+    uint64_t fc_cb_count() const
+    {
+        return in_fc_callback;
+    }
+
+    bool fc_cb_running() const
+    {
+        return (fc_cb_count() > 0);
+    }
+
 private:
     /*
      * The singleton nfs_client, for convenience.
@@ -251,11 +272,21 @@ private:
     std::atomic<uint64_t> flushing_seq_num = 0;
     std::atomic<uint64_t> committed_seq_num = 0;
     std::atomic<uint64_t> committing_seq_num = 0;
+    std::atomic<uint64_t> in_fc_callback = 0;
 
     /*
      * The state machine starts in an idle state.
      */
     std::atomic<bool> running = false;
+};
+
+struct FC_CB_TRACKER
+{
+    explicit FC_CB_TRACKER(struct nfs_inode *_inode);
+    ~FC_CB_TRACKER();
+
+    private:
+    struct nfs_inode *const inode;
 };
 
 }
