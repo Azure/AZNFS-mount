@@ -1591,6 +1591,12 @@ public:
     static std::atomic<uint64_t> bytes_uptodate_g;
     static std::atomic<uint64_t> bytes_inuse_g;
     static std::atomic<uint64_t> bytes_locked_g;
+    // How many times set_locked() was called;
+    static std::atomic<uint64_t> num_locked_g;
+    // How many times set_locked() had to wait.
+    static std::atomic<uint64_t> num_lockwait_g;
+    // How much cumulative usecs those calls had to wait.
+    static std::atomic<uint64_t> lock_wait_usecs_g;
 
     static uint64_t get_num_caches()
     {

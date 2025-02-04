@@ -206,6 +206,15 @@ void rpc_stats_az::dump_stats()
                   std::to_string(bytes_chunk_cache::num_truncate_g) +
                   " truncate calls\n";
 
+    if (bytes_chunk_cache::num_lockwait_g) {
+        const double lockwait_pct =
+            ((bytes_chunk_cache::num_lockwait_g * 100.0) / bytes_chunk_cache::num_locked_g);
+        str += "  " + std::to_string(bytes_chunk_cache::lock_wait_usecs_g /
+                                     (bytes_chunk_cache::num_lockwait_g * 1000.0)) +
+                      " msec avg lock wait (" +
+                      std::to_string(lockwait_pct) + "% had to wait)\n";
+    }
+
     str += "Application statistics:\n";
     str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_read)) +
                   " bytes read by application(s)\n";

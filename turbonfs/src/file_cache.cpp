@@ -45,6 +45,9 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_uptodate_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_inuse_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_locked_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_locked_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_lockwait_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::lock_wait_usecs_g = 0;
 
 membuf::membuf(bytes_chunk_cache *_bcc,
                uint64_t _offset,
@@ -565,7 +568,11 @@ void membuf::set_locked()
     assert(is_inuse());
 
     // Common case, not locked, lock w/o waiting.
+    uint64_t start_usecs = 0;
     while (!try_lock()) {
+        if (!start_usecs) {
+            start_usecs = get_current_usecs();
+        }
         std::unique_lock<std::mutex> _lock(mb_lock_44);
 
         /*
@@ -578,6 +585,13 @@ void membuf::set_locked()
             AZLogError("Timed out waiting for membuf lock, re-trying!");
         }
     }
+
+    if (start_usecs) {
+        bcc->num_lockwait_g++;
+        bcc->lock_wait_usecs_g += (get_current_usecs() - start_usecs);
+    }
+
+    bcc->num_locked_g++;
 
     AZLogDebug("Successfully locked membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
