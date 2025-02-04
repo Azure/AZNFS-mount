@@ -173,12 +173,32 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
 gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
 
+# We build the turbonfs project here, note that we can set all cmake options in the 
+# future using env variables.
+# Turn tcmalloc off for debug builds because it has some issues with asan.
+enable_tcmalloc="ON"
+if [ "${BUILD_TYPE}" == "Debug" ]; then
+	enable_tcmalloc="OFF"
+fi
+
+pushd ${SOURCE_DIR}/turbonfs
+export VCPKG_ROOT=${SOURCE_DIR}/turbonfs/extern/vcpkg
+# We need to update the submodules before calling cmake as toolchain build expects it.
+git submodule update --recursive --init
+mkdir -p build && cd build
+cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DENABLE_TCMALLOC=$enable_tcmalloc -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
+make
+popd
+
+cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
+
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
 cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/deb/${pkg_dir}/${opt_dir}/
 
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
