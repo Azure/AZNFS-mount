@@ -555,7 +555,8 @@ add_stunnel_configuration()
         eecho "Failed to 'client = yes' to $stunnel_conf_file!"
         return 1
     fi
-
+    
+    #daniewo,  update the stunnel_conf_file 
     echo "accept = $LOCALHOST:$available_port" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -639,6 +640,8 @@ tls_nfsv4_files_share_mount()
 
     EntryExistinMountMap="true"
 
+    #daniewo, this file will most likely change to the new route.
+    #the config file's name will be the server ip for public endpoint.
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount.conf"
 
     if [ ! -f $stunnel_conf_file ]; then

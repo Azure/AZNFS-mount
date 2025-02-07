@@ -153,6 +153,9 @@ process_nfsv4_mounts()
         # MOUNTMAPv4 line is of the form:
         # account.file.preprod.core.windows.net;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>
         #
+
+        #daniewo #stunnel_account here is the destination IP address for the account.
+        #do some sort of ip check from the mountmap and fslocation file.
         IFS=";" read l_host l_conf l_log l_pid l_checksumhash <<< "$line"
 
         if [ -z "$l_host" -o -z "$l_conf" -o -z "$l_pid" ]; then
@@ -188,6 +191,14 @@ process_nfsv4_mounts()
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         else
+            #Daniewo updates for ip change detection
+            #Do a check for cadence, don't do every iteration.
+            #then, check here, we should check the FQDN -> IP from the above, l_host is the accountname, and then
+            #grep against the l_conf for the IP
+            #if IP is updated, then reconfigure stunnel and probably go to last step and skip this. or move this check
+            # above
+
+
             # Check if checksumHash for stunnel.conf file has changed.
             # Customers should not modify stunnel.conf files created by aznfs mount helper.
             checksumHash=`cksum $l_conf | awk '{print $1}'`
