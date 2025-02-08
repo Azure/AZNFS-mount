@@ -233,6 +233,13 @@ void membuf::trim(uint64_t trim_len, bool left)
         bcc->bytes_dirty -= trim_len;
         bcc->bytes_dirty_g -= trim_len;
     }
+
+    if (is_locked()) {
+        assert(bcc->bytes_locked >= trim_len);
+        assert(bcc->bytes_locked_g >= trim_len);
+        bcc->bytes_locked -= trim_len;
+        bcc->bytes_locked_g -= trim_len;
+    }
 }
 
 int64_t membuf::drop()
