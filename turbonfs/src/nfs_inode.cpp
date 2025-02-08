@@ -520,9 +520,15 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
          *       set_locked() call won't wait for write to complete.
          *       This is ensured because we only come here for membufs that are
          *       currently not flushing and hence cannot be waiting for a write.
+         *
+         * Note: bytes_chunk_cache::truncate() can truncate a membuf after we
+         *       get the list of dirty membufs and before we could get the lock
+         *       here, skip those.
          */
         mb->set_locked();
-        if (mb->is_flushing() || !mb->is_dirty()) {
+        if (mb->is_flushing() ||
+            !mb->is_dirty() ||
+            mb->is_truncated()) {
             mb->clear_locked();
             mb->clear_inuse();
 
@@ -674,7 +680,7 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
             err = EAGAIN;
             AZLogWarn("[{}] PP: copy_to_cache(): injecting EAGAIN for membuf "
                       "[{}, {}) (bc [{}, {})), length={}, remaining={}",
-                      ino, mb->offset, mb->offset+mb->length,
+                      ino, mb->offset.load(), mb->offset.load()+mb->length.load(),
                       bc.offset, bc.offset+bc.length,
                       length, remaining);
         }
@@ -750,7 +756,7 @@ try_copy:
              */
             AZLogWarn("[{}] Waiting for membuf [{}, {}) (bc [{}, {})) to "
                       "become uptodate", ino,
-                      mb->offset, mb->offset+mb->length,
+                      mb->offset.load(), mb->offset.load()+mb->length.load(),
                       bc.offset, bc.offset+bc.length);
 
             mb->clear_locked();
@@ -764,14 +770,14 @@ try_copy:
             if (mb->is_uptodate() && !inject_eagain) {
                 AZLogWarn("[{}] Membuf [{}, {}) (bc [{}, {})) is now uptodate, "
                           "retrying copy", ino,
-                          mb->offset, mb->offset+mb->length,
+                          mb->offset.load(), mb->offset.load()+mb->length.load(),
                           bc.offset, bc.offset+bc.length);
                 goto try_copy;
             } else {
                 AZLogWarn("[{}] {}Membuf [{}, {}) (bc [{}, {})) not marked "
                           "uptodate by other thread, returning EAGAIN",
                           ino, inject_eagain ? "PP: " : "",
-                          mb->offset, mb->offset+mb->length,
+                          mb->offset.load(), mb->offset.load()+mb->length.load(),
                           bc.offset, bc.offset+bc.length);
                 assert(err == 0);
                 err = EAGAIN;
@@ -851,10 +857,12 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
      * flush_lock. We get the current flushing bcs atomically under flush_lock,
      * and then release the flush_lock while waiting. We repeat the same till
      * there are no flushing bcs. Technically we should not have back to back
-     * flushes started, but to be safe we try 10 times.
+     * flushes started, but to be safe we retry few times.
+     * In debug builds we can induce sleep in the write/flush callback, so we
+     * need to wait enough.
      */
     int retry, err = 0;
-    const int max_retry = 10;
+    const int max_retry = 200;
     for (retry = 0; retry < max_retry; retry++) {
         assert(is_flushing);
 
@@ -1132,7 +1140,7 @@ void nfs_inode::flush_unlock() const
     flush_cv.notify_one();
 }
 
-void nfs_inode::truncate_end() const
+void nfs_inode::truncate_end(size_t size) const
 {
     AZLogDebug("[{}] truncate_end() called", ino);
 
@@ -1140,6 +1148,13 @@ void nfs_inode::truncate_end() const
      * Caller must call truncate_end() for regular files only.
      */
     assert(has_filecache());
+
+    [[maybe_unused]]
+    const uint64_t bytes_truncated = filecache_handle->truncate(size, true /* post */);
+
+    AZLogDebug("[{}] <truncate_end> Filecache truncated to size={} "
+               "(bytes truncated: {})",
+               ino, size, bytes_truncated);
 
     flush_unlock();
 }
@@ -1156,6 +1171,34 @@ bool nfs_inode::truncate_start(size_t size)
      */
     assert(has_filecache());
     assert(size <= AZNFSC_MAX_FILE_SIZE);
+
+    /*
+     * Our strategy for truncate is as follows:
+     * 1. (Pre) Cache truncate.
+     * 2. Take flush_lock.
+     * 3. Wait for all ongoing flush.
+     * 4. Send truncate request to server.
+     * 5. (Post) Cache truncate.
+     *
+     * (Pre) cache truncate does the majority of the cache truncate work.
+     * It waits for any ongoing IOs on any of the affected membufs before
+     * removing them from the cache. Depending on the ongoing IOs, it can
+     * take a long time.
+     * After that we grab the flush_lock to prevent any new writes to start,
+     * and wait for all ongoing writes (these can only be the ones started
+     * after our cache truncate returns, since it waited for the IOs too).
+     * After that we send the truncate request to the server and on getting
+     * a response we truncate the cache for one last time. Since we hold the
+     * flush_lock, there cannot be any ongoing writes but there can be some
+     * read holding the membuf lock, so this time we call try_lock() on the
+     * membuf(s).
+     */
+    [[maybe_unused]]
+    const uint64_t bytes_truncated = filecache_handle->truncate(size, false /* post */);
+
+    AZLogDebug("[{}] <truncate_start> Filecache truncated to size={} "
+               "(bytes truncated: {})",
+               ino, size, bytes_truncated);
 
     /*
      * Grab flush_lock, so that no new flush or commit can be issued
@@ -1176,16 +1219,6 @@ bool nfs_inode::truncate_start(size_t size)
      * case.
      */
     invalidate_attribute_cache();
-
-    /*
-     * Now there are no ongoing flush or commit operations in progress.
-     * we can safely truncate the filecache.
-     */
-    [[maybe_unused]]
-    const uint64_t bytes_truncated = filecache_handle->truncate(size);
-
-    AZLogDebug("[{}] Filecache truncated to size={} (bytes truncated: {})",
-               ino, size, bytes_truncated);
 
     return true;
 }
@@ -1258,6 +1291,9 @@ bool nfs_inode::release(fuse_req_t req)
     /*
      * Since the inode is now truly getting deleted, invalidate the attribute
      * cache and clear the data cache.
+     *
+     * This is the close side of cto consistency. Any open after this point
+     * will cause the file data to be fetched from the server.
      */
     invalidate_cache(true /* purge_now */);
     invalidate_attribute_cache();

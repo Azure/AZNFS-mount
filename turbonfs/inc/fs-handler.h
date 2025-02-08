@@ -385,6 +385,16 @@ static void aznfsc_ll_open(fuse_req_t req,
      * Mostly it'll be allocated in nfs_client::reply_entry(), but for inodes
      * conveyed through readdirplus, nfs_client::reply_entry() won't be called
      * and filecache_handle won't be allocated when aznfsc_ll_open() is called.
+     *
+     * TODO: If nocto option is not set then we should provide cto consistency,
+     *       by making a fresh getattr call to the server and if it returns
+     *       that file data has changed (mtime and/or size has changed), then
+     *       we should invalidate the cache before proceeding with open.
+     *       Cache invalidation should flush all dirty mappings before marking
+     *       cache as invalid.
+     *       If the cache is already marked invalid (see invalidate() method of
+     *       bytes_chunk_cache) then also we should flush all dirty mappings
+     *       before proceeding with the open.
      */
     inode->on_fuse_open(FUSE_OPEN);
     assert(inode->opencnt > 0);

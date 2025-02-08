@@ -159,7 +159,6 @@ static void readahead_callback (
          * Note that those prio successful reads would have caused the RPC
          * stats to be updated, but that's fine.
          */
-
         bc->get_membuf()->clear_locked();
         bc->get_membuf()->clear_inuse();
 
@@ -617,11 +616,13 @@ int ra_state::issue_readaheads()
                           inode->get_fuse_ino(), args.offset, args.count);
 
                 on_readahead_complete(bc.offset, bc.length);
+
                 bc.get_membuf()->clear_locked();
                 bc.get_membuf()->clear_inuse();
 
                 // Release the buffer since we did not fill it.
                 read_cache->release(bc.offset, bc.length);
+
                 tsk->free_rpc_task();
                 delete ctx;
 

@@ -54,8 +54,10 @@ membuf::membuf(bytes_chunk_cache *_bcc,
                uint64_t _length,
                int _backing_file_fd) :
                bcc(_bcc),
-               offset(_offset),
-               length(_length),
+               initial_offset(_offset),
+               initial_length(_length),
+               offset(initial_offset),
+               length(initial_length),
                backing_file_fd(_backing_file_fd)
 {
     if (is_file_backed()) {
@@ -69,9 +71,10 @@ membuf::membuf(bytes_chunk_cache *_bcc,
         assert(bcc->bytes_allocated >= allocated_length);
         assert(bcc->bytes_allocated_g >= allocated_length);
     } else {
+        assert(initial_length > 0);
         // TODO: Handle memory alloc failures gracefully.
-        allocated_buffer = buffer = new uint8_t[length];
-        allocated_length = length;
+        allocated_buffer = buffer = new uint8_t[initial_length];
+        allocated_length = initial_length;
 
         bcc->bytes_allocated_g += allocated_length;
         bcc->bytes_allocated += allocated_length;
@@ -91,6 +94,21 @@ membuf::~membuf()
     assert(!is_inuse());
 
     /*
+     * Trimming can reduce length and/or increase offset, but should not
+     * make it 0. If it becomes 0, then we destroy the membuf w/o updating
+     * length/offset.
+     */
+    assert(length > 0);
+    assert(length <= initial_length);
+    assert(offset >= initial_offset);
+
+    /*
+     * length can be reduced by both left and right trimming, while offset
+     * can only be increased by left trimming.
+     */
+    assert((initial_length - length) >= (offset - initial_offset));
+
+    /*
      * dirty membuf must not be destroyed, unless it's due to file being
      * truncated, in which case we don't care about losing the unflushed
      * data.
@@ -108,7 +126,7 @@ membuf::~membuf()
              */
             assert(((uint64_t) allocated_buffer & (PAGE_SIZE - 1)) == 0);
             assert(buffer < (allocated_buffer + PAGE_SIZE));
-            assert(allocated_length >= length);
+            assert(allocated_length >= initial_length);
 
             drop();
 
@@ -118,7 +136,7 @@ membuf::~membuf()
         // Non file-backed membufs must always have a valid buffer.
         assert(allocated_buffer != nullptr);
         assert(buffer == allocated_buffer);
-        assert(length == allocated_length);
+        assert(initial_length == allocated_length);
 
         /*
          * If this is a truncated dirty membuf, we need to update the dirty
@@ -129,10 +147,17 @@ membuf::~membuf()
          */
         if (is_truncated() && is_dirty()) {
             assert(!is_flushing());
-            assert(bcc->bytes_dirty >= allocated_length);
-            assert(bcc->bytes_dirty_g >= allocated_length);
-            bcc->bytes_dirty -= allocated_length;
-            bcc->bytes_dirty_g -= allocated_length;
+            assert(bcc->bytes_dirty >= length);
+            assert(bcc->bytes_dirty_g >= length);
+            bcc->bytes_dirty -= length;
+            bcc->bytes_dirty_g -= length;
+        }
+
+        if (is_uptodate()) {
+            assert(bcc->bytes_uptodate >= length);
+            assert(bcc->bytes_uptodate_g >= length);
+            bcc->bytes_uptodate -= length;
+            bcc->bytes_uptodate_g -= length;
         }
 
         assert(bcc->bytes_allocated >= allocated_length);
@@ -146,6 +171,68 @@ membuf::~membuf()
     }
 
     assert(!allocated_buffer);
+}
+
+/**
+ * Caller must call trim() only when membuf is not owned by any other thread.
+ */
+void membuf::trim(uint64_t trim_len, bool left)
+{
+    // Can't trim more than the current size.
+    assert(trim_len > 0);
+    assert(trim_len <= length);
+
+    /*
+     * Update offset and length to reflect values after trim.
+     * Note that these membuf fields are not really used, other than logging
+     * and probably asserting.
+     */
+    if (left) {
+        offset += trim_len;
+        /*
+         * TODO: We should update membuf::buffer as well, but for now we don't
+         *       do that and it's ok as all callers access the buffer via
+         *       bytes_chunk::get_buffer().
+         */
+    }
+    length -= trim_len;
+
+    /*
+     * Cannot safely trim a membuf that's
+     * - in use by some other thread.
+     * - flushing in progress.
+     * - commit pending.
+     *
+     * Note that we need to allow locked membufs to be trimmed. Most callers
+     * call release() with membuf lock still held.
+     *
+     * We don't want to surprise the user.
+     *
+     * Note that bytes_chunk_cache::truncate() owns the membuf when it calls
+     * trim() but it releases the lock and inuse count before calling trim().
+     * Since it's holding the chunkmap lock, no other thread can get ref on
+     * the membuf.
+     *
+     * Only bytes_chunk_cache::truncate() can call trim for dirty membufs.
+     */
+    assert(!is_inuse());
+    //assert(!is_locked());
+    assert(!is_flushing());
+    assert(!is_commit_pending());
+
+    if (is_uptodate()) {
+        assert(bcc->bytes_uptodate >= trim_len);
+        assert(bcc->bytes_uptodate_g >= trim_len);
+        bcc->bytes_uptodate -= trim_len;
+        bcc->bytes_uptodate_g -= trim_len;
+    }
+
+    if (is_dirty()) {
+        assert(bcc->bytes_dirty >= trim_len);
+        assert(bcc->bytes_dirty_g >= trim_len);
+        bcc->bytes_dirty -= trim_len;
+        bcc->bytes_dirty_g -= trim_len;
+    }
 }
 
 int64_t membuf::drop()
@@ -231,20 +318,20 @@ bool membuf::load()
 
 #if 0
     // Caller must have ensured this.
-    assert(bcc->backing_file_len >= (offset + length));
+    assert(bcc->backing_file_len >= (initial_offset + initial_length));
 #endif
 
     // mmap() allows only 4k aligned offsets.
-    const uint64_t adjusted_offset = offset & ~(PAGE_SIZE - 1);
+    const uint64_t adjusted_offset = initial_offset & ~(PAGE_SIZE - 1);
 
     /*
      * First time around allocated_length would be 0, after that it must be
      * set to correct value.
      */
     assert((allocated_length == 0) ||
-           (allocated_length == (length + (offset - adjusted_offset))));
+           (allocated_length == (initial_length + (initial_offset - adjusted_offset))));
 
-    allocated_length = length + (offset - adjusted_offset);
+    allocated_length = initial_length + (initial_offset - adjusted_offset);
 
     AZLogDebug("mmap(fd={}, length={}, offset={})",
                backing_file_fd, allocated_length, adjusted_offset);
@@ -253,7 +340,7 @@ bool membuf::load()
      * Default value of /proc/sys/vm/max_map_count may not be sufficient
      * for large files. Need to increase it.
      */
-    assert(adjusted_offset <= offset);
+    assert(adjusted_offset <= initial_offset);
     allocated_buffer =
         (uint8_t *) ::mmap(nullptr,
                            allocated_length,
@@ -264,13 +351,13 @@ bool membuf::load()
 
     if (allocated_buffer == MAP_FAILED) {
         AZLogError("mmap(fd={}, length={}, offset={}) failed: {}",
-                   backing_file_fd, length, adjusted_offset,
+                   backing_file_fd, initial_length, adjusted_offset,
                    strerror(errno));
         assert(0);
         return false;
     }
 
-    buffer = allocated_buffer + (offset - adjusted_offset);
+    buffer = allocated_buffer + (initial_offset - adjusted_offset);
 
     bcc->bytes_allocated_g += allocated_length;
     bcc->bytes_allocated += allocated_length;
@@ -312,7 +399,7 @@ void membuf::set_uptodate()
         assert(bcc->bytes_uptodate <= AZNFSC_MAX_FILE_SIZE);
 
         AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
+                   offset.load(), offset.load()+length.load(), backing_file_fd);
     }
 }
 
@@ -335,7 +422,7 @@ void membuf::clear_uptodate()
     bcc->bytes_uptodate_g -= length;
 
     AZLogWarn("Clear uptodate membuf [{}, {}), fd={}",
-              offset, offset+length, backing_file_fd);
+              offset.load(), offset.load()+length.load(), backing_file_fd);
 
     /*
      * Let's assert in debug builds so that we know if it happens.
@@ -373,7 +460,7 @@ void membuf::set_commit_pending()
     assert(bcc->bytes_commit_pending <= AZNFSC_MAX_FILE_SIZE);
 
     AZLogDebug("Set commit pending membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 }
 
 /**
@@ -414,7 +501,7 @@ void membuf::clear_commit_pending()
     bcc->bytes_commit_pending_g -= length;
 
     AZLogDebug("Clear commit pending membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 }
 
 
@@ -466,7 +553,7 @@ void membuf::set_flushing()
     assert(bcc->bytes_flushing <= AZNFSC_MAX_FILE_SIZE);
 
     AZLogDebug("Set flushing membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 }
 
 /**
@@ -507,7 +594,7 @@ void membuf::clear_flushing()
     bcc->bytes_flushing_g -= length;
 
     AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 }
 
 /**
@@ -546,13 +633,13 @@ void membuf::set_locked()
     if (inject_error()) {
         const uint64_t sleep_usecs = random_number(10'000, 1000'000);
         AZLogWarn("set_locked() membuf [{}, {}), delaying {} usecs",
-                  offset, offset+length, sleep_usecs);
+                  offset.load(), offset.load()+length.load(), sleep_usecs);
         ::usleep(sleep_usecs);
     }
 #endif
 
     AZLogDebug("Locking membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 
     /*
      * get() returns with inuse set on the returned membufs.
@@ -594,7 +681,7 @@ void membuf::set_locked()
     bcc->num_locked_g++;
 
     AZLogDebug("Successfully locked membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 
     // Must never return w/o locking the membuf.
     assert(is_locked());
@@ -622,7 +709,7 @@ void membuf::clear_locked()
         flag &= ~MB_Flag::Locked;
 
         AZLogDebug("Unlocked membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
+                   offset.load(), offset.load()+length.load(), backing_file_fd);
     }
 
     assert(bcc->bytes_locked >= length);
@@ -672,7 +759,7 @@ void membuf::set_dirty()
     assert(bcc->bytes_dirty <= AZNFSC_MAX_FILE_SIZE);
 
     AZLogDebug("Set dirty membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 }
 
 void membuf::clear_dirty()
@@ -695,7 +782,7 @@ void membuf::clear_dirty()
     bcc->bytes_dirty_g -= length;
 
     AZLogDebug("Clear dirty membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 }
 
 void membuf::set_truncated()
@@ -709,6 +796,7 @@ void membuf::set_truncated()
      * Once truncated the corresponding bytes_chunk must be removed from
      * chunkmap, so future users should not get it.
      */
+    assert(is_locked());
     assert(!is_truncated());
 
     /*
@@ -719,7 +807,7 @@ void membuf::set_truncated()
     flag |= MB_Flag::Truncated;
 
     AZLogDebug("Set truncated membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+               offset.load(), offset.load()+length.load(), backing_file_fd);
 }
 
 void membuf::set_inuse()
@@ -730,7 +818,7 @@ void membuf::set_inuse()
     inuse++;
 
     AZLogDebug("Setting inuse membuf [{}, {}), fd={}, new inuse count: {}",
-               offset, offset+length, backing_file_fd, inuse.load());
+               offset.load(), offset.load()+length.load(), backing_file_fd, inuse.load());
 }
 
 void membuf::clear_inuse()
@@ -749,7 +837,7 @@ void membuf::clear_inuse()
     inuse--;
 
     AZLogDebug("Clearing inuse membuf [{}, {}), fd={}, new inuse count: {}",
-               offset, offset+length, backing_file_fd, inuse.load());
+               offset.load(), offset.load()+length.load(), backing_file_fd, inuse.load());
 }
 
 bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
@@ -790,6 +878,9 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
     // alloc_buffer must always be valid.
     assert(alloc_buffer != nullptr);
     assert(alloc_buffer.use_count() > 1);
+    assert(alloc_buffer->offset >= alloc_buffer->initial_offset);
+    assert(alloc_buffer->length <= alloc_buffer->initial_length);
+
     /*
      * By the time bytes_chunk constructor is called
      * bytes_chunk_cache::scan() MUST have opened the backing file.
@@ -799,7 +890,17 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
     // 0-sized chunks don't exist.
     assert(length > 0);
     assert(length <= alloc_buffer->length);
-    assert((buffer_offset + length) <= alloc_buffer->length);
+
+    /*
+     * bc being created from membuf, must lie within it.
+     * It must refer to the whole membuf or part of it.
+     */
+    assert(offset >= alloc_buffer->offset);
+    assert(length <= alloc_buffer->length);
+
+    // bc must only refer to valid part of membuf.
+    assert(buffer_offset >= (alloc_buffer->offset -
+                             alloc_buffer->initial_offset));
     assert(alloc_buffer->length <= AZNFSC_MAX_CHUNK_SIZE);
     assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
 
@@ -863,16 +964,6 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
         ::usleep(sleep_usecs);
     }
 #endif
-
-    /*
-     * We need to perform the same action for both release and truncate, just
-     * that truncate is always allowed while release is allowed only if
-     * safe_to_release() returns true.
-     */
-    const bool do_truncate = (action == scan_action::SCAN_ACTION_TRUNCATE);
-    if (do_truncate) {
-        action = scan_action::SCAN_ACTION_RELEASE;
-    }
 
     assert(offset < AZNFSC_MAX_FILE_SIZE);
     assert(length > 0);
@@ -1318,6 +1409,10 @@ do { \
     for (; remaining_length != 0 && it != chunkmap.end(); ) {
         bc = &(it->second);
 
+        // membuf and chunkmap bc offset and length must always be in sync.
+        assert(bc->length == bc->get_membuf()->length);
+        assert(bc->offset == bc->get_membuf()->offset);
+
         /*
          * For the GET and file-backed cache, make sure the requested chunk is
          * duly mmapped so that any IO that caller performs on the returned
@@ -1358,8 +1453,8 @@ do { \
                              chunk_offset, chunk_offset + chunk_length,
                              fmt::ptr(chunkvec.back().get_buffer()),
                              fmt::ptr(bc->alloc_buffer->get()));
-            } else if (do_truncate || bc->safe_to_release()) {
-                assert (action == scan_action::SCAN_ACTION_RELEASE);
+            } else if (bc->safe_to_release()) {
+                assert(action == scan_action::SCAN_ACTION_RELEASE);
 
                 /*
                  * chunk_length bytes will be released.
@@ -1375,10 +1470,10 @@ do { \
                     AZLogVerbose("<Release [{}, {})> (releasing chunk) [{},{}) "
                                  "b:{} a:{}",
                                  offset, offset + length,
-                               chunk_offset, chunk_offset + chunk_length,
-                               bc->alloc_buffer->get() ?
-                                    fmt::ptr(bc->get_buffer()) : nullptr,
-                               fmt::ptr(bc->alloc_buffer->get()));
+                                 chunk_offset, chunk_offset + chunk_length,
+                                 bc->alloc_buffer->get() ?
+                                        fmt::ptr(bc->get_buffer()) : nullptr,
+                                 fmt::ptr(bc->alloc_buffer->get()));
                     /*
                      * Queue the chunk for deletion, since the entire chunk is
                      * released.
@@ -1405,9 +1500,13 @@ do { \
                                  bc->offset + chunk_length,
                                  bc->offset + bc->length);
 
+                    // Trim chunkmap bc.
                     bc->offset += chunk_length;
                     bc->buffer_offset += chunk_length;
                     bc->length -= chunk_length;
+
+                    // Trim membuf.
+                    bc->get_membuf()->trim(chunk_length, true /* left */);
 
                     /*
                      * Don't update num_chunks/num_chunks_g as we remove one
@@ -1519,7 +1618,7 @@ do { \
                              chunk_offset, chunk_offset + chunk_length,
                              fmt::ptr(chunkvec.back().get_buffer()),
                              fmt::ptr(bc->alloc_buffer->get()));
-            } else if (do_truncate || bc->safe_to_release()) {
+            } else if (bc->safe_to_release()) {
                 assert(action == scan_action::SCAN_ACTION_RELEASE);
                 assert(chunk_length <= remaining_length);
 
@@ -1564,8 +1663,12 @@ do { \
                                  bc->offset, bc->offset + bc->length,
                                  bc->offset, next_offset);
 
+                    // Trim chunkmap bc.
                     bc->length = next_offset - bc->offset;
                     assert((int64_t) bc->length > 0);
+
+                    // Trim membuf.
+                    bc->get_membuf()->trim(chunk_length, false /* left */);
 
                     assert(bytes_cached >= trim_bytes);
                     assert(bytes_cached_g >= trim_bytes);
@@ -1594,8 +1697,8 @@ do { \
                              "to release: inuse={}, dirty={}",
                              offset, offset + length,
                              chunk_offset, chunk_offset + chunk_length,
-                           bc->get_membuf()->get_inuse(),
-                           bc->get_membuf()->is_dirty());
+                             bc->get_membuf()->get_inuse(),
+                             bc->get_membuf()->is_dirty());
             }
 
             // This chunk is fully consumed, move to the next chunk.
@@ -1772,7 +1875,7 @@ allocate_only_chunk:
                  * Not all chunks from begin_delete to end_delete are
                  * guaranteed safe-to-delete, so check before deleting.
                  */
-                if (do_truncate || bc->safe_to_release()) {
+                if (bc->safe_to_release()) {
                     AZLogVerbose("<Release [{}, {})> (freeing chunk) [{},{}) "
                                  "b:{} a:{}",
                                  offset, offset + length,
@@ -1793,9 +1896,6 @@ allocate_only_chunk:
 
                     bytes_released_tmp += bc->length;
 
-                    if (do_truncate) {
-                        bc->get_membuf()->set_truncated();
-                    }
                     chunkmap.erase(_it);
                 }
             }
@@ -1869,6 +1969,200 @@ end:
                 ? chunkvec : std::vector<bytes_chunk>();
 }
 
+uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
+{
+    assert(trunc_len <= AZNFSC_MAX_FILE_SIZE);
+
+    /*
+     * Count of how many bytes we drop from the cache, to serve this truncate
+     * request. We return this to the caller.
+     */
+    uint64_t bytes_truncated = 0;
+
+    /*
+     * Step #1: Grab chunkmap lock and mark all the affected bcs inuse, so that
+     *          they aren't removed while we work on them in subsequent steps.
+     */
+    std::vector<std::map<uint64_t, struct bytes_chunk>::iterator> it_vec1;
+    {
+        // TODO: Make it shared lock.
+        const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+
+        if (chunkmap.empty()) {
+            return 0;
+        }
+
+        /*
+         * Get chunk with starting offset >= trunc_len.
+         * If prev bc has one or more bytes to be truncated, count that in too.
+         */
+        auto it = chunkmap.lower_bound(trunc_len);
+
+        if (it != chunkmap.begin()) {
+            auto prev_it = std::prev(it);
+            const struct bytes_chunk *prev_bc = &(prev_it->second);
+
+            assert(trunc_len > prev_bc->offset);
+
+            if (trunc_len < (prev_bc->offset + prev_bc->length)) {
+                // Prev bc has one or more bytes truncated.
+                it = prev_it;
+            }
+        }
+
+        /*
+         * Save iterators to all the affected bcs in it_vec1.
+         * Note that since we don't remove an inuse bc from the chunkmap, it's
+         * safe to access these iterators after the chunkmap lock is released.
+         */
+        while (it != chunkmap.cend()) {
+            const struct bytes_chunk& bc = it->second;
+            struct membuf *mb = bc.get_membuf();
+
+            // bc must have at least one byte truncated.
+            assert((bc.offset + bc.length) > trunc_len);
+
+            mb->set_inuse();
+            it_vec1.emplace_back(it);
+
+            ++it;
+        }
+    }
+
+    /*
+     * Step #2: Grab membuf lock for all the affected bcs.
+     *          Once we have all the locks, we are guaranteed that no IOs are
+     *          ongoing on any of the truncated bcs and no new IOs can be
+     *          started.
+     */
+    std::vector<std::map<uint64_t, struct bytes_chunk>::iterator> it_vec3;
+    for (auto &it : it_vec1) {
+        const struct bytes_chunk& bc = it->second;
+        struct membuf *mb = bc.get_membuf();
+
+        assert(mb != nullptr);
+        // We grabbed it above.
+        assert(mb->is_inuse());
+
+        /*
+         * For all bcs that we could get the membuf lock, add them to it_vec3.
+         * These will be truncated (fully or partially).
+         * If post is true we use try_lock() and skip if we do not get the lock.
+         */
+        if (post) {
+            if (mb->try_lock()) {
+                it_vec3.emplace_back(it);
+            } else {
+                AZLogInfo("<Truncate {}> POST failed to lock membuf "
+                          "[{},{})",
+                          trunc_len, bc.offset, bc.offset + bc.length);
+            }
+        } else {
+            mb->set_locked();
+            it_vec3.emplace_back(it);
+        }
+    }
+
+    assert(it_vec3.size() <= it_vec1.size());
+
+    /*
+     * Step #3: Release all the affected bcs. If there's a partial bc, it'll be
+     *          trimmed from the right.
+     */
+    {
+        const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+
+        for (auto& it : it_vec3) {
+            struct bytes_chunk& bc = it->second;
+            struct membuf *mb = bc.get_membuf();
+
+            // membuf and chunkmap bc offset and length must always be in sync.
+            assert(bc.length == mb->length);
+            assert(bc.offset == mb->offset);
+
+            /*
+             * it_vec3 should not have any bc that lies completely before
+             * trunc_len.
+             */
+            assert((bc.offset + bc.length) > trunc_len);
+
+            // trunc_len falls inside this bc?
+            if (bc.offset < trunc_len) {
+                // How many bytes to trim from the right?
+                const uint64_t trim_bytes = (bc.offset + bc.length - trunc_len);
+                assert(trim_bytes > 0);
+
+                AZLogVerbose("<Truncate {}> {}trimming chunk from right "
+                             "[{},{}) -> [{},{})",
+                             trunc_len, post ? "POST " : "",
+                             bc.offset, bc.offset + bc.length,
+                             bc.offset, trunc_len);
+
+                // Trim chunkmap bc.
+                bc.length -= trim_bytes;
+                assert((int64_t) bc.length > 0);
+
+                /*
+                 * Trim membuf.
+                 * trim() expects inuse to be dropped before calling.
+                 * We have the membuf lock, so we are fine.
+                 */
+                mb->clear_inuse();
+                mb->trim(trim_bytes, false /* left */);
+                mb->set_inuse();
+
+                assert(bytes_cached >= trim_bytes);
+                assert(bytes_cached_g >= trim_bytes);
+                bytes_cached -= trim_bytes;
+                bytes_cached_g -= trim_bytes;
+
+                bytes_truncated += trim_bytes;
+
+                mb->clear_locked();
+                mb->clear_inuse();
+            } else {
+                AZLogVerbose("<Truncate {}> {}truncated full chunk [{},{})",
+                             trunc_len, post ? "POST " : "",
+                             bc.offset, bc.offset + bc.length);
+
+                /*
+                 * Release the chunk.
+                 * This will release the membuf (munmap() it in case of file-backed
+                 * cache and delete it for heap backed cache).
+                 */
+                assert(num_chunks > 0);
+                num_chunks--;
+                assert(num_chunks_g > 0);
+                num_chunks_g--;
+
+                assert(bytes_cached >= bc.length);
+                assert(bytes_cached_g >= bc.length);
+                bytes_cached -= bc.length;
+                bytes_cached_g -= bc.length;
+
+                bytes_truncated += bc.length;
+
+                mb->set_truncated();
+
+                mb->clear_locked();
+                mb->clear_inuse();
+
+                chunkmap.erase(it);
+            }
+        }
+    }
+
+    assert(bytes_truncated <= (AZNFSC_MAX_FILE_SIZE-trunc_len));
+
+    bytes_truncate += bytes_truncated;
+    bytes_truncate_g += bytes_truncated;
+
+    num_truncate++;
+    num_truncate_g++;
+
+    return bytes_truncated;
+}
+
 /*
  * TODO: Add pruning stats.
  */
@@ -1914,10 +2208,10 @@ void bytes_chunk_cache::inline_prune()
          * inode will be null only for testing.
          */
         assert(!inode || (inode->magic == NFS_INODE_MAGIC));
-        if (inode && inode->in_ra_window(mb->offset, mb->length)) {
+        if (inode && inode->in_ra_window(mb->offset.load(), mb->length.load())) {
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) lies in RA window",
-                       CACHE_TAG, mb->offset, mb->length);
+                       CACHE_TAG, mb->offset.load(), mb->length.load());
             inra++;
             inra_bytes += mb->allocated_length;
             continue;
@@ -1930,7 +2224,7 @@ void bytes_chunk_cache::inline_prune()
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is inuse (locked={}, dirty={}, flushing={}, "
                        "uptodate={})",
-                       CACHE_TAG, mb->offset, mb->length,
+                       CACHE_TAG, mb->offset.load(), mb->length.load(),
                        mb->is_locked() ? "yes" : "no",
                        mb->is_dirty() ? "yes" : "no",
                        mb->is_flushing() ? "yes" : "no",
@@ -1950,7 +2244,7 @@ void bytes_chunk_cache::inline_prune()
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is locked (dirty={}, flushing={}, "
                        "uptodate={})",
-                       CACHE_TAG, mb->offset, mb->length,
+                       CACHE_TAG, mb->offset.load(), mb->length.load(),
                        mb->is_dirty() ? "yes" : "no",
                        mb->is_flushing() ? "yes" : "no",
                        mb->is_uptodate() ? "yes" : "no");
@@ -1966,7 +2260,7 @@ void bytes_chunk_cache::inline_prune()
         if (mb->is_dirty()) {
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is dirty (flushing={}, uptodate={})",
-                       CACHE_TAG, mb->offset, mb->length,
+                       CACHE_TAG, mb->offset.load(), mb->length.load(),
                        mb->is_flushing() ? "yes" : "no",
                        mb->is_uptodate() ? "yes" : "no");
             dirty++;
@@ -1981,7 +2275,7 @@ void bytes_chunk_cache::inline_prune()
         if (mb->is_commit_pending()) {
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is commit_pending (dirty={} flushing={}, uptodate={})",
-                       CACHE_TAG, mb->offset, mb->length,
+                       CACHE_TAG, mb->offset.load(), mb->length.load(),
                        mb->is_dirty() ? "yes" : "no",
                        mb->is_flushing() ? "yes" : "no",
                        mb->is_uptodate() ? "yes" : "no");
@@ -1991,7 +2285,7 @@ void bytes_chunk_cache::inline_prune()
         }
 
         AZLogDebug("[{}] inline_prune(): deleting membuf(offset={}, length={})",
-                   CACHE_TAG, mb->offset, mb->length);
+                   CACHE_TAG, mb->offset.load(), mb->length.load());
 
         /*
          * Release the chunk.
@@ -2153,7 +2447,7 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
             if (mb->is_inuse()) {
                 AZLogDebug("[{}] Cache purge: skipping inuse membuf(offset={}, "
                            "length={}) (inuse count={}, dirty={})",
-                           CACHE_TAG, mb->offset, mb->length,
+                           CACHE_TAG, mb->offset.load(), mb->length.load(),
                            mb->get_inuse(), mb->is_dirty());
                 continue;
             }
@@ -2162,7 +2456,7 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
                 AZLogError("[{}] Cache purge: Got inuse membuf(offset={}, "
                            "length={}) (inuse count={}, dirty={}) when shutting "
                            "down cache",
-                           CACHE_TAG, mb->offset, mb->length,
+                           CACHE_TAG, mb->offset.load(), mb->length.load(),
                            mb->get_inuse(), mb->is_dirty());
                 // No membufs should be in use when file is closed.
                 assert(0);
@@ -2179,7 +2473,7 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
             if (mb->is_locked()) {
                 AZLogDebug("[{}] Cache purge: skipping locked membuf(offset={}, "
                            "length={}) (inuse count={}, dirty={})",
-                           CACHE_TAG, mb->offset, mb->length,
+                           CACHE_TAG, mb->offset.load(), mb->length.load(),
                            mb->get_inuse(), mb->is_dirty());
                 continue;
             }
@@ -2188,7 +2482,7 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
                 AZLogError("[{}] Cache purge: Got locked membuf(offset={}, "
                            "length={}) (inuse count={}, dirty={}) when shutting "
                            "down cache",
-                           CACHE_TAG, mb->offset, mb->length,
+                           CACHE_TAG, mb->offset.load(), mb->length.load(),
                            mb->get_inuse(), mb->is_dirty());
                 // No membufs should be locked when file is closed.
                 assert(0);
@@ -2203,7 +2497,7 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
             if (mb->is_dirty()) {
                 AZLogDebug("[{}] Cache purge: skipping dirty membuf(offset={}, "
                            "length={})",
-                           CACHE_TAG, mb->offset, mb->length);
+                           CACHE_TAG, mb->offset.load(), mb->length.load());
                 continue;
             }
         } else {
@@ -2215,7 +2509,7 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
                 AZLogWarn("[{}] Cache purge: Got dirty membuf(offset={}, "
                           "length={}) when shutting down cache, freeing it. "
                           "THIS MAY CAUSE FILE DATA TO BE INCONSISTENT!",
-                          CACHE_TAG, mb->offset, mb->length);
+                          CACHE_TAG, mb->offset.load(), mb->length.load());
             }
         }
 
@@ -2227,7 +2521,7 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
             if (mb->is_commit_pending()) {
                 AZLogDebug("[{}] Cache purge: skipping commit_pending "
                            "membuf(offset={}, length={})",
-                           CACHE_TAG, mb->offset, mb->length);
+                           CACHE_TAG, mb->offset.load(), mb->length.load());
                 continue;
             }
         } else {
@@ -2240,13 +2534,13 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
                           "membuf(offset={}, length={}) when shutting down "
                           "cache, freeing it. "
                           "THIS MAY CAUSE FILE DATA TO BE INCONSISTENT!",
-                          CACHE_TAG, mb->offset, mb->length);
+                          CACHE_TAG, mb->offset.load(), mb->length.load());
             }
         }
 
         AZLogDebug("[{}] Cache purge: deleting membuf(offset={}, length={}), "
                    "use_count={}, deleted {} of {}",
-                   CACHE_TAG, mb->offset, mb->length,
+                   CACHE_TAG, mb->offset.load(), mb->length.load(),
                    bc->get_membuf_usecount(),
                    start_size - chunkmap.size(), start_size);
 
@@ -2473,7 +2767,7 @@ static void cache_read(bytes_chunk_cache& cache,
 {
     std::vector<bytes_chunk> v;
 
-    AZLogVerbose("=====> cache_read({}, {})", offset, offset+length);
+    AZLogVerbose("=====> cache_read({}, {})", offset.load(), offset.load()+length.load());
     v = cache.get(offset, length);
     // At least one chunk.
     assert(v.size() >= 1);
@@ -2505,7 +2799,7 @@ static void cache_read(bytes_chunk_cache& cache,
     assert(total_length == length);
 
     AZLogVerbose("=====> cache_read({}, {}): vec={}",
-               offset, offset+length, v.size());
+               offset.load(), offset.load()+length.load(), v.size());
 }
 
 static void cache_write(bytes_chunk_cache& cache,
@@ -2515,7 +2809,7 @@ static void cache_write(bytes_chunk_cache& cache,
     std::vector<bytes_chunk> v;
     uint64_t l, r;
 
-    AZLogVerbose("=====> cache_write({}, {})", offset, offset+length);
+    AZLogVerbose("=====> cache_write({}, {})", offset.load(), offset.load()+length.load());
     v = cache.getx(offset, length, &l, &r);
     // At least one chunk.
     assert(v.size() >= 1);
@@ -2549,8 +2843,8 @@ static void cache_write(bytes_chunk_cache& cache,
     assert(total_length == length);
 
     AZLogVerbose("=====> cache_write({}, {}): l={} r={} vec={}",
-                 offset, offset+length, l, r, v.size());
-    AZLogVerbose("=====> cache_release({}, {})", offset, offset+length);
+                 offset.load(), offset.load()+length.load(), l, r, v.size());
+    AZLogVerbose("=====> cache_release({}, {})", offset.load(), offset.load()+length.load());
     assert(cache.release(offset, length) <= length);
 }
 

@@ -176,15 +176,21 @@ struct membuf
 
     /*
      * This membuf caches file data in the range [offset, offset+length).
-     * These are initialized in the constructor and not changed thereafter.
-     * If user trims the cache, the corresponding chunkmap[]'s offset, length
-     * and buffer_offset are updated accordingly, but the underlying membuf
-     * fields are not changed. This is IMPORTANT as some other bytes_chunk
-     * that we may have returned in the past may be referring to those membufs
-     * and changing those will confuse those users.
+     * A membuf starts caching [initial_offset, initial_offset+initial_length),
+     * but can be later trimmed to cache a smaller section of the file,
+     * [offset, offset+length) as some release() call releases part of the
+     * chunk. For trimming from right, only length needs to be reduced, while
+     * for trimming from left, length is reduced and offset is increased.
+     * The corresponding chunkmap[]'s offset, length and buffer_offset are also
+     * updated accordingly and they should always be same as that of the membuf.
+     *
+     * initial_offset and initial_length hold the initial values that membuf
+     * was created with, these remain unchanged for the life of the membuf.
      */
-    const uint64_t offset;
-    const uint64_t length;
+    const uint64_t initial_offset;
+    const uint64_t initial_length;
+    std::atomic<uint64_t> offset;
+    std::atomic<uint64_t> length;
 
     /*
      * Actual allocated length. This can be greater than length for
@@ -213,6 +219,10 @@ struct membuf
      *
      * Once set buffer and allocated_buffer should not change. For file-backed
      * caches drop() will munmap() and set allocated_buffer to nullptr.
+     *
+     * TODO: trim() doesn't update buffer, which means membuf::buffer does not
+     *       point to the correct data cached by this membuf. Always use
+     *       bytes_chunk::get_buffer() to get the correct address.
      */
     uint8_t *buffer = nullptr;
     uint8_t *allocated_buffer = nullptr;
@@ -402,6 +412,25 @@ struct membuf
     void set_inuse();
     void clear_inuse();
 
+    /**
+     * trim 'trim_len' bytes from the membuf. 'left' should be true if trimming
+     * is done from the left side of the membuf, else trimming is done from the
+     * right side of the membuf.
+     * It'll perform necessary validations and updations needed when a membuf is
+     * trimmed.
+     * Caller must make sure that this membuf is not being accessed by some other
+     * thread. and trim() can safely update it. This means, trim() can be called
+     * in one of the following cases:
+     * 1. membuf is locked.
+     *    See bytes_chunk_cache::truncate().
+     * 2. chunkmap lock is held and membuf is not inuse.
+     *    See bytes_chunk_cache::scan()->safe_to_release().
+     *
+     * Called from release() and truncate(), release() can trim both from left
+     * and right while truncate() can only trim from right.
+     */
+    void trim(uint64_t trim_len, bool left);
+
 private:
     /*
      * Lock to correctly read and update the membuf state.
@@ -570,7 +599,10 @@ public:
     /*
      * Offset from the start of file this chunk represents.
      * For bytes_chunks stored in chunkmap[] this will be incremented to trim
-     * a bytes_chunk from the left.
+     * a bytes_chunk from the left and must always match membuf::offset while
+     * for non-chunkmap bcs (those returned by get()/getx()) this will be the
+     * copy of membuf::offset at the time the bc was created, membuf can be
+     * later trimmed and its offset may increase.
      */
     uint64_t offset = 0;
 
@@ -578,7 +610,10 @@ public:
      * Length of this chunk.
      * User can safely access [get_buffer(), get_buffer()+length).
      * For bytes_chunks stored in chunkmap[] this will be reduced to trim
-     * a bytes_chunk from the right.
+     * a bytes_chunk from left and right and must always match membuf::length
+     * while for non-chunkmap bcs (those returned by get()/getx()) this will be
+     * the copy of membuf::length at the time the bc was created, membuf can be
+     * later trimmed and its length may reduce.
      */
     uint64_t length = 0;
 
@@ -694,7 +729,19 @@ public:
     {
         // Should not call on a dropped cache.
         assert(alloc_buffer->get() != nullptr);
-        assert(buffer_offset < alloc_buffer->length);
+
+        /*
+         * buffer_offset should point to a valid membuf byte.
+         * Note that this bytes_chunk is a snapshot of the chunkmap's
+         * bytes_chunk at some point in the past (and it not necessarily the
+         * chunkmap bc, which should always be in sync with membuf), so it's
+         * possible that after this bc was returned by a get()/getx() call,
+         * user may have release()d the chunk which would cause membuf to be
+         * trimmed, so we cannot safely compare with the current membuf length
+         * and offset fields, but one thing we can say for sure is that
+         * buffer_offset should never exceed the membuf's initial_length.
+         */
+        assert(buffer_offset < alloc_buffer->initial_length);
 
         return alloc_buffer->get() + buffer_offset;
     }
@@ -719,14 +766,14 @@ public:
      *   maybe it's writing fresh data to it and may mark it dirty. If we
      *   allow such membuf to be released, future readers who get() the cache
      *   will miss those changes.
-     * - commit pending means those membuf are sitting in the TBL of the Blob,
+     * - commit pending means those membufs are sitting in the TBL of the Blob,
      *   not yet committed, server may fail the commit in which case we might
      *   have to resend those to the server and hence we cannot free those
      *   till successful commit.
      *
-     * Note: For truncate none of the above matters, i.e., we don't care about
-     *       losing cached writes to truncated region of the file, hence we
-     *       don't need to do safe_to_release() check when truncating file_cache.
+     * Note: Since we do not allow inuse membufs to be released, it means
+     *       if caller is owning the membuf they must drop their inuse count
+     *       before calling release().
      */
     bool safe_to_release() const
     {
@@ -859,17 +906,12 @@ public:
 /**
  * bytes_chunk_cache::scan() can behave differently depending on the scan_action
  * passed.
- *
- * Note: SCAN_ACTION_TRUNCATE is same as SCAN_ACTION_RELEASE just that
- *       safe_to_release() check is bypassed and we force release bytes_chunk
- *       even if they are dirty or o/w.
  */
 enum class scan_action
 {
     SCAN_ACTION_INVALID = 0,
     SCAN_ACTION_GET,
     SCAN_ACTION_RELEASE,
-    SCAN_ACTION_TRUNCATE,
 };
 
 /**
@@ -1116,59 +1158,29 @@ public:
     }
 
     /**
-     * Truncate the cache to not exceed 'length' bytes.
-     * Any bytes_chunk beyond 'length' will be:
-     * - Removed fully, if all their bytes are truncated.
-     * - Trimmed, if some of their bytes are still valid after truncate.
+     * Truncate cache to 'trunc_len' bytes.
+     * Any cached byte(s) with offset >= 'trunc_len' will be removed from the
+     * cache. All fully truncated bcs (having bc.offset >= 'trunc_len') will be
+     * removed from chunkmap. Note that 'trunc_len' can fall inside a bc, such
+     * partially truncated bc will be trimmed from the right to remove any bytes
+     * after 'trunc_len'.
+     * There are two ways to call truncate(), with 'post' as false or true.
+     * If 'post' is false, it'll lock all the affected bcs, so it may need to wait
+     * for ongoing IOs on those membufs to complete, hence it can take a long time
+     * depending on how many bytes_chunk are affected by truncate and if there are
+     * IOs ongoing on those. If 'post' is false then it calls membuf::try_lock()
+     * and skips truncating the membufs which it could not lock.
+     * Caller will typically call with post=false once at the beginning from a
+     * context that can afford to wait, make sure through external means that no
+     * new data is added to the cache, and then finally call once with post=true
+     * to cleanup anything that was added after the prev call.
      *
-     * Once truncate() completes, subsequent get() call will not return
-     * cached data for any byte in the truncated region.
-     *
-     * Note: truncate() can update one or more bytes_chunk in chunkmap while
-     *       there are users who may be using the bytes_chunk they got by a
-     *       prior call to scan()/get()/getx(). This is because truncate(),
-     *       unlike release(), does not do the safe_to_release() check.
-     *       The update may include dropping chunkmap's reference (users who
-     *       got a prior reference can still safely use their bytes_chunk) or
-     *       shrinking the bytes_chunk. Since it's the bytes_chunk that is
-     *       shrunk and not the membuf, users who have prior references to
-     *       these bytes_chunk will not note the difference. They can safely
-     *       read and write the membuf but all of the data may not be part of
-     *       the file cache.
-     *       If truncate() only drops or shrinks membufs, then it cannot cause
-     *       data consistency issues when an existing reader reads into such
-     *       a bytes_chunk and marks it uptodate, as the new partial bytes_chunk
-     *       will also be uptodate. For the writers, who have done a get()
-     *       before the truncate that removed or shrunk some of the bytes_chunk
-     *       from the chunkmap, if they later copy to those bytes_chunk, that
-     *       data would not be written to the file as that data will not be
-     *       returned by get_dirty_bc_range().
-     *
-     * Note: Caller MUST make sure that there are no ongoing flush operations
-     *       on the file, else they can change the file size back to a higher
-     *       value.
-     *
-     * Note: We can have two typical usages of truncate():
-     *       1. Truncate done by local application.
-     *       2. Truncate the cache when postop attrs carry a size
-     *          smaller than attr.st_size.
+     * Note: Since truncate() does not return with the chunkmap lock held, a
+     *       get() call done right after truncate() returns can add new data to
+     *       the truncated region. Caller should make sure through some other
+     *       means that new data is not added.
      */
-    uint64_t truncate(uint64_t length)
-    {
-        uint64_t bytes_truncated;
-
-        num_truncate++;
-        num_truncate_g++;
-
-        scan(length, AZNFSC_MAX_FILE_SIZE-length,
-             scan_action::SCAN_ACTION_TRUNCATE, &bytes_truncated);
-        assert(bytes_truncated <= (AZNFSC_MAX_FILE_SIZE-length));
-
-        bytes_truncate += bytes_truncated;
-        bytes_truncate_g += bytes_truncated;
-
-        return bytes_truncated;
-    }
+    uint64_t truncate(uint64_t trunc_len, bool post = false);
 
     /*
      * Returns all dirty chunks for a given range in chunkmap.

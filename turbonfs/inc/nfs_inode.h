@@ -526,13 +526,14 @@ public:
      * operations can be issued for this inode, and waits for any ongoing
      * flush/commit operations to complete, before truncating the filecache to
      * the new size.
-     * truncate_end() simply calls flush_unlock() to release the is_flushing
-     * lock held by truncate_start().
+     * truncate_end() calls bytes_chunk_cache::truncate(post=true) to finish
+     * cache truncate and calls flush_unlock() to release the flush_lock
+     * held by truncate_start().
      * This two apis together ensure that any flush/commit operation cannot
      * change the file size after truncate sets it.
      */
     bool truncate_start(size_t size);
-    void truncate_end() const;
+    void truncate_end(size_t size) const;
 
     /**
      * This MUST be called only after has_filecache() returns true, else
