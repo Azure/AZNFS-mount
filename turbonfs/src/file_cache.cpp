@@ -630,8 +630,10 @@ bool membuf::try_lock()
  * threads when they read data from the Blob into a newly created membuf,
  * or by writer threads when they are copying application data into the
  * membuf.
+ *
+ * set_locked() returns true if it got the lock w/o having to wait.
  */
-void membuf::set_locked()
+bool membuf::set_locked()
 {
 #ifdef ENABLE_PRESSURE_POINTS
     /*
@@ -694,7 +696,7 @@ void membuf::set_locked()
     assert(is_locked());
     assert(is_inuse());
 
-    return;
+    return (start_usecs == 0);
 }
 
 /**
@@ -2651,13 +2653,22 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
  * TODO: As bcs returned by this function are locked, it block parallel read
  *       on these bcs. Need to check if we can relax lock condition.
  */
-std::vector<bytes_chunk> bytes_chunk_cache::get_commit_pending_bcs() const
+std::vector<bytes_chunk>
+bytes_chunk_cache::get_commit_pending_bcs(uint64_t *bytes) const
 {
+    // Only for unstable writes should this function be called.
+    assert(!get_inode() || !get_inode()->is_stable_write());
+
     std::vector<bytes_chunk> bc_vec;
+
+    if (bytes) {
+        *bytes = 0;
+    }
 
     // TODO: Make it shared lock.
     const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
-    auto it = chunkmap.lower_bound(0);
+    auto it = chunkmap.cbegin();
+    uint64_t next_offset = AZNFSC_BAD_OFFSET;
 
     while (it != chunkmap.cend()) {
         const struct bytes_chunk& bc = it->second;
@@ -2665,10 +2676,92 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_commit_pending_bcs() const
 
         if (mb->is_commit_pending()) {
             mb->set_inuse();
-            mb->set_locked();
+            [[maybe_unused]]
+            const bool need_not_wait_for_lock = mb->set_locked();
+
+            /*
+             * FCSM serializes flushes and commit to a file. We will initiate
+             * a commit only after the last flush completes. So, there should
+             * not be anyone holding lock on these membufs.
+             */
+            assert(need_not_wait_for_lock);
+
+            /*
+             * TODO: How do we handle the case when application starts writing
+             *       (via copy_to_cache()) on a commit-pending membuf. Such a
+             *       membuf will go from CommitPending to Dirty, so we will
+             *       need to flush it again.
+             *       Once we handle this, above need_not_wait_for_lock assert
+             *       might need to be updated.
+             */
             assert(!mb->is_dirty());
             assert(mb->is_uptodate());
+            assert(mb->is_commit_pending());
+
+            // chunkmap bc and membuf must always be in sync.
+            assert(bc.length == mb->length);
+            assert(bc.offset == mb->offset);
+
+            /*
+             * Since the inode is marked for unstable writes, it means all the
+             * recent flush operations were append writes, which means we must
+             * have contiguous commit pending data.
+             *
+             * TODO: When we handle writes to commit-pending data, this may
+             *       change.
+             */
+            if (next_offset != AZNFSC_BAD_OFFSET) {
+                assert(mb->offset == next_offset);
+            }
+            next_offset = mb->offset + mb->length;
+            assert(next_offset != AZNFSC_BAD_OFFSET);
+
             bc_vec.emplace_back(bc);
+
+            if (bytes) {
+                *bytes += bc.length;
+            }
+        }
+
+        ++it;
+    }
+
+    return bc_vec;
+}
+
+std::vector<bytes_chunk> bytes_chunk_cache::get_contiguous_dirty_bcs(
+        uint64_t *bytes) const
+{
+    std::vector<bytes_chunk> bc_vec;
+
+    if (bytes) {
+        *bytes = 0;
+    }
+
+    // TODO: Make it shared lock.
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+    auto it = chunkmap.cbegin();
+    uint64_t next_offset = AZNFSC_BAD_OFFSET;
+
+    while (it != chunkmap.cend()) {
+        const struct bytes_chunk& bc = it->second;
+        struct membuf *mb = bc.get_membuf();
+
+        if (mb->is_dirty() && !mb->is_flushing()) {
+            if ((next_offset != AZNFSC_BAD_OFFSET) &&
+                (next_offset != bc.offset)) {
+                // 1st non contiguous bc found, break.
+                break;
+            }
+            next_offset = bc.offset + bc.length;
+            assert(next_offset != AZNFSC_BAD_OFFSET);
+
+            mb->set_inuse();
+            bc_vec.emplace_back(bc);
+
+            if (bytes) {
+                *bytes += bc.length;
+            }
         }
 
         ++it;
