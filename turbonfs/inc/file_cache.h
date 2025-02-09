@@ -1200,8 +1200,8 @@ public:
      *       check for that after holding the membuf lock, before it tries to
      *       flush those membuf(s).
      */
-    std::vector<bytes_chunk> get_dirty_bc_range(uint64_t st_off,
-                                                uint64_t end_off) const;
+    std::vector<bytes_chunk> get_dirty_bc_range(
+            uint64_t st_off = 0, uint64_t end_off = UINT64_MAX) const;
 
     /*
      * Returns dirty chunks which are not already flushing, in the given range,

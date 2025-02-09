@@ -289,6 +289,29 @@ private:
      */
     struct stat attr;
 
+    /**
+     * We maintain following multiple views of the file and thus multiple file
+     * sizes for those views.
+     * - Cached.
+     *   This is the view of the file that comprises of data that has been
+     *   written by the application and saved in file cache. It may or may not
+     *   have been flushed and/or committed. This is the most uptodate view of
+     *   the file and applications must use this view.
+     *   cached_filesize tracks the file size for this view.
+     * - Uncommited.
+     *   This is the view of the file that tracks data that has been flushed
+     *   using UNSTABLE writes but not yet COMMITted to the Blob. This view of
+     *   the file is only used to see if the next PB call will write after the
+     *   last PB'ed byte and thus can be appended.
+     *   putblock_filesize tracks the file size for this view.
+     * - Committed.
+     *   This is the view of the file that tracks data committed to the Blob.
+     *   Other clients will see this view.
+     *   attr.st_size tracks the file size for this view.
+     */
+    off_t cached_filesize = 0;
+    mutable off_t putblock_filesize = 0;
+
     /*
      * Has this inode seen any non-append write?
      * This starts as false and remains false as long as copy_to_cache() only
@@ -310,7 +333,7 @@ private:
      * Note: As of now, we are not using this flag as commit changes not yet
      *       integrated, so we are setting this flag to true.
      */
-    bool stable_write = true;
+    bool stable_write = false;
 
 public:
     /*
@@ -1400,11 +1423,10 @@ public:
      *       initiate any new flush operations while some truncate call is in
      *       progress (which must have held the flush_lock).
      */
-    int flush_cache_and_wait(uint64_t start_off = 0,
-                             uint64_t end_off = UINT64_MAX);
+    int flush_cache_and_wait();
 
     /**
-     * Wait for currently flushing membufs to complete.
+     * Wait for currently flushing/committing membufs to complete.
      * Returns 0 on success and a positive errno value on error.
      *
      * Note : Caller must hold the inode flush_lock to ensure that
@@ -1415,6 +1437,38 @@ public:
      */
     int wait_for_ongoing_flush(uint64_t start_off = 0,
                                uint64_t end_off = UINT64_MAX);
+
+    /**
+     * commit_membufs() is called to commit uncommitted membufs to the Blob.
+     * It creates commit RPC and sends it to the NFS server.
+     */
+    void commit_membufs(std::vector<bytes_chunk> &bcs)
+    {
+        // TODO: Provide implementation in nfs_inode.cpp.
+        assert(0);
+    }
+
+    /**
+     * switch_to_stable_write() is called to switch the inode to stable write
+     * mode. It waits for all ongoing flush and subsequent commit to complete.
+     * If not already scheduled, it'll perform an explicit commit after the
+     * flush complete.
+     * Post that it'll mark inode for stable write and return. From then on
+     * any writes to this inode will be sent as stable writes.
+     */
+    void switch_to_stable_write();
+
+    /**
+     * Check if stable write is required for the given offset.
+     * Given offset is the start of contiguous dirty membufs that need to be
+     * flushed to the Blob.
+     */
+    bool check_stable_write_required(off_t offset);
+
+    /**
+     * Wait for ongoing commit operation to complete.
+     */
+    void wait_for_ongoing_commit();
 
     /**
      * Sync the dirty membufs in the file cache to the NFS server.

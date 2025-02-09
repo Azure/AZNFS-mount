@@ -2490,7 +2490,7 @@ void rpc_task::run_write()
          * ensure_flush() will arrange to flush all the dirty data and complete
          * the write task when the flush completes.
          */
-        inode->get_fcsm()->ensure_flush(0, offset, length, this);
+        inode->get_fcsm()->ensure_flush(offset, length, this);
 
         // Free up the fuse thread without completing the application write.
         return;
@@ -2556,7 +2556,7 @@ void rpc_task::run_write()
     /*
      * Queue a non-blocking flush target for flushing all the dirty data.
      */
-    inode->get_fcsm()->ensure_flush(0, offset, length, nullptr);
+    inode->get_fcsm()->ensure_flush(offset, length, nullptr);
 
     /*
      * Complete the write request without waiting for the backend flush to

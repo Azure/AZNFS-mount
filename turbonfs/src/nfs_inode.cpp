@@ -985,7 +985,7 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 /**
  * Note: This takes shared lock on ilock_1.
  */
-int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
+int nfs_inode::flush_cache_and_wait()
 {
     /*
      * MUST be called only for regular files.
@@ -1032,7 +1032,7 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
      * bytes_chunks created but we don't want to wait for those.
      */
     std::vector<bytes_chunk> bc_vec =
-        filecache_handle->get_dirty_bc_range(start_off, end_off);
+        filecache_handle->get_dirty_bc_range();
 
     /*
      * sync_membufs() iterate over the bc_vec and starts flushing the dirty

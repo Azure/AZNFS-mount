@@ -95,8 +95,7 @@ public:
      *
      * LOCKS: flush_lock.
      */
-    void ensure_flush(uint64_t flush_bytes,
-                      uint64_t write_off,
+    void ensure_flush(uint64_t write_off,
                       uint64_t write_len,
                       struct rpc_task *task = nullptr);
 
@@ -107,8 +106,7 @@ public:
      * it'll add a blocking commit target for completing task when given commit
      * goal is met.
      */
-    void ensure_commit(uint64_t commit_bytes,
-                       struct rpc_task *task = nullptr);
+    void ensure_commit(struct rpc_task *task = nullptr);
 
     /**
      * Callbacks to be called when flush/commit successfully complete.
@@ -116,7 +114,7 @@ public:
      * targets from ftgtq/ctgtq as appropriate.
      */
     void on_flush_complete(uint64_t flush_bytes);
-    void on_commit_complete();
+    void on_commit_complete(uint64_t commit_bytes);
 
     /**
      * Is the state machine currently running, i.e. it has sent (one or more)
@@ -147,6 +145,10 @@ public:
      */
     void mark_running();
     void clear_running();
+
+    void run(struct rpc_task *task,
+             uint64_t extent_left,
+             uint64_t extent_right);
 
     /**
      * Call when more writes are dispatched, or prepared to be dispatched.
@@ -179,6 +181,21 @@ public:
     {
         return (fc_cb_count() > 0);
     }
+
+    /**
+     * Call when more commit are dispatched, or prepared to be dispatched.
+     * This MUST be called before the commit_callback can be called.
+     */
+    void add_committing(uint64_t bytes)
+    {
+        assert(committed_seq_num <= committing_seq_num);
+        committing_seq_num += bytes;
+    }
+
+    /*
+     * ctgtq_cleanup() is called when we switch to stable writes.
+     */
+    void ctgtq_cleanup();
 
 private:
     /*
