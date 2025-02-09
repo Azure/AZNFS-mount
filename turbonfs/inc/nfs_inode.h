@@ -333,7 +333,7 @@ private:
      * Note: As of now, we are not using this flag as commit changes not yet
      *       integrated, so we are setting this flag to true.
      */
-    bool stable_write = false;
+    bool stable_write = true;
 
 public:
     /*
