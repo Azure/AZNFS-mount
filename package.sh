@@ -42,6 +42,9 @@ generate_deb_package()
 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
 	$compiler -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
 
+	# Insert current architecture.
+	sed -i -e "s/Architecture: auto/Version: ${arch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+
 	mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
 	cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
