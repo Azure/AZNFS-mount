@@ -14,10 +14,10 @@ generate_deb_package()
     local compiler
 
     if [ "$arch" == "amd64" ]; then
-        pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.amd64"
+        pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_amd64"
         compiler="gcc"
     elif [ "$arch" == "arm64" ]; then
-        pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.arm64"
+        pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1_arm64"
         compiler="aarch64-linux-gnu-gcc"
     else
         echo "Unsupported architecture: $arch"
