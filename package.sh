@@ -8,6 +8,51 @@
 # Exit on error.
 set -e
 
+generate_deb_package()
+{
+    local compiler
+
+    if [ "$arch" == "amd64" ]; then
+        pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.amd64"
+        compiler="gcc"
+    elif [ "$arch" == "arm64" ]; then
+        pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.arm64"
+        compiler="aarch64-linux-gnu-gcc"
+    else
+        echo "Unsupported architecture: $arch"
+        return 1
+    fi
+
+	# Create the directory to hold the package control and data files for deb package.
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
+
+	# Copy the debian control file(s) and maintainer scripts.
+	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
+	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
+
+	# Insert current release number.
+	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+
+	# Copy other static package file(s).
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+
+	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
+	$compiler -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
+	cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
+
+	# Create the deb package.
+	dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
+}
+
 generate_rpm_package()
 {
 	rpm_dir=$1
@@ -132,34 +177,9 @@ sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_D
 # Generate .deb package #
 #########################
 
-# Create the directory to hold the package control and data files for deb package.
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
+generate_deb_package amd64
+generate_deb_package arm64
 
-# Copy the debian control file(s) and maintainer scripts.
-cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
-chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
-
-# Insert current release number.
-sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
-
-# Copy other static package file(s).
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
-
-# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
-gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
-
-mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
-cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-
-mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
-
-# Create the deb package.
-dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 
 #########################
 # Generate .rpm package #
