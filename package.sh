@@ -10,6 +10,7 @@ set -e
 
 generate_deb_package()
 {
+	local arch=$1
     local compiler
 
     if [ "$arch" == "amd64" ]; then
