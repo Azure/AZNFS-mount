@@ -1,7 +1,7 @@
 Package: aznfs
 Version: x.y.z
 Priority: required
-Architecture: amd64, arm64
+Architecture: auto
 Origin: Microsoft
 Maintainer: Azure Storage XNFSv3 IDC Team <xnfsv3devsidc@microsoft.com>
 Homepage: https://github.com/Azure/AZNFS-mount/blob/main/README.md

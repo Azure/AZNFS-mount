@@ -8,6 +8,12 @@
 # Exit on error.
 set -e
 
+ARCH=$(dpkg --print-architecture)  # Detect the system architecture (e.g., amd64 or arm64)
+CONTROL_FILE="/var/lib/dpkg/tmp.ci/control"
+
+# Replace 'auto' with the detected architecture in the control file
+sed -i "s/^Architecture: auto$/Architecture: $ARCH/" "$CONTROL_FILE" || true
+
 init="$(ps -q 1 -o comm=)"
 if [ "$init" != "systemd" ]; then
 	echo "Cannot install this package on a non-systemd system!"
