@@ -125,9 +125,17 @@ is_new_version_available()
 # Function to perform AZNFS update.
 perform_aznfs_update() 
 {
+    ARCH=$(uname -m)
     if [ "$install_cmd" == "apt" ]; then
         AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
-        package_name=${AZNFS_RELEASE}_amd64.deb
+        if [ "$ARCH" == "x86_64" ]; then
+            package_name=${AZNFS_RELEASE}_amd64.deb
+        elif [ "$ARCH" == "aarch64" ]; then
+            package_name=${AZNFS_RELEASE}_arm64.deb
+        else
+            eecho "[FATAL] Unsupported architecture: $ARCH."
+            exit 1
+        fi
     elif [ "$install_cmd" == "zypper" ]; then
         AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
         package_name=${AZNFS_RELEASE_SUSE}.x86_64.rpm
