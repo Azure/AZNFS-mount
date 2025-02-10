@@ -288,6 +288,7 @@ void fcsm::run(struct rpc_task *task,
 void fcsm::ctgtq_cleanup()
 {
     assert(inode->is_flushing);
+    // Must be called after switching the inode to stable write.
     assert(inode->is_stable_write());
 
     AZLogDebug("[FCSM][{}] ctgtq_cleanup()", inode->get_fuse_ino());
@@ -634,13 +635,18 @@ void fcsm::on_commit_complete(uint64_t commit_bytes)
 
     /*
      * Commit callback can be called only when commit is in progress, clear
-     * it now.
+     * it now. Must do it before grabbing the flush_lock, note that
+     * wait_for_ongoing_commit() is waiting for commit-in-progress to be
+     * cleared, with flush_lock held.
      */
     assert(inode->is_commit_in_progress());
     inode->clear_commit_in_progress();
 
     // If commit is running, flush cannot be running.
     assert(!inode->get_filecache()->is_flushing_in_progress());
+
+    // commit_pending_bytes must be 0 here.
+    assert(inode->get_filecache()->get_bytes_to_commit() == 0);
 
     // a byte can only be committed after it's flushed successfully.
     assert(committing_seq_num <= flushed_seq_num);

@@ -865,6 +865,8 @@ static void commit_callback(
     assert(inode->is_commit_in_progress());
     // Commit and flush/write are exclusive.
     assert(!inode->get_filecache()->is_flushing_in_progress());
+    // bytes_commit_pending will be reduced later below.
+    assert(inode->get_filecache()->get_bytes_to_commit() > 0);
 
     const int status = task->status(rpc_status, NFS_STATUS(res));
     UPDATE_INODE_WCC(inode, res->COMMIT3res_u.resok.file_wcc);

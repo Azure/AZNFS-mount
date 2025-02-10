@@ -33,7 +33,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     assert(client->magic == NFS_CLIENT_MAGIC);
     assert(write_error == 0);
 
-    // TODO: Revert this to false once commit changes integrated.
+    // We start doing unstable writes untill proven o/w.
     assert(stable_write == false);
     assert(commit_state == commit_state_t::COMMIT_NOT_NEEDED);
 
@@ -385,6 +385,8 @@ int nfs_inode::get_actimeo_max() const
  */
 void nfs_inode::wait_for_ongoing_commit()
 {
+    assert(is_flushing);
+
     /*
      * TODO: See if we can eliminate inline sleep.
      */
@@ -393,8 +395,15 @@ void nfs_inode::wait_for_ongoing_commit()
                   get_fuse_ino());
     }
 
+    int iter = 0;
     while (is_commit_in_progress()) {
+        // Flush can commit are mutually exclusive operations.
         assert(!get_filecache()->is_flushing_in_progress());
+
+        if (++iter % 1000 == 0) {
+            AZLogWarn("[{}] wait_for_ongoing_commit() still waiting, iter: {}",
+                    get_fuse_ino(), iter);
+        }
         ::usleep(1000);
     }
 
@@ -423,14 +432,15 @@ void nfs_inode::switch_to_stable_write()
      * change to stable write. Since we are not flushing yet and since we
      * do not support multiple ongoing flushes, we are guaranteed that no
      * flush should be in progress when we reach here.
-     * Similarly commit should not be in progress.
+     * Similarly commit should not be in progress as flush and commit are
+     * mutually exclusive.
      */
     assert(!is_commit_in_progress());
     assert(!get_filecache()->is_flushing_in_progress());
 
     /*
-     * Check if there is anything to commit, if not then
-     * switch to stable write.
+     * Check if there is anything to commit, if not then simply update the
+     * inode state to "doing stable writes".
      */
     if (get_filecache()->get_bytes_to_commit() == 0) {
         AZLogDebug("[{}] Nothing to commit, switching to stable write", ino);
@@ -473,10 +483,12 @@ void nfs_inode::switch_to_stable_write()
 }
 
 /*
- * This function checks, whether switch to stable write or not.
+ * This function checks whether we need to switch to stable write or not.
  */
 bool nfs_inode::check_stable_write_required(off_t offset)
 {
+    assert(offset <= (off_t) AZNFSC_MAX_FILE_SIZE);
+
     /*
      * If stable_write is already set, we don't need to do anything.
      * We don't need lock here as once stable_write is set it's never
@@ -495,8 +507,9 @@ bool nfs_inode::check_stable_write_required(off_t offset)
      * offset.
      */
     if (putblock_filesize != offset) {
-        AZLogInfo("Stable write required as putblock_filesize:{} is not at the"
-            "offset:{}", putblock_filesize, offset);
+        AZLogInfo("[{}] Non-append write detected (expected: {}, got: {}), "
+                  "will switch to stable writes",
+                  get_fuse_ino(), putblock_filesize, offset);
 
         return true;
     }
@@ -508,7 +521,7 @@ bool nfs_inode::check_stable_write_required(off_t offset)
  * commit_membufs() is called by writer thread to commit flushed membufs.
  * It's always issued under flush_lock().
  */
-void nfs_inode::commit_membufs(std::vector<bytes_chunk> &bc_vec)
+void nfs_inode::commit_membufs(std::vector<bytes_chunk>& bc_vec)
 {
     assert(is_flushing);
 
@@ -524,6 +537,7 @@ void nfs_inode::commit_membufs(std::vector<bytes_chunk> &bc_vec)
         if (prev_offset == 0) {
             prev_offset = bc.offset + bc.length;
         } else {
+            // Caller must pass us contiguous membufs for committing.
             assert(prev_offset == bc.offset);
             prev_offset += bc.length;
         }
@@ -531,6 +545,8 @@ void nfs_inode::commit_membufs(std::vector<bytes_chunk> &bc_vec)
         /*
          * We have at least one commit to issue, mark fcsm as running,
          * if not already marked.
+         *
+         * XXX Shouldn't it be running already?
          */
         get_fcsm()->mark_running();
         get_fcsm()->add_committing(bc.length);
@@ -541,6 +557,7 @@ void nfs_inode::commit_membufs(std::vector<bytes_chunk> &bc_vec)
      */
     struct rpc_task *commit_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+    // XXX Do we need to every call flush with fuse_req?
     commit_task->init_flush(nullptr /* fuse_req */, ino);
     assert(commit_task->rpc_api->pvt == nullptr);
 
@@ -606,8 +623,8 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
     }
 
     /*
-     * If new offset is not at the end of the file,
-     * then we need to switch to stable write.
+     * If the new data being written is not right after the last one written
+     * we need to switch to stable write.
      */
     if (check_stable_write_required(bc_vec[0].offset)) {
         switch_to_stable_write();
@@ -749,6 +766,11 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
              */
             get_fcsm()->mark_running();
         }
+
+        /*
+         * XXX Add an assert that unstable writes should only have contiguous
+         *     bcs .
+         */
 
         /*
          * Add as many bytes_chunk to the write_task as it allows.

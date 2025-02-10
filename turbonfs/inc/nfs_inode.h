@@ -1442,11 +1442,7 @@ public:
      * commit_membufs() is called to commit uncommitted membufs to the Blob.
      * It creates commit RPC and sends it to the NFS server.
      */
-    void commit_membufs(std::vector<bytes_chunk> &bcs)
-    {
-        // TODO: Provide implementation in nfs_inode.cpp.
-        assert(0);
-    }
+    void commit_membufs(std::vector<bytes_chunk> &bcs);
 
     /**
      * switch_to_stable_write() is called to switch the inode to stable write
