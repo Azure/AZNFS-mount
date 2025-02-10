@@ -1427,7 +1427,12 @@ public:
 
     /**
      * Wait for currently flushing/committing membufs to complete.
+     * It will wait till the currently flushing membufs complete and then
+     * issue a commit and wait for that. If no flush is ongoing but there's
+     * commit_pending data, it'll commit that and return after the commit
+     * completes.
      * Returns 0 on success and a positive errno value on error.
+     * Once it returns, commit_pending will be 0.
      *
      * Note : Caller must hold the inode flush_lock to ensure that
      *        no new membufs are added till this call completes.
@@ -1435,8 +1440,7 @@ public:
      *        flush/write requests to complete, but it'll exit with flush_lock
      *        held.
      */
-    int wait_for_ongoing_flush(uint64_t start_off = 0,
-                               uint64_t end_off = UINT64_MAX);
+    int wait_for_ongoing_flush();
 
     /**
      * commit_membufs() is called to commit uncommitted membufs to the Blob.

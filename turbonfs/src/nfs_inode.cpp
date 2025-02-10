@@ -33,7 +33,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     assert(client->magic == NFS_CLIENT_MAGIC);
     assert(write_error == 0);
 
-    // We start doing unstable writes untill proven o/w.
+    // We start doing unstable writes until proven o/w.
     assert(stable_write == false);
     assert(commit_state == commit_state_t::COMMIT_NOT_NEEDED);
 
@@ -386,6 +386,11 @@ int nfs_inode::get_actimeo_max() const
 void nfs_inode::wait_for_ongoing_commit()
 {
     assert(is_flushing);
+    /*
+     * FCSM must be running, we only FCSM can complete commit that we are
+     * waiting for.
+     */
+    assert(get_fcsm()->is_running());
 
     /*
      * TODO: See if we can eliminate inline sleep.
@@ -402,7 +407,7 @@ void nfs_inode::wait_for_ongoing_commit()
 
         if (++iter % 1000 == 0) {
             AZLogWarn("[{}] wait_for_ongoing_commit() still waiting, iter: {}",
-                    get_fuse_ino(), iter);
+                      get_fuse_ino(), iter);
         }
         ::usleep(1000);
     }
@@ -444,6 +449,7 @@ void nfs_inode::switch_to_stable_write()
      */
     if (get_filecache()->get_bytes_to_commit() == 0) {
         AZLogDebug("[{}] Nothing to commit, switching to stable write", ino);
+
         set_stable_write();
 
         /*
@@ -452,6 +458,11 @@ void nfs_inode::switch_to_stable_write()
         get_fcsm()->ctgtq_cleanup();
         return;
     }
+
+    /*
+     * There is some commit_pending data that we need to commit before we can
+     * make the switch to stable writes.
+     */
 
     uint64_t bytes;
     std::vector<bytes_chunk> bc_vec =
@@ -466,6 +477,11 @@ void nfs_inode::switch_to_stable_write()
 
     /*
      * Wait for the commit to complete.
+     *
+     * TODO: Since switch_to_stable_write() can be called from libnfs threads
+     *       too, we have a risk that it may block the only libnfs thread and
+     *       everything will stall. To avoid this, let's not try to commit, but
+     *       instead make all the commit_pending data back to dirty.
      */
     wait_for_ongoing_commit();
 
@@ -474,6 +490,8 @@ void nfs_inode::switch_to_stable_write()
     assert(!is_commit_in_progress());
 
     set_stable_write();
+
+    putblock_filesize = 0;
 
     /*
      * Now we moved to stable write, cleanup the commit target queue.
@@ -487,6 +505,8 @@ void nfs_inode::switch_to_stable_write()
  */
 bool nfs_inode::check_stable_write_required(off_t offset)
 {
+    // Caller must hold the flush_lock.
+    assert(is_flushing);
     assert(offset <= (off_t) AZNFSC_MAX_FILE_SIZE);
 
     /*
@@ -524,6 +544,8 @@ bool nfs_inode::check_stable_write_required(off_t offset)
 void nfs_inode::commit_membufs(std::vector<bytes_chunk>& bc_vec)
 {
     assert(is_flushing);
+    // Commit is only called by FCSM, so it must be running.
+    assert(get_fcsm()->is_running());
 
     set_commit_in_progress();
 
@@ -542,13 +564,6 @@ void nfs_inode::commit_membufs(std::vector<bytes_chunk>& bc_vec)
             prev_offset += bc.length;
         }
 
-        /*
-         * We have at least one commit to issue, mark fcsm as running,
-         * if not already marked.
-         *
-         * XXX Shouldn't it be running already?
-         */
-        get_fcsm()->mark_running();
         get_fcsm()->add_committing(bc.length);
     }
 
@@ -557,7 +572,7 @@ void nfs_inode::commit_membufs(std::vector<bytes_chunk>& bc_vec)
      */
     struct rpc_task *commit_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-    // XXX Do we need to every call flush with fuse_req?
+    // XXX Do we need to ever call flush with fuse_req?
     commit_task->init_flush(nullptr /* fuse_req */, ino);
     assert(commit_task->rpc_api->pvt == nullptr);
 
@@ -777,7 +792,11 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
          * Once packed completely, then dispatch the write.
          */
         if (write_task->add_bc(bc)) {
-            putblock_filesize += bc.length;
+            if (!is_stable_write()) {
+                putblock_filesize += bc.length;
+            } else {
+                assert(putblock_filesize == 0);
+            }
             continue;
         } else {
             /*
@@ -804,7 +823,11 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
             [[maybe_unused]] bool res = write_task->add_bc(bc);
             assert(res == true);
 
-            putblock_filesize += bc.length;
+            if (!is_stable_write()) {
+                putblock_filesize += bc.length;
+            } else {
+                assert(putblock_filesize == 0);
+            }
         }
     }
 
@@ -1034,10 +1057,8 @@ try_copy:
  *       It will release the flush_lock if it has to wait for flush to
  *       complete. Before returning it'll re-acquire the flush_lock.
  */
-int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
+int nfs_inode::wait_for_ongoing_flush()
 {
-    assert(start_off < end_off);
-
     // Caller must call us with flush_lock held.
     assert(is_flushing);
 
@@ -1072,8 +1093,9 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
 
     if (get_filecache()->is_flushing_in_progress()) {
         assert(!is_commit_in_progress());
-    } else if (!is_commit_in_progress() && !get_fcsm()->fc_cb_running() &&
-               get_filecache()->bytes_commit_pending == 0) {
+    } else if (!is_commit_in_progress() &&
+               !get_fcsm()->fc_cb_running() &&
+               (get_filecache()->bytes_commit_pending == 0)) {
         /*
          * Flushing not in progress and no new flushing can be started as we hold
          * the flush_lock(), and callback drained.
@@ -1105,7 +1127,7 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
          * new dirty bytes_chunks created but we don't want to wait for those.
          */
         std::vector<bytes_chunk> bc_vec =
-            filecache_handle->get_flushing_bc_range(start_off, end_off);
+            filecache_handle->get_flushing_bc_range();
 
         /*
          * Nothing to flush and callback drained, job done!
@@ -1258,9 +1280,15 @@ int nfs_inode::wait_for_ongoing_flush(uint64_t start_off, uint64_t end_off)
  */
 int nfs_inode::flush_cache_and_wait()
 {
-    assert(!is_stable_write() ||
-           get_filecache()->bytes_commit_pending == 0);
-    assert(!is_stable_write() || !is_commit_in_progress());
+    /*
+     * TODO: Let's use ensure_flush()/ensure_commit() here so perform the
+     *       flush+commit using the FCSM. It can convey pointer to an atomic
+     *       boolean which the callback can set and it can wait here.
+     */
+    if (is_stable_write()) {
+        assert(get_filecache()->bytes_commit_pending == 0);
+        assert(!is_commit_in_progress());
+    }
 
     /*
      * MUST be called only for regular files.
@@ -1549,7 +1577,7 @@ bool nfs_inode::truncate_start(size_t size)
      */
     flush_lock();
 
-    wait_for_ongoing_flush(0, UINT64_MAX);
+    wait_for_ongoing_flush();
 
     AZLogDebug("[{}] Ongoing flush operations completed", ino);
 

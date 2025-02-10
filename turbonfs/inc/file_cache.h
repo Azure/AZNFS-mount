@@ -1244,8 +1244,8 @@ public:
      *       check for that after holding the membuf lock, before it tries to
      *       commit those membuf(s).
      */
-    std::vector<bytes_chunk> get_flushing_bc_range(uint64_t st_off,
-                                                   uint64_t end_off) const;
+    std::vector<bytes_chunk> get_flushing_bc_range(
+            uint64_t st_off = 0, uint64_t end_off = UINT64_MAX) const;
 
     /**
      * Returns contiguous dirty (and not flushing) chunks from chunmap, starting

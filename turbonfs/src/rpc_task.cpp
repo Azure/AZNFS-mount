@@ -1036,6 +1036,9 @@ void rpc_task::issue_commit_rpc()
     // Caller must have marked commit inprogress.
     assert(inode->is_commit_in_progress());
 
+    // Must be called by FCSM.
+    assert(inode->get_fcsm()->is_running());
+
     // List of bcs to be committed by this commit call.
     assert(rpc_api->pvt != nullptr);
     auto bc_vec_ptr = (std::vector<bytes_chunk> *) rpc_api->pvt;
