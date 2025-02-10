@@ -294,8 +294,10 @@ private:
     /*
      * Continually increasing seq number of the last byte successfully flushed
      * and committed. Flush-commit targets (fctgt) are expressed in terms of
-     * these. These are actually numerically one more than the last *ing and
-     * *ed byte's seq number.
+     * these. These are actually numerically one more than the last
+     * flushing/commiting and flushed/committed byte's seq number, e.g., if the
+     * last byte flushed was byte #1 (0 and 1 are flushed), then flushed_seq_num
+     * would be 2.
      * Note that these are *not* offsets in the file but these are cumulative
      * values for total bytes flushed/committed till now since the file was
      * opened. In case of overwrite same byte(s) may be repeatedly flushed

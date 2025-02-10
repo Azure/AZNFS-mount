@@ -988,7 +988,7 @@ static void commit_callback(
         /*
          * Set the inode to stable write, so that next write will initiate
          * the flush again with stable write.
-         * There should be no flush in progress as this moment, also since
+         * There should be no flush in progress at this moment, also since
          * we always commit *all* the commit pending bcs, there should not
          * be any more commit pending bcs, so we can safely just enable
          * stable writes for the inode w/o the elaborate

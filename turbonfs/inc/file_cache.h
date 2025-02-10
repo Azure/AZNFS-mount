@@ -1531,7 +1531,7 @@ public:
          * e.g.,
          * if the max_dirty_extent_bytes() is 1GB, then we have
          * flush_required() @ 1GB
-         * commit_required() @ 1GB
+         * commit_required() @ 2GB
          * do_inline_write() @ 4GB.
          *
          * Assuming backend flush speed of 1GB/s and memory write speed of

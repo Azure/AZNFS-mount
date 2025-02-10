@@ -601,7 +601,8 @@ void membuf::clear_flushing()
     bcc->bytes_flushing_g -= length;
 
     AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
-               offset.load(), offset.load()+length.load(), backing_file_fd);
+               offset.load(), offset.load()+length.load(),
+               backing_file_fd);
 }
 
 /**
