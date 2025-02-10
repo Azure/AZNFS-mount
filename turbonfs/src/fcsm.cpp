@@ -25,15 +25,20 @@ fcsm::fcsm(struct nfs_client *_client,
 fcsm::fctgt::fctgt(struct fcsm *fcsm,
                    uint64_t _flush_seq,
                    uint64_t _commit_seq,
-                   struct rpc_task *_task) :
+                   struct rpc_task *_task,
+                   std::atomic<bool> *_cv) :
     flush_seq(_flush_seq),
     commit_seq(_commit_seq),
     task(_task),
-    fcsm(fcsm)
+    fcsm(fcsm),
+    conditional_variable(_cv)
 {
     assert(fcsm->magic == FCSM_MAGIC);
     // At least one of flush/commit goals must be set.
     assert((flush_seq != 0) || (commit_seq != 0));
+
+    // If conditional variable, it's initial value should be false.
+    assert(!conditional_variable || *conditional_variable == false);
 
     if (task) {
         // Only frontend write tasks must be specified.
@@ -43,7 +48,7 @@ fcsm::fctgt::fctgt(struct fcsm *fcsm,
         assert(task->rpc_api->write_task.get_size() > 0);
     }
 
-    AZLogInfo("[{}] [FCSM] {} fctgt queued (F: {}, C: {}, T: {})",
+    AZLogDebug("[{}] [FCSM] {} fctgt queued (F: {}, C: {}, T: {})",
                fcsm->get_inode()->get_fuse_ino(),
                task ? "Blocking" : "Non-blocking",
                flush_seq,
@@ -335,10 +340,13 @@ void fcsm::ctgtq_cleanup()
 
 void fcsm::ensure_commit(uint64_t write_off,
                          uint64_t write_len,
-                         struct rpc_task *task)
+                         struct rpc_task *task,
+                         std::atomic<bool> *conditional_variable,
+                         bool commit_full)
 {
     assert(inode->is_flushing);
     assert(!inode->is_stable_write());
+    assert(!commit_full || task == nullptr);
 
     /*
      * If any of the flush/commit targets are waiting completion, state machine
@@ -377,13 +385,23 @@ void fcsm::ensure_commit(uint64_t write_off,
     uint64_t commit_bytes =
         inode->get_filecache()->get_bytes_to_commit();
 
+    /*
+     * If commit_full flag is true, wait_for_ongoing_flush()
+     * committed the commit_pending bytes. Now we need to flush
+     * dirty bytes and commit them.
+     */
+    if (commit_full) {
+        assert(commit_bytes == 0);
+        commit_bytes = inode->get_filecache()->get_bytes_to_flush();
+    }
+
     if (commit_bytes == 0) {
         /*
          * TODO: Make sure this doesn't result in small-blocks being written.
          */
-        const int64_t bytes =
-            inode->get_filecache()->get_bytes_to_flush() -
-            inode->get_filecache()->max_dirty_extent_bytes();
+        const int64_t bytes = (inode->get_filecache()->get_bytes_to_flush() -
+             inode->get_filecache()->max_dirty_extent_bytes());
+
         commit_bytes = std::max(bytes, (int64_t) 0);
     }
 
@@ -394,6 +412,9 @@ void fcsm::ensure_commit(uint64_t write_off,
         AZLogDebug("COMMIT BYTES ZERO");
         if (task) {
             task->reply_write(task->rpc_api->write_task.get_size());
+        }
+        if (conditional_variable) {
+            *conditional_variable = true;
         }
         return;
     }
@@ -427,7 +448,8 @@ void fcsm::ensure_commit(uint64_t write_off,
         ctgtq.emplace(this,
                       0 /* target flush_seq */,
                       target_committed_seq_num /* target commit_seq */,
-                      task);
+                      task,
+                      conditional_variable);
         return;
     }
 
@@ -467,10 +489,20 @@ void fcsm::ensure_commit(uint64_t write_off,
             ctgtq.emplace(this,
                           0 /* target flush_seq */,
                           target_committed_seq_num /* target commit_seq */,
-                          task);
+                          task,
+                          conditional_variable);
         } else {
             if (task) {
                 task->reply_write(task->rpc_api->write_task.get_size());
+            }
+
+            /*
+             * Flush_cache_and_wait() waiting for dirty_bytes to flushed,
+             * can't complete until all dirty bytes flushed. so add the
+             * flush target.
+             */
+            if (commit_full) {
+                ensure_flush(0, 0, nullptr, conditional_variable);
             }
         }
 
@@ -504,6 +536,17 @@ void fcsm::ensure_commit(uint64_t write_off,
 
         assert(committing_seq_num == (prev_committing_seq_num + bytes));
         assert(committing_seq_num > committed_seq_num);
+
+        /*
+         * Enqueue this target, on_commit_callback() completes
+         * this target. Otherwise task/conditional_variable
+         * waiting for this to complete never called.
+         */
+        ctgtq.emplace(this,
+                      0 /* target flush_seq */,
+                      target_committed_seq_num /* target commit_seq */,
+                      task,
+                      conditional_variable);
     }
 }
 
@@ -512,7 +555,8 @@ void fcsm::ensure_commit(uint64_t write_off,
  */
 void fcsm::ensure_flush(uint64_t write_off,
                         uint64_t write_len,
-                        struct rpc_task *task)
+                        struct rpc_task *task,
+                        std::atomic<bool> *conditional_variable)
 {
     assert(inode->is_flushing);
     /*
@@ -595,14 +639,16 @@ void fcsm::ensure_flush(uint64_t write_off,
         /*
          * If no task and no new flush target, don't add a dup target.
          */
-        if (!task && (target_flushed_seq_num == last_flush_seq)) {
+        if (!task && conditional_variable &&
+            (target_flushed_seq_num == last_flush_seq)) {
             return;
         }
 
         ftgtq.emplace(this,
                       target_flushed_seq_num /* target flush_seq */,
                       0 /* commit_seq */,
-                      task);
+                      task,
+                      conditional_variable);
         return;
     }
 
@@ -616,6 +662,10 @@ void fcsm::ensure_flush(uint64_t write_off,
     if (target_flushed_seq_num == flushed_seq_num) {
         if (task) {
             task->reply_write(task->rpc_api->write_task.get_size());
+        }
+
+        if (conditional_variable) {
+            *conditional_variable = true;
         }
         return;
     }
@@ -653,12 +703,26 @@ void fcsm::ensure_flush(uint64_t write_off,
     const uint64_t flushing_seq_num_before = flushing_seq_num;
     assert(flushed_seq_num <= flushing_seq_num);
 
-    // sync_membufs() will update flushing_seq_num() and mark fcsm running.
-    inode->sync_membufs(bc_vec, false /* is_flush */, task);
+    /*
+     * sync_membufs() will update flushing_seq_num() and mark fcsm running.
+     * Task is not passed to sync_membufs, but enqueued to ftgtq.
+     */
+    inode->sync_membufs(bc_vec, false /* is_flush */, nullptr);
 
     assert(is_running());
     assert(flushing_seq_num == (flushing_seq_num_before + bytes));
     assert(flushed_seq_num <= flushing_seq_num);
+
+    /*
+     * Enqueue this target, on_flush_complete() completes
+     * this target. Otherwise task/conditional_variable
+     * waiting for this to complete never called.
+     */
+    ftgtq.emplace(this,
+                 target_flushed_seq_num /* target flush_seq */,
+                 0 /* commit_seq */,
+                 task,
+                 conditional_variable);
 }
 
 /**
@@ -767,6 +831,9 @@ void fcsm::on_commit_complete(uint64_t commit_bytes)
 
             tgt.task->reply_write(
                     tgt.task->rpc_api->write_task.get_size());
+        } else if (tgt.conditional_variable) {
+            assert(*tgt.conditional_variable == false);
+            *tgt.conditional_variable = true;
         } else {
             AZLogDebug("[{}] [FCSM] completing non-blocking commit target: {}, "
                        "committed_seq_num: {}",
@@ -983,6 +1050,9 @@ void fcsm::on_flush_complete(uint64_t flush_bytes)
 
             tgt.task->reply_write(
                     tgt.task->rpc_api->write_task.get_size());
+        } else if (tgt.conditional_variable) {
+            assert(*tgt.conditional_variable == false);
+            *tgt.conditional_variable = true;
         } else {
             AZLogDebug("[{}] [FCSM] completing non-blocking flush target: {}, "
                        "flushed_seq_num: {}",

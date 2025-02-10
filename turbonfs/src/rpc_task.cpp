@@ -877,20 +877,6 @@ static void commit_callback(
     AZLogDebug("[{}] commit_callback, number of bc committed: {}",
                ino, bc_vec_ptr->size());
     
-#ifdef ENABLE_PARANOID
-    /*
-     * We always pick *all* commit-pending bcs for committing, and while commit
-     * is going on no other flush can run, hence new commit pending bcs cannot
-     * be added, so when an ongoing commit completes we we must not have any
-     * commit pending bcs in the cache.
-     */
-    {
-        std::vector<bytes_chunk> bc_vec =
-            inode->get_filecache()->get_commit_pending_bcs();
-        assert(bc_vec.empty());
-    }
-#endif
-
     uint64_t commit_bytes = 0;
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -997,6 +983,20 @@ static void commit_callback(
         assert(inode->get_filecache()->is_flushing_in_progress() == false);
         inode->set_stable_write();
     }
+
+#ifdef ENABLE_PARANOID
+    /*
+     * We always pick *all* commit-pending bcs for committing, and while commit
+     * is going on no other flush can run, hence new commit pending bcs cannot
+     * be added, so when an ongoing commit completes we we must not have any
+     * commit pending bcs in the cache.
+     */
+    {
+        std::vector<bytes_chunk> bc_vec =
+            inode->get_filecache()->get_commit_pending_bcs();
+        assert(bc_vec.empty());
+    }
+#endif
 
     if (status == 0) {
         assert(commit_bytes > 0);

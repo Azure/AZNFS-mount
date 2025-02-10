@@ -93,7 +93,8 @@ public:
      */
     void ensure_flush(uint64_t write_off,
                       uint64_t write_len,
-                      struct rpc_task *task = nullptr);
+                      struct rpc_task *task = nullptr,
+                      std::atomic<bool> *conditional_variable = nullptr);
 
     /**
      * Ensure all or some commit-pending bytes are committed or scheduled for
@@ -106,7 +107,9 @@ public:
      */
     void ensure_commit(uint64_t write_off,
                        uint64_t write_len,
-                       struct rpc_task *task = nullptr);
+                       struct rpc_task *task = nullptr,
+                       std::atomic<bool> *conditional_variable = nullptr,
+                       bool commit_full = false);
 
     /**
      * Callbacks to be called when flush/commit successfully complete.
@@ -248,7 +251,8 @@ private:
         fctgt(struct fcsm *fcsm,
               uint64_t _flush_seq,
               uint64_t _commit_seq,
-              struct rpc_task *_task = nullptr);
+              struct rpc_task *_task = nullptr,
+              std::atomic<bool> *conditional_variable = nullptr);
 
         /*
          * Flush and commit targets (in terms of flushed_seq_num/committed_seq_num)
@@ -267,6 +271,12 @@ private:
          * Pointer to the containing fcsm.
          */
         struct fcsm *const fcsm = nullptr;
+
+        /*
+         * If non-null, it's initial value is false.
+         * Caller who enqueue the target waiting for it to be true.
+         */
+        std::atomic<bool> *conditional_variable = nullptr;
 #if 0
         /*
          * Has the required flush/commit task started?
