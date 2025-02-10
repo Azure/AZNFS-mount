@@ -923,6 +923,14 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
     assert(get_buffer() != nullptr);
 }
 
+/**
+ * Get the inode corresponding to this bc.
+ */
+struct nfs_inode *bytes_chunk::get_inode() const
+{
+    return bcc->get_inode();
+}
+
 bytes_chunk_cache::bytes_chunk_cache(struct nfs_inode *_inode,
                                      const char *_backing_file_name) :
     inode(_inode),

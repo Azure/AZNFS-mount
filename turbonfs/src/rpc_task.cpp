@@ -839,9 +839,12 @@ static void commit_callback(
     /*
      * Commit is issued as a FUSE_FLUSH.
      * TODO: Maybe it should have a type of its own.
+     *
+     * Note that flush/write is issued as FUSE_WRITE.
      */
     assert(task->magic == RPC_TASK_MAGIC);
     assert(task->get_op_type() == FUSE_FLUSH);
+    // rpc_api->pvt must contain the list of bcs which were committed.
     assert(task->rpc_api->pvt != nullptr);
     // Commit is never called for a fuse request.
     assert(task->get_fuse_req() == nullptr);
@@ -858,16 +861,34 @@ static void commit_callback(
 
     // We should call commit only when inode is doing unstable+commit.
     assert(!inode->is_stable_write());
-    // Caller must be inprogress.
+    // Inode must be marked "commit in progress".
     assert(inode->is_commit_in_progress());
+    // Commit and flush/write are exclusive.
     assert(!inode->get_filecache()->is_flushing_in_progress());
 
     const int status = task->status(rpc_status, NFS_STATUS(res));
     UPDATE_INODE_WCC(inode, res->COMMIT3res_u.resok.file_wcc);
+
+    // Set "in commit callback".
     FC_CB_TRACKER fccbt(inode);
 
-    AZLogDebug("[{}] commit_callback", ino);
+    AZLogDebug("[{}] commit_callback, number of bc committed: {}",
+               ino, bc_vec_ptr->size());
     
+#ifdef ENABLE_PARANOID
+    /*
+     * We always pick *all* commit-pending bcs for committing, and while commit
+     * is going on no other flush can run, hence new commit pending bcs cannot
+     * be added, so when an ongoing commit completes we we must not have any
+     * commit pending bcs in the cache.
+     */
+    {
+        std::vector<bytes_chunk> bc_vec =
+            inode->get_filecache()->get_commit_pending_bcs();
+        assert(bc_vec.empty());
+    }
+#endif
+
     uint64_t commit_bytes = 0;
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -885,7 +906,7 @@ static void commit_callback(
          * persisted the data and client can fee it).
          * Also complete any tasks waiting for these membufs to be committed.
          */
-        for (auto &bc : *bc_vec_ptr) {
+        for (auto& bc : *bc_vec_ptr) {
             struct membuf *mb = bc.get_membuf();
             assert(mb->is_inuse());
             assert(mb->is_locked());
@@ -894,18 +915,25 @@ static void commit_callback(
             // Dirty membufs must not be committed.
             assert(!mb->is_dirty());
 
+            // We should not have a zero length bc.
+            assert(bc.length > 0);
+            assert(bc.length <= AZNFSC_MAX_CHUNK_SIZE);
+            assert((bc.offset + bc.length) <= AZNFSC_MAX_FILE_SIZE);
+
             mb->clear_commit_pending();
             mb->clear_locked();
             mb->clear_inuse();
 
             /**
-             * Collect the contiguous range of bc's to release.
+             * Release commited data from file cache, one contiguous range at
+             * a time.
              */
             if (offset == 0 && length == 0) {
                 offset = bc.offset;
                 length = bc.length;
             } else if (offset + length == bc.offset) {
                 length += bc.length;
+                assert(length <= AZNFSC_MAX_FILE_SIZE);
             } else {
                 commit_bytes += length;
                 const uint64_t released =
@@ -927,7 +955,6 @@ static void commit_callback(
                        "released {} bytes",
                        ino, offset, offset+length, released);
         }
-
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
         return;
@@ -938,12 +965,16 @@ static void commit_callback(
          * membufs back as dirty and clear the commit_pending flag.
          * Next write will initiate the flush again with stable write.
          */
-        for (auto &bc : *bc_vec_ptr) {
+        for (auto& bc : *bc_vec_ptr) {
             struct membuf *mb = bc.get_membuf();
             assert(mb->is_inuse());
             assert(mb->is_locked());
             assert(mb->is_commit_pending());
             assert(mb->is_uptodate());
+            /*
+             * TODO: What happens if application writes over these
+             *       commit_pending bcs?
+             */
             assert(!mb->is_dirty());
 
             mb->clear_commit_pending();
@@ -951,30 +982,37 @@ static void commit_callback(
             mb->clear_locked();
             mb->clear_inuse();
         }
+
         /*
          * Set the inode to stable write, so that next write will initiate
          * the flush again with stable write.
-         * There should be no flush in progress as this moment.
+         * There should be no flush in progress as this moment, also since
+         * we always commit *all* the commit pending bcs, there should not
+         * be any more commit pending bcs, so we can safely just enable
+         * stable writes for the inode w/o the elaborate
+         * switch_to_stable_write().
          */
         assert(inode->get_filecache()->is_flushing_in_progress() == false);
         inode->set_stable_write();
     }
 
-    /*
-     * Clear the commit in progress flag.
-     */
-    inode->clear_commit_in_progress();
-
     if (status == 0) {
         assert(commit_bytes > 0);
-
-        // Update the commit bytes in the inode.
+        /*
+         * Update the commit bytes in the inode.
+         * This will also clear the commit-in-progress flag in the inode as
+         * the very first thing.
+         */
         inode->get_fcsm()->on_commit_complete(commit_bytes);
     } else {
+        // TODO: Add fcsm::on_commit_fail() and call it from here.
+        // Clear the commit in progress flag.
+        inode->clear_commit_in_progress();
         assert(0);
     }
 
     delete bc_vec_ptr;
+
     task->rpc_api->pvt = nullptr;
     task->free_rpc_task();
 }
@@ -996,16 +1034,29 @@ void rpc_task::issue_commit_rpc()
     // Caller must have marked commit inprogress.
     assert(inode->is_commit_in_progress());
 
+    // List of bcs to be committed by this commit call.
+    assert(rpc_api->pvt != nullptr);
+    auto bc_vec_ptr = (std::vector<bytes_chunk> *) rpc_api->pvt;
+
+    assert(bc_vec_ptr->size() > 0);
+    AZLogDebug("[{}] issue_commit_rpc, num bc: {}", ino, bc_vec_ptr->size());
+
+#ifdef ENABLE_PARANOID
+    // Make sure bcs being committed have correct state.
+    for (auto& bc : *bc_vec_ptr) {
+        struct membuf *mb = bc.get_membuf();
+        assert(mb->is_inuse());
+        assert(mb->is_locked());
+        assert(mb->is_commit_pending());
+        assert(mb->is_uptodate());
+        // Dirty membufs must not be committed.
+        assert(!mb->is_dirty());
+    }
+#endif
+
     COMMIT3args args;
     ::memset(&args, 0, sizeof(args));
     bool rpc_retry = false;
-
-    AZLogDebug("[{}] issue_commit_rpc", ino);
-
-    /*
-     * Get the bcs marked for commit_pending.
-     */
-    assert(rpc_api->pvt != nullptr);
 
     args.file = inode->get_fh();
     args.offset = 0;
@@ -1058,6 +1109,9 @@ void bc_iovec::on_io_complete(uint64_t bytes_completed, bool is_unstable_write)
     do {
         assert(!bcq.empty());
         struct bytes_chunk& bc = bcq.front();
+
+        // Caller must not send incorrect value for unstable write.
+        assert(bc.get_inode()->is_stable_write() == !is_unstable_write);
 
         /*
          * Absolute offset and length represented by this bytes_chunk.
@@ -1291,7 +1345,8 @@ static void write_iov_callback(
                        bciov->orig_offset + bciov->orig_length);
 
             // Update bciov after the current write.
-            bciov->on_io_complete(res->WRITE3res_u.resok.count, !inode->is_stable_write());
+            bciov->on_io_complete(res->WRITE3res_u.resok.count,
+                                  !inode->is_stable_write());
 
             // Create a new write_task for the remaining bc_iovec.
             struct rpc_task *write_task =
@@ -1328,7 +1383,8 @@ static void write_iov_callback(
             return;
         } else {
             // Complete bc_iovec IO completed.
-            bciov->on_io_complete(res->WRITE3res_u.resok.count, !inode->is_stable_write());
+            bciov->on_io_complete(res->WRITE3res_u.resok.count,
+                                  !inode->is_stable_write());
 
             // Complete data writen to blob.
             AZLogDebug("[{}] <{}> Completed write, off: {}, len: {}",
@@ -1412,6 +1468,7 @@ static void write_iov_callback(
     if (inode->get_write_error() == 0) {
         inode->get_fcsm()->on_flush_complete(bciov->orig_length);
     } else {
+        // TODO: Add fcsm::on_flush_fail() and call it from here.
         assert(0);
     }
 
@@ -2645,7 +2702,11 @@ void rpc_task::run_write()
 
     assert(extent_right >= (extent_left + length));
 
-    // Run this task through flush commit state machine
+    /*
+     * copy_to_cache() has added some more dirty data to the file cache,
+     * let FCSM know about it. It may want to flush and/or commit if we are
+     * above some configured limit.
+     */
     inode->get_fcsm()->run(this, extent_left, extent_right);
 }
 

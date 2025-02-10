@@ -695,6 +695,11 @@ public:
     bool is_new = false;
 
     /**
+     * Get the inode corresponding to this bc.
+     */
+    struct nfs_inode *get_inode() const;
+
+    /**
      * Return membuf corresponding to this bytes_chunk.
      * This will be used by caller to synchronize operations on the membuf.
      * See membuf::flag and various operations that can be done on them.
