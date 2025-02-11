@@ -1101,7 +1101,7 @@ struct rename_rpc_task
     void set_silly_rename(bool is_silly)
     {
         // For silly rename olddir and newdir must be same.
-        assert(!silly_rename || (parent_ino == newparent_ino));
+        assert(!is_silly || (parent_ino == newparent_ino));
         silly_rename = is_silly;
     }
 

@@ -220,7 +220,7 @@ void rpc_stats_az::dump_stats()
                   " bytes read by application(s)\n";
     const double read_cache_pct =
         tot_bytes_read ?
-        ((bytes_read_from_cache * 100) / tot_bytes_read) : 0;
+        ((bytes_read_from_cache * 100.0) / tot_bytes_read) : 0;
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_from_cache)) +
                   " bytes served from read cache (" +
                   std::to_string(read_cache_pct) + "%)\n";
@@ -231,7 +231,7 @@ void rpc_stats_az::dump_stats()
                   " writes had to wait inline\n";
     const double getattr_cache_pct =
         tot_getattr_reqs ?
-        ((getattr_served_from_cache * 100) / tot_getattr_reqs) : 0;
+        ((getattr_served_from_cache * 100.0) / tot_getattr_reqs) : 0;
     str += "  " + std::to_string(GET_GBL_STATS(tot_getattr_reqs)) +
                   " getattr requests received\n";
     str += "  " + std::to_string(GET_GBL_STATS(getattr_served_from_cache)) +
@@ -239,7 +239,7 @@ void rpc_stats_az::dump_stats()
                   std::to_string(getattr_cache_pct) + "%)\n";
     const double lookup_cache_pct =
         tot_lookup_reqs ?
-        ((lookup_served_from_cache * 100) / tot_lookup_reqs) : 0;
+        ((lookup_served_from_cache * 100.0) / tot_lookup_reqs) : 0;
     str += "  " + std::to_string(GET_GBL_STATS(tot_lookup_reqs)) +
                   " lookup requests received\n";
     str += "  " + std::to_string(GET_GBL_STATS(lookup_served_from_cache)) +
@@ -259,7 +259,7 @@ do { \
     const auto& ops = opstats[opcode]; \
     if (ops.count != 0) { \
         const std::string opstr = rpc_task::fuse_opcode_to_string(opcode); \
-        const int pcent_ops = (ops.count * 100) / cum_stats.num_req_sent; \
+        const int pcent_ops = (ops.count * 100.0) / cum_stats.num_req_sent; \
         str += opstr + ":\n"; \
         str += "        " + std::to_string(ops.count) + \
                         " ops (" + std::to_string(pcent_ops) + "%)\n"; \
