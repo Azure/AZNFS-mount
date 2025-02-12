@@ -341,6 +341,50 @@ static void aznfsc_ll_open(fuse_req_t req,
     assert(!inode->is_dir());
 
     /*
+     * For cto consistency open should force revalidate the inode by making a
+     * getattr call and if that indicates that file data has changed (mtime
+     * and/or size has changed from our cached values), then we should
+     * revalidate the cache before proceeding with open. If the cache is
+     * already maked invalid then also we should revalidate the cache.
+     * Cache revalidation should flush all dirty mappings, thus ensuring that
+     * later read can safely read from the cache w/o worrying about the
+     * freshness of the cached data.
+     */
+    if (inode->is_regfile() &&
+        inode->has_filecache() && !inode->is_cache_empty()) {
+        /*
+         * If cache is already marked invalid, then we must flush the cache
+         * now.
+         */
+        bool sync_cache =
+            inode->get_filecache()->test_and_clear_invalidate_pending();
+        if (!sync_cache) {
+            /*
+             * If not already marked invalid, then we need to force revalidate,
+             * which will issue a fresh GETATTR and determine "cached data has
+             * changed" by comparing the mtime and size with the cached values.
+             */
+            AZLogDebug("[{}] Force revalidating inode", ino);
+
+            inode->revalidate(true /* force */);
+
+            // Did revalidate() mark the cache invalid?
+            sync_cache =
+                inode->get_filecache()->test_and_clear_invalidate_pending();
+        }
+
+        /*
+         * Either the cache was already marked invalid or fresh GETATTR
+         * confirms file on the server has changed since we cached it.
+         * In either case, sync the dirty data with the server.
+         */
+        if (sync_cache) {
+            AZLogDebug("[{}] Sync'ing cache before read", ino);
+            inode->flush_cache_and_wait(0, UINT64_MAX);
+        }
+    }
+
+    /*
      * TODO: See comments in readahead.h, ideally readahead state should be
      *       per file pointer (per open handle) but since fuse doesn't let
      *       us know the file pointer we maintain readahead state per inode.
@@ -350,30 +394,6 @@ static void aznfsc_ll_open(fuse_req_t req,
      *       simultaneously it will cause the readahead state to be reset.
      *
      *       This is a hack and needs to be properly addressed!
-     */
-    if (inode->is_regfile() && !inode->is_cache_empty()) {
-        AZLogDebug("[{}] Clearing cache", ino);
-        inode->get_filecache()->clear();
-    }
-
-    /*
-     * FIXME:
-     * readahead_state shared pointer access can race with
-     * get_or_alloc_rastate() which might be setting the shared_ptr.
-     * In general all the following shared pointers must be made private:
-     * - filecache_handle
-     * - dircache_handle
-     * - readahead_state
-     * and access to them must be protected by ilock_1.
-     *
-     * get_or_alloc_rastate() may still be creating the shared_ptr and the
-     * boolean inode->readahead_state check which calls the operator bool()
-     * will succeed, we will proceed to call reset() while the ra_state is
-     * being initialized by the get_or_alloc_rastate() thread.
-     *
-     * Note: We are not accessing inode->readahead_state directly anymore,
-     *       so the above race is gone but still leave the comment around
-     *       till we fully fix things.
      */
     if (inode->is_regfile() && inode->has_rastate()) {
         AZLogDebug("[{}] Resetting readahead state", ino);
@@ -385,16 +405,6 @@ static void aznfsc_ll_open(fuse_req_t req,
      * Mostly it'll be allocated in nfs_client::reply_entry(), but for inodes
      * conveyed through readdirplus, nfs_client::reply_entry() won't be called
      * and filecache_handle won't be allocated when aznfsc_ll_open() is called.
-     *
-     * TODO: If nocto option is not set then we should provide cto consistency,
-     *       by making a fresh getattr call to the server and if it returns
-     *       that file data has changed (mtime and/or size has changed), then
-     *       we should invalidate the cache before proceeding with open.
-     *       Cache invalidation should flush all dirty mappings before marking
-     *       cache as invalid.
-     *       If the cache is already marked invalid (see invalidate() method of
-     *       bytes_chunk_cache) then also we should flush all dirty mappings
-     *       before proceeding with the open.
      */
     inode->on_fuse_open(FUSE_OPEN);
     assert(inode->opencnt > 0);

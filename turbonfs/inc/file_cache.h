@@ -1324,9 +1324,23 @@ public:
         clear_nolock(shutdown);
     }
 
+    /**
+     * Mark the cache as invalid.
+     * Should be called when it's determined that the cached data is not valid.
+     * Depending on the requirement, caller may want to sync the dirty data
+     * with the sever before prceeding.
+     */
     void invalidate()
     {
         invalidate_pending = true;
+    }
+
+    /**
+     * Atomically clear invalidate_pending and return the old value.
+     */
+    bool test_and_clear_invalidate_pending()
+    {
+        return invalidate_pending.exchange(false);
     }
 
     /**

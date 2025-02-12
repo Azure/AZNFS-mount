@@ -1039,8 +1039,9 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
 	/*
 	 * Before we proceed with the cache lookup check if invalidate is pending.
+	 * Note that this will not sync dirty data with the server.
 	 */
-	if (invalidate_pending.exchange(false)) {
+	if (test_and_clear_invalidate_pending()) {
 		AZLogDebug("[{}] (Deferred) Purging file_cache", CACHE_TAG);
 		clear_nolock();
 	}
