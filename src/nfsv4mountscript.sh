@@ -22,7 +22,7 @@ NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 DEBUG_LEVEL="info"
 
-stunnel_timeout_idle=60
+stunnel_timeout_idle=61
 
 # Certificates related variables.
 CERT_PATH=
