@@ -22,6 +22,8 @@ NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 DEBUG_LEVEL="info"
 
+stunnel_timeout_idle=60
+
 # Certificates related variables.
 CERT_PATH=
 CERT_UPDATE_COMMAND=
@@ -212,6 +214,13 @@ add_stunnel_configuration()
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add pid file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "TIMEOUTidle = $stunnel_timeout_idle" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
         return 1
     fi
 
