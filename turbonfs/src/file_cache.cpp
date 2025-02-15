@@ -2235,6 +2235,9 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
                  * membuf destructor will be called here unless read path
                  * gets a ref to this membuf. Note that writes won't be
                  * coming as VFS will serialize them with truncate.
+                 * For post=true we don't have the flush_lock, so another way
+                 * these membufs may have an extra ref count held is if
+                 * flush_cache_and_wait() is trying to flush these membufs.
                  */
                 chunkmap.erase(it);
             }
@@ -2305,8 +2308,14 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
                chunkmap.size(),
                bytes_truncated);
 
-    // See comment in get_cache_size().
-    assert(cache_size >= bytes_uptodate);
+    /*
+     * See comment in get_cache_size().
+     * Before reaching here we hit this assert in
+     * get_cached_filesize()->get_cache_size(), but keep here for correctness
+     */
+    assert((cache_size >= bytes_uptodate) ||
+           (bytes_uptodate > bytes_cached && bytes_uptodate == bytes_allocated));
+
     return bytes_truncated;
 }
 

@@ -1806,8 +1806,16 @@ public:
          *       the membuf(s) but its destructor may not be called hence
          *       bytes_uptodate may be reduced after cache_size causing this
          *       assert to fail, but that should be rare so leave the assert.
+         *       The 2nd part of the assert is to protect against the above.
+         *       bytes_cached is decremented in truncate() when we remove a
+         *       chunk from the chunkmap, but bytes_uptodate is reduced only
+         *       whem membuf destructor is called which happens only later
+         *       in this case. Since bytes_allocated is also decremented in
+         *       membuf destructor, we assert for both to be equal to only
+         *       cover this knownn case.
          */
-        assert(cache_size >= bytes_uptodate);
+        assert((cache_size >= bytes_uptodate) ||
+               (bytes_uptodate > bytes_cached && bytes_uptodate == bytes_allocated));
         return cache_size;
     }
 
