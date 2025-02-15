@@ -396,6 +396,9 @@ void membuf::set_uptodate()
     assert(is_locked());
     assert(is_inuse());
 
+    // Setting a 0-byte membuf uptodate is semantically incorrect.
+    assert(length > 0);
+
     /*
      * We set MB_Flag::Uptodate atomically to keep the bytes_uptodate
      * metrics sane. Also the debug log is helpful to understand when a
@@ -412,12 +415,17 @@ void membuf::set_uptodate()
         while (bcc->cache_size < (offset + length)) {
             uint64_t expected = bcc->cache_size;
             bcc->cache_size.compare_exchange_strong(expected, offset + length);
+            assert(bcc->cache_size > 0);
         }
 
         bcc->bytes_uptodate_g += length;
         bcc->bytes_uptodate += length;
 
         assert(bcc->bytes_uptodate <= AZNFSC_MAX_FILE_SIZE);
+        // See comment in get_cache_size().
+        assert(bcc->cache_size >= bcc->bytes_uptodate);
+        // Must not exit with cache_size < this membuf's right edge.
+        assert(bcc->cache_size >= (offset + length));
 
         AZLogDebug("[{}] Set uptodate membuf [{}, {}), fd={}, cache_size={}",
                    bcc->inode->get_fuse_ino(),
@@ -2021,6 +2029,8 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
      */
     assert(!inode || inode->is_truncate_in_progress());
 
+    // truncate(post=true) must be called with flush_lock held.
+    assert(!post || inode->is_flushing);
     assert(trunc_len <= AZNFSC_MAX_FILE_SIZE);
 
     AZLogDebug("[{}] <Truncate {}> {}called [S: {}, C: {}, CS: {}], "
@@ -2239,6 +2249,7 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
             struct bytes_chunk *bc = &(it->second);
             struct membuf *mb = bc->get_membuf();
             if (mb->is_uptodate()) {
+                assert(mb->length > 0);
                 assert(cache_size >= (mb->offset + mb->length));
                 /*
                  * cache_size is only reduced by truncate() and truncates
@@ -2254,6 +2265,7 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
                     cache_size.compare_exchange_strong(expected, mb->offset + mb->length);
                 assert(updated);
                 assert(cache_size == (mb->offset + mb->length));
+                assert(cache_size > 0);
                 cache_size_updated = true;
                 break;
             }
@@ -2293,6 +2305,7 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
                chunkmap.size(),
                bytes_truncated);
 
+    // See comment in get_cache_size().
     assert(cache_size >= bytes_uptodate);
     return bytes_truncated;
 }

@@ -1458,6 +1458,8 @@ void nfs_inode::flush_unlock() const
 
 void nfs_inode::truncate_end(size_t size)
 {
+    // truncate_start() must have held the flush_lock.
+    assert(is_flushing);
     AZLogDebug("[{}] truncate_end() called", ino);
 
     /*
