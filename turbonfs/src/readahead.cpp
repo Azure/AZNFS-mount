@@ -409,7 +409,7 @@ int64_t ra_state::get_next_ra(uint64_t length)
      * old) then also we play safe and do not perform readahead.
      */
     const int64_t filesize =
-        inode ? inode->get_file_size(): AZNFSC_MAX_FILE_SIZE;
+        inode ? inode->get_server_file_size(): AZNFSC_MAX_FILE_SIZE;
     assert(filesize >= 0 || filesize == -1);
     if ((filesize == -1) ||
         ((int64_t) (last_byte_readahead + 1 + length) > filesize)) {
@@ -483,9 +483,13 @@ int ra_state::issue_readaheads()
      */
     while ((ra_offset = get_next_ra()) > 0) {
         AZLogDebug("[{}] Issuing readahead at off: {} len: {}: ongoing: {} "
-                   "filesize: {} ({})",
+                   "sfsize: {} cfsize: {} csfsize: {} ({})",
                    inode->get_fuse_ino(), ra_offset, def_ra_size,
-                   ra_ongoing.load(), inode->get_file_size(), ra_bytes);
+                   ra_ongoing.load(),
+                   inode->get_server_file_size(),
+                   inode->get_client_file_size(),
+                   inode->get_cached_filesize(),
+                   ra_bytes);
 
         /*
          * Get bytes_chunk representing the byte range we want to readahead

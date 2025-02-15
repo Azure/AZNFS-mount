@@ -69,9 +69,8 @@ public:
          struct nfs_inode *_inode);
 
     /**
-     * Ensure 'flush_bytes' additional bytes are flushed from the cache, above
-     * and beyond what's already flushed or flushing now. flush_bytes==0 implies
-     * flush all dirty bytes.
+     * Ensure *all* dirty bytes are flushed or scheduled for flushing (if flush
+     * or commit is already ongoing).
      * If the state machine is currently not running, it'll kick off the state
      * machine by calling sync_membufs(), else it'll add a new flush target to
      * ftgtq, which will be run by on_flush_complete() when the ongoing flush
@@ -79,36 +78,47 @@ public:
      * initiated this flush and in that case a blocking target will be added
      * which means the specified task will block till the requested target
      * completes, else a non-blocking target will be added which just requests
-     * the specific amount of bytes to be flushed w/o having the application
-     * wait.
+     * dirty bytes to be flushed w/o having the application wait.
      *
      * ensure_flush() provides the following guarantees:
-     * - Additional flush_bytes bytes will be flushed. This is beyond what's
-     *   already flushed or scheduled for flush.
-     * - On completion of that flush, task will be completed.
-     *   If after grabbing flush_lock it figures out that the requested flush
-     *   target is already met, it completes the task rightaway.
+     * - It'll flush *all* cached dirty bytes starting from the lowest offset.
+     * - On completion of that flush:
+     *   - If 'task' is non-null, it will be completed.
+     *   - If 'done' is non-null, it will be set to true to signal completion.
+     *     Caller must wait for that in a loop.
+     *   Only one of 'task' and 'done' can be non-null.
      *
      * write_off and write_len describe the current application write call.
-     * write_len is needed for completing the write rightaway for non-blocking
-     * cases, where 'task' is null.
+     * They are needed for logging when task is nullptr.
      *
-     * LOCKS: flush_lock.
+     * Caller MUST hold the flush_lock.
      */
-    void ensure_flush(uint64_t flush_bytes,
-                      uint64_t write_off,
+    void ensure_flush(uint64_t write_off,
                       uint64_t write_len,
-                      struct rpc_task *task = nullptr);
+                      struct rpc_task *task = nullptr,
+                      std::atomic<bool> *done = nullptr);
 
     /**
-     * Ensure 'commit_bytes' additional bytes are committed from the cache,
-     * above and beyond what's already committed or committing now.
+     * Ensure all or some commit-pending bytes are committed or scheduled for
+     * commit (if a flush or commit is already ongoing). If not already flushed
+     * data will be flushed before committing. Caller can pass 'commit_full' as
+     * true to convey flush/commit *all dirty data*, else ensure_commit() will
+     * decide how much to flush/commit based on heurustics and configuration.
      * If 'task' is null it'll add a non-blocking commit target to ctgtq, else
      * it'll add a blocking commit target for completing task when given commit
-     * goal is met.
+     * goal is met. The goal is decided by ensure_commit() based on configured
+     * limits or if 'commit_full' is true it means caller wants entire dirty
+     * data to be flushed and committed.
+     *
+     * Caller MUST hold the flush_lock.
+     *
+     * See ensure_flush() for more details.
      */
-    void ensure_commit(uint64_t commit_bytes,
-                       struct rpc_task *task = nullptr);
+    void ensure_commit(uint64_t write_off,
+                       uint64_t write_len,
+                       struct rpc_task *task = nullptr,
+                       std::atomic<bool> *done = nullptr,
+                       bool commit_full = false);
 
     /**
      * Callbacks to be called when flush/commit successfully complete.
@@ -116,7 +126,7 @@ public:
      * targets from ftgtq/ctgtq as appropriate.
      */
     void on_flush_complete(uint64_t flush_bytes);
-    void on_commit_complete();
+    void on_commit_complete(uint64_t commit_bytes);
 
     /**
      * Is the state machine currently running, i.e. it has sent (one or more)
@@ -149,8 +159,26 @@ public:
     void clear_running();
 
     /**
+     * Nudge the flush-commit state machine.
+     * After the fuse thread copies the application data into the cache, it
+     * must call this to let FCSM know that some more dirty data has been
+     * added. It checks the dirty data against the configured limits and
+     * decides which of the following action to take:
+     * - Do nothing, as dirty data is still within limits.
+     * - Start flushing.
+     * - Start committing.
+     * - Flush/commit while blocking the task till flush/commit completes.
+     */
+    void run(struct rpc_task *task,
+             uint64_t extent_left,
+             uint64_t extent_right);
+
+    /**
      * Call when more writes are dispatched, or prepared to be dispatched.
-     * This MUST be called before the write callback can be called.
+     * These must correspond to membufs which are dirty and not already
+     * flushing.
+     * This MUST be called before the write_iov_callback() can be called, i.e.,
+     * before the actual write call is issued.
      */
     void add_flushing(uint64_t bytes);
 
@@ -179,6 +207,23 @@ public:
     {
         return (fc_cb_count() > 0);
     }
+
+    /**
+     * Call when more commit are dispatched, or prepared to be dispatched.
+     * These must correspond to membufs which are already flushed, i.e., they
+     * must not be dirty or flushing and must be commit pending.
+     * This MUST be called before the commit_callback can be called, i.e.,
+     * before the actual commit call is issued.
+     */
+    void add_committing(uint64_t bytes);
+
+    /**
+     * ctgtq_cleanup() is called when we switch to stable writes.
+     * It clears up all the queued commit targets as stable writes will not
+     * cause a commit and those targets would never normally complete.
+     */
+    void ctgtq_cleanup();
+    void ftgtq_cleanup();
 
 private:
     /*
@@ -216,7 +261,8 @@ private:
         fctgt(struct fcsm *fcsm,
               uint64_t _flush_seq,
               uint64_t _commit_seq,
-              struct rpc_task *_task = nullptr);
+              struct rpc_task *_task = nullptr,
+              std::atomic<bool> *_done = nullptr);
 
         /*
          * Flush and commit targets (in terms of flushed_seq_num/committed_seq_num)
@@ -230,6 +276,13 @@ private:
          * once the above target is reached.
          */
         struct rpc_task *const task = nullptr;
+
+        /*
+         * If non-null, it's initial value must be false, and will be set to
+         * true when the target completes. Caller will typically wait for it
+         * to become true, in a loop.
+         */
+        std::atomic<bool> *done = nullptr;
 
         /*
          * Pointer to the containing fcsm.
@@ -262,7 +315,10 @@ private:
     /*
      * Continually increasing seq number of the last byte successfully flushed
      * and committed. Flush-commit targets (fctgt) are expressed in terms of
-     * these.
+     * these. These are actually numerically one more than the last
+     * flushing/commiting and flushed/committed byte's seq number, e.g., if the
+     * last byte flushed was byte #1 (0 and 1 are flushed), then flushed_seq_num
+     * would be 2.
      * Note that these are *not* offsets in the file but these are cumulative
      * values for total bytes flushed/committed till now since the file was
      * opened. In case of overwrite same byte(s) may be repeatedly flushed

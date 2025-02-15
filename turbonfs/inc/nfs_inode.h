@@ -289,14 +289,27 @@ private:
      */
     struct stat attr;
 
-    /*
-     * Has this inode seen any non-append write?
-     * This starts as false and remains false as long as copy_to_cache() only
-     * adds writes to the end of file. Once any write either adds data beyond
-     * eof or overwrites some existing bytes of the file, this is set to true.
-     * Once set to true it never goes back to false.
+    /**
+     * We maintain following multiple views of the file and thus multiple file
+     * sizes for those views.
+     * - Cached.
+     *   This is the view of the file that comprises of data that has been
+     *   written by the application and saved in file cache. It may or may not
+     *   have been flushed and/or committed. This is the most uptodate view of
+     *   the file and applications must use this view.
+     *   get_cached_filesize() returns the cached file size.
+     * - Uncommited.
+     *   This is the view of the file that tracks data that has been flushed
+     *   using UNSTABLE writes but not yet COMMITted to the Blob. This view of
+     *   the file is only used to see if the next PB call will write after the
+     *   last PB'ed byte and thus can be appended.
+     *   putblock_filesize tracks the file size for this view.
+     * - Committed.
+     *   This is the view of the file that tracks data committed to the Blob.
+     *   Other clients will see this view.
+     *   attr.st_size tracks the file size for this view.
      */
-    bool non_append_writes_seen = false;
+    off_t putblock_filesize = 0;
 
     /*
      * For any file stable_write starts as false as write pattern is unknown.
@@ -307,10 +320,16 @@ private:
      * (since server knows best how to allocate blocks for them).
      * Once set to true, it remains true for the life of the inode.
      * 
-     * Note: As of now, we are not using this flag as commit changes not yet
-     *       integrated, so we are setting this flag to true.
+     * TODO: Set this to false once we have servers with unstable write
+     *       support. Also uncomment the assert in nfs_inode constructor.
      */
     bool stable_write = true;
+
+    /*
+     * XXX This is for debugging.
+     *     It's set in truncate_start() and cleared in truncate_end().
+     */
+    std::atomic<bool> truncate_in_progress = false;
 
 public:
     /*
@@ -533,7 +552,7 @@ public:
      * change the file size after truncate sets it.
      */
     bool truncate_start(size_t size);
-    void truncate_end(size_t size) const;
+    void truncate_end(size_t size);
 
     /**
      * This MUST be called only after has_filecache() returns true, else
@@ -554,6 +573,15 @@ public:
      * LOCKS: None.
      */
     std::shared_ptr<bytes_chunk_cache>& get_filecache()
+    {
+        assert(is_regfile());
+        assert(filecache_alloced);
+        assert(filecache_handle);
+
+        return filecache_handle;
+    }
+
+    const std::shared_ptr<bytes_chunk_cache>& get_filecache() const
     {
         assert(is_regfile());
         assert(filecache_alloced);
@@ -981,17 +1009,48 @@ public:
         return attr_expired;
     }
 
+    void set_truncate_in_progress()
+    {
+        assert(!truncate_in_progress);
+        truncate_in_progress = true;
+    }
+
+    void clear_truncate_in_progress()
+    {
+        assert(truncate_in_progress);
+        truncate_in_progress = false;
+    }
+
+    bool is_truncate_in_progress() const
+    {
+        return truncate_in_progress;
+    }
+
+    int64_t get_cached_filesize() const
+    {
+        assert(is_regfile());
+        assert(has_filecache());
+
+        const int64_t cached_filesize = get_filecache()->get_cache_size();
+        assert(cached_filesize >= 0);
+        assert(cached_filesize <= (off_t) AZNFSC_MAX_FILE_SIZE);
+        return cached_filesize;
+    }
+
     /**
-     * Get the estimated file size based on the cached attributes. Note that
-     * this is based on cached attributes which might be old and hence the
-     * size may not match the recent size, caller should use this just as an
-     * estimate and should not use it for any hard failures that may be in
-     * violation of the protocol.
+     * Get the estimated file size on the server. Note that this is based on
+     * cached attributes hence the returned size is at best an estimate and may
+     * not exactly match the most recent file size on the server. Callers are
+     * warned about that and they should not use it for any hard failures that
+     * may be in violation of the protocol.
      * If cached attributes have expired (as per the configured actimeo) then
      * it returns -1 and caller must handle it, unless caller does not care
      * and passed dont_check_expiry as true.
+     *
+     * Note: Use get_file_sizes() if you need both server and client file
+     *       sizes.
      */
-    int64_t get_file_size(const bool dont_check_expiry = false) const
+    int64_t get_server_file_size(const bool dont_check_expiry = false) const
     {
         /*
          * XXX We access attr.st_size w/o holding ilock_1 as aligned access
@@ -1008,39 +1067,81 @@ public:
     }
 
     /**
+     * Get client's most recent estimate of the file size.
+     * Note that unlike get_server_file_size() which estimates the file size
+     * strictly as present on the server, this is a size estimate that matters
+     * from the client applications' pov. It considers the cached filesize
+     * also and returns the max of the server file size and cached filesize.
+     * Note that cached filesize corresponds to data which has not yet been
+     * synced with the server, so won't be reflected in the server file size,
+     * but reader applications would be interested in cached data too.
+     *
+     * Returns -1 to indicate that we do not have a good estimate of the file
+     * size. Since we always know the cached filesize for sure, this happens
+     * when we do not know the recent server file size (within the last
+     * attributes cache timeout period).
+     *
+     * Note: Use get_file_sizes() if you need both server and client file
+     *       sizes.
+     */
+    int64_t get_client_file_size() const
+    {
+        const int64_t sfsize = get_server_file_size();
+
+        if (sfsize == -1) {
+            /*
+             * We don't know server size, so we cannot estimate
+             * effective client file size for sure.
+             */
+            return -1;
+        }
+
+        return std::max(sfsize, get_cached_filesize());
+    }
+
+    /**
+     * Get both server and client file sizes.
+     * Use this when you need to know both server and client file sizes
+     * atomically, i.e., it will either return -1 for both client and server
+     * file sizes or it'll return valid value for both.
+     */
+    void get_file_sizes(int64_t& cfsize, int64_t& sfsize) const
+    {
+        sfsize = get_server_file_size();
+
+        if (sfsize == -1) {
+            cfsize = -1;
+            // We don't know either.
+            assert((cfsize == -1) && (sfsize == -1));
+            return;
+        }
+
+        cfsize = std::max(sfsize, get_cached_filesize());
+
+        // We know both.
+        assert((cfsize != -1) && (sfsize != -1));
+    }
+
+    /**
      * This must be called from copy_to_cache() whenever we successfully copy
-     * some data to filecache. If it copies data beyond eof causing file size
-     * to change, on_cached_write() updates the file size in attr.size so that
-     * get_file_size() returns the correct size.
+     * some data to filecache.
      *
      * Note: It doesn't update attr.ctime and attr.mtime deliberately as this
      *       is not authoritative info and we would want to fetch attributes
-     *       from server when needed. This size updation helps get_file_size()
-     *       call made from run_read() in solowriter mode so that we don't
-     *       return eof incorrectly, while we have data sitting in cache.
+     *       from server when needed.
      */
     void on_cached_write(off_t offset, size_t length)
     {
+        [[maybe_unused]]
         const off_t new_size = offset + length;
-
-        std::unique_lock<std::shared_mutex> lock(ilock_1);
+        [[maybe_unused]]
+        const off_t cached_filesize = (off_t) get_filecache()->get_cache_size();
 
         /*
-         * TODO: Need to correctly handle the case when attr.st_size is updated
-         *       from write_iov_callback() with the postop attr received.
-         *       We might want to maintain cached file size which won't be
-         *       updated from postop attributes. We will need to correctly
-         *       update that when file is truncated f.e.
+         * on_cached_write() is called after set_uptodate() so cached_filesize
+         * must already have been updated.
          */
-        if (!non_append_writes_seen && (offset != attr.st_size)) {
-            non_append_writes_seen = true;
-            AZLogInfo("[{}] Non-append write seen [{}, {}), file size: {}",
-                      ino, offset, offset+length, attr.st_size);
-        }
-
-        if (new_size > attr.st_size) {
-            attr.st_size = new_size;
-        }
+        assert(cached_filesize >= new_size);
     }
 
     /**
@@ -1400,12 +1501,16 @@ public:
      *       initiate any new flush operations while some truncate call is in
      *       progress (which must have held the flush_lock).
      */
-    int flush_cache_and_wait(uint64_t start_off = 0,
-                             uint64_t end_off = UINT64_MAX);
+    int flush_cache_and_wait();
 
     /**
-     * Wait for currently flushing membufs to complete.
+     * Wait for currently flushing/committing membufs to complete.
+     * It will wait till the currently flushing membufs complete and then
+     * issue a commit and wait for that. If no flush is ongoing but there's
+     * commit_pending data, it'll commit that and return after the commit
+     * completes.
      * Returns 0 on success and a positive errno value on error.
+     * Once it returns, commit_pending will be 0.
      *
      * Note : Caller must hold the inode flush_lock to ensure that
      *        no new membufs are added till this call completes.
@@ -1413,8 +1518,35 @@ public:
      *        flush/write requests to complete, but it'll exit with flush_lock
      *        held.
      */
-    int wait_for_ongoing_flush(uint64_t start_off = 0,
-                               uint64_t end_off = UINT64_MAX);
+    int wait_for_ongoing_flush();
+
+    /**
+     * commit_membufs() is called to commit uncommitted membufs to the Blob.
+     * It creates commit RPC and sends it to the NFS server.
+     */
+    void commit_membufs(std::vector<bytes_chunk> &bcs);
+
+    /**
+     * switch_to_stable_write() is called to switch the inode to stable write
+     * mode. It waits for all ongoing flush and subsequent commit to complete.
+     * If not already scheduled, it'll perform an explicit commit after the
+     * flush complete.
+     * Post that it'll mark inode for stable write and return. From then on
+     * any writes to this inode will be sent as stable writes.
+     */
+    void switch_to_stable_write();
+
+    /**
+     * Check if stable write is required for the given offset.
+     * Given offset is the start of contiguous dirty membufs that need to be
+     * flushed to the Blob.
+     */
+    bool check_stable_write_required(off_t offset);
+
+    /**
+     * Wait for ongoing commit operation to complete.
+     */
+    void wait_for_ongoing_commit();
 
     /**
      * Sync the dirty membufs in the file cache to the NFS server.
@@ -1604,6 +1736,9 @@ public:
     {
         assert(!stable_write);
         stable_write = true;
+
+        // Only unstable writes use putblock_filesize.
+        putblock_filesize = AZNFSC_BAD_OFFSET;
     }
 
     /**

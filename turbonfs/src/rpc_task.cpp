@@ -178,6 +178,13 @@ std::atomic<int> rpc_task::async_slots = MAX_ASYNC_RPC_TASKS;
 /* static */
 const std::string rpc_task::fuse_opcode_to_string(fuse_opcode opcode)
 {
+    /*
+     * We use FUSE_FLUSH to indicate COMMIT RPC.
+     */
+    if (opcode == FUSE_FLUSH) {
+        return "COMMIT";
+    }
+
 #define _case(op)   \
     case FUSE_##op: \
         return #op;
@@ -828,6 +835,268 @@ void access_callback(
     }
 }
 
+static void commit_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+
+    /*
+     * Commit is issued as a FUSE_FLUSH.
+     * TODO: Maybe it should have a type of its own.
+     *
+     * Note that flush/write is issued as FUSE_WRITE.
+     */
+    assert(task->magic == RPC_TASK_MAGIC);
+    assert(task->get_op_type() == FUSE_FLUSH);
+    // rpc_api->pvt must contain the list of bcs which were committed.
+    assert(task->rpc_api->pvt != nullptr);
+    // Commit is never called for a fuse request.
+    assert(task->get_fuse_req() == nullptr);
+
+    auto res = (COMMIT3res*) data;
+
+    INJECT_JUKEBOX(res, task);
+
+    const fuse_ino_t ino = task->rpc_api->flush_task.get_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
+    // List of bcs committed by this commit call.
+    auto bc_vec_ptr = (std::vector<bytes_chunk> *) task->rpc_api->pvt;
+
+    // We should call commit only when inode is doing unstable+commit.
+    assert(!inode->is_stable_write());
+    // Inode must be marked "commit in progress".
+    assert(inode->is_commit_in_progress());
+    // Commit and flush/write are exclusive.
+    assert(!inode->get_filecache()->is_flushing_in_progress());
+    // bytes_commit_pending will be reduced later below.
+    assert(inode->get_filecache()->get_bytes_to_commit() > 0);
+
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+    UPDATE_INODE_WCC(inode, res->COMMIT3res_u.resok.file_wcc);
+
+    // Set "in commit callback".
+    FC_CB_TRACKER fccbt(inode);
+
+    AZLogDebug("[{}] commit_callback, number of bc committed: {}",
+               ino, bc_vec_ptr->size());
+    
+    uint64_t commit_bytes = 0;
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+
+    if (status == 0) {
+        uint64_t offset = 0;
+        uint64_t length = 0;
+
+        /*
+         * Go over all the successfully committed bcs and release them from
+         * file cache (note that successful commit confirms that server has
+         * persisted the data and client can fee it).
+         * Also complete any tasks waiting for these membufs to be committed.
+         */
+        for (auto& bc : *bc_vec_ptr) {
+            struct membuf *mb = bc.get_membuf();
+            assert(mb->is_inuse());
+            assert(mb->is_locked());
+            assert(mb->is_commit_pending());
+            assert(mb->is_uptodate());
+            // Dirty membufs must not be committed.
+            assert(!mb->is_dirty());
+
+            // We should not have a zero length bc.
+            assert(bc.length > 0);
+            assert(bc.length <= AZNFSC_MAX_CHUNK_SIZE);
+            assert((bc.offset + bc.length) <= AZNFSC_MAX_FILE_SIZE);
+
+            mb->clear_commit_pending();
+            mb->clear_locked();
+            mb->clear_inuse();
+
+            /**
+             * Release commited data from file cache, one contiguous range at
+             * a time.
+             */
+            if (offset == 0 && length == 0) {
+                offset = bc.offset;
+                length = bc.length;
+            } else if (offset + length == bc.offset) {
+                length += bc.length;
+                assert(length <= AZNFSC_MAX_FILE_SIZE);
+            } else {
+                commit_bytes += length;
+                const uint64_t released =
+                    inode->get_filecache()->release(offset, length);
+                AZLogInfo("[{}] commit_callback releasing bc [{}, {}), "
+                           "released {} bytes",
+                           ino, offset, offset+length, released);
+                offset = bc.offset;
+                length = bc.length;
+            }
+        }
+
+        // Release the last bc not released by the above loop.
+        if (length != 0) {
+            commit_bytes += length;
+            const uint64_t released =
+                inode->get_filecache()->release(offset, length);
+            AZLogInfo("[{}] commit_callback releasing bc [{}, {}), "
+                       "released {} bytes",
+                       ino, offset, offset+length, released);
+        }
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+        return;
+    } else {
+        /*
+         * Commit has failed.
+         * Go over all the bcs that this commit was targetting, mark the
+         * membufs back as dirty and clear the commit_pending flag.
+         * Next write will initiate the flush again with stable write.
+         */
+        for (auto& bc : *bc_vec_ptr) {
+            struct membuf *mb = bc.get_membuf();
+            assert(mb->is_inuse());
+            assert(mb->is_locked());
+            assert(mb->is_commit_pending());
+            assert(mb->is_uptodate());
+            /*
+             * TODO: What happens if application writes over these
+             *       commit_pending bcs?
+             */
+            assert(!mb->is_dirty());
+
+            mb->clear_commit_pending();
+            mb->set_dirty();
+            mb->clear_locked();
+            mb->clear_inuse();
+        }
+
+        /*
+         * Set the inode to stable write, so that next write will initiate
+         * the flush again with stable write.
+         * There should be no flush in progress at this moment, also since
+         * we always commit *all* the commit pending bcs, there should not
+         * be any more commit pending bcs, so we can safely just enable
+         * stable writes for the inode w/o the elaborate
+         * switch_to_stable_write().
+         */
+        assert(inode->get_filecache()->is_flushing_in_progress() == false);
+        inode->set_stable_write();
+    }
+
+#ifdef ENABLE_PARANOID
+    /*
+     * We always pick *all* commit-pending bcs for committing, and while commit
+     * is going on no other flush can run, hence new commit pending bcs cannot
+     * be added, so when an ongoing commit completes we we must not have any
+     * commit pending bcs in the cache.
+     */
+    {
+        std::vector<bytes_chunk> bc_vec =
+            inode->get_filecache()->get_commit_pending_bcs();
+        assert(bc_vec.empty());
+    }
+#endif
+
+    if (status == 0) {
+        assert(commit_bytes > 0);
+        /*
+         * Update the commit bytes in the inode.
+         * This will also clear the commit-in-progress flag in the inode as
+         * the very first thing.
+         */
+        inode->get_fcsm()->on_commit_complete(commit_bytes);
+    } else {
+        // TODO: Add fcsm::on_commit_fail() and call it from here.
+        // Clear the commit in progress flag.
+        inode->clear_commit_in_progress();
+        assert(0);
+    }
+
+    delete bc_vec_ptr;
+
+    task->rpc_api->pvt = nullptr;
+    task->free_rpc_task();
+}
+
+void rpc_task::issue_commit_rpc()
+{
+    // Must only be called for a flush task.
+    assert(get_op_type() == FUSE_FLUSH);
+    // Commit is never called for a fuse request.
+    assert(get_fuse_req() == nullptr);
+
+    const fuse_ino_t ino = rpc_api->flush_task.get_ino();
+    struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
+
+    // Commit must not be called if we are doing stable writes.
+    assert(!inode->is_stable_write());
+    // Commit must mot be sent with ongoing flushes.
+    assert(!inode->get_filecache()->is_flushing_in_progress());
+    // Caller must have marked commit inprogress.
+    assert(inode->is_commit_in_progress());
+
+    // Must be called by FCSM.
+    assert(inode->get_fcsm()->is_running());
+
+    // List of bcs to be committed by this commit call.
+    assert(rpc_api->pvt != nullptr);
+    auto bc_vec_ptr = (std::vector<bytes_chunk> *) rpc_api->pvt;
+
+    assert(bc_vec_ptr->size() > 0);
+    AZLogDebug("[{}] issue_commit_rpc, num bc: {}", ino, bc_vec_ptr->size());
+
+#ifdef ENABLE_PARANOID
+    // Make sure bcs being committed have correct state.
+    for (auto& bc : *bc_vec_ptr) {
+        struct membuf *mb = bc.get_membuf();
+        assert(mb->is_inuse());
+        assert(mb->is_locked());
+        assert(mb->is_commit_pending());
+        assert(mb->is_uptodate());
+        // Dirty membufs must not be committed.
+        assert(!mb->is_dirty());
+    }
+#endif
+
+    COMMIT3args args;
+    ::memset(&args, 0, sizeof(args));
+    bool rpc_retry = false;
+
+    args.file = inode->get_fh();
+    args.offset = 0;
+    args.count = 0;
+
+    do {
+        rpc_retry = false;
+        stats.on_rpc_issue();
+
+        if (rpc_nfs3_commit_task(get_rpc_ctx(),
+                                 commit_callback, &args, this) == NULL) {
+            stats.on_rpc_cancel();
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_write_task failed to issue, retrying "
+                        "after 5 secs!");
+            ::sleep(5);
+        }
+    } while (rpc_retry);
+}
+
 /**
  * Must be called when bytes_completed bytes are successfully read/written.
  */
@@ -852,6 +1121,9 @@ void bc_iovec::on_io_complete(uint64_t bytes_completed, bool is_unstable_write)
     do {
         assert(!bcq.empty());
         struct bytes_chunk& bc = bcq.front();
+
+        // Caller must not send incorrect value for unstable write.
+        assert(bc.get_inode()->is_stable_write() == !is_unstable_write);
 
         /*
          * Absolute offset and length represented by this bytes_chunk.
@@ -1085,7 +1357,8 @@ static void write_iov_callback(
                        bciov->orig_offset + bciov->orig_length);
 
             // Update bciov after the current write.
-            bciov->on_io_complete(res->WRITE3res_u.resok.count);
+            bciov->on_io_complete(res->WRITE3res_u.resok.count,
+                                  !inode->is_stable_write());
 
             // Create a new write_task for the remaining bc_iovec.
             struct rpc_task *write_task =
@@ -1122,7 +1395,8 @@ static void write_iov_callback(
             return;
         } else {
             // Complete bc_iovec IO completed.
-            bciov->on_io_complete(res->WRITE3res_u.resok.count);
+            bciov->on_io_complete(res->WRITE3res_u.resok.count,
+                                  !inode->is_stable_write());
 
             // Complete data writen to blob.
             AZLogDebug("[{}] <{}> Completed write, off: {}, len: {}",
@@ -1205,6 +1479,9 @@ static void write_iov_callback(
      */
     if (inode->get_write_error() == 0) {
         inode->get_fcsm()->on_flush_complete(bciov->orig_length);
+    } else {
+        // TODO: Add fcsm::on_flush_fail() and call it from here.
+        assert(0);
     }
 
     delete bciov;
@@ -1278,7 +1555,16 @@ void rpc_task::issue_write_rpc()
     args.file = inode->get_fh();
     args.offset = offset;
     args.count = length;
-    args.stable = FILE_SYNC;
+    args.stable = inode->is_stable_write() ? FILE_SYNC : UNSTABLE;
+
+    /*
+     * Unstable writes want to make use of multiple connections for better perf.
+     * Note that they aren't affected by the optimistic concurrency backoff
+     * issues as seen by stable writes.
+     */
+    if (!inode->is_stable_write()) {
+        set_csched(CONN_SCHED_RR);
+    }
 
     do {
         rpc_retry = false;
@@ -2339,7 +2625,6 @@ void rpc_task::run_write()
     const size_t length = rpc_api->write_task.get_size();
     struct fuse_bufvec *const bufv = rpc_api->write_task.get_buffer_vector();
     const off_t offset = rpc_api->write_task.get_offset();
-    const bool sparse_write = (offset > inode->get_file_size(true));
     uint64_t extent_left = 0;
     uint64_t extent_right = 0;
 
@@ -2349,6 +2634,9 @@ void rpc_task::run_write()
      */
     assert(inode->has_filecache());
     assert(inode->has_fcsm());
+
+    // truncate and write are serialized by the VFS inode lock.
+    assert(!inode->is_truncate_in_progress());
 
     // There should not be any writes running for this RPC task initially.
     assert(num_ongoing_backend_writes == 0);
@@ -2430,139 +2718,11 @@ void rpc_task::run_write()
     assert(extent_right >= (extent_left + length));
 
     /*
-     * We have successfully copied the user data into the cache.
-     * We can have the following cases:
-     * 1. This new write caused a contiguous extent to be greater than
-     *    max_dirty_extent_bytes(), aka MDEB.
-     *    In this case we begin flush of this contiguous extent (in multiple
-     *    parallel wsize sized blocks) since there's no benefit in waiting more
-     *    as the data is sufficient for the server scheduler to effectively
-     *    write, in optimal sized blocks.
-     *    We complete the application write rightaway without waiting for the
-     *    flush to complete as we are not under memory pressure.
-     *    This will happen when user is sequentially writing to the file.
-     * 2. A single contiguous extent is not greater than MDEB but total dirty
-     *    bytes waiting to be flushed is more than MDEB.
-     *    In this case we begin flush of the entire dirty data from the cache
-     *    as we have sufficient data for the server scheduler to perform
-     *    batched writes effectively.
-     *    We complete the application write rightaway without waiting for the
-     *    flush to complete as we are not under memory pressure.
-     *    This will happen when user is writing to the file in a random or
-     *    pseudo-sequential fashion.
-     * 3. Cache has dirty data beyond the "inline write" threshold, ref
-     *    do_inline_write().
-     *    In this case we begin flush of the entire dirty data.
-     *    This is a memory pressure situation and hence we do not complete the
-     *    application write till all the backend writes complete.
-     *    This will happen when user is writing faster than our backend write
-     *    throughput, eventually dirty data will grow beyond the "inline write"
-     *    threshold and then we have to slow down the writers by delaying
-     *    completion.
-     *
-     * Other than this we have a special case of "write beyond eof" (termed
-     * sparse write). In sparse write case also we perform "inline write" of
-     * all the dirty data. This is needed for correct read behaviour. Imagine
-     * a reader reading from the sparse part of the file which is not yet in
-     * the bytes_chunk_cache. This read will be issued to the server and since
-     * server doesn't know the updated file size (as the write may still be
-     * sitting in our bytes_chunk_cache) it will return eof. This is not correct
-     * as such reads issued after successful write, are valid and should return
-     * 0 bytes for the sparse range.
+     * copy_to_cache() has added some more dirty data to the file cache,
+     * let FCSM know about it. It may want to flush and/or commit if we are
+     * above some configured limit.
      */
-
-    /*
-     * Do we need to perform "inline write"?
-     * Inline write implies, we flush all the dirty data and wait for all the
-     * corresponding backend writes to complete.
-     */
-    const bool need_inline_write =
-        (sparse_write || inode->get_filecache()->do_inline_write());
-
-    if (need_inline_write) {
-        INC_GBL_STATS(inline_writes, 1);
-
-        AZLogDebug("[{}] Inline write (sparse={}), {} bytes, extent @ [{}, {})",
-                   ino, sparse_write, (extent_right - extent_left),
-                   extent_left, extent_right);
-
-        /*
-         * ensure_flush() will arrange to flush all the dirty data and complete
-         * the write task when the flush completes.
-         */
-        inode->get_fcsm()->ensure_flush(0, offset, length, this);
-
-        // Free up the fuse thread without completing the application write.
-        return;
-    }
-
-    /*
-     * Ok, we don't need to do inline writes. See if we have enough dirty
-     * data and we need to start async flush.
-     */
-
-    /*
-     * If the extent size exceeds the max allowed dirty size as returned by
-     * max_dirty_extent_bytes(), then it's time to flush the extent.
-     * Note that this will cause sequential writes to be flushed at just the
-     * right intervals to optimize fewer write calls and also allowing the
-     * server scheduler to merge better.
-     * See bytes_to_flush for how random writes are flushed.
-     *
-     * Note: max_dirty_extent is static as it doesn't change after it's
-     *       queried for the first time.
-     */
-    static const uint64_t max_dirty_extent =
-        inode->get_filecache()->max_dirty_extent_bytes();
-    assert(max_dirty_extent > 0);
-
-    /*
-     * How many bytes in the cache need to be flushed. These are dirty chunks
-     * which have not started flushing yet.
-     */
-    const uint64_t bytes_to_flush =
-        inode->get_filecache()->get_bytes_to_flush();
-
-    AZLogDebug("[{}] extent_left: {}, extent_right: {}, size: {}, "
-               "bytes_to_flush: {} (max_dirty_extent: {})",
-               ino, extent_left, extent_right,
-               (extent_right - extent_left),
-               bytes_to_flush,
-               max_dirty_extent);
-
-    if ((extent_right - extent_left) < max_dirty_extent) {
-        /*
-         * Current extent is not large enough to be flushed, see if we have
-         * enough total dirty data that needs to be flushed. This is to cause
-         * random writes to be periodically flushed.
-         */
-        if (bytes_to_flush < max_dirty_extent) {
-            /*
-             * No memory pressure.
-             */
-            AZLogDebug("Reply write without syncing to Blob");
-            reply_write(length);
-            return;
-        }
-
-        /*
-         * This is the case of non-sequential writes causing enough dirty
-         * data to be accumulated, need to flush all of that.
-         */
-        extent_left = 0;
-        extent_right = UINT64_MAX;
-    }
-
-    /*
-     * Queue a non-blocking flush target for flushing all the dirty data.
-     */
-    inode->get_fcsm()->ensure_flush(0, offset, length, nullptr);
-
-    /*
-     * Complete the write request without waiting for the backend flush to
-     * complete.
-     */
-    reply_write(length);
+    inode->get_fcsm()->run(this, extent_left, extent_right);
 }
 
 void rpc_task::run_flush()
@@ -2575,6 +2735,7 @@ void rpc_task::run_flush()
      * to wait. Waiting in libnfs thread context will cause deadlocks.
      */
     assert(get_fuse_req() != nullptr);
+
     reply_error(inode->flush_cache_and_wait());
 }
 
@@ -3090,6 +3251,7 @@ void rpc_task::run_read()
 {
     const fuse_ino_t ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
+    int64_t cfsize, sfsize;
 
     // run_read() must be called only for an fe task.
     assert(rpc_api->read_task.is_fe());
@@ -3112,20 +3274,52 @@ void rpc_task::run_read()
     assert(rpc_api->parent_task == nullptr);
 
     /*
-     * In solowriter mode we know the file size definitively.
-     * This is an optimization that saves an extra READ call to the server.
-     * The server will correctly return 0+eof for this READ call so we are
-     * functionally correct in other consistency modes too.
+     * Get server and effective file size estimates.
+     * We use these to find holes that we should zero fill.
      */
-    if (aznfsc_cfg.consistency_solowriter) {
-        const int64_t file_size = inode->get_file_size();
-        if ((file_size != -1) &&
-            (rpc_api->read_task.get_offset() >= file_size)) {
+    inode->get_file_sizes(sfsize, cfsize);
+
+    /*
+     * get_client_file_size() returns a fairly recent estimate of the file
+     * size taking into account cto consistency, attribute cache timeout, etc,
+     * so it's a size we can "trust". If READ offset is more than this size
+     * then we can avoid sending the call to the server and generate eof
+     * locally. This is an optimization that saves an extra READ call to the
+     * server. The server will correctly return 0+eof for this READ call so we
+     * are functionally correct, barring the small possibility that the file
+     * can grow and if we send the READ to the server we will get the new data,
+     * but this is permissible with our weak/cto cache consistency guarantees.
+     *
+     * TODO: Shall we put it behind a config?
+     */
+    if (cfsize != -1) {
+        if (rpc_api->read_task.get_offset() >= cfsize) {
+            /*
+             * Entire request lies beyond cfsize.
+             */
             AZLogDebug("[{}] Read returning 0 bytes (eof) as requested "
                        "offset ({}) >= file size ({})",
-                       ino, rpc_api->read_task.get_offset(), file_size);
+                       ino, rpc_api->read_task.get_offset(), cfsize);
             reply_iov(nullptr, 0);
             return;
+        } else if ((rpc_api->read_task.get_offset() +
+                    rpc_api->read_task.get_size()) > (uint64_t) cfsize) {
+            /*
+             * Request extends beyond cfsize, trim it so that we don't have
+             * to worry about excluding it later.
+             */
+            const uint64_t trim_len =
+                (rpc_api->read_task.get_offset() +
+                 rpc_api->read_task.get_size()) - cfsize;
+            const uint64_t trimmed_size =
+                rpc_api->read_task.get_size() - trim_len;
+            assert(trimmed_size < rpc_api->read_task.get_size());
+
+            AZLogDebug("[{}] Trimming application read beyond cfsize: {} "
+                       "({} -> {})",
+                       ino, cfsize, rpc_api->read_task.get_size(), trimmed_size);
+
+            rpc_api->read_task.set_size(trimmed_size);
         }
     }
 
@@ -3153,19 +3347,38 @@ void rpc_task::run_read()
     // There should not be any reads running for this RPC task initially.
     assert(num_ongoing_backend_reads == 0);
 
-    AZLogDebug("[{}] run_read: offset {}, size: {}, chunks: {}{}",
+    AZLogDebug("[{}] run_read: offset {}, size: {}, chunks: {}{}, "
+               "sfsize: {}, cfsize: {}, csfsize: {}",
                ino,
                rpc_api->read_task.get_offset(),
                rpc_api->read_task.get_size(),
                bc_vec.size(),
-               size != bc_vec.size() ? " (capped at 1023)" : "");
+               size != bc_vec.size() ? " (capped at 1023)" : "",
+               sfsize, cfsize, inode->get_cached_filesize());
 
     /*
      * Now go through the byte chunk vector to see if the chunks are
-     * uptodate. For chunks which are not uptodate we will issue read
-     * calls to fetch the data from the NFS server. These will be issued in
-     * parallel. Once all chunks are uptodate we can complete the read to the
-     * caller.
+     * uptodate. Uptodate chunks already have the data we need, while non
+     * uptodate chunks need to be populated with data. These will mostly be
+     * READ from the server, with certain exceptions. See below.
+     * Chunks that are READ from the server are issued in parallel. Once all
+     * chunks are uptodate we can complete the read to the caller.
+     *
+     * Here are the rules that we follow to decide if a non-uptodate chunk
+     * must be READ from the server.
+     * - (bc.offset + bc.length) > get_client_file_size()
+     *   These MUST NOT occur as we trim the read request before making the
+     *   bytes_chunk_cache::get() call. We assert for these.
+     * - bc.offset < get_server_file_size()
+     *   Part or whole of the bc need to be read from the server, so we MUST
+     *   issue READ to the server for such bcs. If part of the bc lies after
+     *   the server file size, read_callback() will fill 0s for that part.
+     *   This is correct as that part corresponds to hole in our cache.
+     * - bc.offset >= get_server_file_size()
+     *   Server does not know about these so we MUST NOT ask the server about
+     *   these. Given that the bc is non-uptodate this means our cache also
+     *   doesn't have it, which means these correspond to holes in our cache
+     *   and we MUST return 0s for these bcs.
      *
      * Note that we bump num_ongoing_backend_reads by 1 before issuing
      * the first backend read. This is done to make sure if read_callback()
@@ -3183,6 +3396,8 @@ void rpc_task::run_read()
 
     [[maybe_unused]] size_t total_length = 0;
     bool found_in_cache = true;
+    [[maybe_unused]]
+    bool hole_in_cache = false;
 
     num_ongoing_backend_reads = 1;
 
@@ -3195,6 +3410,9 @@ void rpc_task::run_read()
         assert(bc_vec[i].get_membuf()->is_inuse());
         assert(bc_vec[i].pvt == 0);
         assert(bc_vec[i].num_backend_calls_issued == 0);
+        // We trim the read size to not exceed cfsize.
+        assert((cfsize == -1) ||
+               ((int64_t) (bc_vec[i].offset + bc_vec[i].length) <= cfsize));
 
         total_length += bc_vec[i].length;
 
@@ -3250,6 +3468,32 @@ void rpc_task::run_read()
                  */
                 filecache_handle->release(bc_vec[i].offset, bc_vec[i].length);
 #endif
+                continue;
+            }
+
+            /*
+             * Ok, non-uptodate buffer, see if we should read from server or
+             * return 0s. We read from server only if at least one byte from
+             * the bc can be served from the server, else it's the case of
+             * unmapped chunk within the cached portion (case of sparse cache
+             * due to sparse writes beyond file size) which should correspond
+             * with holes aka 0s.
+             */
+            const bool read_from_server =
+                ((sfsize == -1) || (int64_t) bc_vec[i].offset < sfsize);
+
+            if (!read_from_server) {
+                hole_in_cache = true;
+                AZLogDebug("[{}] Hole in cache. offset: {}, length: {}",
+                           ino, bc_vec[i].offset, bc_vec[i].length);
+
+                /*
+                 * Set "bytes read" to "bytes requested" since we provide all
+                 * the data as 0s.
+                 */
+                bc_vec[i].pvt = bc_vec[i].length;
+                ::memset(bc_vec[i].get_buffer(), 0, bc_vec[i].length);
+                bc_vec[i].get_membuf()->set_uptodate();
                 continue;
             }
 
@@ -3338,6 +3582,7 @@ void rpc_task::run_read()
     assert(num_ongoing_backend_reads >= 1);
     if (--num_ongoing_backend_reads != 0) {
         assert(!found_in_cache);
+        assert(!hole_in_cache);
         /*
          * Not all backend reads have completed yet. When the last backend
          * read completes read_callback() will arrange to send the read
@@ -3595,6 +3840,43 @@ static void read_callback(
                    bc->offset,
                    bc->offset + bc->length,
                    bc->num_backend_calls_issued);
+
+        /*
+         * There's a special case that we need to handle.
+         * Since we support sparse writes (beyond the server file size) we can
+         * have a case where we have a bc which spans the server file size
+         * boundary. This will happen when inode->get_server_file_size() is
+         * less than inode->get_cached_filesize() and the portion of the file
+         * immediately after server file size is not cached. For such a bc we
+         * issue the READ call to the server and we expect the server to return
+         * partial bc data + eof. Now we should set rest of the bc to 0s as it
+         * corresponds to hole in the file.
+         */
+        const uint64_t csfsize = inode->get_cached_filesize();
+        if (res->READ3res_u.resok.eof &&
+            (res->READ3res_u.resok.count < issued_length) &&
+            ((bc->offset + bc->pvt) < csfsize)) {
+            void *const zb = bc->get_buffer() + bc->pvt;
+            const int64_t zb_len =
+                std::min(csfsize, bc->offset + bc->length) - (bc->offset + bc->pvt);
+
+            AZLogDebug("[{}] <{}> read_callback: bc [{}, {}) spans across "
+                       "server file size boundary, filling remaining {} bytes "
+                       "@ offset {}, with 0s. cfsize: {}, sfsize: {}, csfsize: {}",
+                       ino, task->issuing_tid,
+                       issued_offset,
+                       issued_offset + issued_length,
+                       zb_len, bc->offset + bc->pvt,
+                       inode->get_client_file_size(),
+                       inode->get_server_file_size(),
+                       csfsize);
+
+            assert(zb_len > 0);
+            ::memset(zb, 0, zb_len);
+            // Added zb_len more bytes to bc.
+            bc->pvt += zb_len;
+            assert(bc->pvt <= bc->length);
+        }
 
         /*
          * In case of partial read, issue read for the remaining.

@@ -46,9 +46,12 @@ do { \
                    inode->get_fuse_ino(), \
                    __FUNCTION__); \
         inode->update(&(postop.post_op_attr_u.attributes)); \
-        AZLogDebug("[{}] UPDATE_INODE_ATTR(): file size: {}", \
+        AZLogDebug("[{}] UPDATE_INODE_ATTR(): sfsize: {}, cfsize: {}, " \
+                   "csfsize: {}", \
                    inode->get_fuse_ino(), \
-                   inode->get_file_size()); \
+                   inode->get_server_file_size(), \
+                   inode->is_regfile() ? inode->get_client_file_size() : -1, \
+                   inode->is_regfile() ? inode->get_cached_filesize() : -1); \
     } \
 } while (0)
 
@@ -87,9 +90,12 @@ do { \
                    inode->get_fuse_ino(), \
                    __FUNCTION__); \
         inode->update(postattr, preattr); \
-        AZLogDebug("[{}] UPDATE_INODE_WCC(): file size: {}", \
+        AZLogDebug("[{}] UPDATE_INODE_WCC(): sfsize: {}, cfsize: { }" \
+                   "csfsize: {}", \
                    inode->get_fuse_ino(), \
-                   inode->get_file_size()); \
+                   inode->get_server_file_size(), \
+                   inode->is_regfile() ? inode->get_client_file_size() : -1, \
+                   inode->is_regfile() ? inode->get_cached_filesize() : -1); \
     } \
 } while (0)
 
@@ -2428,6 +2434,7 @@ public:
      */
     bool add_bc(const bytes_chunk& bc);
     void issue_write_rpc();
+    void issue_commit_rpc();
 
 #ifdef ENABLE_NO_FUSE
     /*

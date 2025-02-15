@@ -380,7 +380,7 @@ static void aznfsc_ll_open(fuse_req_t req,
          */
         if (sync_cache) {
             AZLogDebug("[{}] Sync'ing cache before read", ino);
-            inode->flush_cache_and_wait(0, UINT64_MAX);
+            inode->flush_cache_and_wait();
         }
     }
 
