@@ -2690,18 +2690,61 @@ void rpc_task::run_write()
      * possible that reader cannot complete the read (most likely reason being
      * the file ends before the membuf). In this case copy_to_cache() fails with
      * EAGAIN so that we can repeat the whole process right from getting the
-     * membufs. We do it for 10 times before failing the write, as it's highly
-     * unlikely that we need to repeat more than that.
+     * membufs. We do it for 100 times before failing the write, as it's highly
+     * unlikely that we need to repeat more than that. We should not need to
+     * retry more than a few times, but we try 100 times for better resiliency
+     * as failing a write is not good, so we better be sure we tried enough.
      */
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 100; i++) {
         error_code = inode->copy_to_cache(bufv, offset,
                                           &extent_left, &extent_right);
         if (error_code != EAGAIN) {
             break;
         }
 
-        AZLogWarn("[{}] copy_to_cache(offset={}) failed with EAGAIN, retrying",
-                  ino, offset);
+        /*
+         * Very rarely we have seen that there will be a bad membuf which isn't
+         * marked uptodate by the readers because of the following race between
+         * two (or more) readers:
+         * - Let's say file size is 4096 and reader#1 wants to read 1MB, so it
+         *   allocates a chunk/membuf of size 1MB. It's inuse count will be 1.
+         * - Another reader raced with it and it wants to read say 512KB from
+         *   the same offset (0) so it gets the same membuf. Now the inuse
+         *   count of the membuf will be 2.
+         * - Now let's say reader#1 gets the membuf lock and gets to issue the
+         *   read. When read completes, read_callback() will see that the
+         *   membuf was fully mapped and it was partially read with eof, it'll
+         *   try to release the remaining part of the membuf but it cannot do
+         *   that as the other reader thread is also holding an inuse count
+         *   on the membuf. Since it cannot release the extra part of the
+         *   membuf it doesn't mark it uptodate.
+         * - Since it's not marked uptodate when reader#2 gets the lock it also
+         *   issues the read. This time the read_callback() finds that the
+         *   membuf is not fully mapped by this reader so it doesn't try to
+         *   release it.
+         * - Now we have a situation where a chunk [0, 1MB) is lying in the
+         *   chunkmap in a non-uptodate state.
+         * - Now let's say two writers came along that want to write this
+         *   membuf partially, say 4KB-8KB.
+         * - In copy_to_cache() these writers will determine that the membuf
+         *   is not uptodate so it sleeps for 50ms hoping for the reader to
+         *   complete and mark it uptodat. When after 50ms it finds that the
+         *   membuf is still not uptodate it tries to release the membuf,
+         *   hoping to get a fresh one next time. If there was only one writer
+         *   thread it would have been successful, but because of the other
+         *   writer thread holding an inuse count the release() doesn't
+         *   succeed and both the writers end up exhausting this loop and
+         *   eventually the write fails.
+         *
+         * To remedy this situation, we let each writer sleep a small random
+         * msecs w/o the lock or inuse count on the membuf. This will allow
+         * one of the writer to proceed and successfully release the membuf.
+         */
+        const uint64_t rand_ms = random_number(0, 100);
+
+        AZLogWarn("[{}] copy_to_cache(offset={}) failed with EAGAIN, retrying "
+                  "after {} msecs", ino, offset, rand_ms);
+        ::usleep(rand_ms * 1000);
     }
 
     if (error_code != 0) {
@@ -4027,7 +4070,8 @@ static void read_callback(
                  * If we are able to successfully release all the extra bytes
                  * from the bytes_chunk, that means there's no other thread
                  * actively performing IOs to the underlying membuf, so we can
-                 * mark it uptodate.
+                 * mark it uptodate as future readers will get the trimmed
+                 * membuf which *is* uptodate.
                  */
                 assert(released_bytes <= (bc->length - bc->pvt));
                 if (released_bytes == (bc->length - bc->pvt)) {

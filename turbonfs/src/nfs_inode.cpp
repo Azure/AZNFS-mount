@@ -1038,13 +1038,14 @@ try_copy:
              * wasn't able to mark the membuf uptodate. In this case we need
              * to get fresh bytes_chunk vector and re-do the copy.
              */
+            const uint64_t rand_ms = random_number(1, 50);
             AZLogWarn("[{}] Waiting for membuf [{}, {}) (bc [{}, {})) to "
-                      "become uptodate", ino,
+                      "become uptodate, dropping lock for {} msecs", ino,
                       mb->offset.load(), mb->offset.load()+mb->length.load(),
-                      bc.offset, bc.offset+bc.length);
+                      bc.offset, bc.offset+bc.length, rand_ms);
 
             mb->clear_locked();
-            ::usleep(50 * 1000);
+            ::usleep(rand_ms * 1000);
             mb->set_locked();
 
 #ifdef ENABLE_PARANOID
