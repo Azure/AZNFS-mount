@@ -2023,11 +2023,17 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
 
     assert(trunc_len <= AZNFSC_MAX_FILE_SIZE);
 
-    AZLogDebug("[{}] <Truncate {}> {}called [S: {}, C: {}, CS: {}]",
+    AZLogDebug("[{}] <Truncate {}> {}called [S: {}, C: {}, CS: {}], "
+               "U: {}, A: {}, C: {}, T: {}, chunkmap.size(): {}",
                CACHE_TAG, trunc_len, post ? "POST " : "",
                inode->get_server_file_size(),
                inode->get_client_file_size(),
-               inode->get_cached_filesize());
+               inode->get_cached_filesize(),
+               bytes_uptodate.load(),
+               bytes_allocated.load(),
+               bytes_cached.load(),
+               bytes_truncate.load(),
+               chunkmap.size());
     /*
      * Count of how many bytes we drop from the cache, to serve this truncate
      * request. We return this to the caller.
@@ -2187,9 +2193,11 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
                 mb->clear_locked();
                 mb->clear_inuse();
             } else {
-                AZLogDebug("[{}] <Truncate {}> {}truncated full chunk [{},{})",
+                AZLogDebug("[{}] <Truncate {}> {}truncated full chunk [{},{}), "
+                           "mb use_count: {}",
                            CACHE_TAG, trunc_len, post ? "POST " : "",
-                           bc.offset, bc.offset + bc.length);
+                           bc.offset, bc.offset + bc.length,
+                           bc.get_membuf_usecount());
 
                 /*
                  * Release the chunk.
@@ -2269,11 +2277,23 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
     num_truncate++;
     num_truncate_g++;
 
-    AZLogDebug("[{}] <Truncate {}> {}done, cache_size: {}, bytes_uptodate: {}",
+    AZLogDebug("[{}] <Truncate {}> {}done, [S: {}, C: {}, CS: {}], "
+               "cache_size: {}, U: {}, A: {}, C: {}, T: {}, "
+               "chunkmap.size(): {}, bytes_truncated: {}",
                CACHE_TAG,
                trunc_len, post ? "POST " : "",
-               cache_size.load(), bytes_uptodate.load());
+               inode->get_server_file_size(),
+               inode->get_client_file_size(),
+               inode->get_cached_filesize(),
+               cache_size.load(),
+               bytes_uptodate.load(),
+               bytes_allocated.load(),
+               bytes_cached.load(),
+               bytes_truncate.load(),
+               chunkmap.size(),
+               bytes_truncated);
 
+    assert(cache_size >= bytes_uptodate);
     return bytes_truncated;
 }
 

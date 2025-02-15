@@ -1596,14 +1596,6 @@ bool nfs_inode::truncate_start(size_t size)
     AZLogDebug("[{}] Ongoing flush operations completed", ino);
 
     /*
-     * Now we have flushed+committed all the dirty data, so no more flush
-     * commit targets would be completed, complete them now.
-     */
-    get_fcsm()->ftgtq_cleanup();
-    // TODO: Verify for unstable writes.
-    //get_fcsm()->ctgtq_cleanup();
-
-    /*
      * Invalidate attribute cache for the inode as a successful truncate call
      * will reduce the file size.
      * Note that we don't explicitly update attr.st_size as the SETATTR may
