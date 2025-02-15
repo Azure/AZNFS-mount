@@ -749,6 +749,12 @@ void fcsm::ensure_flush(uint64_t write_off,
     if (inode->is_stable_write()) {
         bc_vec = inode->get_filecache()->get_dirty_nonflushing_bcs_range(
                                                     0, UINT64_MAX, &bytes);
+        /*
+         * Dirty flushable data can increase after get_bytes_to_flush() call
+         * above as more dirty data can be added, while no dirty data can
+         * become flushing as we have the flush_lock.
+         */
+        assert(bytes >= bytes_to_flush);
     } else {
         bc_vec = inode->get_filecache()->get_contiguous_dirty_bcs(&bytes);
     }
