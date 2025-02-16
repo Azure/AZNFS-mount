@@ -414,7 +414,9 @@ void membuf::set_uptodate()
          */
         while (bcc->cache_size < (offset + length)) {
             uint64_t expected = bcc->cache_size;
-            bcc->cache_size.compare_exchange_strong(expected, offset + length);
+            if (expected < (offset + length)) {
+                bcc->cache_size.compare_exchange_strong(expected, offset + length);
+            }
             assert(bcc->cache_size > 0);
         }
 
