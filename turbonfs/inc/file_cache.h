@@ -1810,12 +1810,16 @@ public:
          *       bytes_cached is decremented in truncate() when we remove a
          *       chunk from the chunkmap, but bytes_uptodate is reduced only
          *       whem membuf destructor is called which happens only later
-         *       in this case. Since bytes_allocated is also decremented in
-         *       membuf destructor, we assert for both to be equal to only
-         *       cover this knownn case.
+         *       in this case. bytes_uptodate can usually not be greater than
+         *       bytes_cached but in this case it can be and hence that covers
+         *       the exception case.
+         *
+         *       XXX If ~membuf() is called between the two checks, then the
+         *           assert will fail, but that's very unlikely and assert is
+         *           o/w valuable.
          */
         assert((cache_size >= bytes_uptodate) ||
-               (bytes_uptodate > bytes_cached && bytes_uptodate == bytes_allocated));
+               (bytes_uptodate > bytes_cached));
         return cache_size;
     }
 

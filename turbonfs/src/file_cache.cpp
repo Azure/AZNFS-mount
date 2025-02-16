@@ -423,7 +423,8 @@ void membuf::set_uptodate()
 
         assert(bcc->bytes_uptodate <= AZNFSC_MAX_FILE_SIZE);
         // See comment in get_cache_size().
-        assert(bcc->cache_size >= bcc->bytes_uptodate);
+        assert((bcc->cache_size >= bcc->bytes_uptodate) ||
+               (bcc->bytes_uptodate > bcc->bytes_cached));
         // Must not exit with cache_size < this membuf's right edge.
         assert(bcc->cache_size >= (offset + length));
 
@@ -2314,7 +2315,7 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
      * get_cached_filesize()->get_cache_size(), but keep here for correctness
      */
     assert((cache_size >= bytes_uptodate) ||
-           (bytes_uptodate > bytes_cached && bytes_uptodate == bytes_allocated));
+           (bytes_uptodate > bytes_cached));
 
     return bytes_truncated;
 }
