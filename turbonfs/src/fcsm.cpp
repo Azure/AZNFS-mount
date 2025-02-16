@@ -314,6 +314,8 @@ void fcsm::ctgtq_cleanup()
 
         struct rpc_task *task = ctgt.task;
         if (task) {
+            // task and done are exclusive.
+            assert(!ctgt.done);
             /*
              * ctgtq_cleanup() is called when we have decided to swith to
              * stable writes. Since commit is never called for stable writes,
@@ -324,14 +326,24 @@ void fcsm::ctgtq_cleanup()
             assert(task->rpc_api->write_task.is_fe());
             assert(task->rpc_api->write_task.get_size() > 0);
 
-            task->reply_write(task->rpc_api->write_task.get_size());
-        }
+            AZLogInfo("[{}] [FCSM] ctgtq_cleanup: purging blocking commit "
+                       "target: {}, write task: [{}, {})",
+                       inode->get_fuse_ino(),
+                       ctgt.commit_seq,
+                       task->rpc_api->write_task.get_offset(),
+                       task->rpc_api->write_task.get_offset() +
+                       task->rpc_api->write_task.get_size());
 
-        AZLogInfo("[FCSM][{}] ctgtq_cleanup(): completed write task: {} "
-                  "commit_seq: {}",
-                  inode->get_fuse_ino(),
-                  fmt::ptr(task),
-                  ctgt.commit_seq);
+            task->reply_write(task->rpc_api->write_task.get_size());
+        } else if (ctgt.done) {
+            AZLogInfo("[{}] [FCSM] ctgtq_cleanup: purging blocking commit "
+                       "target: {}",
+                       inode->get_fuse_ino(),
+                       ctgt.commit_seq);
+
+            assert(*ctgt.done == false);
+            *ctgt.done = true;
+        }
 
         ctgtq.pop();
     }
@@ -353,6 +365,8 @@ void fcsm::ftgtq_cleanup()
 
         struct rpc_task *task = ftgt.task;
         if (task) {
+            // task and done are exclusive.
+            assert(!ftgt.done);
             /*
              * ftgtq_cleanup() is called when file is truncated and we have
              * flushed all existing dirty bytes. No more flush callback would
@@ -363,14 +377,24 @@ void fcsm::ftgtq_cleanup()
             assert(task->rpc_api->write_task.is_fe());
             assert(task->rpc_api->write_task.get_size() > 0);
 
-            task->reply_write(task->rpc_api->write_task.get_size());
-        }
+            AZLogInfo("[{}] [FCSM] ftgtq_cleanup: purging blocking flush "
+                       "target: {}, write task: [{}, {})",
+                       inode->get_fuse_ino(),
+                       ftgt.commit_seq,
+                       task->rpc_api->write_task.get_offset(),
+                       task->rpc_api->write_task.get_offset() +
+                       task->rpc_api->write_task.get_size());
 
-        AZLogInfo("[FCSM][{}] ftgtq_cleanup(): completed write task: {} "
-                  "flush_seq: {}",
-                  inode->get_fuse_ino(),
-                  fmt::ptr(task),
-                  ftgt.flush_seq);
+            task->reply_write(task->rpc_api->write_task.get_size());
+        } else if (ftgt.done) {
+            AZLogInfo("[{}] [FCSM] ftgtq_cleanup: purging blocking flush "
+                       "target: {}",
+                       inode->get_fuse_ino(),
+                       ftgt.commit_seq);
+
+            assert(*ftgt.done == false);
+            *ftgt.done = true;
+        }
 
         ftgtq.pop();
     }
