@@ -1054,6 +1054,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     uint64_t next_offset = offset;
     uint64_t remaining_length = length;
 
+    // bytes released by trimming and by full chunk deletions.
+    uint64_t bytes_released_trim = 0;
+    uint64_t bytes_released_full1 = 0;
+
     if (bytes_released)
         *bytes_released = 0;
 
@@ -1510,12 +1514,12 @@ do { \
             } else if (bc->safe_to_release()) {
                 assert(action == scan_action::SCAN_ACTION_RELEASE);
 
-                /*
-                 * chunk_length bytes will be released.
-                 */
-                *bytes_released += chunk_length;
-
                 if (chunk_length == bc->length) {
+                    /*
+                     * chunk_length bytes will be released.
+                     */
+                    bytes_released_full1 += chunk_length;
+
                     /*
                      * File-backed cache may not have the membuf allocated in
                      * case the cache is dropped. bc->get_buffer() will assert
@@ -1544,6 +1548,7 @@ do { \
                     end_delete = std::next(it);
                 } else {
                     assert(chunk_length == remaining_length);
+
                     /*
                      * Else trim the chunk (from the left).
                      */
@@ -1561,6 +1566,11 @@ do { \
 
                     // Trim membuf.
                     bc->get_membuf()->trim(chunk_length, true /* left */);
+
+                    /*
+                     * chunk_length bytes will be released.
+                     */
+                    bytes_released_trim += chunk_length;
 
                     /*
                      * Don't update num_chunks/num_chunks_g as we remove one
@@ -1722,17 +1732,17 @@ do { \
                     assert((int64_t) bc->length > 0);
 
                     // Trim membuf.
-                    bc->get_membuf()->trim(chunk_length, false /* left */);
+                    bc->get_membuf()->trim(trim_bytes, false /* left */);
+
+                    /*
+                     * trim_bytes bytes will be released.
+                     */
+                    bytes_released_trim += trim_bytes;
 
                     assert(bytes_cached >= trim_bytes);
                     assert(bytes_cached_g >= trim_bytes);
                     bytes_cached -= trim_bytes;
                     bytes_cached_g -= trim_bytes;
-
-                    /*
-                     * chunk_length bytes are now released.
-                     */
-                    *bytes_released += trim_bytes;
                 } else {
                     /*
                      * The to-be-released range must lie entirely within this
@@ -1918,7 +1928,7 @@ allocate_only_chunk:
      * Delete chunks in the range [begin_delete, end_delete).
      */
     if (action == scan_action::SCAN_ACTION_RELEASE) {
-        uint64_t bytes_released_tmp = 0;
+        uint64_t bytes_released_full2 = 0;
 
         if (begin_delete != chunkmap.end()) {
             for (auto _it = begin_delete, next_it = _it;
@@ -1948,14 +1958,26 @@ allocate_only_chunk:
                     bytes_cached -= bc->length;
                     bytes_cached_g -= bc->length;
 
-                    bytes_released_tmp += bc->length;
+                    bytes_released_full2 += bc->length;
 
                     chunkmap.erase(_it);
                 }
             }
         }
 
-        assert(bytes_released_tmp <= *bytes_released);
+        /*
+         * Since we hold the chunkmap lock, a chunk which was earlier not
+         * safe_to_release() can become safe_to_release() now, but not v.v.
+         * This is because to become safe_to_release() it will need to clear
+         * inuse/dirty/commit_pending, all of which can be done w/o the chunkmap
+         * lock, while to become not safe_to_release() it must set
+         * inuse/dirty/commit_pending flags all of which need the inuse flag to
+         * be set, which need the chunkmap lock.
+         */
+        assert(bytes_released_full2 >= bytes_released_full1);
+        if (bytes_released) {
+            *bytes_released = bytes_released_trim + bytes_released_full2;
+        }
     } else {
         assert((begin_delete == chunkmap.end()) &&
                (end_delete == chunkmap.end()));
