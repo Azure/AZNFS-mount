@@ -27,6 +27,7 @@ CERT_PATH=
 CERT_UPDATE_COMMAND=
 STUNNEL_CAFILE=
 
+stunnel_timeout_idle=61
 ssl_version=
 
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
@@ -215,6 +216,13 @@ add_stunnel_configuration()
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add pid file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "TIMEOUTidle = $stunnel_timeout_idle" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
         return 1
     fi
 
