@@ -3320,7 +3320,7 @@ void rpc_task::run_read()
      * Get server and effective file size estimates.
      * We use these to find holes that we should zero fill.
      */
-    inode->get_file_sizes(sfsize, cfsize);
+    inode->get_file_sizes(cfsize, sfsize);
 
     /*
      * get_client_file_size() returns a fairly recent estimate of the file
