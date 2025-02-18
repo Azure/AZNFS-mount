@@ -13,6 +13,7 @@ namespace aznfsc {
 /* static */ std::mutex rpc_stats_az::stats_lock_42;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_read = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_from_cache = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::bytes_zeroed_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_ahead = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_getattr_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::getattr_served_from_cache = 0;
@@ -221,10 +222,17 @@ void rpc_stats_az::dump_stats()
     const double read_cache_pct =
         tot_bytes_read ?
         ((bytes_read_from_cache * 100.0) / tot_bytes_read) : 0;
+    assert(read_cache_pct <= 100);
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_from_cache)) +
                   " bytes served from read cache (" +
                   std::to_string(read_cache_pct) + "%)\n";
-    assert(read_cache_pct <= 100);
+    const double hole_cache_pct =
+        tot_bytes_read ?
+        ((bytes_zeroed_from_cache * 100.0) / tot_bytes_read) : 0;
+    assert(hole_cache_pct <= 100);
+    str += "  " + std::to_string(GET_GBL_STATS(bytes_zeroed_from_cache)) +
+                  " bytes holes read from cache (" +
+                  std::to_string(hole_cache_pct) + "%)\n";
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_ahead)) +
                   " bytes read by readahead\n";
     str += "  " + std::to_string(GET_GBL_STATS(inline_writes)) +

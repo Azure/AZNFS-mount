@@ -3453,8 +3453,6 @@ void rpc_task::run_read()
 
     [[maybe_unused]] size_t total_length = 0;
     bool found_in_cache = true;
-    [[maybe_unused]]
-    bool hole_in_cache = false;
 
     num_ongoing_backend_reads = 1;
 
@@ -3540,7 +3538,6 @@ void rpc_task::run_read()
                 ((sfsize == -1) || (int64_t) bc_vec[i].offset < sfsize);
 
             if (!read_from_server) {
-                hole_in_cache = true;
                 AZLogDebug("[{}] Hole in cache. offset: {}, length: {}",
                            ino, bc_vec[i].offset, bc_vec[i].length);
 
@@ -3550,7 +3547,15 @@ void rpc_task::run_read()
                  */
                 bc_vec[i].pvt = bc_vec[i].length;
                 ::memset(bc_vec[i].get_buffer(), 0, bc_vec[i].length);
+
                 bc_vec[i].get_membuf()->set_uptodate();
+                bc_vec[i].get_membuf()->clear_locked();
+                bc_vec[i].get_membuf()->clear_inuse();
+
+                INC_GBL_STATS(bytes_zeroed_from_cache, bc_vec[i].length);
+#ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
+                filecache_handle->release(bc_vec[i].offset, bc_vec[i].length);
+#endif
                 continue;
             }
 
@@ -3639,7 +3644,6 @@ void rpc_task::run_read()
     assert(num_ongoing_backend_reads >= 1);
     if (--num_ongoing_backend_reads != 0) {
         assert(!found_in_cache);
-        assert(!hole_in_cache);
         /*
          * Not all backend reads have completed yet. When the last backend
          * read completes read_callback() will arrange to send the read
