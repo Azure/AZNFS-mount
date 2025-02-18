@@ -78,6 +78,14 @@ void ra_state::update_scale_factor()
     /*
      * Stop readahead fully if we are beyond the max cache size, o/w scale it
      * down proportionately to keep the cache size less than max cache limit.
+     * We also scale up the readahead to make better utilization of the allowed
+     * cache size, when there are fewer reads they are allowed to use more of
+     * the cache per user for readahead. We increase the scale factor just a
+     * little less than what would exhaust the entire cache, e.g., if percent
+     * cache utilization is ~5% it means if we increase the readahead by 20
+     * times we should be able to get all of cache utilized by readaheads,
+     * we increase the scale factor to slightly less than 20, to 16, and so
+     * on.
      */
     if (percent_cache >= 100) {
         scale = 0;
@@ -89,6 +97,10 @@ void ra_state::update_scale_factor()
         scale = 0.8;
     } else if (percent_cache > 70) {
         scale = 0.9;
+    } else if (percent_cache < 5) {
+        scale = 16;
+    } else if (percent_cache < 10) {
+        scale = 8;
     } else if (percent_cache < 20) {
         scale = 4;
     } else if (percent_cache < 30) {
