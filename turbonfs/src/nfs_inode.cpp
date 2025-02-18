@@ -1560,8 +1560,13 @@ bool nfs_inode::truncate_start(size_t size)
     //get_fcsm()->ctgtq_cleanup();
     flush_unlock();
 
+    /*
+     * Readers may race with truncate and hence truncate() may not be able to
+     * get exclusive ownership (inuse + lockes) of all the membufs, which it
+     * needs for trimming/deleting. So, we may have to try a few times, letting
+     * readers to complete and drop their ownership.
+     */
     int mb_skipped;
-
     do {
         [[maybe_unused]] uint64_t bytes_truncated;
         mb_skipped = filecache_handle->truncate(size, false /* post */, bytes_truncated);

@@ -2146,11 +2146,28 @@ int bytes_chunk_cache::truncate(uint64_t trunc_len,
         struct membuf *mb = bc.get_membuf();
 
         assert(mb != nullptr);
+
         /*
          * We grabbed it above, and there could be some reader(s) that may
          * also have an inuse count.
+         * We skip membufs with inuse > 1 as they are mostly being read and
+         * hence set_locked() will unnecessarily take long. We would rather
+         * simply skip them in this iteration and let the reader(s) continue.
+         * Caller will call us again and eventually we will be able to make
+         * progress.
          */
         assert(mb->get_inuse() >= 1);
+
+        if (mb->get_inuse() > 1) {
+            mb_skipped++;
+            AZLogInfo("[{}] <Truncate {}> {}skipping inuse membuf "
+                      "[{},{}), held by {} reader(s)",
+                      CACHE_TAG, trunc_len, post ? "POST " : "",
+                      bc.offset, bc.offset + bc.length,
+                      mb->get_inuse() - 1);
+            mb->clear_inuse();
+            continue;
+        }
 
         /*
          * For all bcs that we could get the membuf lock, add them to it_vec3.
@@ -2161,6 +2178,7 @@ int bytes_chunk_cache::truncate(uint64_t trunc_len,
             if (mb->try_lock()) {
                 it_vec3.emplace_back(it);
             } else {
+                mb->clear_inuse();
                 mb_skipped++;
                 AZLogInfo("[{}] <Truncate {}> POST failed to lock membuf "
                           "[{},{})", CACHE_TAG,
@@ -2216,11 +2234,15 @@ int bytes_chunk_cache::truncate(uint64_t trunc_len,
              * We skip such chunks and let the caller know that we couldn't
              * truncate all the chunks, caller will then sleep for some time
              * letting readers proceed and then try again.
+             *
+             * Note that we need to check inuse count again after acquiring
+             * the chunkmap lock as some reader(s) may have grabbed an inuse
+             * count before we had the lock.
              */
             assert(mb->get_inuse() >= 1);
             if (mb->get_inuse() > 1) {
                 mb_skipped++;
-                AZLogInfo("[{}] <Truncate {}> {}skipping inuse membuf "
+                AZLogInfo("[{}] <<Truncate {}>> {}skipping inuse membuf "
                           "[{},{}), held by {} reader(s)",
                           CACHE_TAG, trunc_len, post ? "POST " : "",
                           bc.offset, bc.offset + bc.length,
