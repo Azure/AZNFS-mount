@@ -2045,7 +2045,9 @@ end:
                 ? chunkvec : std::vector<bytes_chunk>();
 }
 
-uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
+int bytes_chunk_cache::truncate(uint64_t trunc_len,
+                                bool post,
+                                uint64_t& bytes_truncated)
 {
     /*
      * Must be called only when inode is being truncated.
@@ -2069,11 +2071,14 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
                bytes_cached.load(),
                bytes_truncate.load(),
                chunkmap.size());
+
     /*
-     * Count of how many bytes we drop from the cache, to serve this truncate
-     * request. We return this to the caller.
+     * Membufs which must have been deleted/trimmed, but skipped as they were
+     * in use.
      */
-    uint64_t bytes_truncated = 0;
+    int mb_skipped = 0;
+
+    bytes_truncated = 0;
 
     /*
      * Step #1: Grab chunkmap lock and mark all the affected bcs inuse, so that
@@ -2123,6 +2128,10 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
 
             ++it;
         }
+
+        if (it_vec1.empty()) {
+            return 0;
+        }
     }
 
     /*
@@ -2137,8 +2146,11 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
         struct membuf *mb = bc.get_membuf();
 
         assert(mb != nullptr);
-        // We grabbed it above.
-        assert(mb->is_inuse());
+        /*
+         * We grabbed it above, and there could be some reader(s) that may
+         * also have an inuse count.
+         */
+        assert(mb->get_inuse() >= 1);
 
         /*
          * For all bcs that we could get the membuf lock, add them to it_vec3.
@@ -2149,6 +2161,7 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
             if (mb->try_lock()) {
                 it_vec3.emplace_back(it);
             } else {
+                mb_skipped++;
                 AZLogInfo("[{}] <Truncate {}> POST failed to lock membuf "
                           "[{},{})", CACHE_TAG,
                           trunc_len, bc.offset, bc.offset + bc.length);
@@ -2172,6 +2185,10 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
 
     assert(it_vec3.size() <= it_vec1.size());
 
+    if (it_vec3.empty()) {
+        return 0;
+    }
+
     /*
      * Step #3: Release all the affected bcs. If there's a partial bc, it'll be
      *          trimmed from the right.
@@ -2192,6 +2209,26 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
              * trunc_len.
              */
             assert((bc.offset + bc.length) > trunc_len);
+
+            /*
+             * VFS blocks writes while there's an ongoing truncate but it can
+             * send read calls which can hold an inuse count on the membuf.
+             * We skip such chunks and let the caller know that we couldn't
+             * truncate all the chunks, caller will then sleep for some time
+             * letting readers proceed and then try again.
+             */
+            assert(mb->get_inuse() >= 1);
+            if (mb->get_inuse() > 1) {
+                mb_skipped++;
+                AZLogInfo("[{}] <Truncate {}> {}skipping inuse membuf "
+                          "[{},{}), held by {} reader(s)",
+                          CACHE_TAG, trunc_len, post ? "POST " : "",
+                          bc.offset, bc.offset + bc.length,
+                          mb->get_inuse() - 1);
+                mb->clear_locked();
+                mb->clear_inuse();
+                continue;
+            }
 
             // trunc_len falls inside this bc?
             if (bc.offset < trunc_len) {
@@ -2319,7 +2356,7 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
 
     AZLogDebug("[{}] <Truncate {}> {}done, [S: {}, C: {}, CS: {}], "
                "cache_size: {}, U: {}, A: {}, C: {}, T: {}, "
-               "chunkmap.size(): {}, bytes_truncated: {}",
+               "chunkmap.size(): {}, bytes_truncated: {}, mb_skipped: {}",
                CACHE_TAG,
                trunc_len, post ? "POST " : "",
                inode->get_server_file_size(),
@@ -2331,7 +2368,8 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
                bytes_cached.load(),
                bytes_truncate.load(),
                chunkmap.size(),
-               bytes_truncated);
+               bytes_truncated,
+               mb_skipped);
 
     /*
      * See comment in get_cache_size().
@@ -2341,7 +2379,7 @@ uint64_t bytes_chunk_cache::truncate(uint64_t trunc_len, bool post)
     assert((cache_size >= bytes_uptodate) ||
            (bytes_uptodate > bytes_cached));
 
-    return bytes_truncated;
+    return mb_skipped;
 }
 
 /*

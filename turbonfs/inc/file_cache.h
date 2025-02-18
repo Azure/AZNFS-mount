@@ -1187,8 +1187,18 @@ public:
      *       get() call done right after truncate() returns can add new data to
      *       the truncated region. Caller should make sure through some other
      *       means that new data is not added.
+     *
+     * Returns number of chunks that must have been deleted or trimmed, but
+     * were skipped as they were inuse. Since VFS writes are blocked during
+     * truncate those chunks could be in use only because of some ongoing
+     * read calls. Caller will typically wait and call truncate() again, till
+     * it returns 0, indicating that all chunks in the region have been
+     * truncated.
+     * bytes_truncated is the number of bytes dropped from the cache to serve
+     * this truncate request.
      */
-    uint64_t truncate(uint64_t trunc_len, bool post = false);
+    int truncate(uint64_t trunc_len, bool post,
+                 uint64_t& bytes_truncated);
 
     /*
      * Returns all dirty chunks for a given range in chunkmap.

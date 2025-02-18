@@ -1467,8 +1467,12 @@ void nfs_inode::truncate_end(size_t size)
      */
     assert(has_filecache());
 
+    uint64_t bytes_truncated;
+
     [[maybe_unused]]
-    const uint64_t bytes_truncated = filecache_handle->truncate(size, true /* post */);
+    const int mb_skipped =
+        filecache_handle->truncate(size, true /* post */, bytes_truncated);
+    assert(mb_skipped == 0);
 
     /*
      * Update the in cache putblock_filesize to reflect the new size.
@@ -1549,17 +1553,27 @@ bool nfs_inode::truncate_start(size_t size)
      * with FCSM.
      */
     flush_lock();
+    wait_for_ongoing_flush();
+
     get_fcsm()->ftgtq_cleanup();
     // TODO: Review for commit.
     //get_fcsm()->ctgtq_cleanup();
     flush_unlock();
 
-    [[maybe_unused]]
-    const uint64_t bytes_truncated = filecache_handle->truncate(size, false /* post */);
+    int mb_skipped;
 
-    AZLogDebug("[{}] <truncate_start> Filecache truncated to size={} "
-               "(bytes truncated: {})",
-               ino, size, bytes_truncated);
+    do {
+        [[maybe_unused]] uint64_t bytes_truncated;
+        mb_skipped = filecache_handle->truncate(size, false /* post */, bytes_truncated);
+        AZLogDebug("[{}] <truncate_start> Filecache truncated to size={} "
+                   "(bytes truncated: {})",
+                   ino, size, bytes_truncated);
+        if (mb_skipped) {
+            AZLogInfo("[{}] <truncate_start> Still waiting for {} chunks",
+                      ino, mb_skipped);
+            ::usleep(10 * 1000);
+        }
+    } while (mb_skipped);
 
 #if 0
     /*
