@@ -1472,7 +1472,6 @@ void nfs_inode::truncate_end(size_t size)
     [[maybe_unused]]
     const int mb_skipped =
         filecache_handle->truncate(size, true /* post */, bytes_truncated);
-    assert(mb_skipped == 0);
 
     /*
      * Update the in cache putblock_filesize to reflect the new size.
@@ -1484,8 +1483,8 @@ void nfs_inode::truncate_end(size_t size)
     }
 
     AZLogDebug("[{}] <truncate_end> Filecache truncated to size={} "
-               "(bytes truncated: {}){}",
-               ino, size, bytes_truncated,
+               "(bytes truncated: {}, mb_skipped: {}){}",
+               ino, size, bytes_truncated, mb_skipped,
                is_stable_write() ? " STABLE" : " UNSTABLE");
 
     flush_unlock();

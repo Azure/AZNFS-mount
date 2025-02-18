@@ -2204,7 +2204,7 @@ int bytes_chunk_cache::truncate(uint64_t trunc_len,
     assert(it_vec3.size() <= it_vec1.size());
 
     if (it_vec3.empty()) {
-        return 0;
+        return mb_skipped;
     }
 
     /*
