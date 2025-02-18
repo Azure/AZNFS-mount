@@ -36,6 +36,12 @@
  * XXX The attributes_follow assert is disabled as we have a PP in the server
  *     which emulates postop attributes not being sent. When running against
  *     prod tenants where PPs are disabled, you can enable the assert check.
+ * Note: We use has_filecache() for printing get_cached_filesize() in place of
+ *     is_regfile(). This is because we have a special case of regular files
+ *     created by aznfsc_ll_mknod(). These do not have on_fuse_open() called
+ *     for them as mknod() (unlike creat()) does not return an open fd and
+ *     caller need to call aznfsc_ll_open(), which calls on_fuse_open(). Such
+ *     files return true for is_regfile() but do not have file cache created.
  */
 #define UPDATE_INODE_ATTR(inode, postop) \
 do { \
@@ -50,8 +56,10 @@ do { \
                    "csfsize: {}", \
                    inode->get_fuse_ino(), \
                    inode->get_server_file_size(), \
-                   inode->is_regfile() ? inode->get_client_file_size() : -1, \
-                   inode->is_regfile() ? inode->get_cached_filesize() : -1); \
+                   (inode->is_regfile() && inode->has_filecache()) ? \
+                                     inode->get_client_file_size() : -1, \
+                   (inode->is_regfile() && inode->has_filecache()) ? \
+                                     inode->get_cached_filesize() : -1); \
     } \
 } while (0)
 
@@ -94,8 +102,10 @@ do { \
                    "csfsize: {}", \
                    inode->get_fuse_ino(), \
                    inode->get_server_file_size(), \
-                   inode->is_regfile() ? inode->get_client_file_size() : -1, \
-                   inode->is_regfile() ? inode->get_cached_filesize() : -1); \
+                   (inode->is_regfile() && inode->has_filecache()) ? \
+                                     inode->get_client_file_size() : -1, \
+                   (inode->is_regfile() && inode->has_filecache()) ? \
+                                     inode->get_cached_filesize() : -1); \
     } \
 } while (0)
 
