@@ -3380,6 +3380,20 @@ void rpc_task::run_read()
                        rpc_api->read_task.get_size());
 
     /*
+     * inode->in_ra_window() (called from inline_prune()) considers anything
+     * before max_byte_read as non-useful and can purge that from the cache.
+     * Now that we have called get() we will have an inuse count on any
+     * membuf(s) used by this read, so they won't be purged even if
+     * in_ra_window() suggests that, so we can safely update max_byte_read now.
+     * We don't want to wait for read_callback() to update max_byte_read, as
+     * that would mean many readers may be waiting to be read and we won't
+     * perform sufficient readahead.
+     */
+    inode->get_rastate()->on_application_read(
+            rpc_api->read_task.get_offset(),
+            rpc_api->read_task.get_size());
+
+    /*
      * send_read_response() will later convey this read completion to fuse
      * using fuse_reply_iov() which can send max FUSE_REPLY_IOV_MAX_COUNT
      * vector elements.

@@ -18,6 +18,8 @@
 
 namespace aznfsc {
 
+/* static */ std::atomic<double> ra_state::ra_scale_factor = 1.0;
+
 /**
  * This is called from alloc_rastate() with exclusive lock on ilock_1.
  */
@@ -60,6 +62,52 @@ ra_state::ra_state(struct nfs_client *_client,
 
     AZLogDebug("[{}] Readahead set to {} bytes with default RA size {} bytes",
                inode->get_fuse_ino(), ra_bytes, def_ra_size);
+}
+
+/* static */
+void ra_state::update_scale_factor()
+{
+    // Maximum cache size allowed in bytes.
+    static const uint64_t max_cache =
+        (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_cache != 0);
+    const uint64_t curr_cache = bytes_chunk_cache::bytes_allocated_g;
+    const double percent_cache = (curr_cache * 100.0) / max_cache;
+    double scale = 1.0;
+
+    /*
+     * Stop readahead fully if we are beyond the max cache size, o/w scale it
+     * down proportionately to keep the cache size less than max cache limit.
+     */
+    if (percent_cache >= 100) {
+        scale = 0;
+    } else if (percent_cache > 95) {
+        scale = 0.5;
+    } else if (percent_cache > 90) {
+        scale = 0.7;
+    } else if (percent_cache > 80) {
+        scale = 0.8;
+    } else if (percent_cache > 70) {
+        scale = 0.9;
+    } else if (percent_cache < 20) {
+        scale = 4;
+    } else if (percent_cache < 30) {
+        scale = 2;
+    } else if (percent_cache < 50) {
+        scale = 1.5;
+    }
+
+    if (ra_scale_factor != scale) {
+        static uint64_t last_log_usec;
+        const uint64_t now = get_current_usecs();
+        // Don't log more frequently than 5 secs.
+        if ((now - last_log_usec) > (5 * 1000 * 1000)) {
+            AZLogInfo("[Readahead] Scale factor updated ({} -> {})",
+                      ra_scale_factor.load(), scale);
+            last_log_usec = now;
+        }
+        ra_scale_factor = scale;
+    }
 }
 
 /**
@@ -424,17 +472,23 @@ int64_t ra_state::get_next_ra(uint64_t length)
     }
 
     /*
+     * Scaled ra_bytes is the ra_bytes scaled to account for global cache
+     * pressure. We use that to decide how much to readahead.
+     */
+    const uint64_t ra_bytes_scaled = get_ra_bytes();
+
+    /*
      * If we already have ra_bytes readahead bytes read, don't readahead
      * more.
      */
-    if ((last_byte_readahead + length) > (max_byte_read + ra_bytes)) {
+    if ((last_byte_readahead + length) > (max_byte_read + ra_bytes_scaled)) {
         return -4;
     }
 
     /*
-     * Keep readahead bytes issued always less than ra_bytes.
+     * Keep readahead bytes issued always less than the scaled ra_bytes.
      */
-    if ((ra_ongoing += length) > ra_bytes) {
+    if ((ra_ongoing += length) > ra_bytes_scaled) {
         assert(ra_ongoing >= length);
         ra_ongoing -= length;
         return -5;
@@ -489,7 +543,7 @@ int ra_state::issue_readaheads()
                    inode->get_server_file_size(),
                    inode->get_client_file_size(),
                    inode->get_cached_filesize(),
-                   ra_bytes);
+                   get_ra_bytes());
 
         /*
          * Get bytes_chunk representing the byte range we want to readahead

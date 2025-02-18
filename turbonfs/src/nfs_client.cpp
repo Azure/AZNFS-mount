@@ -1574,7 +1574,6 @@ void nfs_client::read(
     AZLogDebug("[{}] {} readaheads issued for client read offset: {} size: {}",
                ino, num_ra, off, size);
 
-    inode->get_rastate()->on_application_read(off, size);
     tsk->run_read();
 }
 

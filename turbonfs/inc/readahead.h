@@ -306,6 +306,23 @@ public:
     }
 
     /**
+     * Update ra_scale_factor according to the current cache pressure.
+     * When global cache utilization is high, it reduces ra_scale_factor so
+     * that all readers use less ra window, for easing global memory pressure.
+     * Likewise when global cache utilization is low it increases the
+     * ra_scale_factor to let readers use higher readahead.
+     */
+    static void update_scale_factor();
+
+    /**
+     * Returns the scaled ra window that caller can safely use.
+     */
+    uint64_t get_ra_bytes() const
+    {
+        return ra_bytes * ra_scale_factor;
+    }
+
+    /**
      * This will run self tests to test the correctness of this class.
      */
     static int unit_test();
@@ -441,6 +458,12 @@ private:
      */
     std::atomic<uint64_t> num_reads = 0;
     std::atomic<uint64_t> num_bytes_read = 0;
+
+    /*
+     * Common memory pressure code will update this scaling factor to force
+     * all ra_state machines to slow down in case if high memory pressure.
+     */
+    static std::atomic<double> ra_scale_factor;
 
     /*
      * Lock for safely accessing/updating above state.
