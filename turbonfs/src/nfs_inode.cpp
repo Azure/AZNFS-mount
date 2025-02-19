@@ -156,10 +156,10 @@ nfs_inode::~nfs_inode()
 void nfs_inode::decref(size_t cnt, bool from_forget)
 {
     AZLogDebug("[{}:{}] decref(cnt={}, from_forget={}) called "
-               " (lookupcnt={}, dircachecnt={}, forget_expected={})",
+               "(lookupcnt={}, dircachecnt={}, forget_expected={}, opencnt={})",
                get_filetype_coding(), ino, cnt, from_forget,
                lookupcnt.load(), dircachecnt.load(),
-               forget_expected.load());
+               forget_expected.load(), opencnt.load());
 
     /*
      * We only decrement lookupcnt in forget and once lookupcnt drops to
@@ -168,6 +168,8 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
      */
     assert(!is_forgotten());
     assert(cnt > 0);
+    // When not from forget, there's never a case to pass cnt > 1.
+    assert(from_forget || (cnt == 1));
     assert(lookupcnt >= cnt);
 
     if (from_forget) {
@@ -191,6 +193,14 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
 
         forget_expected -= cnt;
         assert(forget_expected >= 0);
+    } else {
+        /*
+         * lookupcnt should be forget_expected + local refs on the inode, so
+         * should never be less than forget_expected. See how we increment
+         * forget_expected after lookupcnt and decrement before lookupcnt,
+         * so it's safe to compare.
+         */
+        assert((int64_t) (lookupcnt - cnt) >= forget_expected);
     }
 
 try_again:
@@ -1632,8 +1642,9 @@ bool nfs_inode::release(fuse_req_t req)
 {
     assert(opencnt > 0);
 
-    AZLogDebug("[{}:{}] nfs_inode::release({}), new opencnt is {}",
-               get_filetype_coding(), ino, fmt::ptr(req), opencnt - 1);
+    AZLogDebug("[{}:{}] nfs_inode::release({}{}), new opencnt is {}",
+               get_filetype_coding(), ino, fmt::ptr(req),
+               is_silly_renamed ? ", silly_renamed" : "", opencnt - 1);
 
     /*
      * If regular file and last opencnt is being dropped, we should flush

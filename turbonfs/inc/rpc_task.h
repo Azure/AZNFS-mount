@@ -2290,6 +2290,7 @@ public:
              * fuse know about this inode.
              */
             inode->forget_expected++;
+            assert(inode->lookupcnt >= (uint64_t) inode->forget_expected);
         }
 
         assert((int64_t) e->generation <= get_current_usecs());
@@ -2340,6 +2341,7 @@ public:
          * See comment in reply_entry().
          */
         inode->forget_expected++;
+        assert(inode->lookupcnt >= (uint64_t) inode->forget_expected);
 
         /*
          * nfs_client::reply_entry()->on_fuse_open() must have incremented
