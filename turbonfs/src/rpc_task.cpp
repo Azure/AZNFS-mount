@@ -2326,9 +2326,6 @@ void rename_callback(
         // Silly rename has the same source and target dir.
         assert(parent_ino == newparent_ino);
 
-        // Inode cannot be silly-renamed more than once.
-        assert(!silly_rename_inode->is_silly_renamed);
-
         if (status == 0) {
             silly_rename_inode->silly_renamed_name =
                 task->rpc_api->rename_task.get_newname();

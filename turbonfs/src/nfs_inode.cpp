@@ -137,6 +137,10 @@ nfs_inode::~nfs_inode()
     assert(client != nullptr);
     assert(client->magic == NFS_CLIENT_MAGIC);
 
+    /*
+     * Now we clear is_silly_renamed in nfs_inode::release()
+     */
+#if 0
 #ifdef ENABLE_PARANOID
     if (is_silly_renamed) {
         assert(!silly_renamed_name.empty());
@@ -145,6 +149,7 @@ nfs_inode::~nfs_inode()
         assert(silly_renamed_name.empty());
         assert(parent_ino == 0);
     }
+#endif
 #endif
 }
 
@@ -1690,6 +1695,13 @@ bool nfs_inode::release(fuse_req_t req)
          */
         return (req != nullptr);
     }
+
+    /*
+     * Once we schedule unlink of the silly-renamed file, clear the
+     * is_silly_renamed flag from the inode, so that we don't attempt deletion
+     * of the silly renamed file again.
+     */
+    is_silly_renamed = false;
 
     /*
      * Delete the silly rename file.
