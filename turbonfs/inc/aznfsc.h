@@ -31,15 +31,18 @@
 
 using namespace aznfsc;
 
+// Max block size for a Blob (100MB).
+#define AZNFSC_MAX_BLOCK_SIZE   (100 * 1024 * 1024)
+
 // Min/Max values for various aznfsc_cfg options.
 #define AZNFSCFG_NCONNECT_MIN   1
 #define AZNFSCFG_NCONNECT_MAX   256
 #define AZNFSCFG_TIMEO_MIN      100
 #define AZNFSCFG_TIMEO_MAX      6000
 #define AZNFSCFG_RSIZE_MIN      1048576
-#define AZNFSCFG_RSIZE_MAX      104857600
+#define AZNFSCFG_RSIZE_MAX      AZNFSC_MAX_BLOCK_SIZE
 #define AZNFSCFG_WSIZE_MIN      1048576
-#define AZNFSCFG_WSIZE_MAX      104857600
+#define AZNFSCFG_WSIZE_MAX      AZNFSC_MAX_BLOCK_SIZE
 static_assert(AZNFSCFG_WSIZE_MAX == AZNFSCFG_RSIZE_MAX);
 #define AZNFSCFG_READDIR_MIN    8192
 #define AZNFSCFG_READDIR_MAX    4194304
@@ -53,7 +56,7 @@ static_assert(AZNFSCFG_WSIZE_MAX == AZNFSCFG_RSIZE_MAX);
 #define AZNFSCFG_FUSE_MAX_IDLE_THR_MIN -1 // Implies fuse default.
 #define AZNFSCFG_FUSE_MAX_IDLE_THR_MAX INT_MAX
 #define AZNFSCFG_CACHE_MAX_MB_MIN 512
-#define AZNFSCFG_CACHE_MAX_MB_MAX (1024 * 1024)
+#define AZNFSCFG_CACHE_MAX_MB_MAX (10 * 1024 * 1024)
 #define AZNFSCFG_CACHE_MAX_MB_DEF (4 * 1024)
 #define AZNFSCFG_FILECACHE_MAX_GB_MIN 1
 #define AZNFSCFG_FILECACHE_MAX_GB_MAX (1024 * 1024)
@@ -68,7 +71,7 @@ static_assert(AZNFSCFG_WSIZE_MAX == AZNFSCFG_RSIZE_MAX);
 #define AZNFSCFG_LOOKUPCACHE_DEF    AZNFSCFG_LOOKUPCACHE_ALL
 
 // W/o jumbo blocks, 5TiB is the max file size we can support.
-#define AZNFSC_MAX_FILE_SIZE    (100 * 1024 * 1024 * 50'000ULL)
+#define AZNFSC_MAX_FILE_SIZE    (50'000ULL * AZNFSC_MAX_BLOCK_SIZE)
 
 /*
  * Max fuse_opcode enum value.

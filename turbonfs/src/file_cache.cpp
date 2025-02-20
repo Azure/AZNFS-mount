@@ -2412,8 +2412,12 @@ void bytes_chunk_cache::inline_prune()
     uint64_t inline_bytes = 0;
     uint64_t pruned_bytes = 0;
 
-    // See if we need to slowdown/speedup readahead.
+    /*
+     * See if we need to slowdown/speedup readahead and flush/commit more
+     * promptly, per the current memory pressure.
+     */
     ra_state::update_scale_factor();
+    fcsm::update_fc_scale_factor();
 
     get_prune_goals(&inline_bytes, nullptr);
 

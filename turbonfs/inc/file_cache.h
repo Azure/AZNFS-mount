@@ -16,6 +16,7 @@
 
 #include "aznfsc.h"
 #include "rpc_stats.h"
+#include "fcsm.h"
 
 struct nfs_inode;
 struct rpc_task;
@@ -1381,10 +1382,12 @@ public:
     /**
      * Maximum size a dirty extent can grow before we should flush it.
      * This is 60% of the allowed cache size or 1GB whichever is lower.
-     * The reason for limiting it to 1GB is because there's not much value in
-     * holding more data than the Blob NFS server's scheduler cache size.
-     * We want to send as prompt as possible to utilize the n/w b/w but slow
-     * enough to give the write scheduler an opportunity to merge better.
+     * The reason for limiting it to 1GiB (or 10 x AZNFSC_MAX_BLOCK_SIZE) is
+     * because there's not much value in holding more data than the Blob
+     * NFS server's scheduler cache size. We want to send as prompt as
+     * possible to utilize the n/w b/w but slow enough to give the write
+     * scheduler an opportunity to merge better.
+     * For unstable writes this allows us enough PB parallelism.
      */
     static uint64_t max_dirty_extent_bytes()
     {
@@ -1392,9 +1395,30 @@ public:
         static const uint64_t max_total =
             (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
         assert(max_total != 0);
-        static const uint64_t max_dirty_extent = (max_total * 0.6);
 
-        return std::min(max_dirty_extent, uint64_t(1024 * 1024 * 1024ULL));
+        /*
+         * Capped due to global cache size. One single file should not use
+         * more than 60% of the cache.
+         */
+        static const uint64_t max_dirty_extent_g = (max_total * 0.6);
+
+        /*
+         * Capped due to per-file cache discipline.
+         * Every file wants to keep 10 full sized blocks but that can be
+         * reduced as per the current cache pressure, but never less than
+         * one full size block.
+         */
+        static const uint64_t max_dirty_extent_l =
+            (10 * AZNFSC_MAX_BLOCK_SIZE) * fcsm::get_fc_scale_factor();
+        assert(max_dirty_extent_l >= AZNFSC_MAX_BLOCK_SIZE);
+
+        const uint64_t max_dirty_extent =
+            std::min(max_dirty_extent_g, max_dirty_extent_l);
+
+        // At least one full sized block.
+        assert(max_dirty_extent >= AZNFSC_MAX_BLOCK_SIZE);
+
+        return max_dirty_extent;
     }
 
     /**
@@ -1475,10 +1499,15 @@ public:
          * then we might hit the inline write threshold, which again would
          * serialize writes, bringing down throughput.
          */
+        // Capped due to global cache size.
+        static const uint64_t max_commit_bytes_g = (max_total * 0.6);
+        // Capped due to per-file cache discipline.
+        static const uint64_t max_commit_bytes_l = 2 * max_dirty_extent_bytes();
         static const uint64_t max_commit_bytes =
-            std::min((uint64_t)(max_total * 0.6),
-                     2 * max_dirty_extent_bytes());
-        assert(max_commit_bytes > 0);
+            std::min(max_commit_bytes_g, max_commit_bytes_l);
+
+        // At least one full sized block.
+        assert(max_commit_bytes >= AZNFSC_MAX_BLOCK_SIZE);
 
         return max_commit_bytes;
     }

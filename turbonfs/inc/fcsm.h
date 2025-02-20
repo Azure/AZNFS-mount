@@ -225,6 +225,17 @@ public:
     void ctgtq_cleanup();
     void ftgtq_cleanup();
 
+    /**
+     * Update fc_scale_factor according to the current cache pressure.
+     * When global cache utilization is high, it reduces fc_scale_factor so
+     * that all writers flush/commit early, for easing global memory pressure.
+     */
+    static void update_fc_scale_factor();
+    static double get_fc_scale_factor()
+    {
+        return fc_scale_factor;
+    }
+
 private:
     /*
      * The singleton nfs_client, for convenience.
@@ -334,6 +345,23 @@ private:
      * The state machine starts in an idle state.
      */
     std::atomic<bool> running = false;
+
+    /*
+     * Value returned by max_dirty_extent_bytes() is scaled down by this much
+     * before it's used by:
+     * - flush_required()
+     * - commit_required()
+     * - do_inline_write()
+     *
+     * fc_scale_factor is computed by update_fc_scale_factor() according to
+     * the global cache pressure. If global cache pressure is high we want the
+     * local flush/commit limits to be reduced so that each file flushes/commits
+     * faster thus easing the global cache pressure. This promotes fair sharing
+     * of global cache space while also maintaining enough contiguous data to
+     * the server, needed for better write throughput. Stable and unstable
+     * write may use this scale factor differently.
+     */
+    static std::atomic<double> fc_scale_factor;
 };
 
 struct FC_CB_TRACKER
