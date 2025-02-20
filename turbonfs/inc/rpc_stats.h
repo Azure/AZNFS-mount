@@ -327,15 +327,46 @@ private:
 public:
     /*
      * Misc global stats.
-     * tot_bytes_read: Total bytes read by the application.
+     * tot_read_reqs: Total fuse read requests.
+     * failed_read_reqs: How many of tot_read_reqs we responded with a failed
+     *                   status.
+     * zero_reads: How many of tot_read_reqs we responded with 0 bytes, either
+     *             application requested 0 bytes or it was beyond eof.
+     * tot_bytes_read: Total bytes read by application.
      * bytes_read_from_cache: How many bytes were read from the cache.
      *                        This will indicate our readahead effectiveness.
-     * bytes_zeroed_from_cache: How many bytes were zeroed as they fell into
-     *                        cache holes.
+     * bytes_zeroed_from_cache: How many bytes were read from unmapped parts
+     *                          of the cache and hence were zero filled.
      * bytes_read_ahead: How many bytes were read ahead.
      * tot_getattr_reqs: How many getattr requests were received from fuse.
      * getattr_served_from_cache: How many were served from inode->attr cache.
+     * tot_lookup_reqs: How many lookup requests were received from fuse.
+     * lookup_served_from_cache: How many were served from dnlc/lookup cache.
+     * tot_write_reqs: Total fuse writes requests.
+     * failed_write_reqs: How many of tot_write_reqs we responded with a failed
+     *                   status.
+     * tot_bytes_written: Total bytes written by application.
+     * writes_np: How many writes did not see any kind of cache pressure.
+     * inline_writes: How many of tot_write_reqs have to be held for inline
+     *                write due to cache pressure.
+     * inline_writes_lp: How many of inline_writes were due to local/per-file
+     *                   cache pressure.
+     * inline_writes_gp: How many of inline_writes were due to global
+     *                   cache pressure.
+     * flush_seq: How many time flush was issued as we had enough sequential
+     *            data to write.
+     * flush_lp: How many time flush was issued as local/per-file cache grew
+     *           beyond configured limit.
+     * flush_gp: How many time flush was issued as global cache grew beyond
+     *           configured limit.
+     * commit_lp: How many time commit was issued as local/per-file cache grew
+     *           beyond configured limit.
+     * commit_gp: How many time commit was issued as global cache grew beyond
+     *           configured limit.
      */
+    static std::atomic<uint64_t> tot_read_reqs;
+    static std::atomic<uint64_t> failed_read_reqs;
+    static std::atomic<uint64_t> zero_reads;
     static std::atomic<uint64_t> tot_bytes_read;
     static std::atomic<uint64_t> bytes_read_from_cache;
     static std::atomic<uint64_t> bytes_zeroed_from_cache;
@@ -344,7 +375,18 @@ public:
     static std::atomic<uint64_t> getattr_served_from_cache;
     static std::atomic<uint64_t> tot_lookup_reqs;
     static std::atomic<uint64_t> lookup_served_from_cache;
+    static std::atomic<uint64_t> tot_write_reqs;
+    static std::atomic<uint64_t> failed_write_reqs;
+    static std::atomic<uint64_t> tot_bytes_written;
+    static std::atomic<uint64_t> writes_np;
     static std::atomic<uint64_t> inline_writes;
+    static std::atomic<uint64_t> inline_writes_lp;
+    static std::atomic<uint64_t> inline_writes_gp;
+    static std::atomic<uint64_t> flush_seq;
+    static std::atomic<uint64_t> flush_lp;
+    static std::atomic<uint64_t> flush_gp;
+    static std::atomic<uint64_t> commit_lp;
+    static std::atomic<uint64_t> commit_gp;
 
     static std::atomic<uint64_t> rpc_tasks_allocated;
     static std::atomic<uint64_t> fuse_responses_awaited;

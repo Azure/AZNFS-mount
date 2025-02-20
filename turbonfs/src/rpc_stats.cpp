@@ -11,6 +11,9 @@ namespace aznfsc {
 
 /* static */ struct rpc_opstat rpc_stats_az::opstats[FUSE_OPCODE_MAX + 1];
 /* static */ std::mutex rpc_stats_az::stats_lock_42;
+/* static */ std::atomic<uint64_t> rpc_stats_az::tot_read_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::failed_read_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::zero_reads = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_read = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_zeroed_from_cache = 0;
@@ -19,7 +22,18 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> rpc_stats_az::getattr_served_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_lookup_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::lookup_served_from_cache = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::tot_write_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::failed_write_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_written = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::inline_writes = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::inline_writes_lp = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::inline_writes_gp = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::flush_seq = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::flush_lp = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::flush_gp = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::commit_lp = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::commit_gp = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::writes_np = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::rpc_tasks_allocated = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::fuse_responses_awaited = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::fuse_reply_failed = 0;
@@ -217,8 +231,22 @@ void rpc_stats_az::dump_stats()
     }
 
     str += "Application statistics:\n";
+    const uint64_t avg_read_size =
+        tot_read_reqs ? (tot_bytes_read / tot_read_reqs) : 0;
     str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_read)) +
-                  " bytes read by application(s)\n";
+                  " bytes read by application(s) in " +
+                  std::to_string(tot_read_reqs) + " calls with avg size " +
+                  std::to_string(avg_read_size) + " bytes\n";
+    if (failed_read_reqs) {
+        str += "  " + std::to_string(GET_GBL_STATS(failed_read_reqs)) +
+                      " application reads failed\n";
+    }
+
+    if (zero_reads) {
+        str += "  " + std::to_string(GET_GBL_STATS(zero_reads)) +
+                      " reads completed with 0 bytes\n";
+    }
+
     const double read_cache_pct =
         tot_bytes_read ?
         ((bytes_read_from_cache * 100.0) / tot_bytes_read) : 0;
@@ -226,6 +254,7 @@ void rpc_stats_az::dump_stats()
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_from_cache)) +
                   " bytes served from read cache (" +
                   std::to_string(read_cache_pct) + "%)\n";
+
     const double hole_cache_pct =
         tot_bytes_read ?
         ((bytes_zeroed_from_cache * 100.0) / tot_bytes_read) : 0;
@@ -235,8 +264,36 @@ void rpc_stats_az::dump_stats()
                   std::to_string(hole_cache_pct) + "%)\n";
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_ahead)) +
                   " bytes read by readahead\n";
+
+    const uint64_t avg_write_size =
+        tot_write_reqs ? (tot_bytes_written / tot_write_reqs) : 0;
+    str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_written)) +
+                  " bytes written by application(s) in " +
+                  std::to_string(tot_write_reqs) + " calls with avg size " +
+                  std::to_string(avg_write_size) + " bytes\n";
+    if (failed_write_reqs) {
+        str += "  " + std::to_string(GET_GBL_STATS(failed_write_reqs)) +
+                      " application writes failed\n";
+    }
+    str += "  " + std::to_string(GET_GBL_STATS(writes_np)) +
+                  " writes did not hit any memory pressure\n";
     str += "  " + std::to_string(GET_GBL_STATS(inline_writes)) +
                   " writes had to wait inline\n";
+    str += "  " + std::to_string(GET_GBL_STATS(inline_writes_lp)) +
+                  " writes were inlined due to per-file cache limit\n";
+    str += "  " + std::to_string(GET_GBL_STATS(inline_writes_gp)) +
+                  " writes were inlined due to global cache limit\n";
+    str += "  " + std::to_string(GET_GBL_STATS(flush_seq)) +
+                  " flushes triggered as sequential limit was reached\n";
+    str += "  " + std::to_string(GET_GBL_STATS(flush_lp)) +
+                  " flushes triggered as per-file cache limit was reached\n";
+    str += "  " + std::to_string(GET_GBL_STATS(flush_gp)) +
+                  " flushes triggered as global cache limit was reached\n";
+    str += "  " + std::to_string(GET_GBL_STATS(commit_lp)) +
+                  " commits triggered as per-file cache limit was reached\n";
+    str += "  " + std::to_string(GET_GBL_STATS(commit_gp)) +
+                  " commits triggered as global cache limit was reached\n";
+
     const double getattr_cache_pct =
         tot_getattr_reqs ?
         ((getattr_served_from_cache * 100.0) / tot_getattr_reqs) : 0;

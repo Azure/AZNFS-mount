@@ -3347,6 +3347,7 @@ void rpc_task::run_read()
             AZLogDebug("[{}] Read returning 0 bytes (eof) as requested "
                        "offset ({}) >= file size ({})",
                        ino, rpc_api->read_task.get_offset(), cfsize);
+            INC_GBL_STATS(zero_reads, 1);
             reply_iov(nullptr, 0);
             return;
         } else if ((rpc_api->read_task.get_offset() +
@@ -3688,6 +3689,7 @@ void rpc_task::send_read_response()
     assert(num_ongoing_backend_reads == 0);
 
     if (read_status != 0) {
+        INC_GBL_STATS(failed_read_reqs, 1);
         // Non-zero status indicates failure, reply with error in such cases.
         AZLogDebug("[{}] Sending failed read response {}", ino, read_status.load());
 
@@ -3744,13 +3746,14 @@ void rpc_task::send_read_response()
 
     // Send response to caller.
     if (bytes_read == 0) {
+        INC_GBL_STATS(zero_reads, 1);
         AZLogDebug("[{}] Sending empty read response", ino);
         reply_iov(nullptr, 0);
     } else {
+        INC_GBL_STATS(tot_bytes_read, bytes_read);
         AZLogDebug("[{}] Sending success read response, iovec={}, "
                    "bytes_read={}",
                    ino, count, bytes_read);
-        INC_GBL_STATS(tot_bytes_read, bytes_read);
         reply_iov(iov, count);
     }
 }

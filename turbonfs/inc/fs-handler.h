@@ -431,6 +431,7 @@ static void aznfsc_ll_read(fuse_req_t req,
 {
     FUSE_STATS_TRACKER(FUSE_READ);
     INC_GBL_STATS(fuse_responses_awaited, 1);
+    INC_GBL_STATS(tot_read_reqs, 1);
 
     AZLogDebug("aznfsc_ll_read(req={}, ino={}, size={}, offset={} fi={}, "
                "fi->fh={})",
@@ -844,6 +845,7 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
 {
     FUSE_STATS_TRACKER(FUSE_WRITE);
     INC_GBL_STATS(fuse_responses_awaited, 1);
+    INC_GBL_STATS(tot_write_reqs, 1);
 
     assert(bufv->idx < bufv->count);
     const size_t length = bufv->buf[bufv->idx].size - bufv->off;

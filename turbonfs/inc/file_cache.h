@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "aznfsc.h"
+#include "rpc_stats.h"
 
 struct nfs_inode;
 struct rpc_task;
@@ -1500,6 +1501,7 @@ public:
             (bytes_commit_pending >= max_commit_bytes());
 
         if (local_pressure) {
+            INC_GBL_STATS(commit_lp, 1);
             return true;
         }
 
@@ -1524,12 +1526,19 @@ public:
      *    necessarily be optimal, but we have no choice due to the memory
      *    pressure.
      */
-    bool flush_required() const
+    bool flush_required(uint64_t extent_size = 0) const
     {
-        const bool local_pressure =
-            (get_bytes_to_flush() >= max_dirty_extent_bytes());
+        static const uint64_t mdeb = max_dirty_extent_bytes();
+
+        if (extent_size >= mdeb) {
+            INC_GBL_STATS(flush_seq, 1);
+            return true;
+        }
+
+        const bool local_pressure = (get_bytes_to_flush() >= mdeb);
 
         if (local_pressure) {
+            INC_GBL_STATS(flush_lp, 1);
             return true;
         }
 
@@ -1601,6 +1610,7 @@ public:
          *       reasons.
          */
         if (local_pressure) {
+            INC_GBL_STATS(inline_writes_lp, 1);
             return true;
         }
 
@@ -1611,7 +1621,14 @@ public:
         uint64_t inline_bytes;
 
         get_prune_goals(&inline_bytes, nullptr);
-        return (inline_bytes > 0);
+        const bool global_pressure = (inline_bytes > 0);
+
+        if (global_pressure) {
+            INC_GBL_STATS(inline_writes_gp, 1);
+            return true;
+        }
+
+        return false;
     }
 
     /**

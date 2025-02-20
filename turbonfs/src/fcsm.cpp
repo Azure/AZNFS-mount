@@ -117,6 +117,7 @@ void fcsm::run(struct rpc_task *task,
     assert(task->get_op_type() == FUSE_WRITE);
     assert(task->rpc_api->write_task.is_fe());
     assert(task->rpc_api->write_task.get_size() > 0);
+    assert(extent_right > extent_left);
 
     const size_t length = task->rpc_api->write_task.get_size();
     const off_t offset = task->rpc_api->write_task.get_offset();
@@ -189,10 +190,11 @@ void fcsm::run(struct rpc_task *task,
     const bool need_inline_write =
         (sparse_write || inode->get_filecache()->do_inline_write());
     const bool need_commit =
+        !need_inline_write &&
         inode->get_filecache()->commit_required();
     const bool need_flush =
-        ((extent_right - extent_left) >= max_dirty_extent) ||
-        inode->get_filecache()->flush_required();
+        !need_inline_write &&
+        inode->get_filecache()->flush_required(extent_right - extent_left);
 
     AZLogDebug("[{}] fcsm::run() (sparse={}, need_inline_write={}, "
                "need_commit={}, need_flush={}, extent=[{}, {}))",
@@ -204,6 +206,7 @@ void fcsm::run(struct rpc_task *task,
      * This should be the happy path!
      */
     if (!need_inline_write && !need_commit && !need_flush) {
+        INC_GBL_STATS(writes_np, 1);
         task->reply_write(length);
         return;
     }

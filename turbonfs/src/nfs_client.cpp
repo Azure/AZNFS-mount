@@ -1558,6 +1558,7 @@ void nfs_client::read(
     tsk->init_read_fe(req, ino, size, off, fi);
 
     if (size == 0) {
+        INC_GBL_STATS(zero_reads, 1);
         tsk->reply_iov(nullptr, 0);
         return;
     }
