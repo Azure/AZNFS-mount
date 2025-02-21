@@ -20,15 +20,20 @@ typedef enum
 
     /*
      * Round robin requests over all connections.
+     * Use CONN_SCHED_RR_R for read requests and CONN_SCHED_RR_W for write
+     * requests. This helps scheduler ensure read and write requests use
+     * exclusive connections else small write responses may get stuck behind
+     * large read responses.
      */
-    CONN_SCHED_RR       = 2,
+    CONN_SCHED_RR_R     = 2,
+    CONN_SCHED_RR_W     = 3,
 
     /*
      * Every file is affined to one connection based on the FH hash, so all
      * requests to one file go over the same connection while different files
      * will use different connections.
      */
-    CONN_SCHED_FH_HASH  = 3,
+    CONN_SCHED_FH_HASH  = 4,
 } conn_sched_t;
 
 /*

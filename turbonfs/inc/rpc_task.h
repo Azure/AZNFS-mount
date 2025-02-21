@@ -2607,7 +2607,7 @@ public:
          * used. Later init_*() method can set it to a more appropriate value.
          */
         task->csched = (task->client->mnt_options.nfs_port == 2047) ?
-                        CONN_SCHED_RR : CONN_SCHED_FH_HASH;
+                        CONN_SCHED_RR_W : CONN_SCHED_FH_HASH;
 
 #ifdef ENABLE_PARANOID
         task->issuing_tid = ::gettid();

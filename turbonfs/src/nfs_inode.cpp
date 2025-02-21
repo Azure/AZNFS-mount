@@ -663,6 +663,8 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
      */
     assert(!is_commit_in_progress());
 
+    INC_GBL_STATS(num_sync_membufs, 1);
+
     if (bc_vec.empty()) {
         return;
     }
@@ -817,6 +819,8 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
             mb->clear_inuse();
             continue;
         }
+
+        INC_GBL_STATS(tot_bytes_sync_membufs, mb->length.load());
 
         if (write_task == nullptr) {
             write_task =
@@ -1422,7 +1426,7 @@ int nfs_inode::flush_cache_and_wait()
                       " flush to complete still waiting, iter: {}",
                       get_fuse_ino(), iter);
         }
-        ::usleep(1000);
+        ::usleep(10 * 1000);
     }
 
     return get_write_error();

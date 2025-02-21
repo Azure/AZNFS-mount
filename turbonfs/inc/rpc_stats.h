@@ -371,6 +371,7 @@ public:
     static std::atomic<uint64_t> bytes_read_from_cache;
     static std::atomic<uint64_t> bytes_zeroed_from_cache;
     static std::atomic<uint64_t> bytes_read_ahead;
+    static std::atomic<uint64_t> num_readhead;
     static std::atomic<uint64_t> tot_getattr_reqs;
     static std::atomic<uint64_t> getattr_served_from_cache;
     static std::atomic<uint64_t> tot_lookup_reqs;
@@ -387,6 +388,8 @@ public:
     static std::atomic<uint64_t> flush_gp;
     static std::atomic<uint64_t> commit_lp;
     static std::atomic<uint64_t> commit_gp;
+    static std::atomic<uint64_t> num_sync_membufs;
+    static std::atomic<uint64_t> tot_bytes_sync_membufs;
 
     static std::atomic<uint64_t> rpc_tasks_allocated;
     static std::atomic<uint64_t> fuse_responses_awaited;
@@ -395,7 +398,7 @@ public:
 
 #define INC_GBL_STATS(var, inc)  rpc_stats_az::var += (inc)
 #define DEC_GBL_STATS(var, dec)  {assert(rpc_stats_az::var >= dec); rpc_stats_az::var -= (dec);}
-#define GET_GBL_STATS(var)       rpc_stats_az::var
+#define GET_GBL_STATS(var)       rpc_stats_az::var.load()
 
 struct fuse_req_stats
 {

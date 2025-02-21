@@ -722,6 +722,8 @@ int ra_state::issue_readaheads()
                        inode->get_fuse_ino(),
                        num_no_readahead.load(), ra_offset);
         }
+    } else {
+        INC_GBL_STATS(num_readhead, 1);
     }
 
     return ra_issued;

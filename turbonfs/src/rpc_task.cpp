@@ -674,7 +674,7 @@ void rpc_task::init_read_be(fuse_ino_t ino,
      *
      * TODO: Control this with a config.
      */
-    set_csched(CONN_SCHED_RR);
+    set_csched(CONN_SCHED_RR_R);
 
     assert(!rpc_api->read_task.is_fe());
     assert(rpc_api->read_task.is_be());
@@ -1563,7 +1563,7 @@ void rpc_task::issue_write_rpc()
      * issues as seen by stable writes.
      */
     if (!inode->is_stable_write()) {
-        set_csched(CONN_SCHED_RR);
+        set_csched(CONN_SCHED_RR_W);
     }
 
     do {
