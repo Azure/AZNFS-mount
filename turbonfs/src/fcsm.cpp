@@ -3,7 +3,6 @@
 #include "nfs_inode.h"
 
 namespace aznfsc {
-/* static */ std::atomic<double> fcsm::fc_scale_factor = 1.0;
 
 /**
  * This is called from alloc_fcsm() with exclusive lock on ilock_1.
@@ -108,51 +107,6 @@ void fcsm::add_committing(uint64_t bytes)
     // We can only commit a byte that's flushed.
     assert(flushed_seq_num <= flushing_seq_num);
     assert(committing_seq_num <= flushed_seq_num);
-}
-
-/* static */
-void fcsm::update_fc_scale_factor()
-{
-    // Maximum cache size allowed in bytes.
-    static const uint64_t max_cache =
-        (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
-    assert(max_cache != 0);
-    const uint64_t curr_cache = bytes_chunk_cache::bytes_allocated_g;
-    const double percent_cache = (curr_cache * 100.0) / max_cache;
-    double scale = 1.0;
-
-    if (percent_cache > 95) {
-        /*
-         * Every file has fundamental right to 100MB of cache space.
-         * If we reduce it further we will end up in sub-optimal writes
-         * to the server.
-         */
-        scale = 1.0/10;
-    } else if (percent_cache > 90) {
-        // 200MB
-        scale = 2.0/10;
-    } else if (percent_cache > 80) {
-        // 300MB
-        scale = 3.0/10;
-    } else if (percent_cache > 70) {
-        // 500MB
-        scale = 5.0/10;
-    } else if (percent_cache > 60) {
-        // 800MB
-        scale = 8.0/10;
-    }
-
-    if (fc_scale_factor != scale) {
-        static uint64_t last_log_usec;
-        const uint64_t now = get_current_usecs();
-        // Don't log more frequently than 5 secs.
-        if ((now - last_log_usec) > (5 * 1000 * 1000)) {
-            AZLogInfo("[FC] Scale factor updated ({} -> {})",
-                      fc_scale_factor.load(), scale);
-            last_log_usec = now;
-        }
-        fc_scale_factor = scale;
-    }
 }
 
 void fcsm::run(struct rpc_task *task,

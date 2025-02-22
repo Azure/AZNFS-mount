@@ -179,6 +179,11 @@ void rpc_stats_az::dump_stats()
     str += "  " + std::to_string(num_silly_renamed) +
                   " inodes silly-renamed (waiting for last close)\n";
 
+    // Maximum cache size allowed in bytes.
+    static const uint64_t max_cache =
+        (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_cache != 0);
+
     str += "File Cache statistics:\n";
     if (aznfsc_cfg.cache.data.user.enable) {
         str += "  " + std::to_string(aznfsc_cfg.cache.data.user.max_size_mb) +
@@ -195,12 +200,22 @@ void rpc_stats_az::dump_stats()
                   " file caches\n";
     str += "  " + std::to_string(bytes_chunk_cache::num_chunks_g) +
                   " chunks in chunkmap\n";
+
+    const double allocate_pct =
+        ((bytes_chunk_cache::bytes_allocated_g * 100.0) / max_cache);
     str += "  " + std::to_string(bytes_chunk_cache::bytes_allocated_g) +
-                  " bytes allocated\n";
+                  " bytes allocated (" +
+                  std::to_string(allocate_pct) + "%)\n";
+
     str += "  " + std::to_string(bytes_chunk_cache::bytes_cached_g) +
                   " bytes cached\n";
+
+    const double dirty_pct =
+        ((bytes_chunk_cache::bytes_dirty_g * 100.0) / max_cache);
     str += "  " + std::to_string(bytes_chunk_cache::bytes_dirty_g) +
-                  " bytes dirty\n";
+                  " bytes dirty (" +
+                  std::to_string(dirty_pct) + "%)\n";
+
     str += "  " + std::to_string(bytes_chunk_cache::bytes_flushing_g) +
                   " bytes currently flushing\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_commit_pending_g) +
@@ -270,7 +285,8 @@ void rpc_stats_az::dump_stats()
         num_readhead ? (bytes_read_ahead / num_readhead) : 0;
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_ahead)) +
                   " bytes read by readahead with avg size " +
-                  std::to_string(avg_ra_size) + " bytes\n";
+                  std::to_string(avg_ra_size) + " bytes and ra scale factor " +
+                  std::to_string(nfs_client::get_ra_scale_factor()) + "\n";
 
     const uint64_t avg_write_size =
         tot_write_reqs ? (tot_bytes_written / tot_write_reqs) : 0;
@@ -306,7 +322,8 @@ void rpc_stats_az::dump_stats()
         num_sync_membufs ? (tot_bytes_sync_membufs / num_sync_membufs) : 0;
     str += "  " + std::to_string(GET_GBL_STATS(num_sync_membufs)) +
                   " sync_membufs calls with avg size " +
-                  std::to_string(avg_sync_membufs_size) + " bytes\n";
+                  std::to_string(avg_sync_membufs_size) + " bytes and fc scale factor " +
+                  std::to_string(nfs_client::get_fc_scale_factor()) + "\n";
 
     const double getattr_cache_pct =
         tot_getattr_reqs ?

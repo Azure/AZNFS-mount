@@ -4,6 +4,11 @@
 #include "rpc_task.h"
 #include "rpc_readdir.h"
 
+/* static */
+std::atomic<double> nfs_client::ra_scale_factor = 1.0;
+/* static */
+std::atomic<double> nfs_client::fc_scale_factor = 1.0;
+
 // The user should first init the client class before using it.
 bool nfs_client::init()
 {
@@ -207,6 +212,150 @@ void nfs_client::shutdown()
     assert(inode_map.size() == 0);
 
     jukebox_thread.join();
+}
+
+void nfs_client::update_adaptive()
+{
+    // Maximum cache size allowed in bytes.
+    static const uint64_t max_cache =
+        (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_cache != 0);
+
+    /*
+     * cache  => total cache allocated, read + write.
+     * wcache => cache allocated by writers.
+     * rcache => cache allocated by reades.
+     */
+    const uint64_t cache = bytes_chunk_cache::bytes_allocated_g;
+    const uint64_t wcache = bytes_chunk_cache::bytes_dirty_g;
+    const uint64_t rcache = cache - wcache;
+
+    /*
+     * Read cache usage as percent of max_cache.
+     * This tells how aggressively readers are filling up the cache by
+     * readahead. We increase readahead if this is low and reduce readahead
+     * as this grows.
+     */
+    const double pct_rcache = (rcache * 100.0) / max_cache;
+
+    /*
+     * Write cache usage as percent of max_cache.
+     * This tells how aggressively writes are filling up the cache by adding
+     * dirty data. We reduce max_dirty_extent_bytes() if this grows so that
+     * dirty data is flushed faster, and increase max_dirty_extent_bytes() if
+     * this is low and we want to accumulate more dirty data and flush in bigger
+     * chunks, for fast backend write throughput.
+     */
+    const double pct_wcache = (wcache * 100.0) / max_cache;
+
+    /*
+     * Total cache usage (read + write) as percent of max_cache.
+     * Reads and writes are controlled individually as per pct_rcache and
+     * pct_wcache, but in the end total cache usage is consulted and the
+     * read and write scale factors are reduced accordingly.
+     */
+    const double pct_cache = (cache * 100.0) / max_cache;
+
+    double rscale = 1.0;
+    double wscale = 1.0;
+
+    /*
+     * Stop readahead fully if we are beyond the max cache size, o/w scale it
+     * down proportionately to keep the cache size less than max cache limit.
+     * We also scale up the readahead to make better utilization of the allowed
+     * cache size, when there are fewer reads they are allowed to use more of
+     * the cache per user for readahead. We increase the scale factor just a
+     * little less than what would exhaust the entire cache, e.g., if percent
+     * cache utilization is ~5% it means if we increase the readahead by 20
+     * times we should be able to get all of cache utilized by readaheads,
+     * we increase the scale factor to slightly less than 20, to 16, and so
+     * on.
+     */
+    if (pct_rcache >= 100) {
+        rscale = 0;
+    } else if (pct_rcache > 95) {
+        rscale = 0.5;
+    } else if (pct_rcache > 90) {
+        rscale = 0.7;
+    } else if (pct_rcache > 80) {
+        rscale = 0.8;
+    } else if (pct_rcache > 70) {
+        rscale = 0.9;
+    } else if (pct_rcache < 5) {
+        rscale = 16;
+    } else if (pct_rcache < 10) {
+        rscale = 8;
+    } else if (pct_rcache < 20) {
+        rscale = 4;
+    } else if (pct_rcache < 30) {
+        rscale = 2;
+    } else if (pct_rcache < 50) {
+        rscale = 1.5;
+    }
+
+    if (pct_wcache > 95) {
+        /*
+         * Every file has fundamental right to 100MB of cache space.
+         * If we reduce it further we will end up in sub-optimal writes
+         * to the server.
+         */
+        wscale = 1.0/10;
+    } else if (pct_wcache > 90) {
+        // 200MB
+        wscale = 2.0/10;
+    } else if (pct_wcache > 80) {
+        // 300MB
+        wscale = 3.0/10;
+    } else if (pct_wcache > 70) {
+        // 500MB
+        wscale = 5.0/10;
+    } else if (pct_wcache > 60) {
+        // 800MB
+        wscale = 8.0/10;
+    }
+
+    /*
+     * In the end check total cache utilization and reduce wscale/rscale if
+     * total cache utilization is high.
+     */
+    if (pct_cache >= 100) {
+        rscale = 0;
+        wscale = 1.0/10;
+    } else if (pct_cache >= 75) {
+        wscale -= 1.0/10;
+        if (wscale < 1.0/10) {
+            wscale = 1.0/10;
+        }
+        if (rscale > 1.0) {
+            rscale--;
+        } else if (rscale > 0.3) {
+            rscale -= 0.1;
+        }
+    }
+
+    if (fc_scale_factor != wscale) {
+        static uint64_t last_log_usec;
+        const uint64_t now = get_current_usecs();
+        // Don't log more frequently than 5 secs.
+        if ((now - last_log_usec) > (5 * 1000 * 1000)) {
+            AZLogInfo("[FC] Scale factor updated ({} -> {})",
+                      fc_scale_factor.load(), wscale);
+            last_log_usec = now;
+        }
+        fc_scale_factor = wscale;
+    }
+
+    if (ra_scale_factor != rscale) {
+        static uint64_t last_log_usec;
+        const uint64_t now = get_current_usecs();
+        // Don't log more frequently than 5 secs.
+        if ((now - last_log_usec) > (5 * 1000 * 1000)) {
+            AZLogInfo("[Readahead] Scale factor updated ({} -> {})",
+                      ra_scale_factor.load(), rscale);
+            last_log_usec = now;
+        }
+        ra_scale_factor = rscale;
+    }
 }
 
 void nfs_client::jukebox_runner()

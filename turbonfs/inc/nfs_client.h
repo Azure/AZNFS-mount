@@ -147,6 +147,29 @@ private:
     std::atomic<uint64_t> rw_genid = 0;
 
     /*
+     * Value returned by max_dirty_extent_bytes() is scaled down by this much
+     * before it's used by:
+     * - flush_required()
+     * - commit_required()
+     * - do_inline_write()
+     *
+     * fc_scale_factor is computed by update_adaptive() according to the global
+     * cache pressure. If global cache pressure is high we want the local
+     * flush/commit limits to be reduced so that each file flushes/commits
+     * faster thus easing the global cache pressure. This promotes fair sharing
+     * of global cache space while also maintaining enough contiguous data to
+     * the server, needed for better write throughput. Stable and unstable
+     * write may use this scale factor differently.
+     */
+    static std::atomic<double> fc_scale_factor;
+
+    /*
+     * update_adaptive() will update this scaling factor to force all ra_state
+     * machines to slow down readahead in case of high memory pressure.
+     */
+    static std::atomic<double> ra_scale_factor;
+
+    /*
      * Set in shutdown() to let others know that nfs_client is shutting
      * down. They can use this to quit what they are doing and plan for
      * graceful shutdown.
@@ -194,6 +217,16 @@ public:
         return client;
     }
 
+    static double get_fc_scale_factor()
+    {
+        return fc_scale_factor;
+    }
+
+    static double get_ra_scale_factor()
+    {
+        return ra_scale_factor;
+    }
+
     /**
      * Returns true if nfs_client is shutting down.
      */
@@ -224,6 +257,17 @@ public:
     }
 
     /**
+     * Update various adaptive scale factors that decide following things:
+     * - how much we readahead, and
+     * - how long we keep dirty data before flushing.
+     *
+     * It monitors various things like, how much of the cache is occupied
+     * by read or write data, whether read/write speed is increasing by
+     * chaning the various scale factors, etc.
+     */
+    void update_adaptive();
+
+    /**
      * Call this whenever a read/write completes at the server.
      * This tracks the read/write speed provided by the server.
      */
@@ -240,7 +284,7 @@ public:
          * Anything smaller and we may not get accurate reading and anything
          * larger and it will be less valuable for readers.
          */
-        const uint64_t sample_intvl = 10 * 1000;
+        const uint64_t sample_intvl = 5 * 1000 * 1000;
         const uint64_t now_usec = get_current_usecs();
 
         tot_read += r_bytes;

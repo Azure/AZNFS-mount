@@ -1389,37 +1389,7 @@ public:
      * scheduler an opportunity to merge better.
      * For unstable writes this allows us enough PB parallelism.
      */
-    static uint64_t max_dirty_extent_bytes()
-    {
-        // Maximum cache size allowed in bytes.
-        static const uint64_t max_total =
-            (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
-        assert(max_total != 0);
-
-        /*
-         * Capped due to global cache size. One single file should not use
-         * more than 60% of the cache.
-         */
-        static const uint64_t max_dirty_extent_g = (max_total * 0.6);
-
-        /*
-         * Capped due to per-file cache discipline.
-         * Every file wants to keep 10 full sized blocks but that can be
-         * reduced as per the current cache pressure, but never less than
-         * one full size block.
-         */
-        static const uint64_t max_dirty_extent_l =
-            (10 * AZNFSC_MAX_BLOCK_SIZE) * fcsm::get_fc_scale_factor();
-        assert(max_dirty_extent_l >= AZNFSC_MAX_BLOCK_SIZE);
-
-        const uint64_t max_dirty_extent =
-            std::min(max_dirty_extent_g, max_dirty_extent_l);
-
-        // At least one full sized block.
-        assert(max_dirty_extent >= AZNFSC_MAX_BLOCK_SIZE);
-
-        return max_dirty_extent;
-    }
+    static uint64_t max_dirty_extent_bytes();
 
     /**
      * Get the amount of dirty data that needs to be flushed.
