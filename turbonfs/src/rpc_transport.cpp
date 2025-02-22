@@ -118,25 +118,17 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
     const int wconn = nconn - rconn;
 
     static std::atomic<uint64_t> last_sec;
-    static std::atomic<uint64_t> last_bytes_written;
-    static std::atomic<uint64_t> last_bytes_read;
     static std::atomic<bool> rnw = false;
     uint64_t now_sec = ::time(NULL);
 
-    assert(GET_GBL_STATS(tot_bytes_written) >= last_bytes_written);
-    assert(GET_GBL_STATS(tot_bytes_read) >= last_bytes_read);
     assert(now_sec >= last_sec);
 
     /*
      * Take stock of things, no sooner than 5 secs.
      */
     if (now_sec > (last_sec + 5)) {
-        const uint64_t w_MBps =
-            (GET_GBL_STATS(tot_bytes_written) - last_bytes_written) /
-            ((now_sec - last_sec) * 1000'000);
-        const uint64_t r_MBps =
-            (GET_GBL_STATS(tot_bytes_read) - last_bytes_read) /
-            ((now_sec - last_sec) * 1000'000);
+        const uint64_t r_MBps = client->get_read_MBps();
+        const uint64_t w_MBps = client->get_write_MBps();
 
         /*
          * If both read and write are happening fast, assign them to separate
@@ -153,8 +145,6 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
                       (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
         }
 
-        last_bytes_written = GET_GBL_STATS(tot_bytes_written);
-        last_bytes_read = GET_GBL_STATS(tot_bytes_read);
         last_sec = now_sec;
     }
 

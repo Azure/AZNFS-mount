@@ -138,6 +138,15 @@ private:
 #endif
 
     /*
+     * Latest read and write throughput.
+     * rw_genid is updated everytime these values are updated, so can be used
+     * to see throughput is changing.
+     */
+    std::atomic<uint64_t> r_MBps = 0;
+    std::atomic<uint64_t> w_MBps = 0;
+    std::atomic<uint64_t> rw_genid = 0;
+
+    /*
      * Set in shutdown() to let others know that nfs_client is shutting
      * down. They can use this to quit what they are doing and plan for
      * graceful shutdown.
@@ -212,6 +221,58 @@ public:
     std::shared_mutex& get_inode_map_lock()
     {
         return inode_map_lock_0;
+    }
+
+    /**
+     * Call this whenever a read/write completes at the server.
+     * This tracks the read/write speed provided by the server.
+     */
+    void on_rw_complete(uint64_t r_bytes, uint64_t w_bytes)
+    {
+        static std::atomic<uint64_t> last_usec;
+        static std::atomic<uint64_t> last_read;
+        static std::atomic<uint64_t> tot_read;
+        static std::atomic<uint64_t> last_written;
+        static std::atomic<uint64_t> tot_written;
+        static std::atomic<uint64_t> last_genid;
+        /*
+         * Measure read/write speed no sooner than 10 msec interval.
+         * Anything smaller and we may not get accurate reading and anything
+         * larger and it will be less valuable for readers.
+         */
+        const uint64_t sample_intvl = 10 * 1000;
+        const uint64_t now_usec = get_current_usecs();
+
+        tot_read += r_bytes;
+        tot_written += w_bytes;
+
+        /*
+         * Every sample_intvl, compute read/write throughput for the last
+         * interval.
+         */
+        const uint64_t intvl = now_usec - last_usec;
+        if (intvl >= sample_intvl) {
+            uint64_t expected = last_genid.load();
+            if (rw_genid.compare_exchange_strong(expected, expected + 1)) {
+                w_MBps = (tot_written - last_written) / intvl;
+                r_MBps = (tot_read - last_read) / intvl;
+
+                last_usec = now_usec;
+                last_read = tot_read.load();
+                last_written = tot_written.load();
+                last_genid = rw_genid.load();
+            }
+        }
+    }
+
+    uint64_t get_read_MBps() const
+    {
+        return r_MBps;
+    }
+
+    uint64_t get_write_MBps() const
+    {
+        return w_MBps;
     }
 
     /*

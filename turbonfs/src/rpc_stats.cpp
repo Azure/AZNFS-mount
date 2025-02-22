@@ -362,6 +362,11 @@ do { \
         str += "        Avg Total execute time: " + \
                         std::to_string(ops.total_usec / (ops.count * 1000.0)) + \
                         " msec\n"; \
+        if (opcode == FUSE_READ) { \
+            str += "        " + std::to_string(client.get_read_MBps()) + " MBps\n"; \
+        } else if (opcode == FUSE_WRITE) { \
+            str += "        " + std::to_string(client.get_write_MBps()) + " MBps\n"; \
+        } \
         if (!ops.error_map.empty()) { \
             str += "        Errors encountered: \n"; \
             for (const auto& entry : ops.error_map) { \
