@@ -2446,10 +2446,10 @@ void bytes_chunk_cache::inline_prune()
     uint64_t pruned_bytes = 0;
 
     /*
-     * See if we need to slowdown/speedup readahead and flush/commit more
-     * promptly, per the current memory pressure.
+     * Update various client level stuff that needs to be updated periodically,
+     * like various read/write scale factors, last 5 secs throughput, etc.
      */
-    nfs_client::get_instance().update_adaptive();
+    nfs_client::get_instance().periodic_updater();
 
     get_prune_goals(&inline_bytes, nullptr);
 

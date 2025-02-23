@@ -1654,8 +1654,8 @@ public:
         assert(max_total != 0);
 
         /*
-         * If cache usage grows to 80% of max, we enforce inline pruning for
-         * writers. When cache usage grows more than 60% we recommend periodic
+         * If cache usage grows to 90% of max, we enforce inline pruning for
+         * writers. When cache usage grows more than 70% we recommend periodic
          * pruning. If the cache size is sufficient, hopefully we will not need
          * inline pruning too often, as it hurts application write performance.
          * Once curr_bytes_total exceeds inline_threshold we need to perform

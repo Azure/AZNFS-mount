@@ -1590,8 +1590,6 @@ void rpc_task::issue_write_rpc()
             ::sleep(5);
         }
     } while (rpc_retry);
-
-    client->on_rw_complete(0, bciov->orig_length);
 }
 
 static void statfs_callback(
@@ -4166,8 +4164,6 @@ static void read_callback(
     */
     filecache_handle->release(bc->offset, bc->length);
 #endif
-
-    task->get_client()->on_rw_complete(bc->length, 0);
 
     // For failed status we must never mark the buffer uptodate.
     assert(!status || !bc->get_membuf()->is_uptodate());

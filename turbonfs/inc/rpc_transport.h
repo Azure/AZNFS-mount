@@ -23,7 +23,9 @@ typedef enum
      * Use CONN_SCHED_RR_R for read requests and CONN_SCHED_RR_W for write
      * requests. This helps scheduler ensure read and write requests use
      * exclusive connections else small write responses may get stuck behind
-     * large read responses.
+     * large read responses and small read requests may get stuck behind
+     * large write requests. Note that this is not completely avoidable even
+     * though we prioritize smaller read requests over larger write requests.
      */
     CONN_SCHED_RR_R     = 2,
     CONN_SCHED_RR_W     = 3,

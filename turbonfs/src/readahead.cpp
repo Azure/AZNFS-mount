@@ -385,8 +385,6 @@ delete_ctx:
     // Success or failure, report readahead completion.
     inode->get_rastate()->on_readahead_complete(bc->offset, bc->length);
 
-    nfs_client::get_instance().on_rw_complete(bc->length, 0);
-
     // Free the readahead RPC task.
     task->free_rpc_task();
 

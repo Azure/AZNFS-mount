@@ -106,7 +106,6 @@ void rpc_transport::close()
 /*
  * This function decides which connection should be chosen for sending
  * the current request.
- * TODO: This is round-robined for now, should be modified later.
  */
 struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
                                                    uint32_t fh_hash) const
@@ -131,17 +130,17 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
         const uint64_t w_MBps = client->get_write_MBps();
 
         /*
-         * If both read and write are happening fast, assign them to separate
+         * If both read and write are happening, assign them to separate
          * connection pool, else writes may slow down reads as small write
-         * responses have to wait behind large read responses.
+         * responses have to wait behind large read responses and v.v.
          */
-        if (w_MBps > 500 && r_MBps > 500) {
+        if (w_MBps > 100 && r_MBps > 100) {
             rnw = true;
-            AZLogInfo("[RNW] Write: {} Gbps, Read: {} Gbps",
+            AZLogInfo("[RNW=true] Write: {} Gbps, Read: {} Gbps",
                       (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
         } else {
             rnw = false;
-            AZLogInfo("Write: {} Gbps, Read: {} Gbps",
+            AZLogInfo("[RNW=false] Write: {} Gbps, Read: {} Gbps",
                       (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
         }
 
@@ -153,18 +152,27 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
             idx = 0;
             break;
         case CONN_SCHED_RR_R:
-            // Reads get 2nd half of connections.
+            /*
+             * Reads get top 1/3rd of connections when there are simultaneous
+             * readers and writers, else they get all the connections.
+             */
             idx = (rnw ? (wconn + (last_context++ % rconn))
                        : (last_context++ % nconn));
             break;
         case CONN_SCHED_RR_W:
-            // Writes get 1st half of connections.
+            /*
+             * Writes get low 2/3rd of connections when there are simultaneous
+             * readers and writers, else they get all the connections.
+             *
+             * TODO: We should not change write connection ranges while there
+             *       are old writes still pending else we will get slowed down
+             *       by optimistic concurrency backoff.
+             */
             idx = (rnw ? (last_context++ % wconn)
                        : (last_context++ % nconn));
             break;
         case CONN_SCHED_FH_HASH:
             assert(fh_hash != 0);
-            // Writes and other non-read requests get 1st half of connections.
             idx = rnw ? (fh_hash % wconn) : (fh_hash % nconn);
             break;
         default:
