@@ -2404,6 +2404,39 @@ int bytes_chunk_cache::truncate(uint64_t trunc_len,
     return mb_skipped;
 }
 
+/* static */
+uint64_t bytes_chunk_cache::max_dirty_extent_bytes()
+{
+    // Maximum cache size allowed in bytes.
+    static const uint64_t max_total =
+        (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_total != 0);
+
+    /*
+     * Capped due to global cache size. One single file should not use
+     * more than 60% of the cache.
+     */
+    static const uint64_t max_dirty_extent_g = (max_total * 0.6);
+
+    /*
+     * Capped due to per-file cache discipline.
+     * Every file wants to keep 10 full sized blocks but that can be
+     * reduced as per the current cache pressure, but never less than
+     * one full size block.
+     */
+    static const uint64_t max_dirty_extent_l =
+        (10 * AZNFSC_MAX_BLOCK_SIZE) * nfs_client::get_fc_scale_factor();
+    assert(max_dirty_extent_l >= AZNFSC_MAX_BLOCK_SIZE);
+
+    const uint64_t max_dirty_extent =
+        std::min(max_dirty_extent_g, max_dirty_extent_l);
+
+    // At least one full sized block.
+    assert(max_dirty_extent >= AZNFSC_MAX_BLOCK_SIZE);
+
+    return max_dirty_extent;
+}
+
 /*
  * TODO: Add pruning stats.
  */
@@ -2413,11 +2446,10 @@ void bytes_chunk_cache::inline_prune()
     uint64_t pruned_bytes = 0;
 
     /*
-     * See if we need to slowdown/speedup readahead and flush/commit more
-     * promptly, per the current memory pressure.
+     * Update various client level stuff that needs to be updated periodically,
+     * like various read/write scale factors, last 5 secs throughput, etc.
      */
-    ra_state::update_scale_factor();
-    fcsm::update_fc_scale_factor();
+    nfs_client::get_instance().periodic_updater();
 
     get_prune_goals(&inline_bytes, nullptr);
 

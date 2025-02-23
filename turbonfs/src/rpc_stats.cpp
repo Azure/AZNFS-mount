@@ -18,6 +18,7 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_zeroed_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_ahead = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::num_readhead = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_getattr_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::getattr_served_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_lookup_reqs = 0;
@@ -34,6 +35,8 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> rpc_stats_az::commit_lp = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::commit_gp = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::writes_np = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::num_sync_membufs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_sync_membufs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::rpc_tasks_allocated = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::fuse_responses_awaited = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::fuse_reply_failed = 0;
@@ -176,6 +179,11 @@ void rpc_stats_az::dump_stats()
     str += "  " + std::to_string(num_silly_renamed) +
                   " inodes silly-renamed (waiting for last close)\n";
 
+    // Maximum cache size allowed in bytes.
+    static const uint64_t max_cache =
+        (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_cache != 0);
+
     str += "File Cache statistics:\n";
     if (aznfsc_cfg.cache.data.user.enable) {
         str += "  " + std::to_string(aznfsc_cfg.cache.data.user.max_size_mb) +
@@ -192,12 +200,22 @@ void rpc_stats_az::dump_stats()
                   " file caches\n";
     str += "  " + std::to_string(bytes_chunk_cache::num_chunks_g) +
                   " chunks in chunkmap\n";
+
+    const double allocate_pct =
+        ((bytes_chunk_cache::bytes_allocated_g * 100.0) / max_cache);
     str += "  " + std::to_string(bytes_chunk_cache::bytes_allocated_g) +
-                  " bytes allocated\n";
+                  " bytes allocated (" +
+                  std::to_string(allocate_pct) + "%)\n";
+
     str += "  " + std::to_string(bytes_chunk_cache::bytes_cached_g) +
                   " bytes cached\n";
+
+    const double dirty_pct =
+        ((bytes_chunk_cache::bytes_dirty_g * 100.0) / max_cache);
     str += "  " + std::to_string(bytes_chunk_cache::bytes_dirty_g) +
-                  " bytes dirty\n";
+                  " bytes dirty (" +
+                  std::to_string(dirty_pct) + "%)\n";
+
     str += "  " + std::to_string(bytes_chunk_cache::bytes_flushing_g) +
                   " bytes currently flushing\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_commit_pending_g) +
@@ -262,8 +280,13 @@ void rpc_stats_az::dump_stats()
     str += "  " + std::to_string(GET_GBL_STATS(bytes_zeroed_from_cache)) +
                   " bytes holes read from cache (" +
                   std::to_string(hole_cache_pct) + "%)\n";
+
+    const uint64_t avg_ra_size =
+        num_readhead ? (bytes_read_ahead / num_readhead) : 0;
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_ahead)) +
-                  " bytes read by readahead\n";
+                  " bytes read by readahead with avg size " +
+                  std::to_string(avg_ra_size) + " bytes and ra scale factor " +
+                  std::to_string(nfs_client::get_ra_scale_factor()) + "\n";
 
     const uint64_t avg_write_size =
         tot_write_reqs ? (tot_bytes_written / tot_write_reqs) : 0;
@@ -275,6 +298,7 @@ void rpc_stats_az::dump_stats()
         str += "  " + std::to_string(GET_GBL_STATS(failed_write_reqs)) +
                       " application writes failed\n";
     }
+
     str += "  " + std::to_string(GET_GBL_STATS(writes_np)) +
                   " writes did not hit any memory pressure\n";
     str += "  " + std::to_string(GET_GBL_STATS(inline_writes)) +
@@ -293,6 +317,13 @@ void rpc_stats_az::dump_stats()
                   " commits triggered as per-file cache limit was reached\n";
     str += "  " + std::to_string(GET_GBL_STATS(commit_gp)) +
                   " commits triggered as global cache limit was reached\n";
+
+    const uint64_t avg_sync_membufs_size =
+        num_sync_membufs ? (tot_bytes_sync_membufs / num_sync_membufs) : 0;
+    str += "  " + std::to_string(GET_GBL_STATS(num_sync_membufs)) +
+                  " sync_membufs calls with avg size " +
+                  std::to_string(avg_sync_membufs_size) + " bytes and fc scale factor " +
+                  std::to_string(nfs_client::get_fc_scale_factor()) + "\n";
 
     const double getattr_cache_pct =
         tot_getattr_reqs ?
@@ -348,6 +379,13 @@ do { \
         str += "        Avg Total execute time: " + \
                         std::to_string(ops.total_usec / (ops.count * 1000.0)) + \
                         " msec\n"; \
+        if (opcode == FUSE_READ) { \
+            str += "        Last 5 sec throughput: " + \
+                            std::to_string(client.get_read_MBps()) + " MBps\n"; \
+        } else if (opcode == FUSE_WRITE) { \
+            str += "        Last 5 sec throughput: " + \
+                            std::to_string(client.get_write_MBps()) + " MBps\n"; \
+        } \
         if (!ops.error_map.empty()) { \
             str += "        Errors encountered: \n"; \
             for (const auto& entry : ops.error_map) { \

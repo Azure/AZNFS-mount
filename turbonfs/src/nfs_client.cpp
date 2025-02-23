@@ -4,6 +4,11 @@
 #include "rpc_task.h"
 #include "rpc_readdir.h"
 
+/* static */
+std::atomic<double> nfs_client::ra_scale_factor = 1.0;
+/* static */
+std::atomic<double> nfs_client::fc_scale_factor = 1.0;
+
 // The user should first init the client class before using it.
 bool nfs_client::init()
 {
@@ -207,6 +212,197 @@ void nfs_client::shutdown()
     assert(inode_map.size() == 0);
 
     jukebox_thread.join();
+}
+
+void nfs_client::periodic_updater()
+{
+    // Maximum cache size allowed in bytes.
+    static const uint64_t max_cache =
+        (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_cache != 0);
+
+    /*
+     * #1 Calculate recent read/write throughput.
+     */
+    static std::atomic<time_t> last_sec;
+    static std::atomic<uint64_t> last_bytes_written;
+    static std::atomic<uint64_t> last_bytes_read;
+    static std::atomic<uint64_t> last_genid;
+    const time_t now_sec = ::time(NULL);
+    const int sample_intvl = 5;
+
+    assert(GET_GBL_STATS(tot_bytes_written) >= last_bytes_written);
+    assert(GET_GBL_STATS(tot_bytes_read) >= last_bytes_read);
+    assert(now_sec >= last_sec);
+
+    /*
+     * Every sample_intvl, compute read/write throughput for the last
+     * interval. Only one thread should update the throughput.
+     */
+    const int intvl = now_sec - last_sec;
+    if (intvl >= sample_intvl) {
+        uint64_t expected = last_genid.load();
+        if (rw_genid.compare_exchange_strong(expected, expected + 1)) {
+            w_MBps = (GET_GBL_STATS(tot_bytes_written) - last_bytes_written) /
+                     ((now_sec - last_sec) * 1000'000);
+            r_MBps = (GET_GBL_STATS(tot_bytes_read) - last_bytes_read) /
+                     ((now_sec - last_sec) * 1000'000);
+
+            last_sec = now_sec;
+            last_bytes_read = GET_GBL_STATS(tot_bytes_read);
+            last_bytes_written = GET_GBL_STATS(tot_bytes_written);
+            last_genid = rw_genid.load();
+        }
+    }
+
+    /*
+     * #2 Update scaling factor for readahead and flush/commit.
+     *    The way we decide optimal values of these scaling factors is by
+     *    letting each of these grow to take up more space as soon as its
+     *    share of the cache grows and reduce the scaling to take up less
+     *    space as its share grows. These competing forces result in both
+     *    reaching equilibrium.
+     */
+
+    /*
+     * cache  => total cache allocated, read + write.
+     * wcache => cache allocated by writers.
+     * rcache => cache allocated by reades.
+     *
+     * Note: We use dirty and commit_pending to indicate cache used by writers.
+     *       This assumes that cache is released immediately after write or
+     *       commit completes, else we will account for write cache as read.
+     */
+    const uint64_t cache = bytes_chunk_cache::bytes_allocated_g;
+    const uint64_t wcache = bytes_chunk_cache::bytes_dirty_g +
+                            bytes_chunk_cache::bytes_commit_pending_g;
+    const uint64_t rcache = (uint64_t) std::max((int64_t)(cache - wcache), 0L);
+
+    /*
+     * Read cache usage as percent of max_cache.
+     * This tells how aggressively readers are filling up the cache by
+     * readahead. We increase readahead if this is low and reduce readahead
+     * as this grows.
+     */
+    const double pct_rcache = (rcache * 100.0) / max_cache;
+
+    /*
+     * Write cache usage as percent of max_cache.
+     * This tells how aggressively writees are filling up the cache by adding
+     * dirty data. We reduce max_dirty_extent_bytes() if this grows so that
+     * dirty data is flushed faster, and increase max_dirty_extent_bytes() if
+     * this is low and we want to accumulate more dirty data and flush in bigger
+     * chunks, for fast backend write throughput.
+     */
+    const double pct_wcache = (wcache * 100.0) / max_cache;
+
+    /*
+     * Total cache usage (read + write) as percent of max_cache.
+     * Reads and writes are controlled individually as per pct_rcache and
+     * pct_wcache, but in the end total cache usage is consulted and the
+     * read and write scale factors are reduced accordingly.
+     */
+    const double pct_cache = (cache * 100.0) / max_cache;
+
+    assert(pct_cache <= 100.0);
+    assert((pct_rcache + pct_wcache) <= pct_cache);
+
+    double rscale = 1.0;
+    double wscale = 1.0;
+
+    /*
+     * Stop readahead completely if we are beyond the max cache size, o/w scale
+     * it down proportionately to keep the cache size less than max cache limit.
+     * We also scale up the readahead to make better utilization of the allowed
+     * cache size, when there are fewer reads they are allowed to use more of
+     * the cache per user for readahead.
+     *
+     * Just like read, write also tries to mop up cache space. Those two apply
+     * opposing forces finally reaching an equilibrium.
+     */
+    if (pct_rcache >= 100) {
+        /*
+         * reads taking up all the cache space, completely stop readaheads.
+         * This will cause read cache utilization to drop and then we will
+         * increase readaheads, finally it'll settle on an optimal value.
+         */
+        rscale = 0;
+    } else if (pct_rcache > 95) {
+        rscale = 0.5;
+    } else if (pct_rcache > 90) {
+        rscale = 0.7;
+    } else if (pct_rcache > 80) {
+        rscale = 0.8;
+    } else if (pct_rcache > 70) {
+        rscale = 0.9;
+    } else if (pct_rcache < 3) {
+        rscale = 32;
+    } else if (pct_rcache < 5) {
+        rscale = 24;
+    } else if (pct_rcache < 10) {
+        rscale = 12;
+    } else if (pct_rcache < 20) {
+        rscale = 6;
+    } else if (pct_rcache < 30) {
+        rscale = 4;
+    } else if (pct_rcache < 50) {
+        rscale = 2.5;
+    }
+
+    if (pct_wcache > 95) {
+        /*
+         * Every file has fundamental right to 100MB of cache space.
+         * If we reduce it further we will end up in sub-optimal writes
+         * to the server.
+         */
+        wscale = 1.0/10;
+    } else if (pct_wcache > 90) {
+        // 200MB
+        wscale = 2.0/10;
+    } else if (pct_wcache > 80) {
+        // 300MB
+        wscale = 3.0/10;
+    } else if (pct_wcache > 70) {
+        // 400MB
+        wscale = 4.0/10;
+    } else if (pct_wcache > 60) {
+        // 600MB
+        wscale = 6.0/10;
+    } else if (pct_wcache > 50) {
+        // 700MB
+        wscale = 7.0/10;
+    }
+
+    static uint64_t last_log_sec;
+    bool log_now = false;
+
+    // Don't log more frequently than 5 secs.
+    if ((now_sec - last_log_sec) >= 5) {
+        log_now = true;
+        last_log_sec = now_sec;
+    }
+
+    if (fc_scale_factor != wscale) {
+        if (log_now) {
+            AZLogInfo("[FC] Scale factor updated ({} -> {}), "
+                      "cache util [R: {:0.2f}%, W: {:0.2f}%, T: {:0.2f}%]",
+                      fc_scale_factor.load(), wscale,
+                      pct_rcache, pct_wcache, pct_cache);
+        }
+        fc_scale_factor = wscale;
+        assert(fc_scale_factor >= 1.0/10);
+    }
+
+    if (ra_scale_factor != rscale) {
+        if (log_now) {
+            AZLogInfo("[RA] Scale factor updated ({} -> {}), "
+                      "cache util [R: {:0.2f}%, W: {:0.2f}%, T: {:0.2f}%]",
+                      ra_scale_factor.load(), rscale,
+                      pct_rcache, pct_wcache, pct_cache);
+        }
+        ra_scale_factor = rscale;
+        assert(ra_scale_factor >= 0);
+    }
 }
 
 void nfs_client::jukebox_runner()

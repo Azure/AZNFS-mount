@@ -106,27 +106,81 @@ void rpc_transport::close()
 /*
  * This function decides which connection should be chosen for sending
  * the current request.
- * TODO: This is round-robined for now, should be modified later.
  */
 struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
                                                    uint32_t fh_hash) const
 {
-    uint32_t idx = 0;
+    int idx = 0;
+    const int nconn = client->mnt_options.num_connections;
+    assert(nconn > 0);
+    const int rconn = nconn / 3;
+    const int wconn = nconn - rconn;
+
+    static std::atomic<uint64_t> last_sec;
+    static std::atomic<bool> rnw = false;
+    uint64_t now_sec = ::time(NULL);
+
+    assert(now_sec >= last_sec);
+
+    /*
+     * Take stock of things, no sooner than 5 secs.
+     */
+    if (now_sec > (last_sec + 5)) {
+        const uint64_t r_MBps = client->get_read_MBps();
+        const uint64_t w_MBps = client->get_write_MBps();
+
+        /*
+         * If both read and write are happening, assign them to separate
+         * connection pool, else writes may slow down reads as small write
+         * responses have to wait behind large read responses and v.v.
+         */
+        if (w_MBps > 100 && r_MBps > 100) {
+            rnw = (nconn >= 4);
+            AZLogInfo("[RNW=true] Write: {} Gbps, Read: {} Gbps",
+                      (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
+        } else {
+            rnw = false;
+            AZLogInfo("[RNW=false] Write: {} Gbps, Read: {} Gbps",
+                      (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
+        }
+
+        assert(!rnw || (rconn > 0 && wconn > 0));
+        last_sec = now_sec;
+    }
 
     switch (csched) {
         case CONN_SCHED_FIRST:
             idx = 0;
             break;
-        case CONN_SCHED_RR:
-            idx = (last_context++ % client->mnt_options.num_connections);
+        case CONN_SCHED_RR_R:
+            /*
+             * Reads get top 1/3rd of connections when there are simultaneous
+             * readers and writers, else they get all the connections.
+             */
+            idx = (rnw ? (wconn + (last_context++ % rconn))
+                       : (last_context++ % nconn));
+            break;
+        case CONN_SCHED_RR_W:
+            /*
+             * Writes get low 2/3rd of connections when there are simultaneous
+             * readers and writers, else they get all the connections.
+             *
+             * TODO: We should not change write connection ranges while there
+             *       are old writes still pending else we will get slowed down
+             *       by optimistic concurrency backoff.
+             */
+            idx = (rnw ? (last_context++ % wconn)
+                       : (last_context++ % nconn));
             break;
         case CONN_SCHED_FH_HASH:
             assert(fh_hash != 0);
-            idx = fh_hash % client->mnt_options.num_connections;
+            idx = rnw ? (fh_hash % wconn) : (fh_hash % nconn);
             break;
         default:
             assert(0);
     }
+
+    assert(idx >= 0 && idx < client->mnt_options.num_connections);
 
     return nfs_connections[idx]->get_nfs_context();
 }

@@ -337,7 +337,9 @@ public:
      *                        This will indicate our readahead effectiveness.
      * bytes_zeroed_from_cache: How many bytes were read from unmapped parts
      *                          of the cache and hence were zero filled.
-     * bytes_read_ahead: How many bytes were read ahead.
+     * num_readhead: Number of readahead calls made.
+     * bytes_read_ahead: How many bytes were read ahead using num_readhead
+     *                   calls.
      * tot_getattr_reqs: How many getattr requests were received from fuse.
      * getattr_served_from_cache: How many were served from inode->attr cache.
      * tot_lookup_reqs: How many lookup requests were received from fuse.
@@ -363,6 +365,8 @@ public:
      *           beyond configured limit.
      * commit_gp: How many time commit was issued as global cache grew beyond
      *           configured limit.
+     * num_sync_membufs: How many times sync_membufs() was called?
+     * tot_bytes_sync_membufs: Total bytes flushed by sync_membufs().
      */
     static std::atomic<uint64_t> tot_read_reqs;
     static std::atomic<uint64_t> failed_read_reqs;
@@ -371,6 +375,7 @@ public:
     static std::atomic<uint64_t> bytes_read_from_cache;
     static std::atomic<uint64_t> bytes_zeroed_from_cache;
     static std::atomic<uint64_t> bytes_read_ahead;
+    static std::atomic<uint64_t> num_readhead;
     static std::atomic<uint64_t> tot_getattr_reqs;
     static std::atomic<uint64_t> getattr_served_from_cache;
     static std::atomic<uint64_t> tot_lookup_reqs;
@@ -387,6 +392,8 @@ public:
     static std::atomic<uint64_t> flush_gp;
     static std::atomic<uint64_t> commit_lp;
     static std::atomic<uint64_t> commit_gp;
+    static std::atomic<uint64_t> num_sync_membufs;
+    static std::atomic<uint64_t> tot_bytes_sync_membufs;
 
     static std::atomic<uint64_t> rpc_tasks_allocated;
     static std::atomic<uint64_t> fuse_responses_awaited;
@@ -395,7 +402,7 @@ public:
 
 #define INC_GBL_STATS(var, inc)  rpc_stats_az::var += (inc)
 #define DEC_GBL_STATS(var, dec)  {assert(rpc_stats_az::var >= dec); rpc_stats_az::var -= (dec);}
-#define GET_GBL_STATS(var)       rpc_stats_az::var
+#define GET_GBL_STATS(var)       rpc_stats_az::var.load()
 
 struct fuse_req_stats
 {

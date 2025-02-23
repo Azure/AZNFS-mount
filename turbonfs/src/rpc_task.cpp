@@ -674,7 +674,7 @@ void rpc_task::init_read_be(fuse_ino_t ino,
      *
      * TODO: Control this with a config.
      */
-    set_csched(CONN_SCHED_RR);
+    set_csched(CONN_SCHED_RR_R);
 
     assert(!rpc_api->read_task.is_fe());
     assert(rpc_api->read_task.is_be());
@@ -1563,7 +1563,7 @@ void rpc_task::issue_write_rpc()
      * issues as seen by stable writes.
      */
     if (!inode->is_stable_write()) {
-        set_csched(CONN_SCHED_RR);
+        set_csched(CONN_SCHED_RR_W);
     }
 
     do {
@@ -1590,6 +1590,12 @@ void rpc_task::issue_write_rpc()
             ::sleep(5);
         }
     } while (rpc_retry);
+
+    /*
+     * Write bytes are counted when we send them to libnfs as that's when they
+     * appear on the wire.
+     */
+    INC_GBL_STATS(tot_bytes_written, bciov->length);
 }
 
 static void statfs_callback(
@@ -3750,7 +3756,6 @@ void rpc_task::send_read_response()
         AZLogDebug("[{}] Sending empty read response", ino);
         reply_iov(nullptr, 0);
     } else {
-        INC_GBL_STATS(tot_bytes_read, bytes_read);
         AZLogDebug("[{}] Sending success read response, iovec={}, "
                    "bytes_read={}",
                    ino, count, bytes_read);
@@ -3865,6 +3870,12 @@ static void read_callback(
          * update the inode attribute cache.
          */
         UPDATE_INODE_ATTR(inode, res->READ3res_u.resok.file_attributes);
+
+        /*
+         * Reads are counted in the callback as that's when the read
+         * responses have just come on the wire.
+         */
+        INC_GBL_STATS(tot_bytes_read, res->READ3res_u.resok.count);
 
 #ifdef ENABLE_PRESSURE_POINTS
         /*

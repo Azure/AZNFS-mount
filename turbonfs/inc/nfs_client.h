@@ -138,6 +138,38 @@ private:
 #endif
 
     /*
+     * Last 5 sec read and write throughput.
+     * rw_genid is updated everytime these values are updated, so can be used
+     * to check when throughput is updated.
+     */
+    std::atomic<uint64_t> r_MBps = 0;
+    std::atomic<uint64_t> w_MBps = 0;
+    std::atomic<uint64_t> rw_genid = 0;
+
+    /*
+     * Value returned by max_dirty_extent_bytes() is scaled down by this much
+     * before it's used by:
+     * - flush_required()
+     * - commit_required()
+     * - do_inline_write()
+     *
+     * fc_scale_factor is computed by periodic_updater() according to the global
+     * cache pressure. If global cache pressure is high we want the local
+     * flush/commit limits to be reduced so that each file flushes/commits
+     * faster thus easing the global cache pressure. This promotes fair sharing
+     * of global cache space while also maintaining enough contiguous data to
+     * the server, needed for better write throughput. Stable and unstable
+     * write may use this scale factor differently.
+     */
+    static std::atomic<double> fc_scale_factor;
+
+    /*
+     * periodic_updater() will update this scaling factor to force all ra_state
+     * machines to slow down readahead in case of high memory pressure.
+     */
+    static std::atomic<double> ra_scale_factor;
+
+    /*
      * Set in shutdown() to let others know that nfs_client is shutting
      * down. They can use this to quit what they are doing and plan for
      * graceful shutdown.
@@ -185,6 +217,18 @@ public:
         return client;
     }
 
+    static double get_fc_scale_factor()
+    {
+        assert(fc_scale_factor >= 1.0/10);
+        return fc_scale_factor;
+    }
+
+    static double get_ra_scale_factor()
+    {
+        assert(ra_scale_factor >= 0);
+        return ra_scale_factor;
+    }
+
     /**
      * Returns true if nfs_client is shutting down.
      */
@@ -212,6 +256,38 @@ public:
     std::shared_mutex& get_inode_map_lock()
     {
         return inode_map_lock_0;
+    }
+
+    /**
+     * Update various stuff that needs to be periodically updated, like:
+     * - Last 5 sec read and write throughput.
+     * - Readahead scale factor for controlling readahead amount, and
+     * - Flush/commit dirty data scale factor for controlling how long we keep
+     *   dirty data before flushing/committing.
+     *
+     * Call this from some place that's called very frequently.
+     */
+    void periodic_updater();
+
+    /**
+     * Get last 5 sec read throughput in MBps.
+     */
+    uint64_t get_read_MBps() const
+    {
+        return r_MBps;
+    }
+
+    /**
+     * Get last 5 sec read throughput in MBps.
+     */
+    uint64_t get_write_MBps() const
+    {
+        return w_MBps;
+    }
+
+    uint64_t get_rw_genid() const
+    {
+        return rw_genid;
     }
 
     /*

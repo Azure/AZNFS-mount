@@ -18,8 +18,6 @@
 
 namespace aznfsc {
 
-/* static */ std::atomic<double> ra_state::ra_scale_factor = 1.0;
-
 /**
  * This is called from alloc_rastate() with exclusive lock on ilock_1.
  */
@@ -64,62 +62,9 @@ ra_state::ra_state(struct nfs_client *_client,
                inode->get_fuse_ino(), ra_bytes, def_ra_size);
 }
 
-/* static */
-void ra_state::update_scale_factor()
+uint64_t ra_state::get_ra_bytes() const
 {
-    // Maximum cache size allowed in bytes.
-    static const uint64_t max_cache =
-        (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
-    assert(max_cache != 0);
-    const uint64_t curr_cache = bytes_chunk_cache::bytes_allocated_g;
-    const double percent_cache = (curr_cache * 100.0) / max_cache;
-    double scale = 1.0;
-
-    /*
-     * Stop readahead fully if we are beyond the max cache size, o/w scale it
-     * down proportionately to keep the cache size less than max cache limit.
-     * We also scale up the readahead to make better utilization of the allowed
-     * cache size, when there are fewer reads they are allowed to use more of
-     * the cache per user for readahead. We increase the scale factor just a
-     * little less than what would exhaust the entire cache, e.g., if percent
-     * cache utilization is ~5% it means if we increase the readahead by 20
-     * times we should be able to get all of cache utilized by readaheads,
-     * we increase the scale factor to slightly less than 20, to 16, and so
-     * on.
-     */
-    if (percent_cache >= 100) {
-        scale = 0;
-    } else if (percent_cache > 95) {
-        scale = 0.5;
-    } else if (percent_cache > 90) {
-        scale = 0.7;
-    } else if (percent_cache > 80) {
-        scale = 0.8;
-    } else if (percent_cache > 70) {
-        scale = 0.9;
-    } else if (percent_cache < 5) {
-        scale = 16;
-    } else if (percent_cache < 10) {
-        scale = 8;
-    } else if (percent_cache < 20) {
-        scale = 4;
-    } else if (percent_cache < 30) {
-        scale = 2;
-    } else if (percent_cache < 50) {
-        scale = 1.5;
-    }
-
-    if (ra_scale_factor != scale) {
-        static uint64_t last_log_usec;
-        const uint64_t now = get_current_usecs();
-        // Don't log more frequently than 5 secs.
-        if ((now - last_log_usec) > (5 * 1000 * 1000)) {
-            AZLogInfo("[Readahead] Scale factor updated ({} -> {})",
-                      ra_scale_factor.load(), scale);
-            last_log_usec = now;
-        }
-        ra_scale_factor = scale;
-    }
+    return ra_bytes * nfs_client::get_ra_scale_factor();
 }
 
 /**
@@ -244,6 +189,7 @@ static void readahead_callback (
         goto delete_ctx;
     } else {
         UPDATE_INODE_ATTR(inode, res->READ3res_u.resok.file_attributes);
+        INC_GBL_STATS(tot_bytes_read, res->READ3res_u.resok.count);
 
         /*
          * Only first read call would have bc->pvt == 0, for subsequent calls
@@ -722,6 +668,8 @@ int ra_state::issue_readaheads()
                        inode->get_fuse_ino(),
                        num_no_readahead.load(), ra_offset);
         }
+    } else {
+        INC_GBL_STATS(num_readhead, 1);
     }
 
     return ra_issued;

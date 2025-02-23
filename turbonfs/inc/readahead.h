@@ -306,21 +306,9 @@ public:
     }
 
     /**
-     * Update ra_scale_factor according to the current cache pressure.
-     * When global cache utilization is high, it reduces ra_scale_factor so
-     * that all readers use less ra window, for easing global memory pressure.
-     * Likewise when global cache utilization is low it increases the
-     * ra_scale_factor to let readers use higher readahead.
-     */
-    static void update_scale_factor();
-
-    /**
      * Returns the scaled ra window that caller can safely use.
      */
-    uint64_t get_ra_bytes() const
-    {
-        return ra_bytes * ra_scale_factor;
-    }
+    uint64_t get_ra_bytes() const;
 
     /**
      * This will run self tests to test the correctness of this class.
