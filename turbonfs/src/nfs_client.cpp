@@ -216,11 +216,15 @@ void nfs_client::shutdown()
 
 void nfs_client::update_adaptive()
 {
+#if 1
     // Maximum cache size allowed in bytes.
     static const uint64_t max_cache =
         (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
     assert(max_cache != 0);
 
+#endif
+
+#if 1
     /*
      * cache  => total cache allocated, read + write.
      * wcache => cache allocated by writers.
@@ -228,7 +232,7 @@ void nfs_client::update_adaptive()
      */
     const uint64_t cache = bytes_chunk_cache::bytes_allocated_g;
     const uint64_t wcache = bytes_chunk_cache::bytes_dirty_g;
-    const uint64_t rcache = cache - wcache;
+    const uint64_t rcache = (uint64_t) std::max((int64_t)(cache - wcache), 0L);
 
     /*
      * Read cache usage as percent of max_cache.
@@ -240,7 +244,7 @@ void nfs_client::update_adaptive()
 
     /*
      * Write cache usage as percent of max_cache.
-     * This tells how aggressively writes are filling up the cache by adding
+     * This tells how aggressively writees are filling up the cache by adding
      * dirty data. We reduce max_dirty_extent_bytes() if this grows so that
      * dirty data is flushed faster, and increase max_dirty_extent_bytes() if
      * this is low and we want to accumulate more dirty data and flush in bigger
@@ -255,13 +259,63 @@ void nfs_client::update_adaptive()
      * read and write scale factors are reduced accordingly.
      */
     const double pct_cache = (cache * 100.0) / max_cache;
+#endif
 
     double rscale = 1.0;
     double wscale = 1.0;
 
+#if 0
+    static std::atomic<uint64_t> last_rMBps;
+    static std::atomic<uint64_t> last_wMBps;
+    static std::atomic<uint64_t> last_rw_genid;
+
+    if (last_rw_genid == rw_genid) {
+        return;
+    }
+
+    uint64_t expected = last_rw_genid;
+    if (!last_rw_genid.compare_exchange_strong(expected, rw_genid.load())) {
+        return;
+    }
+
+    bool read_gt = (r_MBps > last_rMBps * 1.02);
+    bool read_lt = (r_MBps < last_rMBps * 0.98);
+    bool write_gt = (w_MBps > last_wMBps * 1.02);
+    bool write_lt = (w_MBps < last_wMBps * 0.98);
+
+    if (read_gt) {
+        if (ra_scale_factor >= 1.0) {
+            rscale = ra_scale_factor + 1.0;
+        } else {
+            rscale = ra_scale_factor + 0.1;
+        }
+    } else if (read_lt) {
+        if (ra_scale_factor > 1.0) {
+            rscale = ra_scale_factor - 1.0;
+        } else {
+            rscale = ra_scale_factor - 0.1;
+        }
+        if (rscale < 0)
+            rscale = 0;
+    }
+
+    if (write_gt) {
+        wscale = fc_scale_factor + 1.0/10;
+    } else if (write_lt) {
+        wscale = fc_scale_factor - 1.0/10;
+        if (wscale <= 0) {
+            wscale = 1.0/10;
+        }
+    }
+
+    last_rMBps = r_MBps.load();
+    last_wMBps = w_MBps.load();
+#endif
+
+#if 1
     /*
-     * Stop readahead fully if we are beyond the max cache size, o/w scale it
-     * down proportionately to keep the cache size less than max cache limit.
+     * Stop readahead completely if we are beyond the max cache size, o/w scale
+     * it down proportionately to keep the cache size less than max cache limit.
      * We also scale up the readahead to make better utilization of the allowed
      * cache size, when there are fewer reads they are allowed to use more of
      * the cache per user for readahead. We increase the scale factor just a
@@ -272,6 +326,11 @@ void nfs_client::update_adaptive()
      * on.
      */
     if (pct_rcache >= 100) {
+        /*
+         * reads taking up all the cache space, completely stop readaheads.
+         * This will cause read cache utilization to drop and then we will
+         * increase readaheads, finally it'll settle on an optimal value.
+         */
         rscale = 0;
     } else if (pct_rcache > 95) {
         rscale = 0.5;
@@ -281,6 +340,8 @@ void nfs_client::update_adaptive()
         rscale = 0.8;
     } else if (pct_rcache > 70) {
         rscale = 0.9;
+    } else if (pct_rcache < 3) {
+        rscale = 32;
     } else if (pct_rcache < 5) {
         rscale = 16;
     } else if (pct_rcache < 10) {
@@ -310,8 +371,11 @@ void nfs_client::update_adaptive()
         // 500MB
         wscale = 5.0/10;
     } else if (pct_wcache > 60) {
-        // 800MB
-        wscale = 8.0/10;
+        // 600MB
+        wscale = 6.0/10;
+    } else if (pct_wcache > 50) {
+        // 700MB
+        wscale = 7.0/10;
     }
 
     /*
@@ -333,13 +397,17 @@ void nfs_client::update_adaptive()
         }
     }
 
+#endif
+
     if (fc_scale_factor != wscale) {
         static uint64_t last_log_usec;
         const uint64_t now = get_current_usecs();
         // Don't log more frequently than 5 secs.
         if ((now - last_log_usec) > (5 * 1000 * 1000)) {
-            AZLogInfo("[FC] Scale factor updated ({} -> {})",
-                      fc_scale_factor.load(), wscale);
+            AZLogInfo("[FC] Scale factor updated ({} -> {}), "
+                      "cache util [R: {:0.2f}%, W: {:0.2f}%, T: {:0.2f}%]",
+                      fc_scale_factor.load(), wscale,
+                      pct_rcache, pct_wcache, pct_cache);
             last_log_usec = now;
         }
         fc_scale_factor = wscale;
@@ -350,8 +418,10 @@ void nfs_client::update_adaptive()
         const uint64_t now = get_current_usecs();
         // Don't log more frequently than 5 secs.
         if ((now - last_log_usec) > (5 * 1000 * 1000)) {
-            AZLogInfo("[Readahead] Scale factor updated ({} -> {})",
-                      ra_scale_factor.load(), rscale);
+            AZLogInfo("[RA] Scale factor updated ({} -> {}), "
+                      "cache util [R: {:0.2f}%, W: {:0.2f}%, T: {:0.2f}%]",
+                      ra_scale_factor.load(), rscale,
+                      pct_rcache, pct_wcache, pct_cache);
             last_log_usec = now;
         }
         ra_scale_factor = rscale;

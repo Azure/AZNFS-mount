@@ -1666,10 +1666,10 @@ public:
          * Following also means that at any time, half of the cache_max_mb
          * can be safely present in the cache.
          */
-        static const uint64_t inline_threshold = (max_total * 0.8);
-        static const uint64_t inline_target = (max_total * 0.7);
-        static const uint64_t periodic_threshold = (max_total * 0.6);
-        static const uint64_t periodic_target = (max_total * 0.5);
+        static const uint64_t inline_threshold = (max_total * 0.9);
+        static const uint64_t inline_target = (max_total * 0.8);
+        static const uint64_t periodic_threshold = (max_total * 0.7);
+        static const uint64_t periodic_target = (max_total * 0.6);
 
         /*
          * Current total cache size in bytes. Save it once to avoid issues

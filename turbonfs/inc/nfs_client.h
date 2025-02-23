@@ -319,6 +319,11 @@ public:
         return w_MBps;
     }
 
+    uint64_t get_rw_genid() const
+    {
+        return rw_genid;
+    }
+
     /*
      * The user should first init the client class before using it.
      */
