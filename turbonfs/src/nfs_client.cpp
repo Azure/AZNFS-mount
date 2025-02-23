@@ -228,7 +228,7 @@ void nfs_client::periodic_updater()
     static std::atomic<uint64_t> last_bytes_written;
     static std::atomic<uint64_t> last_bytes_read;
     static std::atomic<uint64_t> last_genid;
-    time_t now_sec = ::time(NULL);
+    const time_t now_sec = ::time(NULL);
     const int sample_intvl = 5;
 
     assert(GET_GBL_STATS(tot_bytes_written) >= last_bytes_written);

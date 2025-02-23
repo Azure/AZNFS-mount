@@ -2225,7 +2225,6 @@ public:
             DEC_GBL_STATS(fuse_responses_awaited, 1);
         }
 
-        INC_GBL_STATS(tot_bytes_written, count);
         free_rpc_task();
     }
 

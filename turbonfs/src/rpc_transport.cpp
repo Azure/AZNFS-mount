@@ -135,7 +135,7 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
          * responses have to wait behind large read responses and v.v.
          */
         if (w_MBps > 100 && r_MBps > 100) {
-            rnw = true;
+            rnw = (nconn >= 4);
             AZLogInfo("[RNW=true] Write: {} Gbps, Read: {} Gbps",
                       (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
         } else {
@@ -144,6 +144,7 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
                       (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
         }
 
+        assert(!rnw || (rconn > 0 && wconn > 0));
         last_sec = now_sec;
     }
 
