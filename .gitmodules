@@ -1,0 +1,18 @@
+[submodule "turbonfs/extern/libnfs"]
+	path = turbonfs/extern/libnfs
+	url = https://github.com/linuxsmiths/libnfs
+[submodule "turbonfs/extern/yaml-cpp"]
+	path = turbonfs/extern/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git
+[submodule "turbonfs/extern/spdlog"]
+	path = turbonfs/extern/spdlog
+	url = https://github.com/gabime/spdlog.git
+[submodule "turbonfs/extern/libfuse"]
+	path = turbonfs/extern/libfuse
+	url = https://github.com/libfuse/libfuse.git
+[submodule "turbonfs/extern/vcpkg"]
+	path = turbonfs/extern/vcpkg
+	url = https://github.com/microsoft/vcpkg.git
+[submodule "turbonfs/extern/json"]
+	path = turbonfs/extern/json
+	url = https://github.com/nlohmann/json.git

@@ -15,6 +15,13 @@ on:
       versionName:
         description: 'Version Name'
         required: true
+      buildType:
+        type: choice
+        description: 'Build Type'
+        options:
+        - Release
+        - Debug
+        default: 'Release'
 
 permissions:
   contents: write
@@ -22,7 +29,7 @@ permissions:
 jobs:
   verify_branch_name:
     name: Verify Branch Name
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - name: Extract Branch Name
       run: | 
@@ -39,7 +46,7 @@ jobs:
         exit 1
   package_mount_helper:
     name: Package and Release Mount Helper ${{ github.event.inputs.versionName }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: verify_branch_name
     steps:
     - name: Check Version Number
@@ -54,7 +61,7 @@ jobs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt install -y gcc-aarch64-linux-gnu
+        sudo apt install -y gcc-aarch64-linux-gnu libunwind-dev
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Run Package.sh
@@ -63,6 +70,7 @@ jobs:
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
         export STG_DIR=$GITHUB_WORKSPACE
         export SOURCE_DIR=$GITHUB_WORKSPACE
+        export BUILD_TYPE=${{ github.events.inputs.buildType }}
         chmod +x $GITHUB_WORKSPACE/package.sh
         $GITHUB_WORKSPACE/package.sh
     - name: Create Release

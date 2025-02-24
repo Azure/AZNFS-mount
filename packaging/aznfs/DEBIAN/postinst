@@ -96,6 +96,11 @@ if [ -f /opt/microsoft/aznfs/randbytes ]; then
         chattr -f +i /opt/microsoft/aznfs/data/randbytes
 fi
 
+# Move the turbo sample config file to optdirdata if it exists.
+if [ -f /opt/microsoft/aznfs/sample-turbo-config.yaml ]; then
+        mv -vf /opt/microsoft/aznfs/sample-turbo-config.yaml /opt/microsoft/aznfs/data/
+fi
+
 # Check if the config file exists; if not, create it.
 if [ ! -f "$CONFIG_FILE" ]; then
         # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
