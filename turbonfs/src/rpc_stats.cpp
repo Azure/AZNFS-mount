@@ -152,6 +152,14 @@ void rpc_stats_az::dump_stats()
                   " RPC requests retransmitted\n";
     str += "  " + std::to_string(cum_stats.num_reconnects) +
                   " Reconnect attempts\n";
+    str += "  " + std::to_string(client.get_transport().get_avg_qlen_r()) +
+                  " Avg rpc qlen seen by reads\n";
+    str += "  " + std::to_string(client.get_transport().get_max_qlen_r()) +
+                  " Max rpc qlen seen by reads\n";
+    str += "  " + std::to_string(client.get_transport().get_avg_qlen_w()) +
+                  " Avg rpc qlen seen by writes\n";
+    str += "  " + std::to_string(client.get_transport().get_max_qlen_w()) +
+                  " Max rpc qlen seen by writes\n";
 
     str += "File/Inode statistics:\n";
     str += "  " + std::to_string(total_inodes) +

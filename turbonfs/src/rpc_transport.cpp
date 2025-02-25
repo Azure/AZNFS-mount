@@ -148,6 +148,9 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
         last_sec = now_sec;
     }
 
+    struct nfs_context *nfs = nullptr;
+    uint32_t qlen = 0, avg_qlen = 0;
+
     switch (csched) {
         case CONN_SCHED_FIRST:
             idx = 0;
@@ -156,9 +159,25 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
             /*
              * Reads get top 1/3rd of connections when there are simultaneous
              * readers and writers, else they get all the connections.
+             * The for loop is to keep connections balanced.
              */
-            idx = (rnw ? (wconn + (last_context++ % rconn))
-                       : (last_context++ % nconn));
+            for (int i = 0; i <= nconn / 2; i++) {
+                idx = (rnw ? (wconn + (last_context++ % rconn))
+                           : (last_context++ % nconn));
+                nfs = nfs_connections[idx]->get_nfs_context();
+                qlen = nfs_queue_length(nfs);
+                max_qlen_r = std::max(max_qlen_r, qlen);
+                cum_qlen_r += qlen;
+                // Reset cum/cnt stats every few requests to drop stale info.
+                if (cnt_qlen_r++ == 1000) {
+                    cnt_qlen_r = 1;
+                    cum_qlen_r = qlen;
+                }
+                avg_qlen = cum_qlen_r / cnt_qlen_r;
+                if (qlen <= avg_qlen) {
+                    break;
+                }
+            }
             break;
         case CONN_SCHED_RR_W:
             /*
@@ -169,8 +188,22 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
              *       are old writes still pending else we will get slowed down
              *       by optimistic concurrency backoff.
              */
-            idx = (rnw ? (last_context++ % wconn)
-                       : (last_context++ % nconn));
+            for (int i = 0; i <= nconn / 2; i++) {
+                idx = (rnw ? (last_context++ % wconn)
+                           : (last_context++ % nconn));
+                nfs = nfs_connections[idx]->get_nfs_context();
+                qlen = nfs_queue_length(nfs);
+                max_qlen_w = std::max(max_qlen_w, qlen);
+                cum_qlen_w += qlen;
+                if (cnt_qlen_w++ == 1000) {
+                    cnt_qlen_w = 1;
+                    cum_qlen_w = qlen;
+                }
+                avg_qlen = cum_qlen_w / cnt_qlen_w;
+                if (qlen <= avg_qlen) {
+                    break;
+                }
+            }
             break;
         case CONN_SCHED_FH_HASH:
             assert(fh_hash != 0);

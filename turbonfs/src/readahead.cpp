@@ -26,7 +26,8 @@ ra_state::ra_state(struct nfs_client *_client,
         client(_client),
         inode(_inode),
         ra_bytes(client->mnt_options.readahead_kb * 1024),
-        def_ra_size(std::min<uint64_t>(client->mnt_options.rsize_adj, ra_bytes))
+        //def_ra_size(std::min<uint64_t>(client->mnt_options.rsize_adj, ra_bytes))
+        def_ra_size(std::min<uint64_t>(3 * 1024 * 1024, ra_bytes))
 {
     assert(client->magic == NFS_CLIENT_MAGIC);
     assert(inode->magic == NFS_INODE_MAGIC);

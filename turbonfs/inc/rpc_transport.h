@@ -82,12 +82,47 @@ private:
      */
     mutable uint32_t last_context = UINT32_MAX - 2;
 
+    /*
+     * Average libnfs queue len across all nfs_connections for this transport.
+     * This is used to ensure we don't queue too many requests on connections
+     * which cannot serve them fast enough.
+     * cum/cnt gives the avg qlen. max is tracked for stats.
+     * cum/cnt are reset every few calls so that they reflect the latest queue
+     * lengths.
+     */
+    mutable uint64_t cum_qlen_r = 0;
+    mutable uint64_t cum_qlen_w = 0;
+    mutable uint32_t cnt_qlen_r = 0;
+    mutable uint32_t cnt_qlen_w = 0;
+    mutable uint32_t max_qlen_r = 0;
+    mutable uint32_t max_qlen_w = 0;
+
 public:
     rpc_transport(struct nfs_client* _client):
         client(_client),
         nfs_connections(aznfsc_cfg.nconnect, nullptr)
     {
         assert(client != nullptr);
+    }
+
+    uint32_t get_avg_qlen_r() const
+    {
+        return cnt_qlen_r ? (cum_qlen_r / cnt_qlen_r) : 0;
+    }
+
+    uint32_t get_max_qlen_r() const
+    {
+        return max_qlen_r;
+    }
+
+    uint32_t get_avg_qlen_w() const
+    {
+        return cnt_qlen_w ? (cum_qlen_w / cnt_qlen_w) : 0;
+    }
+
+    uint32_t get_max_qlen_w() const
+    {
+        return max_qlen_w;
     }
 
     /*
