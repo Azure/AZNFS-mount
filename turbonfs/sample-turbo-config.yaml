@@ -20,7 +20,7 @@ auth: false
 # readdir_maxcount
 # lookupcache: all|none|pos|positive
 #
-nconnect: 96
+nconnect: 64
 timeo: 600
 retrans: 2
 acregmin: 3
@@ -122,9 +122,9 @@ fuse_max_background: 4096
 cache.attr.user.enable: true
 cache.readdir.kernel.enable: true
 cache.readdir.user.enable: true
-cache.data.kernel.enable: true
+cache.data.kernel.enable: false
 cache.data.user.enable: true
-cache.data.user.max_size_mb: 4096
+cache.data.user.max_size_mb: 16384
 
 #
 # These are currently not supported.
