@@ -457,7 +457,8 @@ fix_mount_options()
             pecho "Config file is not provided or is invalid: $config_file_path"
             pecho "Using default config file: $CONFIG_FILE_PATH"
             if [ ! -f "$CONFIG_FILE_PATH" ]; then
-                eecho "Default config file not found. Please create a valid config file at: $CONFIG_FILE_PATH"
+                eecho "Default config file not found!"
+                eecho "Provide a config file using the configfile=/path/to/your/config.yaml mount option, or create a valid config file at: $CONFIG_FILE_PATH, and try again!"
                 eecho "Refer sample config file at: $SAMPLE_CONFIG_PATH"
                 exit 1
             fi
