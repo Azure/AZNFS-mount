@@ -190,7 +190,8 @@ static void readahead_callback (
         goto delete_ctx;
     } else {
         UPDATE_INODE_ATTR(inode, res->READ3res_u.resok.file_attributes);
-        INC_GBL_STATS(tot_bytes_read, res->READ3res_u.resok.count);
+        INC_GBL_STATS(server_bytes_read, res->READ3res_u.resok.count);
+        INC_GBL_STATS(server_read_reqs, 1);
 
         /*
          * Only first read call would have bc->pvt == 0, for subsequent calls

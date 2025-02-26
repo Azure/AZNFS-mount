@@ -2209,6 +2209,8 @@ public:
          */
         assert(count <= 1048576);
 
+        INC_GBL_STATS(app_bytes_written, count);
+
         /*
          * We should not respond to fuse when there are still ongoing
          * backend writes.

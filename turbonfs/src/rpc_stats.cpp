@@ -11,10 +11,12 @@ namespace aznfsc {
 
 /* static */ struct rpc_opstat rpc_stats_az::opstats[FUSE_OPCODE_MAX + 1];
 /* static */ std::mutex rpc_stats_az::stats_lock_42;
-/* static */ std::atomic<uint64_t> rpc_stats_az::tot_read_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::app_read_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::server_read_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::failed_read_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::zero_reads = 0;
-/* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_read = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::app_bytes_read = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::server_bytes_read = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_zeroed_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_ahead = 0;
@@ -23,9 +25,11 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> rpc_stats_az::getattr_served_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_lookup_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::lookup_served_from_cache = 0;
-/* static */ std::atomic<uint64_t> rpc_stats_az::tot_write_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::app_write_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::server_write_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::failed_write_reqs = 0;
-/* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_written = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::app_bytes_written = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::server_bytes_written = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::inline_writes = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::inline_writes_lp = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::inline_writes_gp = 0;
@@ -257,12 +261,12 @@ void rpc_stats_az::dump_stats()
     }
 
     str += "Application statistics:\n";
-    const uint64_t avg_read_size =
-        tot_read_reqs ? (tot_bytes_read / tot_read_reqs) : 0;
-    str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_read)) +
+    const uint64_t avg_app_read_size =
+        app_read_reqs ? (app_bytes_read / app_read_reqs) : 0;
+    str += "  " + std::to_string(GET_GBL_STATS(app_bytes_read)) +
                   " bytes read by application(s) in " +
-                  std::to_string(tot_read_reqs) + " calls with avg size " +
-                  std::to_string(avg_read_size) + " bytes\n";
+                  std::to_string(app_read_reqs) + " calls with avg size " +
+                  std::to_string(avg_app_read_size) + " bytes\n";
     if (failed_read_reqs) {
         str += "  " + std::to_string(GET_GBL_STATS(failed_read_reqs)) +
                       " application reads failed\n";
@@ -274,20 +278,27 @@ void rpc_stats_az::dump_stats()
     }
 
     const double read_cache_pct =
-        tot_bytes_read ?
-        ((bytes_read_from_cache * 100.0) / tot_bytes_read) : 0;
+        app_bytes_read ?
+        ((bytes_read_from_cache * 100.0) / app_bytes_read) : 0;
     assert(read_cache_pct <= 100);
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_from_cache)) +
                   " bytes served from read cache (" +
                   std::to_string(read_cache_pct) + "%)\n";
 
     const double hole_cache_pct =
-        tot_bytes_read ?
-        ((bytes_zeroed_from_cache * 100.0) / tot_bytes_read) : 0;
+        app_bytes_read ?
+        ((bytes_zeroed_from_cache * 100.0) / app_bytes_read) : 0;
     assert(hole_cache_pct <= 100);
     str += "  " + std::to_string(GET_GBL_STATS(bytes_zeroed_from_cache)) +
                   " bytes holes read from cache (" +
                   std::to_string(hole_cache_pct) + "%)\n";
+
+    const uint64_t avg_server_read_size =
+        server_read_reqs ? (server_bytes_read / server_read_reqs) : 0;
+    str += "  " + std::to_string(GET_GBL_STATS(server_bytes_read)) +
+                  " bytes read from server in " +
+                  std::to_string(server_read_reqs) + " calls with avg size " +
+                  std::to_string(avg_server_read_size) + " bytes\n";
 
     const uint64_t avg_ra_size =
         num_readhead ? (bytes_read_ahead / num_readhead) : 0;
@@ -296,16 +307,22 @@ void rpc_stats_az::dump_stats()
                   std::to_string(avg_ra_size) + " bytes and ra scale factor " +
                   std::to_string(nfs_client::get_ra_scale_factor()) + "\n";
 
-    const uint64_t avg_write_size =
-        tot_write_reqs ? (tot_bytes_written / tot_write_reqs) : 0;
-    str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_written)) +
+    const uint64_t avg_app_write_size =
+        app_write_reqs ? (app_bytes_written / app_write_reqs) : 0;
+    str += "  " + std::to_string(GET_GBL_STATS(app_bytes_written)) +
                   " bytes written by application(s) in " +
-                  std::to_string(tot_write_reqs) + " calls with avg size " +
-                  std::to_string(avg_write_size) + " bytes\n";
+                  std::to_string(app_write_reqs) + " calls with avg size " +
+                  std::to_string(avg_app_write_size) + " bytes\n";
     if (failed_write_reqs) {
         str += "  " + std::to_string(GET_GBL_STATS(failed_write_reqs)) +
                       " application writes failed\n";
     }
+    const uint64_t avg_server_write_size =
+        server_write_reqs ? (server_bytes_written / server_write_reqs) : 0;
+    str += "  " + std::to_string(GET_GBL_STATS(server_bytes_written)) +
+                  " bytes written to server in " +
+                  std::to_string(server_write_reqs) + " calls with avg size " +
+                  std::to_string(avg_server_write_size) + " bytes\n";
 
     str += "  " + std::to_string(GET_GBL_STATS(writes_np)) +
                   " writes did not hit any memory pressure\n";

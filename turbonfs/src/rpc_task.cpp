@@ -1595,7 +1595,8 @@ void rpc_task::issue_write_rpc()
      * Write bytes are counted when we send them to libnfs as that's when they
      * appear on the wire.
      */
-    INC_GBL_STATS(tot_bytes_written, bciov->length);
+    INC_GBL_STATS(server_bytes_written, bciov->length);
+    INC_GBL_STATS(server_write_reqs, 1);
 }
 
 static void statfs_callback(
@@ -3756,6 +3757,7 @@ void rpc_task::send_read_response()
         AZLogDebug("[{}] Sending empty read response", ino);
         reply_iov(nullptr, 0);
     } else {
+        INC_GBL_STATS(app_bytes_read, bytes_read);
         AZLogDebug("[{}] Sending success read response, iovec={}, "
                    "bytes_read={}",
                    ino, count, bytes_read);
@@ -3875,7 +3877,8 @@ static void read_callback(
          * Reads are counted in the callback as that's when the read
          * responses have just come on the wire.
          */
-        INC_GBL_STATS(tot_bytes_read, res->READ3res_u.resok.count);
+        INC_GBL_STATS(server_bytes_read, res->READ3res_u.resok.count);
+        INC_GBL_STATS(server_read_reqs, 1);
 
 #ifdef ENABLE_PRESSURE_POINTS
         /*

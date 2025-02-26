@@ -222,17 +222,17 @@ void nfs_client::periodic_updater()
     assert(max_cache != 0);
 
     /*
-     * #1 Calculate recent read/write throughput.
+     * #1 Calculate recent read/write throughput to the server.
      */
     static std::atomic<time_t> last_sec;
-    static std::atomic<uint64_t> last_bytes_written;
-    static std::atomic<uint64_t> last_bytes_read;
+    static std::atomic<uint64_t> last_server_bytes_written;
+    static std::atomic<uint64_t> last_server_bytes_read;
     static std::atomic<uint64_t> last_genid;
     const time_t now_sec = ::time(NULL);
     const int sample_intvl = 5;
 
-    assert(GET_GBL_STATS(tot_bytes_written) >= last_bytes_written);
-    assert(GET_GBL_STATS(tot_bytes_read) >= last_bytes_read);
+    assert(GET_GBL_STATS(server_bytes_written) >= last_server_bytes_written);
+    assert(GET_GBL_STATS(server_bytes_read) >= last_server_bytes_read);
     assert(now_sec >= last_sec);
 
     /*
@@ -243,14 +243,14 @@ void nfs_client::periodic_updater()
     if (intvl >= sample_intvl) {
         uint64_t expected = last_genid.load();
         if (rw_genid.compare_exchange_strong(expected, expected + 1)) {
-            w_MBps = (GET_GBL_STATS(tot_bytes_written) - last_bytes_written) /
+            w_MBps = (GET_GBL_STATS(server_bytes_written) - last_server_bytes_written) /
                      ((now_sec - last_sec) * 1000'000);
-            r_MBps = (GET_GBL_STATS(tot_bytes_read) - last_bytes_read) /
+            r_MBps = (GET_GBL_STATS(server_bytes_read) - last_server_bytes_read) /
                      ((now_sec - last_sec) * 1000'000);
 
             last_sec = now_sec;
-            last_bytes_read = GET_GBL_STATS(tot_bytes_read);
-            last_bytes_written = GET_GBL_STATS(tot_bytes_written);
+            last_server_bytes_read = GET_GBL_STATS(server_bytes_read);
+            last_server_bytes_written = GET_GBL_STATS(server_bytes_written);
             last_genid = rw_genid.load();
         }
     }
