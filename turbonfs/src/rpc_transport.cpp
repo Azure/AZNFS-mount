@@ -170,6 +170,11 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
                 cum_qlen_r += qlen;
                 // Reset cum/cnt stats every few requests to drop stale info.
                 if (cnt_qlen_r++ == 2000) {
+                    AZLogDebug("[CONN_SCHED_RR_R] i: {} idx: {} qlen: {} "
+                               "avg: {} max: {}",
+                               i, idx, qlen, cum_qlen_r / cnt_qlen_r,
+                               max_qlen_r);
+
                     cnt_qlen_r = 1;
                     cum_qlen_r = qlen;
                     max_qlen_r = qlen;
@@ -197,6 +202,11 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
                 max_qlen_w = std::max(max_qlen_w, qlen);
                 cum_qlen_w += qlen;
                 if (cnt_qlen_w++ == 2000) {
+                    AZLogDebug("[CONN_SCHED_RR_W] i: {} idx: {} qlen: {} "
+                               "avg: {} max: {}",
+                               i, idx, qlen, cum_qlen_w / cnt_qlen_w,
+                               max_qlen_w);
+
                     cnt_qlen_w = 1;
                     cum_qlen_w = qlen;
                     max_qlen_w = qlen;
