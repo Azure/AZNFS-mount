@@ -954,8 +954,11 @@ aznfsclient_mount()
 
     vecho "Waiting for mount to complete (timeout: 30 seconds)..."
 
-    # Read from named pipe with timeout
-    read -t 30 mount_status <> $MOUNT_STATUS_PIPE
+    #
+    # Read from named pipe with timeout.
+    # aznfsclient will send an integer status followed by an optional error string.
+    #
+    read -t 30 mount_status mount_str <> $MOUNT_STATUS_PIPE
 
     read_status=$?
 
@@ -972,11 +975,16 @@ aznfsclient_mount()
     if [ $read_status -gt 128 ]; then
         eecho "Mount timed out, check for details!"
         return $read_status
-    elif [ "$mount_status" == "-2"]; then
+    elif [ "$mount_status" == "-2" ]; then
         eecho "Auth enabled in config but 'az login' not detected"
         eecho "Please perform 'az login' and then try to mount again!"
         return 1
     elif [ "$mount_status" != "0" ]; then
+        if [ -n "$mount_str" ]; then
+            eecho "$mount_str"
+        else
+            eecho "Mount failed with status $mount_status"
+        fi
         return 1
     else
         vecho "Mounted successfully."

@@ -28,9 +28,16 @@ struct fuse_conn_info_opts* fuse_conn_info_opts_ptr;
  */
 #define AZNFSC_OPT(templ, key) { templ, offsetof(struct aznfsc_cfg, key), 0}
 
-// Is 'az login' required?
-// It is set when the user is enabled auth in config but they have not done 'az login'.
+/*
+ * Is 'az login' required?
+ * It is set when the user has enabled auth in config but they have not done 'az login'.
+ */ 
 bool is_azlogin_required = false; 
+
+/*
+ * Stores the error string to be returned to the mount program over the status pipe.
+ */
+std::string status_pipe_error_string;
 
 // LogFile for this mount.
 const string optdirdata = "/opt/microsoft/aznfs/data";
@@ -52,6 +59,7 @@ struct auth_info
     std::string subscriptionid;
     std::string username;
     std::string usertype;
+    std::string resourcegroupname;
 };
 
 void aznfsc_help(const char *argv0)
@@ -400,9 +408,14 @@ close_pipe:
 
 int get_authinfo_data(struct auth_info& auth_info)
 {
-    const std::string output = run_command("az account show --output json");
+    // We should not be here without a valid account. 
+    assert(aznfsc_cfg.account != nullptr);
+
+    std::string output = run_command("az account show --output json");
     if (output.empty()) {
-        AZLogError("'az account show --output json' failed to get auth data");
+        AZLogError("'az account show --output json' failed to get account details");
+        // User is required to perform 'az login'.
+        is_azlogin_required = true;
         return -1;
     }
 
@@ -419,23 +432,47 @@ int get_authinfo_data(struct auth_info& auth_info)
         return -1;
     }
 
-    // Caller expects valid values for tenantid and subscriptionid.
-    if (auth_info.tenantid.empty() || auth_info.subscriptionid.empty()) {
-        AZLogError("'az account show --output json' returned: "
-                   "tenantid: {} subscriptionid: {} username: {} usertype: {}",
-                   auth_info.tenantid,
-                   auth_info.subscriptionid,
-                   auth_info.username,
-                   auth_info.usertype);
+    const std::string command = std::string("az storage account show -n ") + std::string(aznfsc_cfg.account);
+    output = run_command(command);
+    if (output.empty()) {
+        AZLogError("'{}' failed to get storage account details", command);
+        status_pipe_error_string = "Storage account '" + std::string(aznfsc_cfg.account) + 
+                                   "' not found in the subscription " + auth_info.subscriptionid;
         return -1;
     }
 
-    AZLogDebug("'az account show --output json' returned: "
-               "tenantid: {} subscriptionid: {} username: {} usertype: {}",
+    // Extract resource group from the output json.
+    try {
+        const auto json_data = json::parse(output);
+        auth_info.resourcegroupname = json_data["resourceGroup"].get<std::string>();
+    } catch (json::parse_error& ev) {
+        AZLogError("Failed to parse json: {}, error: {}", output, ev.what());
+        return -1;
+    }
+
+    // Caller expects valid values for tenantid, subscriptionid and resourcegroupname.
+    if (auth_info.tenantid.empty() ||
+        auth_info.subscriptionid.empty() ||
+        auth_info.resourcegroupname.empty()) {
+        AZLogError("Invalid authdata parameters returned from azcli commands: "
+                   "tenantid: {} subscriptionid: {} username: {} "
+                   "usertype: {} resourcegroupname: {}",
+                   auth_info.tenantid,
+                   auth_info.subscriptionid,
+                   auth_info.username,
+                   auth_info.usertype,
+                   auth_info.resourcegroupname);
+        return -1;
+    }
+
+    AZLogDebug("Authdata parameters returned from azcli commands: "
+               "tenantid: {} subscriptionid: {} username: {} "
+               "usertype: {} resourcegroupname: {}",
                auth_info.tenantid,
                auth_info.subscriptionid,
                auth_info.username,
-               auth_info.usertype);
+               auth_info.usertype,
+               auth_info.resourcegroupname);
 
     return 0;
 }
@@ -477,10 +514,13 @@ auth_token_cb_res *get_auth_token_and_setargs_cb(struct auth_context *auth)
         return nullptr;
     }
 
-    AZLogInfo("get_auth_token_and_setargs_cb: tenantid: {} subscriptionid: {}", 
+    AZLogInfo("get_auth_token_and_setargs_cb: tenantid: {} subscriptionid: {} "
+              "resourcegroupname: {}", 
                auth_info.tenantid.c_str(),
-               auth_info.subscriptionid.c_str());
+               auth_info.subscriptionid.c_str(),
+               auth_info.resourcegroupname.c_str());
 
+    assert(!auth_info.resourcegroupname.empty());
     assert(!auth_info.tenantid.empty());
     assert(!auth_info.subscriptionid.empty());
 
@@ -519,6 +559,7 @@ auth_token_cb_res *get_auth_token_and_setargs_cb(struct auth_context *auth)
         {"AuthToken", token.Token},
         {"SubscriptionId", auth_info.subscriptionid},
         {"TenantId", auth_info.tenantid},
+        {"ResourceGroupName", auth_info.resourcegroupname},
         {"AuthorizedTill", std::to_string(expirytime)}
     };
 
@@ -823,9 +864,15 @@ err_out0:
             if (is_azlogin_required) {
                 ret = -2;
                 AZLogError("Not logged in using 'az login' when auth is enabled");
+                pipe << ret << endl;
+            } else if (!status_pipe_error_string.empty()) {
+                ret = -3;
+                AZLogError("Returing error string '-3 {}' on the pipe", status_pipe_error_string);
+                pipe << "-3 " << status_pipe_error_string << endl;
+            } else {
+                // TODO: Extend this with meaningful error codes.
+                pipe << ret << endl;
             }
-            // TODO: Extend this with meaningful error codes.
-            pipe << ret << endl;
             status_pipe_closed = true;
         }
         return 1;
