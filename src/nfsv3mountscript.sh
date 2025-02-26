@@ -463,7 +463,7 @@ fix_mount_options()
                 exit 1
             fi
         else
-            vecho "Using config file: $config_file_path"
+            vvecho "Using config file: $config_file_path"
             CONFIG_FILE_PATH=$config_file_path
         fi
     fi
@@ -862,11 +862,20 @@ get_local_ip_for_fqdn()
 #
 gatepass_mount()
 {
-    mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
+    #
+    # We use the Linux NFS client for doing the gatepass mount, even if user
+    # may have asked for turbo mount. This is ok as NFS client is a requirement
+    # for the AZNFS package.
+    # Also, ignore MOUNT_OPTIONS as this is not a real mount and options like
+    # "turbo" may cause the mount command to bail out w/o attempting the mount.
+    # We do not use LOCAL_IP for mounting as for the turbo case we wouldn't have
+    # a valid LOCAL_IP.
+    #
+    mount_output=$(mount -t nfs $OPTIONS -o vers=3,sec=sys,nolock,proto=tcp "${nfs_host}:${nfs_dir}/$AZNFS_FINGERPRINT" "$mount_point" 2>&1)
     mount_status=$?
 
     if [ -n "$mount_output" ]; then
-        vecho "[Gatepass mount] $mount_output"
+        vvecho "[Gatepass mount] $mount_output"
     fi
 
     #
@@ -874,7 +883,7 @@ gatepass_mount()
     # Exit with an error code if it succeeded, which is unexpected.
     #
     if [ $mount_status -eq 0 ]; then
-        vecho "[Gatepass mount] Unexpected success!"
+        eecho "[Gatepass mount] Unexpected success!"
         eecho "Mount failed!"
         exit 1
     fi
@@ -951,9 +960,13 @@ aznfsclient_mount()
         return 1
     fi
 
+    #
+    # Get the gatepass before the actual mount.
+    #
+    gatepass_mount
     $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS
 
-    vecho "Waiting for mount to complete (timeout: 30 seconds)..."
+    vvecho "Waiting for mount to complete (timeout: 30 seconds)..."
 
     #
     # Read from named pipe with timeout.
@@ -988,7 +1001,7 @@ aznfsclient_mount()
         fi
         return 1
     else
-        vecho "Mounted successfully."
+        vvecho "Mounted successfully."
     fi
 }
 
