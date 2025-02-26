@@ -1592,8 +1592,8 @@ void rpc_task::issue_write_rpc()
     } while (rpc_retry);
 
     /*
-     * Write bytes are counted when we send them to libnfs as that's when they
-     * appear on the wire.
+     * Write bytes are counted when we send them to libnfs (not when we get
+     * response for the WRITE RPC) as that's when they appear on the wire.
      */
     INC_GBL_STATS(server_bytes_written, bciov->length);
     INC_GBL_STATS(server_write_reqs, 1);
