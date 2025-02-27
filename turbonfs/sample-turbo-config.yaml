@@ -40,6 +40,13 @@ wsize: 1048576
 xprtsec: none
 
 #
+# aznfsclient will disable (to be precise, resist) OOM killing as it's an
+# important process and killing it may cause data loss. If you don't want
+# aznfsclient to do that, set this to false.
+#
+oom_kill_disable: true
+
+#
 # Consistency config.
 # This controls the consistency level desired wrt updates from other clients.
 # Following values are supported (from lowest to highest consistency):

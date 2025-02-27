@@ -246,6 +246,9 @@ typedef struct aznfsc_cfg
     // Whether to use TLS or not.
     const char *xprtsec = nullptr;
 
+    // Whether to disable OOM killing for the aznfsclient process.
+    bool oom_kill_disable = true;
+
     /*************************************************
      **              Cconsistency config            **
      *************************************************/

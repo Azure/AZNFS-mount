@@ -143,6 +143,7 @@ do { \
         _CHECK_INT(fuse_max_idle_threads, AZNFSCFG_FUSE_MAX_IDLE_THR_MIN, AZNFSCFG_FUSE_MAX_IDLE_THR_MAX);
 
         _CHECK_STR(xprtsec);
+        _CHECK_BOOL(oom_kill_disable);
 
         _CHECK_BOOL(cache.attr.user.enable);
         _CHECK_BOOL(cache.readdir.kernel.enable);
@@ -332,6 +333,7 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("wsize = {}", wsize);
     AZLogDebug("retrans = {}", retrans);
     AZLogDebug("xprtsec = {}", xprtsec);
+    AZLogDebug("oom_kill_disable = {}", oom_kill_disable);
     AZLogDebug("timeo = {}", timeo);
     AZLogDebug("acregmin = {}", acregmin);
     AZLogDebug("acregmax = {}", acregmax);

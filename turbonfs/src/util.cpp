@@ -41,7 +41,7 @@ void set_kernel_readahead()
 
             if (::stat(mountpoint, &sb) != 0) {
                 AZLogWarn("Failed to set readahead_kb for {}: stat() failed: {}",
-                           mountpoint, strerror(errno));
+                           mountpoint, ::strerror(errno));
                 return;
             }
 
@@ -55,7 +55,7 @@ void set_kernel_readahead()
                 return;
             }
 
-            fd = ::open(sysfs_file, O_RDWR);
+            fd = ::open(sysfs_file, O_WRONLY);
             if (fd == -1) {
                 AZLogWarn("Failed to set readahead_kb for {}: "
                           "open({}) failed: {}",
@@ -78,7 +78,7 @@ void set_kernel_readahead()
                 ::close(fd);
                 AZLogWarn("Failed to set readahead_kb for {}: "
                           "write({}) failed: {}",
-                          mountpoint, sysfs_file, strerror(errno));
+                          mountpoint, sysfs_file, ::strerror(errno));
                 return;
             }
 
@@ -90,6 +90,48 @@ void set_kernel_readahead()
     });
 
     thr.detach();
+}
+
+void disable_oom_kill()
+{
+    if (!aznfsc_cfg.oom_kill_disable) {
+        AZLogDebug("Not disabling OOM killing!");
+        return;
+    }
+
+    const pid_t pid = ::getpid();
+    const std::string oom_odj_file = std::string("/proc/") +
+                                     std::to_string(pid) + "/oom_score_adj";
+    char oom_adj_str[16];
+    int ret, fd;
+
+    fd = ::open(oom_odj_file.c_str(), O_WRONLY);
+    if (fd == -1) {
+        AZLogWarn("Failed to disable OOM killing: open({}) failed: {}",
+                  oom_odj_file, ::strerror(errno));
+        return;
+    }
+
+    // -1000 is the lowest we can set, implying "do not oom kill".
+    ret = ::snprintf(oom_adj_str, sizeof(oom_adj_str), "%d", -1000);
+    if (ret == -1 || ret >= (int) sizeof(oom_adj_str)) {
+        ::close(fd);
+        AZLogWarn("Failed to disable OOM killing: snprintf() failed: {}", ret);
+        return;
+    }
+
+    if (::write(fd, oom_adj_str, ::strlen(oom_adj_str)) == -1) {
+        ::close(fd);
+        AZLogWarn("Failed to disable OOM killing: write({}) failed: {}",
+                  oom_adj_str, ::strerror(errno));
+        return;
+    }
+
+    ::close(fd);
+
+    AZLogInfo("Disabled OOM killing, set {} to {}",
+              oom_odj_file, oom_adj_str);
+    return;
 }
 
 #ifdef ENABLE_PRESSURE_POINTS

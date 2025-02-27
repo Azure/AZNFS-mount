@@ -29,6 +29,13 @@ namespace aznfsc {
 void set_kernel_readahead();
 
 /**
+ * Disable OOM killing for the aznfsclient process.
+ * Note that we try to set oom_score_adj to the lowest possible value (-1000)
+ * which should signify "do not oom kill".
+ */
+void disable_oom_kill();
+
+/**
  * Generate a random number in the range [min, max].
  */
 static inline

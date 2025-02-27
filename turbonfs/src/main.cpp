@@ -199,6 +199,11 @@ static void aznfsc_ll_init(void *userdata,
      */
     set_kernel_readahead();
 
+    /*
+     * Disable OOM killing for aznfsclient process if user has selected.
+     */
+    disable_oom_kill();
+
     AZLogDebug("===== fuse_conn_info fields start =====");
     AZLogDebug("proto_major = {}", conn->proto_major);
     AZLogDebug("proto_minor = {}", conn->proto_minor);
