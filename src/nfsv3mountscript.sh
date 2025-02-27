@@ -454,14 +454,21 @@ fix_mount_options()
 
     if [ "$USING_AZNFSCLIENT" == true ]; then
         if [ -z "$config_file_path" ] || [ ! -f "$config_file_path" ]; then
-            pecho "Config file is not provided or is invalid: $config_file_path"
-            pecho "Using default config file: $CONFIG_FILE_PATH"
+            #
+            # If user has explicitly specified a config file, bail out if we
+            # cannot use it.
+            #
+            if [ -n "$config_file_path" ]; then
+                eecho "Config file not found or not a regular file: $config_file_path"
+                exit 1
+            fi
             if [ ! -f "$CONFIG_FILE_PATH" ]; then
                 eecho "Default config file not found!"
                 eecho "Provide a config file using the configfile=/path/to/your/config.yaml mount option, or create a valid config file at: $CONFIG_FILE_PATH, and try again!"
                 eecho "Refer sample config file at: $SAMPLE_CONFIG_PATH"
                 exit 1
             fi
+            vvecho "Using default config file: $CONFIG_FILE_PATH"
         else
             vvecho "Using config file: $config_file_path"
             CONFIG_FILE_PATH=$config_file_path
