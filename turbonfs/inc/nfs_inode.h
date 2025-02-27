@@ -173,6 +173,8 @@ struct nfs_inode
      * any of our readdirectory_cache,s.
      *
      * See comment above inode_map.
+     *
+     * See comment above forget_expected.
      */
     mutable std::atomic<uint64_t> lookupcnt = 0;
     mutable std::atomic<uint64_t> dircachecnt = 0;
@@ -394,6 +396,11 @@ public:
      *
      * We use this for forgetting all inodes on unmount, and also for
      * debugging to see if fuse forgets to call forget :-)
+     *
+     * Note: In nfs_inode::decref() we assert that lookupcnt is always
+     *       greater than or equal to forget_expected, hence wherever we
+     *       increment both we must increment forget_expected after lookupcnt
+     *       and v.v. we must decrement forget_expected before lookupcnt.
      */
     std::atomic<int64_t> forget_expected = 0;
 

@@ -5134,6 +5134,8 @@ static void readdirplus_callback(
                     nfs_inode->forget_expected--;
                     dir_entry.reset();
                     nfs_inode->decref();
+                    assert(nfs_inode->lookupcnt >=
+                            (uint64_t) nfs_inode->forget_expected);
                 }
             } else {
                 AZLogDebug("[{}] {}/{}: Dropping ref since couldn't fit in "
@@ -5149,6 +5151,8 @@ static void readdirplus_callback(
                 nfs_inode->forget_expected--;
                 dir_entry.reset();
                 nfs_inode->decref();
+                assert(nfs_inode->lookupcnt >=
+                        (uint64_t) nfs_inode->forget_expected);
             }
 
             entry = entry->nextentry;
@@ -5693,6 +5697,8 @@ void rpc_task::send_readdir_or_readdirplus_response(
             if (it->is_dot_or_dotdot()) {
                 it->nfs_inode->forget_expected--;
                 it->nfs_inode->decref();
+                assert(it->nfs_inode->lookupcnt >=
+                        (uint64_t) it->nfs_inode->forget_expected);
             }
         } else if (it->nfs_inode) {
             /*
@@ -5706,6 +5712,8 @@ void rpc_task::send_readdir_or_readdirplus_response(
             assert(it->nfs_inode->forget_expected > 0);
             it->nfs_inode->forget_expected--;
             it->nfs_inode->decref();
+            assert(it->nfs_inode->lookupcnt >=
+                    (uint64_t) it->nfs_inode->forget_expected);
         }
     }
 
@@ -5781,6 +5789,8 @@ void rpc_task::send_readdir_or_readdirplus_response(
         assert(it->nfs_inode->forget_expected > 0);
         it->nfs_inode->forget_expected--;
         it->nfs_inode->decref();
+        assert(it->nfs_inode->lookupcnt >=
+                (uint64_t) it->nfs_inode->forget_expected);
     }
 
     free(buf1);

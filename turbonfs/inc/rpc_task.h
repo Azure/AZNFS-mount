@@ -2312,6 +2312,7 @@ public:
                 assert(inode->forget_expected > 0);
                 inode->forget_expected--;
                 inode->decref();
+                assert(inode->lookupcnt >= (uint64_t) inode->forget_expected);
             }
         } else {
             DEC_GBL_STATS(fuse_responses_awaited, 1);
@@ -2375,6 +2376,7 @@ public:
              */
             inode->opencnt--;
             inode->decref();
+            assert(inode->lookupcnt >= (uint64_t) inode->forget_expected);
         } else {
             DEC_GBL_STATS(fuse_responses_awaited, 1);
         }
