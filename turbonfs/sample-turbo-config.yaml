@@ -29,8 +29,8 @@ acdirmin: 30
 acdirmax: 60
 actimeo: 300
 lookupcache: all
-rsize: 1048576
-wsize: 1048576
+rsize: 3145728
+wsize: 3145728
 
 #
 # Option controlling transport security, takes following values:
@@ -140,3 +140,11 @@ cache.data.user.max_size_mb: 16384
 #filecache.cachedir: /mnt
 #filecache.max_size_gb: 1000
 #cache_max_mb: 4096
+
+#
+# Config controlling misc system behaviour.
+#
+sys.resolve_before_reconnect: true
+sys.nodrc.remove_noent_as_success: true
+sys.nodrc.rename_noent_as_success: true
+sys.nodrc.create_exist_as_success: true

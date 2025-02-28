@@ -162,6 +162,14 @@ do { \
             _CHECK_INT(filecache.max_size_gb, AZNFSCFG_FILECACHE_MAX_GB_MIN, AZNFSCFG_FILECACHE_MAX_GB_MAX);
         }
 
+        /*
+         * Config affecting misc system behaviour.
+         */
+        _CHECK_BOOL(sys.resolve_before_reconnect);
+        _CHECK_BOOL(sys.nodrc.remove_noent_as_success);
+        _CHECK_BOOL(sys.nodrc.create_exist_as_success);
+        _CHECK_BOOL(sys.nodrc.rename_noent_as_success);
+
     } catch (const YAML::BadFile& e) {
         AZLogError("Error loading config file {}: {}", config_yaml, e.what());
         return false;
@@ -356,6 +364,10 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("filecache.enable = {}", filecache.enable);
     AZLogDebug("filecache.cachedir = {}", filecache.cachedir ? filecache.cachedir : "");
     AZLogDebug("filecache.max_size_gb = {}", filecache.max_size_gb);
+    AZLogDebug("sys.resolve_before_reconnect = {}", sys.resolve_before_reconnect);
+    AZLogDebug("sys.nodrc.remove_noent_as_success = {}", sys.nodrc.remove_noent_as_success);
+    AZLogDebug("sys.nodrc.create_exist_as_success = {}", sys.nodrc.create_exist_as_success);
+    AZLogDebug("sys.nodrc.rename_noent_as_success = {}", sys.nodrc.rename_noent_as_success);
     AZLogDebug("account = {}", account);
     AZLogDebug("container = {}", container);
     AZLogDebug("cloud_suffix = {}", cloud_suffix);

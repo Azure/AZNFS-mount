@@ -148,7 +148,9 @@ bool nfs_connection::open()
      * LLAM may cause Blob NFS endpoint IP to change, direct libnfs to resolve
      * before reconnect.
      */
-    nfs_set_resolve_on_reconnect(nfs_context);
+    if (aznfsc_cfg.sys.resolve_before_reconnect) {
+        nfs_set_resolve_on_reconnect(nfs_context);
+    }
 
     /*
      * Call libnfs for mounting the share.

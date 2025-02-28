@@ -883,7 +883,7 @@ static void commit_callback(
 
     AZLogDebug("[{}] commit_callback, number of bc committed: {}",
                ino, bc_vec_ptr->size());
-    
+
     uint64_t commit_bytes = 0;
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -1723,7 +1723,7 @@ static void createfile_callback(
              */
             inode->invalidate_attribute_cache();
         }
-    
+
         /*
          * See comment above readdirectory_cache::lookuponly, why we don't need
          * to call UPDATE_INODE_ATTR() to invalidate the readdirectory_cache,
@@ -1752,6 +1752,7 @@ static void createfile_callback(
             task->rpc_api->create_task.get_fuse_file());
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
+        /* TODO: Add support for aznfsc_cfg.sys.nodrc.create_exist_as_success */
     } else {
         task->reply_error(status);
     }
@@ -1930,6 +1931,7 @@ void mknod_callback(
             nullptr);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
+        /* TODO: Add support for aznfsc_cfg.sys.nodrc.create_exist_as_success */
     } else {
         task->reply_error(status);
     }
@@ -1997,7 +1999,7 @@ void mkdir_callback(
              */
             inode->invalidate_attribute_cache();
         }
-    
+
         /*
          * See comment above readdirectory_cache::lookuponly, why we don't need
          * to call UPDATE_INODE_ATTR() to invalidate the readdirectory_cache,
@@ -2051,7 +2053,10 @@ void unlink_callback(
     // Are we unlinking a silly-renamed file?
     const bool for_silly_rename =
         task->rpc_api->unlink_task.get_for_silly_rename();
-    const int status = task->status(rpc_status, NFS_STATUS(res));
+    int status = task->status(rpc_status, NFS_STATUS(res));
+    const bool noent_is_success =
+        (rpc_pdu_is_retransmitted(rpc_get_pdu(rpc)) &&
+         aznfsc_cfg.sys.nodrc.remove_noent_as_success);
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -2061,7 +2066,23 @@ void unlink_callback(
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
+    } else if (NFS_STATUS(res) == NFS3ERR_NOENT && noent_is_success) {
+        AZLogWarn("[{}/{}] unlink_callback{}: Treating NFS3ERR_NOENT as "
+                  "success for a retransmitted REMOVE RPC",
+                  parent_ino, task->rpc_api->unlink_task.get_file_name(),
+                  for_silly_rename ? "(silly_rename)" : "");
+        status = 0;
+        goto handle_success;
     } else {
+handle_success:
+        /*
+         * REMOVE3res_u.resok and REMOVE3res_u.resfail have the same layout,
+         * so we can safely access REMOVE3res_u.resok for both success and
+         * failure cases.
+         */
+        static_assert(sizeof(res->REMOVE3res_u.resok) ==
+                      sizeof(res->REMOVE3res_u.resfail));
+
         if (status == 0) {
             if (!res->REMOVE3res_u.resok.dir_wcc.after.attributes_follow) {
                 AZLogDebug("[{}] Postop attributes not received for unlink, "
@@ -2142,7 +2163,11 @@ void rmdir_callback(
         task->rpc_api->rmdir_task.get_parent_ino();
     struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
-    const int status = task->status(rpc_status, NFS_STATUS(res));
+    int status = task->status(rpc_status, NFS_STATUS(res));
+    const bool noent_is_success =
+        (rpc_pdu_is_retransmitted(rpc_get_pdu(rpc)) &&
+         aznfsc_cfg.sys.nodrc.remove_noent_as_success);
+
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -2152,7 +2177,22 @@ void rmdir_callback(
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
+    } else if (NFS_STATUS(res) == NFS3ERR_NOENT && noent_is_success) {
+        AZLogWarn("[{}/{}] rmdir_callback: Treating NFS3ERR_NOENT as "
+                  "success for a retransmitted RMDIR RPC",
+                  ino, task->rpc_api->rmdir_task.get_dir_name());
+        status = 0;
+        goto handle_success;
     } else {
+handle_success:
+        /*
+         * RMDIR3res_u.resok and RMDIR3res_u.resfail have the same layout,
+         * so we can safely access RMDIR3res_u.resok for both success and
+         * failure cases.
+         */
+        static_assert(sizeof(res->RMDIR3res_u.resok) ==
+                      sizeof(res->RMDIR3res_u.resfail));
+
         if (status == 0) {
             if (!res->RMDIR3res_u.resok.dir_wcc.after.attributes_follow) {
                 AZLogDebug("[{}] Postop attributes not received for rmdir, "
@@ -2268,6 +2308,7 @@ void symlink_callback(
             nullptr);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
+        /* TODO: Add support for aznfsc_cfg.sys.nodrc.create_exist_as_success */
     } else {
         task->reply_error(status);
     }
@@ -2370,6 +2411,7 @@ void rename_callback(
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
+        /* TODO: Add support for aznfsc_cfg.sys.nodrc.rename_noent_as_success */
     } else {
         if (status == 0) {
             if (!res->RENAME3res_u.resok.fromdir_wcc.after.attributes_follow) {
@@ -3232,7 +3274,7 @@ void rpc_task::run_setattr()
                  */
                 inode->truncate_start(attr->st_size);
             }
-            
+
             AZLogDebug("Setting size to {}", attr->st_size);
             args.new_attributes.size.set_it = 1;
             args.new_attributes.size.set_size3_u.size = attr->st_size;

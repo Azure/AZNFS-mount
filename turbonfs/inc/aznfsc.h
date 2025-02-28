@@ -322,6 +322,41 @@ typedef struct aznfsc_cfg
         // Max filecache size in GB.
         int max_size_gb = -1;
     } filecache;
+
+    /*************************************************
+     **           System related config             **
+     *************************************************/
+     struct {
+        /*
+         * Resolve server name before reconnect, else connect to the last
+         * resolved IP.
+         */
+        bool resolve_before_reconnect = true;
+
+        /*
+         * How should we behave when a retransmitted RPC fails possibly due to
+         * lack of federated DRC at the server.
+         */
+        struct {
+            /*
+             * REMOVE/RMDIR failing with NFS3ERR_NOENT must be treated as
+             * success.
+             */
+            bool remove_noent_as_success = true;
+
+            /*
+             * CREATE/MKNOD/MKDIR/SYMLINK failing with NFS3ERR_EXIST must be
+             * treated as success.
+             */
+            bool create_exist_as_success = true;
+
+            /*
+             * RENAME failing with NFS3ERR_NOENT must be treated as success.
+             */
+            bool rename_noent_as_success = true;
+        } nodrc;
+     } sys;
+
     /*
      * TODO:
      * - Add auth related config.
