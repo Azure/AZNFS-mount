@@ -135,6 +135,16 @@ bool nfs_connection::open()
     }
 
     /*
+     * Default hash size used for queueing RPC requests is very small.
+     * Since we can keep thousands of RPC requests outstanding, bump
+     * it up.
+     */
+    if (nfs_set_hash_size(nfs_context, 1024)) {
+        AZLogError("Failed to set libnfs hash size to 1024");
+        goto destroy_context;
+    }
+
+    /*
      * LLAM may cause Blob NFS endpoint IP to change, direct libnfs to resolve
      * before reconnect.
      */
