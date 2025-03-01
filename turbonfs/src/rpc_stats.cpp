@@ -110,6 +110,8 @@ void rpc_stats_az::dump_stats()
         _CUM(num_reconnects);
         _CUM(outqueue_len);
         _CUM(waitpdu_len);
+        _CUM(num_write_eagain);
+        _CUM(tot_write_bytes_before_eagain);
 #undef _CUM
     }
 
@@ -156,6 +158,13 @@ void rpc_stats_az::dump_stats()
                   " RPC requests retransmitted\n";
     str += "  " + std::to_string(cum_stats.num_reconnects) +
                   " Reconnect attempts\n";
+    if (cum_stats.num_write_eagain) {
+        str += "  " + std::to_string(cum_stats.num_write_eagain) +
+                      " Socket writes returned EAGAIN\n";
+        str += "  " + std::to_string(cum_stats.tot_write_bytes_before_eagain /
+                                     cum_stats.num_write_eagain) +
+                      " Avg bytes before socket write returned EAGAIN\n";
+    }
     str += "  " + std::to_string(client.get_transport().get_avg_qlen_r()) +
                   " Avg rpc qlen seen by reads\n";
     str += "  " + std::to_string(client.get_transport().get_max_qlen_r()) +
