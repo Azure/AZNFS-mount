@@ -2344,7 +2344,10 @@ void rename_callback(
     INJECT_JUKEBOX(res, task);
 #endif
 
-    const int status = task->status(rpc_status, NFS_STATUS(res));
+    int status = task->status(rpc_status, NFS_STATUS(res));
+    const bool noent_is_success =
+        (rpc_pdu_is_retransmitted(rpc_get_pdu(rpc)) &&
+         aznfsc_cfg.sys.nodrc.rename_noent_as_success);
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -2374,7 +2377,21 @@ void rename_callback(
         // Silly rename has the same source and target dir.
         assert(parent_ino == newparent_ino);
 
-        if (status == 0) {
+        /*
+         * For silly rename it's safe to assume NFS3ERR_NOENT as success,
+         * because we will only issue silly rename for an existing file, so
+         * if we get a NFS3ERR_NOENT failure and RPC was retransmitted, it's
+         * highly likely that rename succeeded.
+         *
+         * For a regular rename, it's more riskier as user can issue rename
+         * for a non-existent file, but it's more likely that they won't do
+         * that and also chances of RPC retransmit is very low and even if
+         * it happens we return success for a rename that didn't happen
+         * vs we would have returned failure for a rename that succeeded.
+         * We make a choice that's less likely to break applications.
+         */
+        if (status == 0 ||
+            (NFS_STATUS(res) == NFS3ERR_NOENT && noent_is_success)) {
             silly_rename_inode->silly_renamed_name =
                 task->rpc_api->rename_task.get_newname();
             silly_rename_inode->parent_ino =
@@ -2388,10 +2405,11 @@ void rename_callback(
              */
             parent_inode->incref();
 
-            AZLogInfo("[{}] Silly rename ({}) successfully completed! "
-                    "to-delete: {}/{}",
+            AZLogInfo("[{}] Silly rename ({}) {}! to-delete: {}/{}",
                     silly_rename_ino,
                     rename_triggered_silly_rename ? "rename" : "unlink",
+                    status == 0 ? "successfully completed"
+                                : "failed with NFS3ERR_NOENT and treated as success",
                     silly_rename_inode->parent_ino,
                     silly_rename_inode->silly_renamed_name);
 
@@ -2411,8 +2429,26 @@ void rename_callback(
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
-        /* TODO: Add support for aznfsc_cfg.sys.nodrc.rename_noent_as_success */
+    } else if (NFS_STATUS(res) == NFS3ERR_NOENT && noent_is_success) {
+        AZLogWarn("[{}/{} -> {}/{}] {}rename_callback{}: Treating NFS3ERR_NOENT "
+                  "as success for a retransmitted RENAME RPC",
+                   parent_ino,
+                   task->rpc_api->rename_task.get_name(),
+                   parent_ino,
+                   task->rpc_api->rename_task.get_newname(),
+                   silly_rename ? "(silly) " : "");
+        status = 0;
+        goto handle_success;
     } else {
+handle_success:
+        /*
+         * RENAME3res_u.resok and RENAME3res_u.resfail have the same layout,
+         * so we can safely access RENAME3res_u.resok for both success and
+         * failure cases.
+         */
+        static_assert(sizeof(res->RENAME3res_u.resok) ==
+                      sizeof(res->RENAME3res_u.resfail));
+
         if (status == 0) {
             if (!res->RENAME3res_u.resok.fromdir_wcc.after.attributes_follow) {
                 AZLogDebug("[{}] Postop attributes not received for rename, "
