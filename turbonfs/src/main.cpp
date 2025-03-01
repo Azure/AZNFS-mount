@@ -647,6 +647,13 @@ int main(int argc, char *argv[])
     AZLogInfo("Logfile: {}", log_file_path);
 
     /*
+     * Once we have the logfile, set default error message to convey to the
+     * user.
+     */
+    status_pipe_error_string = "Mount failed, check log file " +
+                               log_file_path + " for details";
+
+    /*
      * Hide fuse'ism and behave like a normal POSIX fs.
      * TODO: Make this configurable?
      */

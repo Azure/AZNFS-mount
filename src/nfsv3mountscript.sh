@@ -971,7 +971,7 @@ aznfsclient_mount()
     # Get the gatepass before the actual mount.
     #
     gatepass_mount
-    $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS
+    $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS &
 
     vvecho "Waiting for mount to complete (timeout: 30 seconds)..."
 
