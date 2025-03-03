@@ -126,6 +126,14 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
      * Take stock of things, no sooner than 5 secs.
      */
     if (now_sec > (last_sec + 5)) {
+        /*
+         * Refresh read/write MBps if not already done.
+         * We call periodic_updater() from inline_prune() which is only
+         * called when there are read/write IOs, so we might be using stale
+         * read/write MBps values if read/write requests are not happening.
+         */
+        client->periodic_updater();
+
         const uint64_t r_MBps = client->get_read_MBps();
         const uint64_t w_MBps = client->get_write_MBps();
 
