@@ -1,0 +1,93 @@
+parameters:
+
+  - name: publish_artifacts
+    displayName: 'Publish Artifacts to Linux Repos'
+    type: boolean
+    default: false
+
+  - name: draft
+    displayName: 'Post as Draft Release'
+    type: boolean
+    default: false
+
+  - name: prerelease
+    displayName: 'Post as PreRelease'
+    type: boolean
+    default: false
+
+  - name: update_version
+    displayName: 'Update Version'
+    type: boolean
+    default: false
+
+  - name: versionName
+    displayName: "Version Name"
+    type: string
+    default: "0.0.0"
+
+# Do not trigger this pipeline automatically
+trigger:
+  - none
+
+# Do not trigger this pipeline by pull requests
+pr:
+  - none
+
+stages:
+  - stage: BuildAndPackage
+    displayName: "Build and Package Artifacts"
+    jobs:
+      - job: Build_Package
+        displayName: "Build and Package"
+        pool:
+          vmImage: "ubuntu-latest"
+
+        variables:
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/AZNFS-mount'
+
+        steps:
+          # - checkout: self
+
+          - script: |
+              git clone https://github.com/Azure/AZNFS-mount
+            displayName: 'Checkout Code'
+            workingDirectory: $(root_dir)
+
+          # - script: |
+          #     echo "Building version ${{ parameters.versionName }}"
+          #   displayName: "Print Version Info"
+
+          - script: |
+              sudo apt-get update
+              sudo apt install -y gcc-aarch64-linux-gnu
+            displayName: "Install Cross-Compile Tools"
+
+          - script: |
+              export RELEASE_NUMBER=${{ parameters.versionName }}
+              export STG_DIR=$(work_dir)
+              export SOURCE_DIR=$(work_dir)
+              chmod +x $(work_dir)/package.sh
+              $(work_dir)/package.sh
+            displayName: "Run Package Script"
+
+          - script: |
+              cp $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)
+              cp $(work_dir)/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)
+              cp $(work_dir)/suse/root/rpmbuild/RPMS/x86_64/aznfs_sles-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)
+              cp $(work_dir)/stunnel/root/rpmbuild/RPMS/x86_64/aznfs_stunnel_custom-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)
+              cp $(work_dir)/scripts/aznfs_install.sh $(Build.ArtifactStagingDirectory)
+              cp $(work_dir)/tarball/aznfs-${{ parameters.versionName }}-1.x86_64.tar.gz $(Build.ArtifactStagingDirectory)
+              cp $(work_dir)/tarball/aznfs-${{ parameters.versionName }}-1.arm64.tar.gz $(Build.ArtifactStagingDirectory)
+              echo "Listing Built Files..."
+              ls -R $(Build.ArtifactStagingDirectory)
+            displayName: "List Build Outputs"
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)
+              artifactName: 'aznfs-temp'
+
+
