@@ -129,7 +129,7 @@ process_nfsv4_mounts()
     #
     #findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
     findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
-
+    #daniewo use this findmnt to check against the fslocation file for the IP
 
     #
     # For no matching mounts also, findmnt exits with a failure return, so check
@@ -168,6 +168,8 @@ process_nfsv4_mounts()
         accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
         vecho "accept_port: $accept_port"
 
+        
+
         #
         # Delete entry from MOUNTMAPv4 if there are no mounted shares on that host.
         # As long as we have at least one mount using the MOUNTMAPv4 entry, we leave
@@ -198,6 +200,29 @@ process_nfsv4_mounts()
             #if IP is updated, then reconfigure stunnel and probably go to last step and skip this. or move this check
             # above
 
+
+            #daniewo get dest ip from mountmap file
+            ip_address=$(echo $l_conf | awk -F'.file' '{print $1}')
+            echo "The extracted IP address is: $ip_address"
+
+            #get matching ip address from fs location entry for the account name FQDN
+            local fslocation_entry=$(grep -m1 $l_host $VIRTUALFSLOCATION)
+            #probably need to check if it returns empty as well.
+
+            eecho "daniewo fslocation_entry = $fslocation_entry"
+
+            
+
+
+            #extract fslocation entry
+            IFS=" " read l_fqdn new_ip l_prt <<< $fslocation_entry
+            eecho "daniewo $l_fqdn, $new_ip, $l_prt"
+
+
+            # check fslocation ip against the old ip that was in mountmap file
+            if [ "$ip_address" != "$new_ip" ]; then
+            eecho "daniewwo IP for $l_host changed [$l_nfsip -> $new_ip]."
+            fi
 
             # Check if checksumHash for stunnel.conf file has changed.
             # Customers should not modify stunnel.conf files created by aznfs mount helper.
