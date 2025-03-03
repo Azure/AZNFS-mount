@@ -21,17 +21,17 @@ mkdir -p build && cd build
 
 if [ "$BUILD_TYPE" == "Debug" ]; then
     # tcmalloc doesn't play well with ASAN.
-    TCMALLOC=OFF
+    JEMALLOC=ON
     PARANOID=ON
     INSECURE_AUTH_FOR_DEVTEST=ON
 else
-    TCMALLOC=ON
+    JEMALLOC=ON
     PARANOID=OFF
     INSECURE_AUTH_FOR_DEVTEST=OFF
 fi
 
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-      -DENABLE_TCMALLOC=$TCMALLOC \
+      -DENABLE_JEMALLOC=$JEMALLOC \
       -DENABLE_PARANOID=$PARANOID \
       -DENABLE_INSECURE_AUTH_FOR_DEVTEST=$INSECURE_AUTH_FOR_DEVTEST \
       -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..

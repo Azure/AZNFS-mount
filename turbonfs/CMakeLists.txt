@@ -17,7 +17,8 @@ option(ENABLE_DOCUMENTATION "Build Documentation" OFF)
 option(ENABLE_PARANOID "Enable paranoid checking in the code" ON)
 option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" OFF)
 option(ENABLE_CHATTY "Enable super verbose logs" OFF)
-option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
+option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" OFF)
+option(ENABLE_JEMALLOC "Use jemalloc for malloc/free/new/delete" ON)
 option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" OFF)
 
 #
@@ -124,6 +125,23 @@ if(NOT azure-storage-blobs-cpp_FOUND)
 endif()
 
 #
+# Ensure pkg_search_module(), needed for configuring some packages.
+#
+find_package(PkgConfig QUIET)
+if(NOT PKG_CONFIG_FOUND)
+    message(STATUS "pkg-config not found, trying to install pkg-config!")
+    execute_process(COMMAND sudo apt install -y pkg-config
+            RESULT_VARIABLE PKGCONFIG_INSTALL_RESULT)
+    if(NOT PKGCONFIG_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install pkg-config failed with ${PKGCONFIG_INSTALL_RESULT}, try installing pkg-config manually and then run cmake again")
+    else()
+        # Call once more to ensure above install completed fine and also
+        # add the pkg_search_module() command.
+        find_package(PkgConfig REQUIRED)
+    endif()
+endif()
+
+#
 # We need meson to compile libfuse.
 #
 find_program(MESON_EXECUTABLE meson QUIET)
@@ -185,6 +203,10 @@ endif()
 # Find tcmalloc and if not found try to install.
 #
 if(ENABLE_TCMALLOC)
+if(ENABLE_JEMALLOC)
+    message(FATAL_ERROR "Only one of ENABLE_TCMALLOC and ENABLE_JEMALLOC can be set")
+endif()
+
 find_package(tcmalloc QUIET)
 if(NOT tcmalloc_FOUND)
     message(STATUS "tcmalloc not found, trying to install libgoogle-perftools-dev!")
@@ -201,6 +223,32 @@ else()
     message(STATUS "Using tcmalloc lib ${tcmalloc_LIBRARY}")
     message(STATUS "Using tcmalloc include dir ${tcmalloc_INCLUDE_DIR}")
 endif()
+endif()
+
+#
+# Find jemalloc and if not found try to install.
+#
+if(ENABLE_JEMALLOC)
+if(ENABLE_TCMALLOC)
+    message(FATAL_ERROR "Only one of ENABLE_TCMALLOC and ENABLE_JEMALLOC can be set")
+endif()
+
+pkg_search_module(JEMALLOC QUIET jemalloc)
+
+if(NOT JEMALLOC_FOUND)
+    message(STATUS "jemalloc not found, trying to install libjemalloc-dev!")
+    execute_process(COMMAND sudo apt install -y libjemalloc-dev
+            RESULT_VARIABLE JEMALLOC_INSTALL_RESULT)
+    if(NOT JEMALLOC_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install libjemalloc-dev failed with ${JEMALLOC_INSTALL_RESULT}, try installing libjemalloc-dev manually and then run cmake again")
+    else()
+        # Call once more to ensure above install completed fine and also
+        # will set JEMALLOC_LIBRARIES variable.
+        pkg_search_module(JEMALLOC REQUIRED jemalloc)
+    endif()
+endif()
+
+message(STATUS "Using jemalloc lib ${JEMALLOC_LIBRARIES}")
 endif()
 
 #
@@ -305,6 +353,11 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
                       ${tcmalloc_LIBRARY})
+endif()
+
+if(ENABLE_JEMALLOC)
+target_link_libraries(${CMAKE_PROJECT_NAME}
+                      ${JEMALLOC_LIBRARIES})
 endif()
 
 install(TARGETS ${CMAKE_PROJECT_NAME})
