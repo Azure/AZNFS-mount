@@ -476,6 +476,7 @@ process_nfsv4_nontlsmounts()
             if ! update_mountmapv3_entry "$line" "$l_host $l_ip $new_ip"; then
                 eecho "Will reattempt the operation in next iteration."
             else
+                eecho "daniewo empty"
                 # mountpoint2048=$(echo "$findmnt" 2>/dev/null | egrep -m1 " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}')
                 # mountpoint2048=$(echo -e "$mountpoint2048")
                 # if [ -n "$mountpoint2048" ]; then
