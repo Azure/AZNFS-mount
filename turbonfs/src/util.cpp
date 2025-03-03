@@ -1,9 +1,38 @@
 #include "aznfsc.h"
 #include "util.h"
 
+#include <unistd.h>
 #include <sys/sysmacros.h>
 
 namespace aznfsc {
+
+
+/**
+ * Get total RAM size in bytes.
+ * Note that this is the total RAM and not available RAM (which will be lesser
+ * and can be much lesser).
+ * If it cannot find the RAM size, which is extremely unlikely, it returns 0.
+ */
+uint64_t get_total_ram()
+{
+    long page_size = ::sysconf(_SC_PAGE_SIZE);
+    if (page_size == -1) {
+        AZLogError("sysconf(_SC_PAGE_SIZE) failed: {}", ::strerror(errno));
+        page_size = 4096;
+        assert(0);
+    }
+    assert(page_size == 4096);
+
+    const long num_pages = ::sysconf(_SC_PHYS_PAGES);
+    if (num_pages == -1) {
+        AZLogError("sysconf(_SC_PHYS_PAGES) failed: {}", ::strerror(errno));
+        assert(0);
+        return 0;
+    }
+    assert(num_pages != 0);
+
+    return num_pages * page_size;
+}
 
 /**
  * Set readahead_kb for kernel readahead.

@@ -114,8 +114,9 @@ fuse_max_background: 4096
 # Readdir data can be cached in the kernel and/or user caches.
 # It can be controlled using cache.readdir.* config.
 #
-# File data can be cached in the kernel and/or user caches. User cache can be
-# memory and/or file backed.
+# File data can be cached in the kernel and/or user caches.
+# User cache can be memory and/or file backed (file backed cache is currently
+# not supported).
 # Memory backed caches are controlled using cache.data.* configs, while
 # file backed cache are controlled using filecache.* configs.
 #
@@ -125,13 +126,18 @@ fuse_max_background: 4096
 # for disabling readaheads completely.
 # For most cases you don't need to specify readahead_kb explicitly.
 #
+# cache.data.user.max_size_mb can be expressed as a percentage or an absolute
+# value expressed in MiB. Percentage is of the total RAM in the system. It can
+# be expressed as e.g., "60%. If not specified the default is 80% of the total
+# RAM.
+#
 #readahead_kb: 16384
 cache.attr.user.enable: true
 cache.readdir.kernel.enable: true
 cache.readdir.user.enable: true
 cache.data.kernel.enable: false
 cache.data.user.enable: true
-cache.data.user.max_size_mb: 16384
+#cache.data.user.max_size_mb: 4096
 
 #
 # These are currently not supported.

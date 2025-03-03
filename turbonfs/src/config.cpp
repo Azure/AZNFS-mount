@@ -78,6 +78,24 @@ do { \
 #define _CHECK_STR(var) __CHECK_STR(var, is_valid_##var, false)
 #define _CHECK_STR2(var, is_valid) __CHECK_STR(var, is_valid, false)
 
+/*
+ * Macro to check validity of config var of percentage type.
+ * var can be set to one of the following values:
+ * 1) -2 => var is not specified in the config.
+ * 2) -1 => var is not a valid percentage string. Caller must try other valid
+ *          interpretations.
+ * 3) var >= 0 && var <= 100 => var is specified as a percentage value.
+ */
+#define _MAYBE_PERCENT(var) \
+do { \
+    if (!config[#var] || config[#var].as<std::string>() == "null") { \
+        var = -2; \
+        break; \
+    }\
+    var = get_percent_value(config[#var].as<std::string>()); \
+    assert((var == -1) || (var >= 0 && var <= 100)); \
+} while (0);
+
     if (config_yaml == nullptr) {
         return true;
     }
@@ -118,7 +136,7 @@ do { \
         _CHECK_INT(actimeo, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
         _CHECK_STR(lookupcache);
         _CHECK_STR(consistency);
-        
+
         _CHECK_BOOL(auth);
 
         /*
@@ -152,14 +170,52 @@ do { \
 
         _CHECK_BOOL(cache.data.user.enable);
         if (cache.data.user.enable) {
-            _CHECK_INT(cache.data.user.max_size_mb,
-                       AZNFSCFG_CACHE_MAX_MB_MIN, AZNFSCFG_CACHE_MAX_MB_MAX);
+            /*
+             * cache.data.user.max_size_mb can be specified as a percentage
+             * value, in which case it's the percentage of the total RAM size
+             * else it's an absolute size in MB.
+             */
+            _MAYBE_PERCENT(cache.data.user.max_size_mb);
+
+            if (cache.data.user.max_size_mb >= 0) {
+                AZLogDebug("Using {}% of total RAM {}MB for "
+                           "cache.data.user.max_size_mb",
+                           cache.data.user.max_size_mb,
+                           (get_total_ram() / (1024 * 1024)));
+                cache.data.user.max_size_mb =
+                    (cache.data.user.max_size_mb / 100.0) *
+                    (get_total_ram() / (1024 * 1024));
+                if (cache.data.user.max_size_mb < AZNFSCFG_CACHE_MAX_MB_MIN ||
+                    cache.data.user.max_size_mb > AZNFSCFG_CACHE_MAX_MB_MAX) {
+                    throw YAML::Exception(
+                            config["cache.data.user.max_size_mb"].Mark(),
+                            std::string("Invalid value for config cache.data.user.max_size_mb: ") +
+                            config["cache.data.user.max_size_mb"].as<std::string>().c_str() +
+                            std::string(", resultant value ") +
+                            std::to_string(cache.data.user.max_size_mb) +
+                            std::string(" is not in valid range [") +
+                            std::to_string(AZNFSCFG_CACHE_MAX_MB_MIN) +
+                            std::string(", ") +
+                            std::to_string(AZNFSCFG_CACHE_MAX_MB_MAX) +
+                            std::string("]"));
+                }
+            } else if (cache.data.user.max_size_mb == -1) {
+                /*
+                 * Not expressed as a percentage, try absolute MB.
+                 */
+                _CHECK_INT(cache.data.user.max_size_mb,
+                           AZNFSCFG_CACHE_MAX_MB_MIN, AZNFSCFG_CACHE_MAX_MB_MAX);
+            }
+        } else {
+            cache.data.user.max_size_mb = 0;
         }
 
         _CHECK_BOOL(filecache.enable);
         if (filecache.enable) {
             _CHECK_STR2(filecache.cachedir, is_valid_cachedir);
             _CHECK_INT(filecache.max_size_gb, AZNFSCFG_FILECACHE_MAX_GB_MIN, AZNFSCFG_FILECACHE_MAX_GB_MAX);
+        } else {
+            filecache.max_size_gb = 0;
         }
 
         /*
@@ -273,8 +329,10 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     if (readahead_kb == -1)
         readahead_kb = AZNFSCFG_READAHEAD_KB_DEF;
     if (cache.data.user.enable) {
-        if (cache.data.user.max_size_mb == -1)
-            cache.data.user.max_size_mb = AZNFSCFG_CACHE_MAX_MB_DEF;
+        if (cache.data.user.max_size_mb < 0)
+            cache.data.user.max_size_mb =
+                (AZNFSCFG_CACHE_MAX_MB_PERCENT_DEF / 100.0) *
+                (get_total_ram() / (1024 * 1024));
     }
     if (filecache.enable) {
         if (filecache.max_size_gb == -1)

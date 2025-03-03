@@ -21,6 +21,14 @@ using namespace std::chrono;
 namespace aznfsc {
 
 /**
+ * Get total RAM size in bytes.
+ * Note that this is the total RAM and not available RAM (which will be lesser
+ * and can be much lesser).
+ * If it cannot find the RAM size, which is extremely unlikely, it returns 0.
+ */
+uint64_t get_total_ram();
+
+/**
  * Set readahead_kb for kernel readahead.
  * This sets the kernel readahead value of aznfsc_cfg.readahead_kb iff kernel
  * data cache is enabled and user cache is not enabled. We don't want double
@@ -141,6 +149,31 @@ static inline
 bool is_valid_subscriptionid(const std::string& subscriptionid)
 {
     return is_valid_guid(subscriptionid);
+}
+
+/**
+ * A valid percentage string is of the form "80%" where the number must be
+ * >= 0 and <= 100. get_percent_value() will return the integer percentage
+ * value or -1 if percentstr is not a valid percentage string.
+ */
+static inline
+int get_percent_value(const std::string& percentstr)
+{
+    int percent_value;
+    char percent_char;
+    const int ret =
+        ::sscanf(percentstr.c_str(), "%d%c", &percent_value, &percent_char);
+    if (ret == 2 && percent_char == '%' &&
+        percent_value >= 0 && percent_value <= 100) {
+        return percent_value;
+    }
+    return -1;
+}
+
+static inline
+bool is_valid_percentage_string(const std::string& percentstr)
+{
+    return get_percent_value(percentstr) != -1;
 }
 
 /**
