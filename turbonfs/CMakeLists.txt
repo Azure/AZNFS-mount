@@ -243,12 +243,13 @@ if(NOT JEMALLOC_FOUND)
         message(FATAL_ERROR "apt install libjemalloc-dev failed with ${JEMALLOC_INSTALL_RESULT}, try installing libjemalloc-dev manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
-        # will set JEMALLOC_LIBRARIES variable.
+        # will set JEMALLOC_LIBRARY_DIRS variable.
         pkg_search_module(JEMALLOC REQUIRED jemalloc)
     endif()
 endif()
 
-message(STATUS "Using jemalloc lib ${JEMALLOC_LIBRARIES}")
+# We want to link against the static jemalloc lib.
+message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a")
 endif()
 
 #
@@ -357,7 +358,7 @@ endif()
 
 if(ENABLE_JEMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${JEMALLOC_LIBRARIES})
+                      ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a)
 endif()
 
 install(TARGETS ${CMAKE_PROJECT_NAME})

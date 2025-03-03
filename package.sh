@@ -186,7 +186,19 @@ export VCPKG_ROOT=${SOURCE_DIR}/turbonfs/extern/vcpkg
 # We need to update the submodules before calling cmake as toolchain build expects it.
 git submodule update --recursive --init
 mkdir -p build && cd build
-cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
+
+if [ "${BUILD_TYPE}" == "Debug" ]; then
+    PARANOID=ON
+    INSECURE_AUTH_FOR_DEVTEST=ON
+else
+    PARANOID=OFF
+    INSECURE_AUTH_FOR_DEVTEST=OFF
+fi
+
+cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DENABLE_PARANOID=${PARANOID} \
+      -DENABLE_INSECURE_AUTH_FOR_DEVTEST=${INSECURE_AUTH_FOR_DEVTEST} \
+      -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
 make
 popd
 
