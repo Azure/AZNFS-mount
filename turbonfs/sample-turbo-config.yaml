@@ -137,6 +137,7 @@ cache.readdir.kernel.enable: true
 cache.readdir.user.enable: true
 cache.data.kernel.enable: false
 cache.data.user.enable: true
+#cache.data.user.max_size_mb: "60%"
 #cache.data.user.max_size_mb: 4096
 
 #
