@@ -1,0 +1,106 @@
+parameters:
+  - name: publish_artifacts
+    displayName: 'Publish Artifacts to Linux Repos'
+    type: boolean
+    default: false
+
+  - name: draft
+    displayName: 'Post as Draft Release'
+    type: boolean
+    default: false
+
+  - name: prerelease
+    displayName: 'Post as PreRelease'
+    type: boolean
+    default: false
+
+  - name: update_version
+    displayName: 'Update Version'
+    type: boolean
+    default: false
+
+  - name: versionName
+    displayName: "Version Name"
+    type: string
+    default: "0.0.0"
+
+# Do not trigger this pipeline automatically
+trigger:
+  - none
+
+# Do not trigger this pipeline by pull requests
+pr:
+  - none
+
+stages:
+  - stage: RemoveAllPackage
+    jobs:
+      - job: RemovePackage
+        timeoutInMinutes: 120
+      
+        pool:
+          vmImage: 'ubuntu-20.04'
+
+        steps:
+          - checkout: none
+
+          - task: PipAuthenticate@1
+            inputs:
+              artifactFeeds: 'One/aznfs'
+          - script: pip install pmc-cli
+            displayName: 'Install pmc-cli'
+
+          - task: AzureCLI@2
+            inputs:
+              addSpnToEnvironment: true
+              azureSubscription: 'Azure AZNFS'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+
+                  # Define the package name
+                  PACKAGE_NAME="aznfs"
+
+                  echo "package list ...... deb:"
+                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name "$PACKAGE_NAME"
+
+                  for id in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name "$PACKAGE_NAME" | jq -r '.results[].id'); do
+
+                    echo "Package ID: $id"
+
+                    # Remove the package from all repositories
+                    for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+                      echo "Removing package from repo: $repo"
+                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages "$id" "$repo"
+
+                      echo "Republishing repo: $repo"
+                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish "$repo"
+                    done
+                  done
+
+                  echo "package list ...... rpm:"
+                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name "$PACKAGE_NAME"
+
+
+                  for id in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name "$PACKAGE_NAME" | jq -r '.results[].id'); do
+
+                    echo "Package ID: $id"
+
+                    # Remove the package from all repositories
+                    for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+                      echo "Removing package from repo: $repo"
+                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages "$id" "$repo"
+
+                      echo "Republishing repo: $repo"
+                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish "$repo"
+                    done
+                  done
+
+                  
+
+
+                  
+
+
+
+
