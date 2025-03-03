@@ -176,20 +176,17 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
 gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
 
+#
 # We build the turbonfs project here, note that we can set all cmake options in the 
 # future using env variables.
-# Turn tcmalloc off for debug builds because it has some issues with asan.
-enable_tcmalloc="ON"
-if [ "${BUILD_TYPE}" == "Debug" ]; then
-	enable_tcmalloc="OFF"
-fi
+#
 
 pushd ${SOURCE_DIR}/turbonfs
 export VCPKG_ROOT=${SOURCE_DIR}/turbonfs/extern/vcpkg
 # We need to update the submodules before calling cmake as toolchain build expects it.
 git submodule update --recursive --init
 mkdir -p build && cd build
-cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DENABLE_TCMALLOC=$enable_tcmalloc -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
+cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
 make
 popd
 
