@@ -168,8 +168,6 @@ process_nfsv4_mounts()
         accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
         vecho "accept_port: $accept_port"
 
-        
-
         #
         # Delete entry from MOUNTMAPv4 if there are no mounted shares on that host.
         # As long as we have at least one mount using the MOUNTMAPv4 entry, we leave
@@ -200,7 +198,6 @@ process_nfsv4_mounts()
             #if IP is updated, then reconfigure stunnel and probably go to last step and skip this. or move this check
             # above
 
-
             #daniewo get dest ip from mountmap file
             ip_address=$(echo $l_conf | awk -F'.file' '{print $1}')
             echo "The extracted IP address is: $ip_address"
@@ -211,18 +208,16 @@ process_nfsv4_mounts()
 
             eecho "daniewo fslocation_entry = $fslocation_entry"
 
-            
-
-
             #extract fslocation entry
             IFS=" " read l_fqdn new_ip l_prt <<< $fslocation_entry
             eecho "daniewo $l_fqdn, $new_ip, $l_prt"
-
 
             # check fslocation ip against the old ip that was in mountmap file
             if [ "$ip_address" != "$new_ip" ]; then
             eecho "daniewwo IP for $l_host changed [$l_nfsip -> $new_ip]."
             fi
+
+            # update_mountmapv3_entry version of TLS which will update the mountmapv4 entry and update stunnel
 
             # Check if checksumHash for stunnel.conf file has changed.
             # Customers should not modify stunnel.conf files created by aznfs mount helper.
@@ -315,7 +310,6 @@ process_nfsv4_nontlsmounts()
     findmnt=$(findmnt | grep 'nfs4' | grep -v "$LOCALHOST")
 
     #the bulk of this logic could be shared between v3 and v4 but would need to parameterize the file names
-
 
     for line in $lines; do
         if [ -z "$line" ]; then
