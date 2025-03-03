@@ -2958,7 +2958,17 @@ bytes_chunk_cache::get_commit_pending_bcs(uint64_t *bytes) const
              * a commit only after the last flush completes. So, there should
              * not be anyone holding lock on these membufs.
              */
+#if 0
+            /*
+             * In case of kernel cache enabled, there is a case where copy_to_cache()
+             * try to copying new data on membuf with commit_pending flag true. In that
+             * case first lock the membuf. So this condition isnot true in that case.
+             *
+             * TODO: Once copy_to_cache() handles overwrite on commit_pending
+             *       data range, revisit this.
+             */
             assert(need_not_wait_for_lock);
+#endif
 
             /*
              * TODO: How do we handle the case when application starts writing

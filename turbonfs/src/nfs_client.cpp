@@ -1668,6 +1668,25 @@ void nfs_client::setattr(
     int to_set,
     struct fuse_file_info* file)
 {
+    struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
+
+    /*
+     * See similar comment in nfs_client::getattr().
+     *
+     * Note that fuse expects setattr() to return the updated attributes and
+     * it can then use those as fresh file attributes, so we have to do the
+     * flush-before-getattr logic even for the setattr call, else we may
+     * end up returning stale attributes for the case where file has lot of
+     * dirty data waiting to be flushed.
+     *
+     * TODO: Optimization for truncate case.
+     */
+    if (inode->is_regfile()) {
+        AZLogDebug("[{}] Flushing file data ahead of setattr",
+                   inode->get_fuse_ino());
+        inode->flush_cache_and_wait();
+    }
+
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_SETATTR);
 
     tsk->init_setattr(req, ino, attr, to_set, file);

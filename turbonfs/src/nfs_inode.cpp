@@ -1019,9 +1019,13 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
          * If we own the full membuf we can safely copy to it, also if the
          * membuf is uptodate we can safely copy to it. In both cases the
          * membuf remains uptodate after the copy.
+         *
+         * TODO: We need to handle the case where application writes on
+         *       the file range in commit_pending state.
          */
 try_copy:
-        if (bc.maps_full_membuf() || mb->is_uptodate()) {
+        if ((bc.maps_full_membuf() || mb->is_uptodate()) &&
+            !mb->is_commit_pending()) {
 
             assert(bc.length <= remaining);
             ::memcpy(bc.get_buffer(), buf, bc.length);
