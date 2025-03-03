@@ -544,9 +544,9 @@ int ra_state::issue_readaheads()
              * If the buffer is already uptodate, skip readahead.
              */
             if (bc.get_membuf()->is_uptodate()) {
-                AZLogWarn("[{}] Skipping readahead at off: {} len: {}. "
-                          "Membuf already uptodate!",
-                          inode->get_fuse_ino(), bc.offset, bc.length);
+                AZLogDebug("[{}] Skipping readahead at off: {} len: {}. "
+                           "Membuf already uptodate!",
+                           inode->get_fuse_ino(), bc.offset, bc.length);
 
                 on_readahead_complete(bc.offset, bc.length);
                 bc.get_membuf()->clear_locked();
