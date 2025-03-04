@@ -329,10 +329,17 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     if (readahead_kb == -1)
         readahead_kb = AZNFSCFG_READAHEAD_KB_DEF;
     if (cache.data.user.enable) {
-        if (cache.data.user.max_size_mb < 0)
+        if (cache.data.user.max_size_mb < 0) {
+            /*
+             * 60% of the total RAM, and capped at 16GiB.
+             */
             cache.data.user.max_size_mb =
                 (AZNFSCFG_CACHE_MAX_MB_PERCENT_DEF / 100.0) *
                 (get_total_ram() / (1024 * 1024));
+            if (cache.data.user.max_size_mb > 16384) {
+                cache.data.user.max_size_mb = 16384;
+            }
+        }
     }
     if (filecache.enable) {
         if (filecache.max_size_gb == -1)

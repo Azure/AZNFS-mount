@@ -128,8 +128,9 @@ fuse_max_background: 4096
 #
 # cache.data.user.max_size_mb can be expressed as a percentage or an absolute
 # value expressed in MiB. Percentage is of the total RAM in the system. It can
-# be expressed as e.g., "60%. If not specified the default is 80% of the total
-# RAM.
+# be expressed as e.g., "80%.
+# If not specified the default cache size is 60% of the total RAM but capped
+# at 16GB.
 #
 #readahead_kb: 16384
 cache.attr.user.enable: true
