@@ -269,7 +269,7 @@ process_nfsv4_mounts()
             # update_mountmapv3_entry version of TLS which will update the mountmapv4 entry and update stunnel
 
         #end daniewo section 
-        
+
             # Check if checksumHash for stunnel.conf file has changed.
             # Customers should not modify stunnel.conf files created by aznfs mount helper.
             checksumHash=`cksum $l_conf | awk '{print $1}'`
@@ -549,7 +549,7 @@ fi
 while :; do
     sleep $MONITOR_INTERVAL_SECS
     process_nfsv4_mounts
-    process_nfsv4_nontlsmounts
+    #process_nfsv4_nontlsmounts
     #daniewo process nontlsmounts and track for migration
 
 done
