@@ -167,8 +167,8 @@ process_nfsv4_mounts()
     # MOUNTMAPv4 entry whose all nfs file shares are unmounted, we know
     # for sure that it's not in use by any mount and can be removed.
     #
-    #findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
-    findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
+    findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
+    #findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
     #daniewo use this findmnt to check against the fslocation file for the IP
 
     #
@@ -225,7 +225,7 @@ process_nfsv4_mounts()
         fi
 
         accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
-        # vecho "accept_port: $accept_port"
+        vecho "accept_port: $accept_port"
 
         #
         # Delete entry from MOUNTMAPv4 if there are no mounted shares on that host.
