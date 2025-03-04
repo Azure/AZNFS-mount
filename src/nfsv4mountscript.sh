@@ -607,7 +607,7 @@ add_stunnel_configuration()
     chattr -f +i $stunnel_conf_file
 }
 
-<<<<<<< HEAD
+
 check_if_notls_mount_exists()
 {
     # Check if the mount to the same endpoint exists that is using clear text (without TLS).
@@ -638,7 +638,6 @@ check_if_notls_mount_exists()
 }
 
 
-=======
 # For the given AZNFS endpoint FQDN return a local IP that should proxy it.
 # If there is at least one mount to the same FQDN it MUST return the local IP
 # used for that, else assign a new free local IP.
@@ -676,7 +675,6 @@ get_local_ip_for_fqdn()
         get_free_local_ip
 }
 
->>>>>>> 6800b94 (initial commit with only refactoring of fname)
 #
 # Mount nfsv4 files share with TLS encryption.
 #
@@ -699,13 +697,9 @@ tls_nfsv4_files_share_mount()
 
     EntryExistinMountMap="true"
 
-<<<<<<< HEAD
+    #daniewo do some ip checking
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
-=======
-    #daniewo, this file will most likely change to the new route.
-    #the config file's name will be the server ip for public endpoint.
-    stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount.conf"
->>>>>>> 6800b94 (initial commit with only refactoring of fname)
+
 
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
