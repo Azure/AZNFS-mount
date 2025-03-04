@@ -120,6 +120,11 @@ fuse_max_background: 4096
 # Memory backed caches are controlled using cache.data.* configs, while
 # file backed cache are controlled using filecache.* configs.
 #
+# If your workload is primarily large files read/write then kernel data cache
+# (cache.data.kernel.enable) should not be enabled and data cache should be
+# enabled. For small file, small IO workloads you may get better performance
+# with kernel cache enabled and user cache disabled.
+#
 # Readahead is automatically scaled (up and down) based on the available cache
 # and whether there are ongoing writes competing for the cache. readahead_kb
 # is the initial value which is the scaled appropriately. It can be set to 0
