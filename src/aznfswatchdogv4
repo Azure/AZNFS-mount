@@ -199,8 +199,9 @@ process_nfsv4_mounts()
         # <IP>;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>
         #
         #daniewo #stunnel_account here is the destination IP address for the account.
+        #FSLOCATION will have FQDN IP1 IP2 or something like that. Look for IP1 and see if it's different than IP2
 
-        IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"  
 
         if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
@@ -247,13 +248,25 @@ process_nfsv4_mounts()
             #if IP is updated, then reconfigure stunnel and probably go to last step and skip this. or move this check
             # above
 
-            #daniewo get dest ip from mountmap file
-            ip_address=$(echo $l_conf | awk -F'.file' '{print $1}')
-            echo "The extracted IP address is: $ip_address"
+            # #daniewo get dest ip from mountmap file
+            # ip_address=$(echo $l_conf | awk -F'.file' '{print $1}')
+            # echo "The extracted IP address is: $ip_address"
 
             #get matching ip address from fs location entry for the account name FQDN
-            local fslocation_entry=$(grep -m1 $l_host $VIRTUALFSLOCATION)
+            local fslocation_entry=$(grep $l_ip $VIRTUALFSLOCATION)
             #probably need to check if it returns empty as well.
+            #we grab the entire lines, for each entry etc. 
+            for entry in $fslocation_entry; do 
+                eecho "daniewo fslocation_entry = $entry"
+
+                #extract fslocation entry
+                IFS=" " read l_fqdn old_ip new_ip l_prt <<< $fslocation_entry
+                eecho "daniewo $l_fqdn, $old_ip, $new_ip, $l_prt"
+                #if old ip != new ip, then reconfigure files
+                if [ "$l_ip" != "$new_ip" ]; then
+                    eecho "daniewo -------------- IP CHANGED -----------"
+                fi
+            done
 
             eecho "daniewo fslocation_entry = $fslocation_entry"
 
