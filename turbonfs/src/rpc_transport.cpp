@@ -113,7 +113,7 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
     int idx = 0;
     const int nconn = client->mnt_options.num_connections;
     assert(nconn > 0);
-    const int rconn = nconn / 3;
+    const int rconn = nconn / 2;
     const int wconn = nconn - rconn;
 
     static std::atomic<uint64_t> last_sec;
@@ -165,11 +165,11 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
             break;
         case CONN_SCHED_RR_R:
             /*
-             * Reads get top 1/3rd of connections when there are simultaneous
+             * Reads get top half of connections when there are simultaneous
              * readers and writers, else they get all the connections.
              * The for loop is to keep connections balanced.
              */
-            for (int i = 0; i <= nconn / 2; i++) {
+            for (int i = 0; i < nconn; i++) {
                 idx = (rnw ? (wconn + (last_context++ % rconn))
                            : (last_context++ % nconn));
                 nfs = nfs_connections[idx]->get_nfs_context();
@@ -177,7 +177,7 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
                 max_qlen_r = std::max(max_qlen_r, qlen);
                 cum_qlen_r += qlen;
                 // Reset cum/cnt stats every few requests to drop stale info.
-                if (cnt_qlen_r++ == 2000) {
+                if (cnt_qlen_r++ == 1000) {
                     AZLogDebug("[CONN_SCHED_RR_R] i: {} idx: {} qlen: {} "
                                "avg: {} max: {}",
                                i, idx, qlen, cum_qlen_r / cnt_qlen_r,
@@ -195,21 +195,21 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
             break;
         case CONN_SCHED_RR_W:
             /*
-             * Writes get low 2/3rd of connections when there are simultaneous
+             * Writes get lower half  connections when there are simultaneous
              * readers and writers, else they get all the connections.
              *
              * TODO: We should not change write connection ranges while there
              *       are old writes still pending else we will get slowed down
              *       by optimistic concurrency backoff.
              */
-            for (int i = 0; i <= nconn / 2; i++) {
+            for (int i = 0; i < nconn; i++) {
                 idx = (rnw ? (last_context++ % wconn)
                            : (last_context++ % nconn));
                 nfs = nfs_connections[idx]->get_nfs_context();
                 qlen = nfs_queue_length(nfs);
                 max_qlen_w = std::max(max_qlen_w, qlen);
                 cum_qlen_w += qlen;
-                if (cnt_qlen_w++ == 2000) {
+                if (cnt_qlen_w++ == 1000) {
                     AZLogDebug("[CONN_SCHED_RR_W] i: {} idx: {} qlen: {} "
                                "avg: {} max: {}",
                                i, idx, qlen, cum_qlen_w / cnt_qlen_w,
