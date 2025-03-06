@@ -1,12 +1,15 @@
 #
 # Share details
 # These will ONLY be used if the user runs the binary directly or passes
-# "none" as source in the mount command
+# "none" as source in the mount command. In that case account and container
+# are mandatory, cloud_suffix can be guessed and port is default 2048.
 #
 account: sjc22prdste06hnfsv3acc1
 container: nfsv3test
-cloud_suffix: blob.preprod.core.windows.net
-port: 2048
+
+#cloud_suffix: blob.core.windows.net
+#cloud_suffix: blob.preprod.core.windows.net
+#port: 2048
 
 #
 # Auth Config

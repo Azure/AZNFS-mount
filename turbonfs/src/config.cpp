@@ -1,6 +1,10 @@
 #include "aznfsc.h"
 #include "yaml-cpp/yaml.h"
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
 using namespace std;
 
 /*
@@ -255,7 +259,7 @@ double inject_err_prob_pct_def = 0.01;
  * assign config values from command line and the config yaml file.
  * Also sanitizes various values.
  */
-void aznfsc_cfg::set_defaults_and_sanitize()
+bool aznfsc_cfg::set_defaults_and_sanitize()
 {
 #ifdef ENABLE_PRESSURE_POINTS
     const char *err_prob = ::getenv("AZNFSC_INJECT_ERROR_PERCENT");
@@ -382,8 +386,38 @@ void aznfsc_cfg::set_defaults_and_sanitize()
             (int) consistency_standardnfs +
             (int) consistency_azurempa) == 1);
 
-    if (cloud_suffix == nullptr)
-        cloud_suffix = ::strdup("blob.core.windows.net");
+    /*
+     * If user has not provided cloud_suffix, try to make a good guess.
+     */
+    if (cloud_suffix == nullptr) {
+        struct addrinfo *ai = NULL;
+
+        AZLogDebug("cloud_suffix not specified, trying to guess it!");
+        AZLogDebug("trying blob.core.windows.net ...");
+        std::string try_server = std::string(account) + ".blob.core.windows.net";
+        if (::getaddrinfo(try_server.c_str(), NULL, NULL, &ai) == 0) {
+            cloud_suffix = ::strdup("blob.core.windows.net");
+            goto done_cloud_suffix;
+        }
+        AZLogDebug("it is not blob.core.windows.net!");
+
+        AZLogDebug("trying blob.preprod.core.windows.net ...");
+        try_server = std::string(account) + ".blob.preprod.core.windows.net";
+        if (::getaddrinfo(try_server.c_str(), NULL, NULL, &ai) == 0) {
+            cloud_suffix = ::strdup("blob.preprod.core.windows.net");
+            goto done_cloud_suffix;
+        }
+        AZLogDebug("it is not blob.preprod.core.windows.net!");
+        AZLogError("Failed to find a valid endpoint, make sure you provided "
+                   "a valid account ({}) else provide a valid cloud_suffix!",
+                   account);
+        return false;
+
+done_cloud_suffix:
+        AZLogDebug("it is {}!", cloud_suffix);
+        assert(ai);
+        ::freeaddrinfo(ai);
+    }
 
     if (xprtsec == nullptr)
         xprtsec = ::strdup("none");
@@ -440,4 +474,6 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("cloud_suffix = {}", cloud_suffix);
     AZLogDebug("mountpoint = {}", mountpoint);
     AZLogDebug("===== config end =====");
+
+    return true;
 }

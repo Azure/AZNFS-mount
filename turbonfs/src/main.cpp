@@ -718,7 +718,10 @@ int main(int argc, char *argv[])
     aznfsc_cfg.mountpoint = opts.mountpoint;
 
     // Set default values for config variables not set using the above.
-    aznfsc_cfg.set_defaults_and_sanitize();
+    if (!aznfsc_cfg.set_defaults_and_sanitize()) {
+        AZLogError("Error setting one or more default config!");
+        goto err_out0;
+    }
 
     /*
      * Honour "-o max_threads=" cmdline option, else use the fuse_max_threads

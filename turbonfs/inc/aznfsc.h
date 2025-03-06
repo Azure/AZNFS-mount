@@ -399,8 +399,9 @@ typedef struct aznfsc_cfg
      * This must be called after fuse_opt_parse() and parse_config_yaml()
      * assign config values from command line and the config yaml file.
      * Also sanitizes various values.
+     * Returns false if it cannot set default value for one or more config.
      */
-    void set_defaults_and_sanitize();
+    bool set_defaults_and_sanitize();
 } aznfsc_cfg_t;
 
 extern struct aznfsc_cfg aznfsc_cfg;
