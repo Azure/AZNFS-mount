@@ -329,6 +329,12 @@ typedef struct aznfsc_cfg
      *************************************************/
      struct {
         /*
+         * If set, stable writes will be forced, else we start with unstable
+         * write and fallback to stable in case of non-append write pattern.
+         */
+        bool force_stable_writes = true;
+
+        /*
          * Resolve server name before reconnect, else connect to the last
          * resolved IP.
          */

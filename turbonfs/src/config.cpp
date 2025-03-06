@@ -221,6 +221,7 @@ do { \
         /*
          * Config affecting misc system behaviour.
          */
+        _CHECK_BOOL(sys.force_stable_writes);
         _CHECK_BOOL(sys.resolve_before_reconnect);
         _CHECK_BOOL(sys.nodrc.remove_noent_as_success);
         _CHECK_BOOL(sys.nodrc.create_exist_as_success);
@@ -429,6 +430,7 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("filecache.enable = {}", filecache.enable);
     AZLogDebug("filecache.cachedir = {}", filecache.cachedir ? filecache.cachedir : "");
     AZLogDebug("filecache.max_size_gb = {}", filecache.max_size_gb);
+    AZLogDebug("sys.force_stable_writes = {}", sys.force_stable_writes);
     AZLogDebug("sys.resolve_before_reconnect = {}", sys.resolve_before_reconnect);
     AZLogDebug("sys.nodrc.remove_noent_as_success = {}", sys.nodrc.remove_noent_as_success);
     AZLogDebug("sys.nodrc.create_exist_as_success = {}", sys.nodrc.create_exist_as_success);

@@ -157,6 +157,7 @@ cache.data.user.enable: true
 #
 # Config controlling misc system behaviour.
 #
+sys.force_stable_writes: true
 sys.resolve_before_reconnect: true
 sys.nodrc.remove_noent_as_success: true
 sys.nodrc.rename_noent_as_success: true

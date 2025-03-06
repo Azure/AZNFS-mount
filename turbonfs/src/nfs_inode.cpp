@@ -39,6 +39,8 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
 #endif
     assert(commit_state == commit_state_t::COMMIT_NOT_NEEDED);
 
+    stable_write = aznfsc_cfg.sys.force_stable_writes;
+
     // Initial putblock_filesize value for stable and unstable writes.
     if (stable_write) {
         putblock_filesize = AZNFSC_BAD_OFFSET;
