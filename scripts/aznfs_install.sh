@@ -138,23 +138,35 @@ ensure_pkg()
     local distro="$distro_id"
 
     if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
-        if ! $apt_update_done; then
-            apt -y update
-            if [ $? -ne 0 ]; then
-                echo
-                eecho "\"apt update\" failed"
-                eecho "Please make sure \"apt update\" runs successfully and then try again!"
-                echo
-                exit 1
-            fi
-            # Need to run apt update only once.
-            apt_update_done=true
+        apt -y update
+        if [ $? -ne 0 ]; then
+            echo
+            eecho "\"apt update\" failed"
+            eecho "Please make sure \"apt update\" runs successfully and then try again!"
+            echo
+            exit 1
         fi
         apt=1
     elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         use_dnf_or_yum
+        sudo $yum -y check-update
+        if [ $? -ne 0 ]; then
+            echo
+            eecho "\"dnf update\" failed"
+            eecho "Please make sure \"dnf update\" runs successfully and then try again!"
+            echo
+            exit 1
+        fi
     elif [ "$distro" == "sles" ]; then
         zypper=1
+        sudo zypper -y refresh
+        if [ $? -ne 0 ]; then
+            echo
+            eecho "\"zypper refresh\" failed"
+            eecho "Please make sure \"zypper refresh\" runs successfully and then try again!"
+            echo
+            exit 1
+        fi
     else
         eecho "[FATAL] Unsupported linux distro <$distro>"
         eecho "Cannot install aznfs package updates."
@@ -287,6 +299,12 @@ elif [ $zypper -eq 1 ]; then
 
 else
     current_version=$(rpm -q aznfs)
+
+    # If the package is not available, exit. We need this line to skip parsing the error message.
+    if ! $yum list --available aznfs > /dev/null 2>&1; then
+        exit 1
+    fi
+
     available_upgrade_version=$($yum list --available aznfs | tail -1 | awk '{print $2}')
 
     if [ ! -z "$available_upgrade_version" ]; then
