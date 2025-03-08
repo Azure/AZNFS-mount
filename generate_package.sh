@@ -13,17 +13,6 @@ generate_rpm_package()
 	rpm_dir=$1
 	custom_stunnel_required=0
 
-	# Overwrite rpm_pkg_dir in case of SUSE.
-	if [ "$rpm_dir" == "suse" ]; then
-		rpm_pkg_dir="${pkg_name}_sles-${RELEASE_NUMBER}-1.x86_64"
-	fi
-
-	# Overwrite rpm_pkg_dir in case of Mariner, RedHat7, and Centos7.
-	if [ "$rpm_dir" == "stunnel" ]; then
-		rpm_pkg_dir="${pkg_name}_stunnel_custom-${RELEASE_NUMBER}-1.x86_64"
-		custom_stunnel_required=1
-	fi
-
 	# Create the directory to hold the package spec and data files for RPM package.
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}
 
@@ -57,20 +46,15 @@ generate_rpm_package()
 	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	sed -i -e "s/RPM_DIR/${rpm_dir}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	
+	sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+
 	# Replace the placeholders for various package names in aznfs.spec file. 
 	if [ "$rpm_dir" == "suse" ]; then
-		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_sles/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/NETCAT_PACKAGE_NAME/netcat-openbsd/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		# For SLES, sysvinit-tools provides pidof.
 		sed -i -e "s/PROCPS_PACKAGE_NAME/sysvinit-tools/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/DISTRO/suse/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	else
-		if [ "$rpm_dir" == "stunnel" ]; then
-			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_stunnel_custom/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		else
-			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		fi
-
 		sed -i -e "s/NETCAT_PACKAGE_NAME/nmap-ncat/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		# In new versions of Centos/RedHat/Rocky, procps-ng provides pidof. For older versions, it is provided by sysvinit-tools but since it is not
 		# present in new versions, only install procps-ng which exists in all versions.
@@ -81,6 +65,9 @@ generate_rpm_package()
 
 	# Create the rpm package.
 	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+
+	# Remove the temporary files.
+	rm ${STG_DIR}/${rpm_pkg_dir}.tar.gz
 }
 
 
