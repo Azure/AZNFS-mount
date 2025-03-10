@@ -59,317 +59,232 @@ stages:
           #     echo "Building version ${{ parameters.versionName }}"
           #   displayName: "Print Version Info"
 
+          - name: Use GitHub Secret in Script
+            env:
+              APP_REGISTRATION_CLIENT_ID: ${{ secrets.AppRegistrationClientId }}
+            run: |
+              echo "Using GitHub secret in script"
+              echo "Client ID: $APP_REGISTRATION_CLIENT_ID"
+        # Your commands that use the secret
+
           - script: |
               sudo apt-get update
               sudo apt install -y gcc-aarch64-linux-gnu
             displayName: "Install Cross-Compile Tools"
 
-          - script: |
-              export RELEASE_NUMBER=${{ parameters.versionName }}
-              export STG_DIR=$(work_dir)
-              export SOURCE_DIR=$(work_dir)
-              chmod +x $(work_dir)/generate_package.sh
-              $(work_dir)/generate_package.sh
-            displayName: "Run Package Script"
+          # - script: |
+          #     export RELEASE_NUMBER=${{ parameters.versionName }}
+          #     export STG_DIR=$(work_dir)
+          #     export SOURCE_DIR=$(work_dir)
+          #     chmod +x $(work_dir)/generate_package.sh
+          #     $(work_dir)/generate_package.sh
+          #   displayName: "Run Package Script"
 
-          - script: |
-              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts
-              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/deb
-              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/rpm
-              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/suse
-              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/stunnel
-              cp $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
-              cp $(work_dir)/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/rpm
-              cp $(work_dir)/suse/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/suse
-              cp $(work_dir)/stunnel/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/stunnel
-              echo "Listing Built Files..."
-              ls -R $(Build.ArtifactStagingDirectory)
-            displayName: "List Build Outputs"
+          # - script: |
+          #     mkdir -p $(Build.ArtifactStagingDirectory)/artifacts
+          #     mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/deb
+          #     mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/rpm
+          #     mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/suse
+          #     mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/stunnel
+          #     cp $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+          #     cp $(work_dir)/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/rpm
+          #     cp $(work_dir)/suse/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/suse
+          #     cp $(work_dir)/stunnel/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/stunnel
+          #     echo "Listing Built Files..."
+          #     ls -R $(Build.ArtifactStagingDirectory)
+          #   displayName: "List Build Outputs"
 
-          - task: PublishBuildArtifacts@1
-            inputs:
-              PathtoPublish: $(Build.ArtifactStagingDirectory)
-              artifactName: 'aznfs-temp'
+          # - task: PublishBuildArtifacts@1
+          #   inputs:
+          #     PathtoPublish: $(Build.ArtifactStagingDirectory)
+          #     artifactName: 'aznfs-temp'
 
-  - stage: ReleaseArtifacts
-    displayName: "Sign and Release Artifacts"
-    jobs:
-      - job: SignArtifacts
-        timeoutInMinutes: 120
-
-        pool:
-          vmImage: 'ubuntu-20.04'
-        
-        steps:
-          - checkout: none
-
-          # download artifacts that need to be published
-          - task: DownloadBuildArtifacts@1
-            displayName: 'Download Build Artifacts'
-            inputs:
-              artifactName: 'aznfs-temp'
-              downloadPath: $(Build.ArtifactStagingDirectory)
-
-          - script: |
-              sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            displayName: 'List Artifacts'
-
-          - script: |
-              sudo apt-get update
-              wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb 
-              sudo dpkg -i packages-microsoft-prod.deb 
-              sudo apt update 
-              sudo apt install apt-transport-https -y
-              sudo apt install dotnet-sdk-3.1 -y
-            displayName: "Update dependencies"
-
-          - task: EsrpCodeSigning@5
-            displayName: 'ESRP CodeSigning MI DEB'
-            inputs:
-              ConnectedServiceName: 'Azure AZNFS'
-              AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-              # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-
-              UseMSIAuthentication: true
-              AuthAKVName: 'aznfs-keyvault'
-              AuthSignCertName: 'aznfs-cert'
-
-              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/deb
-              Pattern: '*.deb'
-              SessionTimeout: 90
-              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-              MaxConcurrency: 25
-              signConfigType: inlineSignParams
-              VerboseLogin: true
-              inlineOperation: |
-                [
-                {
-                  "KeyCode": "CP-450779-Pgp",
-                  "OperationCode": "LinuxSign",
-                  "ToolName": "sign",
-                  "ToolVersion": "1.0",
-                  "Parameters": {}
-                }
-                ]
-
-          - task: EsrpCodeSigning@5
-            displayName: 'ESRP CodeSigning MI RPM'
-            inputs:
-              ConnectedServiceName: 'Azure AZNFS'
-              AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-              # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-
-              UseMSIAuthentication: true
-              AuthAKVName: 'aznfs-keyvault'
-              AuthSignCertName: 'aznfs-cert'
-
-              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpm
-              Pattern: '*.rpm'
-              SessionTimeout: 90
-              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-              MaxConcurrency: 25
-              signConfigType: inlineSignParams
-              VerboseLogin: true
-              inlineOperation: |
-                [
-                {
-                  "KeyCode": "CP-450779-Pgp",
-                  "OperationCode": "LinuxSign",
-                  "ToolName": "sign",
-                  "ToolVersion": "1.0",
-                  "Parameters": {}
-                }
-                ]
-          
-          - task: EsrpCodeSigning@5
-            displayName: 'ESRP CodeSigning MI SUSE'
-            inputs:
-              ConnectedServiceName: 'Azure AZNFS'
-              AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-              # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-
-              UseMSIAuthentication: true
-              AuthAKVName: 'aznfs-keyvault'
-              AuthSignCertName: 'aznfs-cert'
-
-              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/suse
-              Pattern: '*.rpm'
-              SessionTimeout: 90
-              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-              MaxConcurrency: 25
-              signConfigType: inlineSignParams
-              VerboseLogin: true
-              inlineOperation: |
-                [
-                {
-                  "KeyCode": "CP-450779-Pgp",
-                  "OperationCode": "LinuxSign",
-                  "ToolName": "sign",
-                  "ToolVersion": "1.0",
-                  "Parameters": {}
-                }
-                ]
-
-          - task: EsrpCodeSigning@5
-            displayName: 'ESRP CodeSigning MI STUNNEL'
-            inputs:
-              ConnectedServiceName: 'Azure AZNFS'
-              AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-              # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-
-              UseMSIAuthentication: true
-              AuthAKVName: 'aznfs-keyvault'
-              AuthSignCertName: 'aznfs-cert'
-
-              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/stunnel
-              Pattern: '*.rpm'
-              SessionTimeout: 90
-              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-              MaxConcurrency: 25
-              signConfigType: inlineSignParams
-              VerboseLogin: true
-              inlineOperation: |
-                [
-                {
-                  "KeyCode": "CP-450779-Pgp",
-                  "OperationCode": "LinuxSign",
-                  "ToolName": "sign",
-                  "ToolVersion": "1.0",
-                  "Parameters": {}
-                }
-                ]
-
-           # Validate signed images have md5sum changed
-          - script: |
-              chmod 755 $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/deb/*.deb
-              chmod 755 $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/*/*.rpm
-              rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/*.md
-              rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/*/*.md
-              mv $(Build.ArtifactStagingDirectory)/aznfs-temp/* $(Build.ArtifactStagingDirectory)/
-              rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/
-            displayName: 'Make Artifacts executable'
-
-          - script: |
-              sudo ls -lRt $(Build.ArtifactStagingDirectory)/artifacts/*
-            displayName: 'List Signed Artifacts'
-          
-          # Push signed images to artifact directory
-          - task: PublishBuildArtifacts@1
-            inputs:
-              artifactName: 'aznfs-signed'
-            displayName: 'Publish Signed Artifacts'
-
-  - stage: PublishArtifacts
-    dependsOn: ReleaseArtifacts
-    condition: succeeded('ReleaseArtifacts')
-    displayName: "Publish Artifacts"
-    jobs:
-      - job: PublishArtifacts
-        timeoutInMinutes: 120
-      
-        pool:
-          vmImage: 'ubuntu-20.04'
-
-        variables:
-            - name: root_dir
-              value: '$(System.DefaultWorkingDirectory)'
-
-        steps:
-          - checkout: none
-
-          - task: PipAuthenticate@1
-            inputs:
-              artifactFeeds: 'One/aznfs'
-          - script: pip install pmc-cli
-            displayName: 'Install pmc-cli'
-
-          # Download artifacts that need to be published
-          - task: DownloadBuildArtifacts@0
-            displayName: 'Download Signed Artifacts'
-            inputs:
-             artifactName: 'aznfs-signed'
-             downloadPath: $(Build.ArtifactStagingDirectory)
-
-          - script: |
-              sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            displayName: 'List Signed Artifacts'
-
-          - script: |
-              wget https://raw.githubusercontent.com/Azure/AZNFS-mount/personal/sroghanchi/pipeline/packages.csv -O packages.csv
-              cat ./packages.csv
-            displayName: 'Fetch packages.csv'
-            workingDirectory: $(Build.ArtifactStagingDirectory)/
-
-
-          - task: AzureCLI@2
-            inputs:
-              addSpnToEnvironment: true
-              azureSubscription: 'Azure AZNFS'
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
-                  # echo "##vso[task.setvariable variable=idToken;issecret=true]$idToken"
-                  # echo "##vso[task.setvariable variable=tenantId]$tenantId"
-                  # echo "##vso[task.setvariable variable=servicePrincipalId]$servicePrincipalId"
-
-                  echo "++++++++++++++++++++++++++++++++"
-
-                  aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list`
-
-                  echo "++++++++++++++++++++++++++++++++"
-
-                  aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs --version 0.0.0`
-                  echo "AZNFS rpm list before upload ==========: $aznfsids"
-
-                  # upload packages
-                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/
-
-                  aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs --version 0.0.0`
-                  echo "AZNFS rpm list after upload ==========: $aznfsids"
-
-                  #################################### get package id #####################################
-
-                  # aznfsDeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_amd64.deb`
-                  # echo "AZNFS DEB Package ID: $aznfsDeb"
-
-                  aznfsRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.x86_64.rpm`
-                  echo "AZNFS RPM Package ID: $aznfsRpm"
-
-                  # aznfsRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.x86_64.rpm`
-                  # echo "AZNFS Sles RPM Package ID: $aznfsRpmSles"
-
-                  # aznfsRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.x86_64.rpm`
-                  # echo "AZNFS Stunnel RPM Package ID: $aznfsRpmStunnel"
-
-                  ################################### Add uploaded packages to its repository ######################################
-
-                  while IFS=, read -r distro PackageArchType repoName releaseName; do
-
-                    echo "Uploading packages for $distro"
-                    pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!PackageArchType} $repoName $releaseName
-                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
-
-                  #################################### Publish the repositories #####################################
-
-                  while IFS=, read -r distro PackageArchType repoName releaseName; do
-                    echo "Repository Name: $repoName"
-
-                    echo "Publishing for $distro"
-                    pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
-                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
-
-  # - stage: RemovePackage
+  # - stage: ReleaseArtifacts
+  #   displayName: "Sign and Release Artifacts"
   #   jobs:
-  #     - job: RemovePackage
+  #     - job: SignArtifacts
+  #       timeoutInMinutes: 120
+
+  #       pool:
+  #         vmImage: 'ubuntu-20.04'
+        
+  #       steps:
+  #         - checkout: none
+
+  #         # download artifacts that need to be published
+  #         - task: DownloadBuildArtifacts@1
+  #           displayName: 'Download Build Artifacts'
+  #           inputs:
+  #             artifactName: 'aznfs-temp'
+  #             downloadPath: $(Build.ArtifactStagingDirectory)
+
+  #         - script: |
+  #             sudo ls -lRt $(Build.ArtifactStagingDirectory)
+  #           displayName: 'List Artifacts'
+
+  #         - script: |
+  #             sudo apt-get update
+  #             wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb 
+  #             sudo dpkg -i packages-microsoft-prod.deb 
+  #             sudo apt update 
+  #             sudo apt install apt-transport-https -y
+  #             sudo apt install dotnet-sdk-3.1 -y
+  #           displayName: "Update dependencies"
+
+  #         - task: EsrpCodeSigning@5
+  #           displayName: 'ESRP CodeSigning MI DEB'
+  #           inputs:
+  #             ConnectedServiceName: 'Azure AZNFS'
+  #             AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+  #             AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+  #             # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+
+  #             UseMSIAuthentication: true
+  #             AuthAKVName: 'aznfs-keyvault'
+  #             AuthSignCertName: 'aznfs-cert'
+
+  #             FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/deb
+  #             Pattern: '*.deb'
+  #             SessionTimeout: 90
+  #             ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+  #             MaxConcurrency: 25
+  #             signConfigType: inlineSignParams
+  #             VerboseLogin: true
+  #             inlineOperation: |
+  #               [
+  #               {
+  #                 "KeyCode": "CP-450779-Pgp",
+  #                 "OperationCode": "LinuxSign",
+  #                 "ToolName": "sign",
+  #                 "ToolVersion": "1.0",
+  #                 "Parameters": {}
+  #               }
+  #               ]
+
+  #         - task: EsrpCodeSigning@5
+  #           displayName: 'ESRP CodeSigning MI RPM'
+  #           inputs:
+  #             ConnectedServiceName: 'Azure AZNFS'
+  #             AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+  #             AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+  #             # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+
+  #             UseMSIAuthentication: true
+  #             AuthAKVName: 'aznfs-keyvault'
+  #             AuthSignCertName: 'aznfs-cert'
+
+  #             FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpm
+  #             Pattern: '*.rpm'
+  #             SessionTimeout: 90
+  #             ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+  #             MaxConcurrency: 25
+  #             signConfigType: inlineSignParams
+  #             VerboseLogin: true
+  #             inlineOperation: |
+  #               [
+  #               {
+  #                 "KeyCode": "CP-450779-Pgp",
+  #                 "OperationCode": "LinuxSign",
+  #                 "ToolName": "sign",
+  #                 "ToolVersion": "1.0",
+  #                 "Parameters": {}
+  #               }
+  #               ]
+          
+  #         - task: EsrpCodeSigning@5
+  #           displayName: 'ESRP CodeSigning MI SUSE'
+  #           inputs:
+  #             ConnectedServiceName: 'Azure AZNFS'
+  #             AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+  #             AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+  #             # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+
+  #             UseMSIAuthentication: true
+  #             AuthAKVName: 'aznfs-keyvault'
+  #             AuthSignCertName: 'aznfs-cert'
+
+  #             FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/suse
+  #             Pattern: '*.rpm'
+  #             SessionTimeout: 90
+  #             ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+  #             MaxConcurrency: 25
+  #             signConfigType: inlineSignParams
+  #             VerboseLogin: true
+  #             inlineOperation: |
+  #               [
+  #               {
+  #                 "KeyCode": "CP-450779-Pgp",
+  #                 "OperationCode": "LinuxSign",
+  #                 "ToolName": "sign",
+  #                 "ToolVersion": "1.0",
+  #                 "Parameters": {}
+  #               }
+  #               ]
+
+  #         - task: EsrpCodeSigning@5
+  #           displayName: 'ESRP CodeSigning MI STUNNEL'
+  #           inputs:
+  #             ConnectedServiceName: 'Azure AZNFS'
+  #             AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+  #             AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+  #             # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+
+  #             UseMSIAuthentication: true
+  #             AuthAKVName: 'aznfs-keyvault'
+  #             AuthSignCertName: 'aznfs-cert'
+
+  #             FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/stunnel
+  #             Pattern: '*.rpm'
+  #             SessionTimeout: 90
+  #             ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+  #             MaxConcurrency: 25
+  #             signConfigType: inlineSignParams
+  #             VerboseLogin: true
+  #             inlineOperation: |
+  #               [
+  #               {
+  #                 "KeyCode": "CP-450779-Pgp",
+  #                 "OperationCode": "LinuxSign",
+  #                 "ToolName": "sign",
+  #                 "ToolVersion": "1.0",
+  #                 "Parameters": {}
+  #               }
+  #               ]
+
+  #          # Validate signed images have md5sum changed
+  #         - script: |
+  #             chmod 755 $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/deb/*.deb
+  #             chmod 755 $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/*/*.rpm
+  #             rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/*.md
+  #             rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/*/*.md
+  #             mv $(Build.ArtifactStagingDirectory)/aznfs-temp/* $(Build.ArtifactStagingDirectory)/
+  #             rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/
+  #           displayName: 'Make Artifacts executable'
+
+  #         - script: |
+  #             sudo ls -lRt $(Build.ArtifactStagingDirectory)/artifacts/*
+  #           displayName: 'List Signed Artifacts'
+          
+  #         # Push signed images to artifact directory
+  #         - task: PublishBuildArtifacts@1
+  #           inputs:
+  #             artifactName: 'aznfs-signed'
+  #           displayName: 'Publish Signed Artifacts'
+
+  # - stage: PublishArtifacts
+  #   dependsOn: ReleaseArtifacts
+  #   condition: succeeded('ReleaseArtifacts')
+  #   displayName: "Publish Artifacts"
+  #   jobs:
+  #     - job: PublishArtifacts
   #       timeoutInMinutes: 120
       
   #       pool:
   #         vmImage: 'ubuntu-20.04'
+
+  #       variables:
+  #           - name: root_dir
+  #             value: '$(System.DefaultWorkingDirectory)'
 
   #       steps:
   #         - checkout: none
@@ -380,6 +295,24 @@ stages:
   #         - script: pip install pmc-cli
   #           displayName: 'Install pmc-cli'
 
+  #         # Download artifacts that need to be published
+  #         - task: DownloadBuildArtifacts@0
+  #           displayName: 'Download Signed Artifacts'
+  #           inputs:
+  #            artifactName: 'aznfs-signed'
+  #            downloadPath: $(Build.ArtifactStagingDirectory)
+
+  #         - script: |
+  #             sudo ls -lRt $(Build.ArtifactStagingDirectory)
+  #           displayName: 'List Signed Artifacts'
+
+  #         - script: |
+  #             wget https://raw.githubusercontent.com/Azure/AZNFS-mount/personal/sroghanchi/pipeline/packages.csv -O packages.csv
+  #             cat ./packages.csv
+  #           displayName: 'Fetch packages.csv'
+  #           workingDirectory: $(Build.ArtifactStagingDirectory)/
+
+
   #         - task: AzureCLI@2
   #           inputs:
   #             addSpnToEnvironment: true
@@ -388,80 +321,43 @@ stages:
   #             scriptLocation: inlineScript
   #             inlineScript: |
   #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
-  #                 echo "##vso[task.setvariable variable=idToken;issecret=true]$idToken"
-  #                 echo "##vso[task.setvariable variable=tenantId]$tenantId"
-  #                 echo "##vso[task.setvariable variable=servicePrincipalId]$servicePrincipalId"
 
-  #                 echo "package list ...... deb:"
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name aznfs
-                  
-  #                 aznfsdeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name aznfs | jq -r '.results[0].id'`
-  #                 echo "AZNFS DEB Package ID: $aznfsdeb"
+  #                 aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs`
+  #                 echo "AZNFS rpm list ==========: $aznfsids"
 
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsdeb microsoft-ubuntu-focal-prod-apt focal
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-focal-prod-apt
+  #                 # upload packages
+  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel
 
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsdeb microsoft-ubuntu-bionic-prod-apt bionic
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-bionic-prod-apt
+  #                 #################################### get package id #####################################
 
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsdeb microsoft-ubuntu-jammy-prod-apt jammy
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-jammy-prod-apt
+  #                 # aznfsDeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_amd64.deb`
+  #                 # echo "AZNFS DEB Package ID: $aznfsDeb"
 
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsdeb microsoft-ubuntu-noble-prod-apt noble
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-noble-prod-apt
+  #                 # aznfsRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.x86_64.rpm`
+  #                 # echo "AZNFS RPM Package ID: $aznfsRpm"
 
-  #                 ############################# Remove package from RPM repositories #############################
+  #                 # aznfsRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.x86_64.rpm`
+  #                 # echo "AZNFS Sles RPM Package ID: $aznfsRpmSles"
 
-  #                 echo "package list ...... rpm:"
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs
+  #                 aznfsRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.x86_64.rpm`
+  #                 echo "AZNFS Stunnel RPM Package ID: $aznfsRpmStunnel"
 
-  #                 for i in `seq 0 6`; do
-                    
-  #                   aznfsid=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs | jq -r '.results['$i'].id'`
-  #                   echo "AZNFS DEB Package ID: $aznfsid"
+  #                 ################################### Add uploaded packages to its repository ######################################
+  #                 echo "now adding packages to repositories..."
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel8.0-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel8.0-prod-yum
+  #                 while IFS=, read -r distro PackageArchType repoName releaseName; do
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel9.0-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel9.0-prod-yum
+  #                   echo "Uploading packages for $distro"
+  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!PackageArchType} $repoName $releaseName
+  #                 done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-centos8-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-centos8-prod-yum
+  #                 #################################### Publish the repositories #####################################
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-el8-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-el8-prod-yum
+  #                 while IFS=, read -r distro PackageArchType repoName releaseName; do
+  #                   echo "Repository Name: $repoName"
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-el9-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-el9-prod-yum
+  #                   echo "Publishing for $distro"
+  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
+  #                 done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-sles15-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-sles15-prod-yum
-
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel7.0-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel7.0-prod-yum
-
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-centos7-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-centos7-prod-yum
-
-
-
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel8-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel8-prod-yum
-
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel9-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel9-prod-yum
-
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel7-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel7-prod-yum
-
-  #                 done
-
-                  
-
-
-                  
-
-
-
-
+  

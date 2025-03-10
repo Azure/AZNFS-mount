@@ -149,17 +149,22 @@ ensure_pkg()
         apt=1
     elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         use_dnf_or_yum
-        sudo $yum -y check-update
+        $yum -y check-update
         if [ $? -ne 0 ]; then
             echo
-            eecho "\"dnf update\" failed"
-            eecho "Please make sure \"dnf update\" runs successfully and then try again!"
+            eecho "\"${yum} -y check-update\" failed"
+            eecho "Please make sure \"${yum} -y check-update\" runs successfully and then try again!"
             echo
+            exit 1
+        fi
+        $yum install -y wget
+        if [ $? -ne 0]; then
+            eecho "[FATAL] Error installing wget"
             exit 1
         fi
     elif [ "$distro" == "sles" ]; then
         zypper=1
-        sudo zypper -y refresh
+        zypper refresh
         if [ $? -ne 0 ]; then
             echo
             eecho "\"zypper refresh\" failed"
@@ -302,7 +307,7 @@ else
 
     # If the package is not available, exit. We need this line to skip parsing the error message.
     if ! $yum list --available aznfs > /dev/null 2>&1; then
-        exit 1
+        exit 0
     fi
 
     available_upgrade_version=$($yum list --available aznfs | tail -1 | awk '{print $2}')

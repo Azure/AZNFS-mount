@@ -13,6 +13,11 @@ generate_rpm_package()
 	rpm_dir=$1
 	custom_stunnel_required=0
 
+	# Overwrite rpm_pkg_dir in case of Mariner, RedHat7, and Centos7.
+	if [ "$rpm_dir" == "stunnel" ]; then
+		custom_stunnel_required=1
+	fi
+
 	# Create the directory to hold the package spec and data files for RPM package.
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}
 
