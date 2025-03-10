@@ -1,3 +1,14 @@
 # Do not remove these comments - the list should start at line #3
 # Format of the file : <Distro Name>,<Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
-RHEL-8,aznfsRpm,microsoft-rhel8-prod-yum,
+Ubuntu-18.04,aznfsDeb,microsoft-ubuntu-bionic-prod-apt,bionic
+Ubuntu-20.04,aznfsDeb,microsoft-ubuntu-focal-prod-apt,focal
+Ubuntu-22.04,aznfsDeb,microsoft-ubuntu-jammy-prod-apt,jammy
+Ubuntu-24.04,aznfsDeb,microsoft-ubuntu-noble-prod-apt,noble
+RHEL-7.0,aznfsRpmStunnel,microsoft-rhel7.0-prod-yum,
+RHEL-8.0,aznfsRpm,microsoft-rhel8.0-prod-yum,
+RHEL-9.0,aznfsRpm,microsoft-rhel9.0-prod-yum,
+CentOS-7.0,aznfsRpmStunnel,microsoft-centos7-prod-yum,
+CentOS-8.0,aznfsRpm,microsoft-centos8-prod-yum,
+SUSE-15,aznfsRpmSles,microsoft-sles15-prod-yum,
+Rocky-8.0,aznfsRpm,microsoft-el8-prod-yum,
+Rocky-9.0,aznfsRpm,microsoft-el9-prod-yum,
