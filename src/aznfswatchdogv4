@@ -303,6 +303,8 @@ process_nfsv4_mounts()
                     new_file_path=$(echo "$l_conf" | sed "s/${l_ip}/${new_ip}/g")
                     mv -vf $l_conf $new_file_path
 
+                    eecho "daneiwo new conf path = $new_file_path"
+
                     checksumHash=`cksum $new_file_path | awk '{print $1}'`
                     if [ $? -ne 0 ]; then
                         eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
@@ -314,8 +316,8 @@ process_nfsv4_mounts()
                     #checksumhash is only kept in mountmap, update with SED
                     chattr -f -i $MOUNTMAPv4
 
-                    #update mountmapentry
-                    out=$(sed "s/$l_checksumhash/$checksumHash/" $MOUNTMAPv4)
+                    #update mountmapentry to update checksumhash and ip files
+                    out=$(sed "s/$l_checksumhash/$checksumHash/" -e "s/$l_ip/$new_ip/" $MOUNTMAPv4)
                     ret=$?
                     if [ $ret -eq 0 ]; then
                         #
