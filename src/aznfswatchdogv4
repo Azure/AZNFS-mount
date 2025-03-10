@@ -277,6 +277,7 @@ process_nfsv4_mounts()
 
                     ret=$?
                     if [ $ret -eq 0 ]; then
+                        chattr -f -i $l_conf
                         #
                         # If this echo fails then MOUNTMAPv4 could be truncated.
                         #
@@ -286,6 +287,7 @@ process_nfsv4_mounts()
                         if [ $ret -ne 0 ]; then
                             eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
                         fi
+                        chattr -f +i $l_conf
                     fi
 
                     #SED to change IP as well in FSLOCATION
