@@ -252,7 +252,11 @@ process_nfsv4_mounts()
             # ip_address=$(echo $l_conf | awk -F'.file' '{print $1}')
             # echo "The extracted IP address is: $ip_address"
 
-            #get matching ip address from fs location entry for the account name FQDN
+            #get matching ip address with local ip. 
+            #the format for FSLOCATION is FQDN old_ip new_ip l_prt
+            #if no migration is happening, then old_ip and new_ip remains the same. 
+            #when prt and/or migration has completed, new_ip will be updated. not sure about the lag.
+
             local fslocation_entry=$(grep $l_ip $VIRTUALFSLOCATION)
             #probably need to check if it returns empty as well.
             #we grab the entire lines, for each entry etc. 
@@ -265,6 +269,81 @@ process_nfsv4_mounts()
                 #if old ip != new ip, then reconfigure files
                 if [ "$l_ip" != "$new_ip" ]; then
                     eecho "daniewo -------------- IP CHANGED -----------"
+                    #daniewo do we need lock?
+                    # use mv to edit file name
+
+                    #sed command old ip with new ip in l_conf file. then mv after.
+                    out=$(sed "s/${l_ip}/${new_ip}/g" $l_conf)
+
+                    ret=$?
+                    if [ $ret -eq 0 ]; then
+                        #
+                        # If this echo fails then MOUNTMAPv4 could be truncated.
+                        #
+                        echo "$out" > $l_conf
+                        ret=$?
+                        out=
+                        if [ $ret -ne 0 ]; then
+                            eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+                        fi
+                    fi
+
+                    #SED to change IP as well in FSLOCATION
+                    outfslocation=$(sed "s/${l_ip}/${new_ip}/g" $VIRTUALFSLOCATION)
+                    #echo into virtualfslocation
+
+                    echo "outfslocation" > $VIRTUALFSLOCATION
+                    #calculate new PID for file once lines are updated.
+
+                    #daniewo then mv the file? or create new one at this point? 
+                    #daniewo use the paths above for l_conf, l_pid, l_logs and mv.
+                    #$l_conf $l_log $l_pid $line
+
+                    #update filepath for config file
+                    new_file_path=$(echo "$l_conf" | sed "s/${l_ip}/${new_ip}/g")
+                    mv -vf $l_conf $new_file_path
+
+                    checksumHash=`cksum $new_file_path | awk '{print $1}'`
+                    if [ $? -ne 0 ]; then
+                        eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
+                        chattr -i -f $stunnel_conf_file
+                        rm $stunnel_conf_file
+                        exit 1
+                    fi #maybe calculate before moving?
+
+                    #checksumhash is only kept in mountmap, update with SED
+                    chattr -f -i $MOUNTMAPv4
+
+                    #update mountmapentry
+                    out=$(sed "s/$checksumHash/$checksumHash/" $MOUNTMAPv4)
+                    ret=$?
+                    if [ $ret -eq 0 ]; then
+                        #
+                        # If this echo fails then MOUNTMAPv4 could be truncated.
+                        #
+                        echo "$out" > $MOUNTMAPv4
+                        ret=$?
+                        out=
+                        if [ $ret -ne 0 ]; then
+                            eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+                        fi
+                    fi
+
+                    chattr -f +i $MOUNTMAPv4
+
+
+                    #update filepath for logs
+                    new_file_path3=$(echo "$l_logs" | sed "s/${l_ip}/${new_ip}/g")
+                    mv -vf $l_logs $new_file_path3
+
+                    #then move and restart stunnel, also calculate new pid, that should probably happen after
+                    new_file_path2=$(echo "$l_pid" | sed "s/${l_ip}/${new_ip}/g")
+                    mv -vf $l_pid $new_file_path2
+                    # do the work here daniewo
+
+                    #pid doesn't need to be updated as it should keep the same pid? Ask sepideh.
+
+                    #update checksumhash in mountmapv4 file
                 fi
             done
 
