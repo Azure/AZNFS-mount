@@ -123,95 +123,95 @@ stages:
               sudo apt install dotnet-sdk-3.1 -y
             displayName: "Update dependencies"
 
-          - task: EsrpCodeSigning@5
-            displayName: 'ESRP CodeSigning MI DEB'
-            inputs:
-              ConnectedServiceName: 'Azure AZNFS'
-              AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-              # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+          # - task: EsrpCodeSigning@5
+          #   displayName: 'ESRP CodeSigning MI DEB'
+          #   inputs:
+          #     ConnectedServiceName: 'Azure AZNFS'
+          #     AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+          #     AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+          #     # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
 
-              UseMSIAuthentication: true
-              AuthAKVName: 'aznfs-keyvault'
-              AuthSignCertName: 'aznfs-cert'
+          #     UseMSIAuthentication: true
+          #     AuthAKVName: 'aznfs-keyvault'
+          #     AuthSignCertName: 'aznfs-cert'
 
-              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/deb
-              Pattern: '*.deb'
-              SessionTimeout: 90
-              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-              MaxConcurrency: 25
-              signConfigType: inlineSignParams
-              VerboseLogin: true
-              inlineOperation: |
-                [
-                {
-                  "KeyCode": "CP-450779-Pgp",
-                  "OperationCode": "LinuxSign",
-                  "ToolName": "sign",
-                  "ToolVersion": "1.0",
-                  "Parameters": {}
-                }
-                ]
+          #     FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/deb
+          #     Pattern: '*.deb'
+          #     SessionTimeout: 90
+          #     ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+          #     MaxConcurrency: 25
+          #     signConfigType: inlineSignParams
+          #     VerboseLogin: true
+          #     inlineOperation: |
+          #       [
+          #       {
+          #         "KeyCode": "CP-450779-Pgp",
+          #         "OperationCode": "LinuxSign",
+          #         "ToolName": "sign",
+          #         "ToolVersion": "1.0",
+          #         "Parameters": {}
+          #       }
+          #       ]
 
-          - task: EsrpCodeSigning@5
-            displayName: 'ESRP CodeSigning MI RPM'
-            inputs:
-              ConnectedServiceName: 'Azure AZNFS'
-              AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-              # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+          # - task: EsrpCodeSigning@5
+          #   displayName: 'ESRP CodeSigning MI RPM'
+          #   inputs:
+          #     ConnectedServiceName: 'Azure AZNFS'
+          #     AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+          #     AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+          #     # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
 
-              UseMSIAuthentication: true
-              AuthAKVName: 'aznfs-keyvault'
-              AuthSignCertName: 'aznfs-cert'
+          #     UseMSIAuthentication: true
+          #     AuthAKVName: 'aznfs-keyvault'
+          #     AuthSignCertName: 'aznfs-cert'
 
-              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpm
-              Pattern: '*.rpm'
-              SessionTimeout: 90
-              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-              MaxConcurrency: 25
-              signConfigType: inlineSignParams
-              VerboseLogin: true
-              inlineOperation: |
-                [
-                {
-                  "KeyCode": "CP-450779-Pgp",
-                  "OperationCode": "LinuxSign",
-                  "ToolName": "sign",
-                  "ToolVersion": "1.0",
-                  "Parameters": {}
-                }
-                ]
+          #     FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpm
+          #     Pattern: '*.rpm'
+          #     SessionTimeout: 90
+          #     ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+          #     MaxConcurrency: 25
+          #     signConfigType: inlineSignParams
+          #     VerboseLogin: true
+          #     inlineOperation: |
+          #       [
+          #       {
+          #         "KeyCode": "CP-450779-Pgp",
+          #         "OperationCode": "LinuxSign",
+          #         "ToolName": "sign",
+          #         "ToolVersion": "1.0",
+          #         "Parameters": {}
+          #       }
+          #       ]
           
-          - task: EsrpCodeSigning@5
-            displayName: 'ESRP CodeSigning MI SUSE'
-            inputs:
-              ConnectedServiceName: 'Azure AZNFS'
-              AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
-              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
-              # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+          # - task: EsrpCodeSigning@5
+          #   displayName: 'ESRP CodeSigning MI SUSE'
+          #   inputs:
+          #     ConnectedServiceName: 'Azure AZNFS'
+          #     AppRegistrationClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
+          #     AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+          #     # EsrpClientId: '0eebccb1-4bcb-445e-bf3f-fa7a8fa5fd7d'
 
-              UseMSIAuthentication: true
-              AuthAKVName: 'aznfs-keyvault'
-              AuthSignCertName: 'aznfs-cert'
+          #     UseMSIAuthentication: true
+          #     AuthAKVName: 'aznfs-keyvault'
+          #     AuthSignCertName: 'aznfs-cert'
 
-              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/suse
-              Pattern: '*.rpm'
-              SessionTimeout: 90
-              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
-              MaxConcurrency: 25
-              signConfigType: inlineSignParams
-              VerboseLogin: true
-              inlineOperation: |
-                [
-                {
-                  "KeyCode": "CP-450779-Pgp",
-                  "OperationCode": "LinuxSign",
-                  "ToolName": "sign",
-                  "ToolVersion": "1.0",
-                  "Parameters": {}
-                }
-                ]
+          #     FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/suse
+          #     Pattern: '*.rpm'
+          #     SessionTimeout: 90
+          #     ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+          #     MaxConcurrency: 25
+          #     signConfigType: inlineSignParams
+          #     VerboseLogin: true
+          #     inlineOperation: |
+          #       [
+          #       {
+          #         "KeyCode": "CP-450779-Pgp",
+          #         "OperationCode": "LinuxSign",
+          #         "ToolName": "sign",
+          #         "ToolVersion": "1.0",
+          #         "Parameters": {}
+          #       }
+          #       ]
 
           - task: EsrpCodeSigning@5
             displayName: 'ESRP CodeSigning MI STUNNEL'
@@ -313,40 +313,29 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
-                  # echo "##vso[task.setvariable variable=idToken;issecret=true]$idToken"
-                  # echo "##vso[task.setvariable variable=tenantId]$tenantId"
-                  # echo "##vso[task.setvariable variable=servicePrincipalId]$servicePrincipalId"
 
-                  echo "++++++++++++++++++++++++++++++++"
-
-                  aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list`
-
-                  echo "++++++++++++++++++++++++++++++++"
-
-                  aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs --version 0.0.0`
-                  echo "AZNFS rpm list before upload ==========: $aznfsids"
+                  aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs`
+                  echo "AZNFS rpm list ==========: $aznfsids"
 
                   # upload packages
-                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/
-
-                  aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs --version 0.0.0`
-                  echo "AZNFS rpm list after upload ==========: $aznfsids"
+                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel
 
                   #################################### get package id #####################################
 
                   # aznfsDeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_amd64.deb`
                   # echo "AZNFS DEB Package ID: $aznfsDeb"
 
-                  aznfsRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.x86_64.rpm`
-                  echo "AZNFS RPM Package ID: $aznfsRpm"
+                  # aznfsRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.x86_64.rpm`
+                  # echo "AZNFS RPM Package ID: $aznfsRpm"
 
                   # aznfsRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.x86_64.rpm`
                   # echo "AZNFS Sles RPM Package ID: $aznfsRpmSles"
 
-                  # aznfsRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.x86_64.rpm`
-                  # echo "AZNFS Stunnel RPM Package ID: $aznfsRpmStunnel"
+                  aznfsRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.x86_64.rpm`
+                  echo "AZNFS Stunnel RPM Package ID: $aznfsRpmStunnel"
 
                   ################################### Add uploaded packages to its repository ######################################
+                  echo "now adding packages to repositories..."
 
                   while IFS=, read -r distro PackageArchType repoName releaseName; do
 
@@ -364,98 +353,154 @@ stages:
                   done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
 
   # - stage: RemovePackage
-  #   jobs:
-  #     - job: RemovePackage
-  #       timeoutInMinutes: 120
+    # jobs:
+    #   - job: RemovePackage
+    #     timeoutInMinutes: 120
       
-  #       pool:
-  #         vmImage: 'ubuntu-20.04'
+    #     pool:
+    #       vmImage: 'ubuntu-20.04'
 
-  #       steps:
-  #         - checkout: none
+    #     steps:
+    #       - checkout: none
 
-  #         - task: PipAuthenticate@1
-  #           inputs:
-  #             artifactFeeds: 'One/aznfs'
-  #         - script: pip install pmc-cli
-  #           displayName: 'Install pmc-cli'
+    #       - task: PipAuthenticate@1
+    #         inputs:
+    #           artifactFeeds: 'One/aznfs'
+    #       - script: pip install pmc-cli
+    #         displayName: 'Install pmc-cli'
 
-  #         - task: AzureCLI@2
-  #           inputs:
-  #             addSpnToEnvironment: true
-  #             azureSubscription: 'Azure AZNFS'
-  #             scriptType: bash
-  #             scriptLocation: inlineScript
-  #             inlineScript: |
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
-  #                 echo "##vso[task.setvariable variable=idToken;issecret=true]$idToken"
-  #                 echo "##vso[task.setvariable variable=tenantId]$tenantId"
-  #                 echo "##vso[task.setvariable variable=servicePrincipalId]$servicePrincipalId"
+    #       - task: AzureCLI@2
+    #         inputs:
+    #           addSpnToEnvironment: true
+    #           azureSubscription: 'Azure AZNFS'
+    #           scriptType: bash
+    #           scriptLocation: inlineScript
+    #           inlineScript: |
 
-  #                 echo "package list ...... deb:"
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name aznfs
+    #               # echo "package list ...... deb:"
+    #               # pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name aznfs
                   
-  #                 aznfsdeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name aznfs | jq -r '.results[0].id'`
-  #                 echo "AZNFS DEB Package ID: $aznfsdeb"
+    #               # aznfsdeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name aznfs | jq -r '.results[0].id'`
+    #               # echo "AZNFS DEB Package ID: $aznfsdeb"
 
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsdeb microsoft-ubuntu-focal-prod-apt focal
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-focal-prod-apt
+    #               # pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name aznfs | jq -r '.[].id' | while read -r ID; do
+    #               #   echo "Processing $ID"
 
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsdeb microsoft-ubuntu-bionic-prod-apt bionic
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-bionic-prod-apt
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $ID microsoft-ubuntu-focal-prod-apt focal
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-focal-prod-apt
 
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsdeb microsoft-ubuntu-jammy-prod-apt jammy
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-jammy-prod-apt
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $ID microsoft-ubuntu-bionic-prod-apt bionic
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-bionic-prod-apt
 
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsdeb microsoft-ubuntu-noble-prod-apt noble
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-noble-prod-apt
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $ID microsoft-ubuntu-jammy-prod-apt jammy
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-jammy-prod-apt
 
-  #                 ############################# Remove package from RPM repositories #############################
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $ID microsoft-ubuntu-noble-prod-apt noble
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-ubuntu-noble-prod-apt
 
-  #                 echo "package list ...... rpm:"
-  #                 pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs
+    #               # done
 
-  #                 for i in `seq 0 6`; do
+    #               # ############################# Remove package from RPM repositories #############################
+
+    #               # echo "package list ...... rpm:"
+    #               # pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs
+
+    #               # for i in `seq 0 9`; do
                     
-  #                   aznfsid=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs | jq -r '.results['$i'].id'`
-  #                   echo "AZNFS DEB Package ID: $aznfsid"
+    #               #   aznfsid=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs | jq -r '.results['$i'].id'`
+    #               #   echo "AZNFS RPM Package ID: $aznfsid"
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel8.0-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel8.0-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel8.0-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel8.0-prod-yum
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel9.0-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel9.0-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel9.0-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel9.0-prod-yum
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-centos8-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-centos8-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-centos8-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-centos8-prod-yum
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-el8-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-el8-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-el8-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-el8-prod-yum
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-el9-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-el9-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-el9-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-el9-prod-yum
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-sles15-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-sles15-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-sles15-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-sles15-prod-yum
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel7.0-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel7.0-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel7.0-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel7.0-prod-yum
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-centos7-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-centos7-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-centos7-prod-yum
+    #               #   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-centos7-prod-yum
+
+    #               # done
 
 
+    #               # Define the package name and version
+    #               PACKAGE_NAME="aznfs"
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel8-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel8-prod-yum
+    #               echo "package list ...... deb before:"
+    #               pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name "$PACKAGE_NAME"
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel9-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel9-prod-yum
+    #               for id in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name "$PACKAGE_NAME" | jq -r '.results[].id'); do
 
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages $aznfsid microsoft-rhel7-prod-yum
-  #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish microsoft-rhel7-prod-yum
+    #                 echo "Package ID: $id"
 
-  #                 done
+    #                 # Remove the package from all repositories
+    #                 for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+    #                   echo "Removing package from repo: $repo"
+    #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages "$id" "$repo"
+    #                 done
+
+    #                 # Republish the repositories
+    #                 for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+    #                   echo "Republishing repo: $repo"
+    #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish "$repo"
+    #                 done
+
+    #                 # Purge the packages from AFD (if applicable)
+    #                 for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+    #                   echo "Purging package from AFD for repo: $repo"
+    #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" cache purge --repo "$repo" --package "$id"
+    #                 done
+
+    #               done
+
+    #               echo "package list ...... deb after:"
+    #               pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name "$PACKAGE_NAME"
+
+
+    #               echo "package list ...... rpm before:"
+    #               pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name "$PACKAGE_NAME"
+
+
+    #               for id in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name "$PACKAGE_NAME" | jq -r '.results[].id'); do
+
+    #                 echo "Package ID: $id"
+
+    #                 # Remove the package from all repositories
+    #                 for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+    #                   echo "Removing package from repo: $repo"
+    #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages "$id" "$repo"
+    #                 done
+
+    #                 # Republish the repositories
+    #                 for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+    #                   echo "Republishing repo: $repo"
+    #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish "$repo"
+    #                 done
+
+    #                 # Purge the packages from AFD (if applicable)
+    #                 for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+    #                   echo "Purging package from AFD for repo: $repo"
+    #                   pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" cache purge --repo "$repo" --package "$id"
+    #                 done
+
+    #               done
+
+    #               echo "package list ...... rpm after:"
+    #               pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name "$PACKAGE_NAME"
 
                   
 

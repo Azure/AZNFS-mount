@@ -1,3 +1,3 @@
 # Do not remove these comments - the list should start at line #3
 # Format of the file : <Distro Name>,<Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
-RHEL-8,aznfsRpm,microsoft-rhel8-prod-yum,
+RHEL-7.0,aznfsRpmStunnel,microsoft-rhel7.9-prod-yum,
