@@ -292,7 +292,7 @@ process_nfsv4_mounts()
                     outfslocation=$(sed "s/${l_ip}/${new_ip}/g" $VIRTUALFSLOCATION)
                     #echo into virtualfslocation
 
-                    echo $outfslocation > $VIRTUALFSLOCATION
+                    echo "$outfslocation" > $VIRTUALFSLOCATION
                     #calculate new PID for file once lines are updated.
 
                     #daniewo then mv the file? or create new one at this point? 
@@ -334,10 +334,12 @@ process_nfsv4_mounts()
 
                     #update filepath for logs
                     new_file_path3=$(echo "$l_logs" | sed "s/${l_ip}/${new_ip}/g")
+                    eecho "daneiwo new log path = $new_file_path3"
                     mv -vf $l_logs $new_file_path3
 
                     #then move and restart stunnel, also calculate new pid, that should probably happen after
                     new_file_path2=$(echo "$l_pid" | sed "s/${l_ip}/${new_ip}/g")
+                    eecho "daniewo new pid path = $new_file_path2"
                     mv -vf $l_pid $new_file_path2
                     # do the work here daniewo
 
