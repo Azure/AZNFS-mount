@@ -292,7 +292,7 @@ process_nfsv4_mounts()
                     outfslocation=$(sed "s/${l_ip}/${new_ip}/g" $VIRTUALFSLOCATION)
                     #echo into virtualfslocation
 
-                    echo "outfslocation" > $VIRTUALFSLOCATION
+                    echo $outfslocation > $VIRTUALFSLOCATION
                     #calculate new PID for file once lines are updated.
 
                     #daniewo then mv the file? or create new one at this point? 
@@ -315,7 +315,7 @@ process_nfsv4_mounts()
                     chattr -f -i $MOUNTMAPv4
 
                     #update mountmapentry
-                    out=$(sed "s/$checksumHash/$checksumHash/" $MOUNTMAPv4)
+                    out=$(sed "s/$l_checksumhash/$checksumHash/" $MOUNTMAPv4)
                     ret=$?
                     if [ $ret -eq 0 ]; then
                         #
