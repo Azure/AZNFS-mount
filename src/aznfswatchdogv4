@@ -375,7 +375,7 @@ process_nfsv4_mounts()
                 eecho "Failed to get the checksum hash of file: '${l_conf}'!"
             fi
 
-            if [ $checksumHash != $l_checksumhash ]; then
+            if [ $checksumHash != $l_checksumhash && $old_ip == $new_ip]; then #daniewo skip if migrated
                 eecho "'${l_conf}' file has modified!"
                 eecho "It's not recommended to modify '${l_conf}' file created by aznfs mount helper!"
                 eecho "watchdog service will do cleanup, kill stunnel process with pid:$(cat $l_pid) and remove '${l_conf}'; '${l_log}'; '${l_pid}'!"
