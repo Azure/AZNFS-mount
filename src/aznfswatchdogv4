@@ -309,7 +309,7 @@ process_nfsv4_mounts()
 
                     eecho "daneiwo new conf path = $new_file_path"
 
-                    checksumHash=`cksum $new_file_path | awk '{print $1}'`
+                        
                     if [ $? -ne 0 ]; then
                         eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
                         chattr -i -f $stunnel_conf_file
@@ -322,11 +322,13 @@ process_nfsv4_mounts()
 
                     #update mountmapentry to update checksumhash and ip files
                     outmountmap=$(sed "s/$l_checksumhash/$checksumHash/" -e "s/$l_ip/$new_ip/" $MOUNTMAPv4)
+                    
                     ret=$?
                     if [ $ret -eq 0 ]; then
                         #
                         # If this echo fails then MOUNTMAPv4 could be truncated.
                         #
+                        eecho "daniewo content of $outmountmap"
                         echo "$outmountmap" > $MOUNTMAPv4
                         ret=$?
                         out=
@@ -339,10 +341,10 @@ process_nfsv4_mounts()
 
 
                     #update filepath for logs
-                    new_file_path3=$(echo "$l_logs" | sed "s/${l_ip}/${new_ip}/g")
+                    new_file_path3=$(echo "$l_log" | sed "s/${l_ip}/${new_ip}/g")
                     eecho "daneiwo new log path = $new_file_path3"
-                    chattr -f -i $l_logs
-                    mv -vf $l_logs $new_file_path3
+                    chattr -f -i $l_log
+                    mv -vf $l_log $new_file_path3
                     chattr -f +i $new_file_path3
 
                     #then move and restart stunnel, also calculate new pid, that should probably happen after
