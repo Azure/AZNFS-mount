@@ -303,7 +303,9 @@ process_nfsv4_mounts()
 
                     #update filepath for config file
                     new_file_path=$(echo "$l_conf" | sed "s/${l_ip}/${new_ip}/g")
+                    chattr -f -i $l_conf
                     mv -vf $l_conf $new_file_path
+                    chattr -f +i $new_file_path
 
                     eecho "daneiwo new conf path = $new_file_path"
 
@@ -319,13 +321,13 @@ process_nfsv4_mounts()
                     chattr -f -i $MOUNTMAPv4
 
                     #update mountmapentry to update checksumhash and ip files
-                    out=$(sed "s/$l_checksumhash/$checksumHash/" -e "s/$l_ip/$new_ip/" $MOUNTMAPv4)
+                    outmountmap=$(sed "s/$l_checksumhash/$checksumHash/" -e "s/$l_ip/$new_ip/" $MOUNTMAPv4)
                     ret=$?
                     if [ $ret -eq 0 ]; then
                         #
                         # If this echo fails then MOUNTMAPv4 could be truncated.
                         #
-                        echo "$out" > $MOUNTMAPv4
+                        echo "$outmountmap" > $MOUNTMAPv4
                         ret=$?
                         out=
                         if [ $ret -ne 0 ]; then
@@ -339,12 +341,17 @@ process_nfsv4_mounts()
                     #update filepath for logs
                     new_file_path3=$(echo "$l_logs" | sed "s/${l_ip}/${new_ip}/g")
                     eecho "daneiwo new log path = $new_file_path3"
+                    chattr -f -i $l_logs
                     mv -vf $l_logs $new_file_path3
+                    chattr -f +i $new_file_path3
 
                     #then move and restart stunnel, also calculate new pid, that should probably happen after
                     new_file_path2=$(echo "$l_pid" | sed "s/${l_ip}/${new_ip}/g")
                     eecho "daniewo new pid path = $new_file_path2"
+                    chattr -f -i $l_pid
                     mv -vf $l_pid $new_file_path2
+                    chattr -f +i $new_file_path2
+
                     # do the work here daniewo
 
                     #pid doesn't need to be updated as it should keep the same pid? Ask sepideh.
