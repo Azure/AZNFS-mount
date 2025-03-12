@@ -322,6 +322,7 @@ process_nfsv4_mounts()
 
                     #update mountmapentry to update checksumhash and ip files
                     outmountmap=$(sed "s/$l_checksumhash/$checksumHash/" -e "s/$l_ip/$new_ip/" $MOUNTMAPv4)
+                    eecho "output for outmountmap $outmountmap"
                     
                     ret=$?
                     if [ $ret -eq 0 ]; then
