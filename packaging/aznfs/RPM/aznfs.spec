@@ -45,8 +45,8 @@ cleanup_stunnel_files()
 	rm -f /tmp/stunnel-latest.tar.gz
 }
 
-# Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat 7 is not compatible with aznfs.
-if grep -qi "mariner" /etc/os-release || [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
+# The default stunnel package version on RedHat 7 is not compatible with aznfs.
+if [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
 	# Install stunnel from source.
 	wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
 	if [ $? -ne 0 ]; then
