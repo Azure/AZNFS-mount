@@ -322,7 +322,7 @@ process_nfsv4_mounts()
 
                     #update mountmapentry to update checksumhash and ip files
                     outmountmap=$(sed "s/$l_checksumhash/$checksumHash/" -e "s/$l_ip/$new_ip/" $MOUNTMAPv4)
-                    eecho "output for outmountmap $outmountmap"
+                    eecho "daniewo ------ output for outmountmap $outmountmap"
                     
                     ret=$?
                     if [ $ret -eq 0 ]; then
@@ -339,7 +339,6 @@ process_nfsv4_mounts()
                     fi
 
                     chattr -f +i $MOUNTMAPv4
-
 
                     #update filepath for logs
                     new_file_path3=$(echo "$l_log" | sed "s/${l_ip}/${new_ip}/g")
