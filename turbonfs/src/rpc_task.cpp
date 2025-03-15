@@ -3726,7 +3726,9 @@ void rpc_task::run_read()
             if (released != bc_vec[i].length) {
                 const uint64_t release_till =
                     inode->get_rastate()->release_till();
-                filecache_handle->release(0, release_till);
+                if (release_till != 0) {
+                    filecache_handle->release(0, release_till);
+                }
             }
 #endif
         }
