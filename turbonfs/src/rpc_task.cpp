@@ -3714,7 +3714,20 @@ void rpc_task::run_read()
              * The buffer may not be released if it's in use by any other
              * user.
              */
-            filecache_handle->release(bc_vec[i].offset, bc_vec[i].length);
+            const uint64_t released =
+                filecache_handle->release(bc_vec[i].offset, bc_vec[i].length);
+            assert(released <= bc_vec[i].length);
+
+            /*
+             * If we could not release this buffer, try to release all cached
+             * data upto release_till, which is a safe offset returned by the
+             * readahead state machine.
+             */
+            if (released != bc_vec[i].length) {
+                const uint64_t release_till =
+                    inode->get_rastate()->release_till();
+                filecache_handle->release(0, release_till);
+            }
 #endif
         }
     }

@@ -1705,6 +1705,15 @@ public:
                 filecache_handle->invalidate();
 
                 if (purge_now) {
+                    /*
+                     * Wait for ongoing readaheads to complete, else they would
+                     * not have dropped membuf lock and inuse count, and clear()
+                     * would incorrectly complain.
+                     */
+                    if (has_rastate()) {
+                        get_rastate()->wait_for_ongoing_readahead();
+                    }
+
                     AZLogDebug("[{}] (Purgenow) Purging filecache", get_fuse_ino());
                     filecache_handle->clear(true /* shutdown */);
                     AZLogDebug("[{}] (Purgenow) Purged filecache", get_fuse_ino());

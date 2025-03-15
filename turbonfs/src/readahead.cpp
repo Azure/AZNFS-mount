@@ -67,6 +67,27 @@ uint64_t ra_state::get_ra_bytes() const
     return ra_bytes * nfs_client::get_ra_scale_factor();
 }
 
+void ra_state::wait_for_ongoing_readahead() const
+{
+    /*
+     * Perform a 1-sec timed wait for ongoing readaheads to complete.
+     * Note that this is called only after all the readaheads have
+     * marked their membufs uptodate but they have not unlocked the
+     * membufs. This will take very small time.
+     */
+    for (int i = 0; i < 1000 && ra_ongoing != 0; i++) {
+        AZLogDebug("[{}] wait_for_ongoing_readahead({})",
+                   inode->get_fuse_ino(), ra_ongoing.load());
+        ::usleep(1000);
+    }
+
+    if (ra_ongoing) {
+        AZLogError("[{}] wait_for_ongoing_readahead: {} readahead bytes still "
+                   "not completed, giving up!",
+                   inode->get_fuse_ino(), ra_ongoing.load());
+    }
+}
+
 /**
  * Readahead context.
  * All ongoing readahead reads are tracked using one ra_context object.
@@ -384,7 +405,10 @@ static void readahead_callback (
     bc->get_membuf()->clear_inuse();
 
 delete_ctx:
-    // Success or failure, report readahead completion.
+    /*
+     * Success or failure, report readahead completion.
+     * This MUST be called after dropping the membuf lock and inuse count.
+     */
     inode->get_rastate()->on_readahead_complete(bc->offset, bc->length);
 
     // Free the readahead RPC task.

@@ -1705,7 +1705,30 @@ bool nfs_inode::release(fuse_req_t req)
         req = nullptr;
     }
 
-    if (!last_close || !is_silly_renamed) {
+    if (!last_close) {
+        /*
+         * If we didn't call flush() above, then caller must call the fuse
+         * callback.
+         */
+        return (req != nullptr);
+    }
+
+    /*
+     * Since the last open count on the inode is dropped and the inode is now
+     * truly getting deleted, invalidate the attribute cache and clear the data
+     * cache.
+     *
+     * This is the close side of cto consistency. Any open after this point
+     * will cause the file data to be fetched from the server.
+     */
+    invalidate_cache(true /* purge_now */);
+    invalidate_attribute_cache();
+
+    /*
+     * If not silly_renamed then we are done, else need to unlink the original
+     * file which we had deferred earlier.
+     */
+    if (!is_silly_renamed) {
         /*
          * If we didn't call flush() above, then caller must call the fuse
          * callback.
@@ -1732,16 +1755,6 @@ bool nfs_inode::release(fuse_req_t req)
 
     AZLogDebug("[{}] Deleting silly renamed file, {}/{}, req: {}",
                ino, parent_ino, silly_renamed_name, fmt::ptr(req));
-
-    /*
-     * Since the inode is now truly getting deleted, invalidate the attribute
-     * cache and clear the data cache.
-     *
-     * This is the close side of cto consistency. Any open after this point
-     * will cause the file data to be fetched from the server.
-     */
-    invalidate_cache(true /* purge_now */);
-    invalidate_attribute_cache();
 
     client->unlink(req, parent_ino,
                    silly_renamed_name.c_str(), true /* for_silly_rename */);

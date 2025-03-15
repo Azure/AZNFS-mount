@@ -157,11 +157,16 @@ public:
         std::unique_lock<std::shared_mutex> _lock(ra_lock_40);
 
         const uint64_t curr_section = (max_byte_read / SECTION_SIZE);
-        const uint64_t this_section = (offset / SECTION_SIZE);
+        const uint64_t this_section = ((offset + length) / SECTION_SIZE);
         // How far from the current last byte read, is this new request.
         const uint64_t read_gap =
             std::abs((int64_t) (offset - max_byte_read));
         bool reset_readahead = false;
+        /*
+         * Scaled ra_bytes is the ra_bytes scaled to account for global cache
+         * pressure. We use that to decide how much to readahead.
+         */
+        const uint64_t ra_bytes_scaled = get_ra_bytes();
 
         /*
          * If this read is beyond ra_bytes away from the current last byte
@@ -169,7 +174,7 @@ public:
          * Reset the readahead state, switching to random access and let the
          * read pattern prove once again for sequential-ness.
          */
-        if (read_gap > ra_bytes) {
+        if (read_gap > ra_bytes_scaled) {
             reset_readahead = true;
         } else if (curr_section != this_section) {
             /*
@@ -216,6 +221,26 @@ public:
             last_byte_readahead.compare_exchange_weak(expected,
                                                       max_byte_read);
         }
+    }
+
+    /**
+     * Returns the byte offset below which it's unlikely to get any application
+     * read (given that the application is doing (pseudo) sequential reads).
+     * Caller can use this to release any unused buffers which may have not been
+     * released as it wasn't safe to release when release was last attempted.
+     */
+    uint64_t release_till() const
+    {
+        /*
+         * Our active readahead window starts from max_byte_read and spans
+         * get_ra_bytes() bytes. For the case of sequential reads, anything
+         * less than "max_byte_read - SECTION_SIZE" is unlikely to be read
+         * again. The margin of SECTION_SIZE helps readers like fio which
+         * issue lot of parallel reads which together are working towards a
+         * sequential goal but may be ordered upto SECTION_SIZE apart.
+         */
+        return (max_byte_read == UINT64_MAX) ? 0 :
+                std::max((int64_t) (max_byte_read - SECTION_SIZE), 0L);
     }
 
     /**
@@ -268,6 +293,11 @@ public:
         ra_ongoing -= length;
     }
 
+    /**
+     * Wait for ongoing readaheads to complete.
+     */
+    void wait_for_ongoing_readahead() const;
+
     bool in_ra_window(uint64_t offset, uint64_t length) const
     {
         assert((int64_t) (offset + length) >= 0);
@@ -280,10 +310,15 @@ public:
         if (last_byte_readahead == 0)
             return false;
 
+        /*
+         * Scaled ra_bytes is the ra_bytes scaled to account for global cache
+         * pressure. We use that to decide how much to readahead.
+         */
+        const uint64_t ra_bytes_scaled = get_ra_bytes();
         const uint64_t le = offset;
         const uint64_t re = offset + length;
         const uint64_t lra = max_byte_read + 1;
-        const uint64_t rra = max_byte_read + ra_bytes;
+        const uint64_t rra = max_byte_read + ra_bytes_scaled;
         const bool ends_before = re <= lra;
         const bool starts_after = le > rra;
 
