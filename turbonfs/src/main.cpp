@@ -638,6 +638,11 @@ int main(int argc, char *argv[])
         goto err_out0;
     }
 
+    if (opts.mountpoint == nullptr) {
+        AZLogError("Mountpoint must be provided!");
+        goto err_out0;
+    }
+
     log_file_name = opts.mountpoint;
     std::replace(log_file_name.begin(), log_file_name.end(), '/', '_');
 

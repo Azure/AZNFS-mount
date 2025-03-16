@@ -288,9 +288,10 @@ typedef struct aznfsc_cfg
 
             /*
              * Userspace readdir cache.
+             * This cannot be disabled currently.
              */
             struct {
-                bool enable = false;
+                const bool enable = true;
             } user;
         } readdir;
 
@@ -304,11 +305,13 @@ typedef struct aznfsc_cfg
 
             /*
              * Userspace data cache.
+             * This cannot be disabled as we need it for performing any IO
+             * operation.
              */
             struct {
-                bool enable = false;
+                const bool enable = true;
 
-                // Max iserspace data cache size in MB.
+                // Max userspace data cache size in MB.
                 int max_size_mb = -1;
             } user;
         } data;

@@ -114,19 +114,21 @@ fuse_max_background: 4096
 #
 # Attribute caching can be effectively disabled by setting actimeo to 0.
 #
-# Readdir data can be cached in the kernel and/or user caches.
-# It can be controlled using cache.readdir.* config.
+# Readdir data can be cached in the kernel and user caches.
+# User cache is always enabled.
+# kernel cache can be controlled using cache.readdir.kernel.enable config.
 #
 # File data can be cached in the kernel and/or user caches.
-# User cache can be memory and/or file backed (file backed cache is currently
-# not supported).
+# User cache is always enabled, it can be memory and/or file backed (file
+# backed cache is currently not supported).
+# kernel cache can be controlled using cache.data.kernel.enable config.
 # Memory backed caches are controlled using cache.data.* configs, while
 # file backed cache are controlled using filecache.* configs.
 #
 # If your workload is primarily large files read/write then kernel data cache
 # (cache.data.kernel.enable) should not be enabled and data cache should be
 # enabled. For small file, small IO workloads you may get better performance
-# with kernel cache enabled and user cache disabled.
+# with kernel cache enabled.
 #
 # Readahead is automatically scaled (up and down) based on the available cache
 # and whether there are ongoing writes competing for the cache. readahead_kb
@@ -143,9 +145,7 @@ fuse_max_background: 4096
 #readahead_kb: 16384
 cache.attr.user.enable: true
 cache.readdir.kernel.enable: true
-cache.readdir.user.enable: true
 cache.data.kernel.enable: false
-cache.data.user.enable: true
 #cache.data.user.max_size_mb: "60%"
 #cache.data.user.max_size_mb: 4096
 

@@ -169,10 +169,12 @@ do { \
 
         _CHECK_BOOL(cache.attr.user.enable);
         _CHECK_BOOL(cache.readdir.kernel.enable);
-        _CHECK_BOOL(cache.readdir.user.enable);
+        // User readdir cache cannot be turned off.
+        assert(cache.readdir.user.enable);
         _CHECK_BOOL(cache.data.kernel.enable);
 
-        _CHECK_BOOL(cache.data.user.enable);
+        // User data cache cannot be turned off.
+        assert(cache.data.user.enable);
         if (cache.data.user.enable) {
             /*
              * cache.data.user.max_size_mb can be specified as a percentage
