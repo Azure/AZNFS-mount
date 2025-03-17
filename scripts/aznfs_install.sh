@@ -125,9 +125,17 @@ is_new_version_available()
 # Function to perform AZNFS update.
 perform_aznfs_update() 
 {
+    ARCH=$(uname -m)
     if [ "$install_cmd" == "apt" ]; then
         AZNFS_RELEASE="aznfs-${RELEASE_NUMBER}-1"
-        package_name=${AZNFS_RELEASE}_amd64.deb
+        if [ "$ARCH" == "x86_64" ]; then
+            package_name=${AZNFS_RELEASE}_amd64.deb
+        elif [ "$ARCH" == "aarch64" ]; then
+            package_name=${AZNFS_RELEASE}_arm64.deb
+        else
+            eecho "[FATAL] Unsupported architecture: $ARCH."
+            exit 1
+        fi
     elif [ "$install_cmd" == "zypper" ]; then
         AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
         package_name=${AZNFS_RELEASE_SUSE}.x86_64.rpm
@@ -414,6 +422,21 @@ __s=$(uname -s 2>/dev/null) || __s=unknown
 #
 case "${__m}:${__s}" in
     "x86_64:Linux")
+        if [ -f /etc/centos-release ]; then
+            pecho "Retrieving distro info from /etc/centos-release..."
+            distro_id="centos"
+        elif [ -f /etc/os-release ]; then
+            pecho "Retrieving distro info from /etc/os-release..."
+            distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+            distro_id=$(canonicalize_distro_id $distro_id)
+        else
+            eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
+            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest' or try running install after setting env variable 'AZNFS_FORCE_PACKAGE_MANAGER' to one of 'apt', 'yum', 'dnf', or 'zypper'"
+            pecho "If the problem persists, contact Microsoft support."
+            exit 1
+        fi
+        ;;
+    "aarch64:Linux")
         if [ -f /etc/centos-release ]; then
             pecho "Retrieving distro info from /etc/centos-release..."
             distro_id="centos"
