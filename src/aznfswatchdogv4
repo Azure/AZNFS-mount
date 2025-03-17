@@ -321,7 +321,7 @@ process_nfsv4_mounts()
                     chattr -f -i $MOUNTMAPv4
 
                     #update mountmapentry to update checksumhash and ip files
-                    outmountmap=$(sed "s/$l_checksumhash/$checksumHash/" -e "s/$l_ip/$new_ip/" $MOUNTMAPv4)
+                    outmountmap=$(sed "s/$l_checksumhash/$checksumHash/g" -e "s/$l_ip/$new_ip/g" $MOUNTMAPv4)
                     eecho "daniewo ------ output for outmountmap $outmountmap"
                     
                     ret=$?
