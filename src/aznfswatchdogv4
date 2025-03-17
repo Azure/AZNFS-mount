@@ -373,6 +373,11 @@ process_nfsv4_mounts()
             eecho "daniewwo IP for $l_host changed [$l_nfsip -> $new_ip]."
             fi
 
+            # start the stunnel process
+            stunnel_status_new=$(stunnel $new_file_path2)
+
+            eecho "Daniewo stunnelstatus = $stunnel_status_new"
+
             # update_mountmapv3_entry version of TLS which will update the mountmapv4 entry and update stunnel
 
         #end daniewo section 
