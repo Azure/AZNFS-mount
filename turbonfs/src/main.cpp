@@ -28,6 +28,8 @@ struct fuse_conn_info_opts* fuse_conn_info_opts_ptr;
  */
 #define AZNFSC_OPT(templ, key) { templ, offsetof(struct aznfsc_cfg, key), 0}
 
+std::atomic<bool> client_started = false;
+
 /*
  * Is 'az login' required?
  * It is set when the user has enabled auth in config but they have not done 'az login'.
@@ -341,6 +343,13 @@ static int set_signal_handler(int signum, void (*handler)(int))
 
 static void handle_usr1([[maybe_unused]] int signum)
 {
+    /*
+     * Till all nfs_context are setup, it's not safe to run dump_stats().
+     */
+    if (!client_started) {
+        return;
+    }
+
     const int saved_errno = errno;
     assert(signum == SIGUSR1);
     rpc_stats_az::dump_stats();
@@ -609,7 +618,6 @@ int main(int argc, char *argv[])
     struct fuse_cmdline_opts opts;
     struct fuse_loop_config *loop_config = fuse_loop_cfg_create();
     int ret = -1;
-    bool client_started = false;
     int wait_iter;
     std::string log_file_name;
     std::string log_file_path;
