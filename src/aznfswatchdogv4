@@ -290,7 +290,7 @@ process_nfsv4_mounts()
                         chattr -f +i $l_conf
                     fi
 
-                    new_checksumHash==`cksum $l_conf | awk '{print $1}'`
+                    new_checksumHash=`cksum $l_conf | awk '{print $1}'`
 
                     #SED to change IP as well in FSLOCATION
                     outfslocation=$(sed "s/${l_ip}/${new_ip}/g" $VIRTUALFSLOCATION)
