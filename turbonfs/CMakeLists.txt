@@ -339,12 +339,46 @@ target_compile_options(${CMAKE_PROJECT_NAME}
                        PRIVATE -Werror
                        )
 
+#
+# Libraries for statically linking gnutls.
+# libp11-kit and libunistring do not have a static version available, so we are
+# forced to use the shared version and bundle it.
+#
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+find_library(GNUTLS_STATIC_LIB libgnutls.a REQUIRED)
+find_library(HOGWEED_STATIC_LIB libhogweed.a REQUIRED)
+find_library(NETTLE_STATIC_LIB libnettle.a REQUIRED)
+find_library(TASN1_STATIC_LIB libtasn1.a REQUIRED)
+find_library(IDN2_STATIC_LIB libidn2.a REQUIRED)
+find_library(GMP_STATIC_LIB libgmp.a REQUIRED)
+set(CMAKE_FIND_LIBRARY_SUFFIXES .so)
+find_library(P11_KIT_SHARED_LIB libp11-kit.so REQUIRED)
+find_library(UNISTRING_SHARED_LIB NAMES
+             libunistring.so
+             libunistring.so.5
+             libunistring.so.2
+             REQUIRED)
+
+set(GNUTLS_ALL_LIBRARIES
+    ${GNUTLS_STATIC_LIB}
+    ${HOGWEED_STATIC_LIB}
+    ${NETTLE_STATIC_LIB}
+    ${TASN1_STATIC_LIB}
+    ${IDN2_STATIC_LIB}
+    ${GMP_STATIC_LIB}
+    ${P11_KIT_SHARED_LIB}
+    ${UNISTRING_SHARED_LIB})
+message(STATUS "Using gnutls libraries: ${GNUTLS_ALL_LIBRARIES}")
+
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}
+                      -static-libgcc -static-libstdc++
                       ${ZLIB_LIBRARIES}
                       dl
                       pthread
                       nfs
+                      # GNUTLS libraries are needed by static libnfs.
+                      ${GNUTLS_ALL_LIBRARIES}
                       yaml-cpp
                       spdlog
                       Azure::azure-identity 
