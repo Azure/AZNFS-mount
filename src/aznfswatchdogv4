@@ -290,8 +290,6 @@ process_nfsv4_mounts()
                         chattr -f +i $l_conf
                     fi
 
-                    new_checksumHash=`cksum $l_conf | awk '{print $1}'`
-
                     #SED to change IP as well in FSLOCATION
                     outfslocation=$(sed "s/${l_ip}/${new_ip}/g" $VIRTUALFSLOCATION)
                     #echo into virtualfslocation
@@ -325,6 +323,7 @@ process_nfsv4_mounts()
                     #calculate the new checksumhash fom new config file.
 
                     #update mountmapentry to update checksumhash and ip files
+                    new_checksumHash=`cksum $new_file_path | awk '{print $1}'`
                     outmountmap=$(sed "s/$l_checksumhash/$new_checksumHash/g" -e "s/$l_ip/$new_ip/g" $MOUNTMAPv4)
                     eecho "daniewo ------ output for outmountmap $outmountmap"
                     
