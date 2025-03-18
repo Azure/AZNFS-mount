@@ -323,9 +323,10 @@ process_nfsv4_mounts()
                     #calculate the new checksumhash fom new config file.
 
                     #update mountmapentry to update checksumhash and ip files
-                    new_checksumHash=`cksum $new_file_path | awk '{print $1}'`
-                    outmountmap=$(sed "s/$l_checksumhash/$new_checksumHash/g" -e "s/$l_ip/$new_ip/g" $MOUNTMAPv4)
+                    newchecksumhash=`cksum $new_file_path | awk '{print $1}'`
+                    outmountmap=$(sed "s/$l_checksumhash/$newchecksumhash/g" -e "s/$l_ip/$new_ip/g" $MOUNTMAPv4)
                     eecho "daniewo ------ output for outmountmap $outmountmap"
+                    eecho "daniewo newchecksumhash=$newchecksumhash, l_checksumhash=$l_checksumhash"
                     
                     ret=$?
                     if [ $ret -eq 0 ]; then
