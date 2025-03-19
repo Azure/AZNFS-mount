@@ -327,7 +327,7 @@ process_nfsv4_mounts()
                     outmountmap=$(sed -e "s/$l_checksumhash/$newchecksumhash/g" -e "s/$l_ip/$new_ip/g" $MOUNTMAPv4)
                     eecho "daniewo ------ output for outmountmap $outmountmap"
                     eecho "======daniewo newchecksumhash=$newchecksumhash, l_checksumhash=$l_checksumhash"
-                    
+                    l_conf = $new_file_path
                     ret=$?
                     if [ $ret -eq 0 ]; then
                         #
@@ -351,12 +351,16 @@ process_nfsv4_mounts()
                     mv -vf $l_log $new_file_path3
                     chattr -f +i $new_file_path3
 
+                    l_log = $new_file_path3
+
                     #then move and restart stunnel, also calculate new pid, that should probably happen after
                     new_file_path2=$(echo "$l_pid" | sed "s/${l_ip}/${new_ip}/g")
                     eecho "daniewo new pid path = $new_file_path2"
                     chattr -f -i $l_pid
                     mv -vf $l_pid $new_file_path2
                     chattr -f +i $new_file_path2
+
+                    l_pid = $new_file_path2 #update l_pid id file so that it reads properly
 
                     # do the work here daniewo
 
@@ -374,7 +378,7 @@ process_nfsv4_mounts()
 
             # check fslocation ip against the old ip that was in mountmap file
             if [ "$ip_address" != "$new_ip" ]; then
-            eecho "daniewwo IP for $l_host changed [$l_nfsip -> $new_ip]."
+            eecho "daniewwo IP for $l_host changed [$ip_address -> $new_ip]."
             fi
 
             # start the stunnel process
