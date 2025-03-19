@@ -62,6 +62,10 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt install -y gcc-aarch64-linux-gnu libunwind-dev
+    - name: Install patchelf
+      shell: bash
+      run: |
+        sudo apt install -y patchelf
     - name: Checkout repository
       uses: actions/checkout@v3
     - name: Run Package.sh

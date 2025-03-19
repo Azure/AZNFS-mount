@@ -373,6 +373,7 @@ message(STATUS "Using gnutls libraries: ${GNUTLS_ALL_LIBRARIES}")
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}
                       -static-libgcc -static-libstdc++
+                      -Wl,-rpath,/opt/microsoft/aznfs/libs
                       ${ZLIB_LIBRARIES}
                       dl
                       pthread

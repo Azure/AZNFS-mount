@@ -47,11 +47,39 @@ generate_rpm_package()
 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
 	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
 
+	###########################################
+	# Bundle aznfsclient and its dependencies #
+	###########################################
+
+	# copy the aznfsclient config file.
+	cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
+
+	# copy the aznfsclient binary.
+	cp -avf ${aznfsclient} ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient
+
+	#
+	# Package aznfsclient dependencies in opt_dir/libs.
+	# libs_dir must already be populated with the required dependencies from
+	# the debian packaging step. Simply copy all those to rpm_libs_dir.
+	#
+	rpm_libs_dir=${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/libs
+	mkdir -p ${rpm_libs_dir}
+	cp -avfH ${libs_dir}/* ${rpm_libs_dir}
+
 	# Create the archive for the package.
 	tar -cvzf ${rpm_pkg_dir}.tar.gz -C ${STG_DIR}/${rpm_dir}/tmp root
 
 	# Copy the SPEC file to change the placeholders depending upon the RPM distro.
 	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec ${STG_DIR}/${rpm_dir}/tmp/
+
+	#
+	# Insert the contents of ${rpm_libs_dir}.
+	# This is variable due to the shared library versions.
+	# sed doesn't (easily) support replace target to be multi-line, so we use
+	# awk for this one.
+	#
+	opt_libs=$(for lib in ${rpm_libs_dir}/*; do echo ${opt_dir}/libs/$(basename $lib); done)
+	awk -i inplace -v r="$opt_libs" '{gsub(/OPT_LIBS/,r)}1' ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 
 	# Insert current release number and RPM_DIR value.
 	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
@@ -86,7 +114,8 @@ generate_rpm_package()
 	rpmbuild --define "mariner $is_mariner" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 }
 
-generate_tarball_package() {
+generate_tarball_package()
+{
     local arch=$1
     local tar_pkg_dir
     local compiler
@@ -124,6 +153,27 @@ generate_tarball_package() {
 
     # Set AKS_USER variable to true inside aznfswatchdog to indicate use by Azure Kubernetes Service (AKS).
     sed -i -e 's/AKS_USER="false"/AKS_USER="true"/' -e "s/RELEASE_NUMBER_FOR_AKS=x.y.z/RELEASE_NUMBER_FOR_AKS=${RELEASE_NUMBER}/" ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
+
+    ###########################################
+    # Bundle aznfsclient and its dependencies #
+    ###########################################
+
+    # TODO: Add ARM aznfsclient support.
+
+    # copy the aznfsclient config file.
+    cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
+
+    # copy the aznfsclient binary.
+    cp -avf ${aznfsclient} ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/aznfsclient
+
+    #
+    # Package aznfsclient dependencies in opt_dir/libs.
+    # libs_dir must already be populated with the required dependencies from
+    # the debian packaging step. Simply copy all those to rpm_libs_dir.
+    #
+    tarball_libs_dir=${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/libs
+    mkdir -p ${tarball_libs_dir}
+    cp -avfH ${libs_dir}/* ${tarball_libs_dir}
 
     # Set appropriate permissions.
     chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
@@ -202,8 +252,6 @@ cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
 make
 popd
 
-cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
-
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
 cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
@@ -215,6 +263,41 @@ cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/deb/${pkg_dir
 mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
 cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
 cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
+
+###########################################
+# Bundle aznfsclient and its dependencies #
+###########################################
+
+# aznfsclient in the final target dir.
+aznfsclient=${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
+cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
+
+# Package aznfsclient dependencies in opt_dir.
+libs_dir=${STG_DIR}/deb/${pkg_dir}${opt_dir}/libs
+mkdir -p ${libs_dir}
+
+# Copy the dependencies.
+cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
+
+#
+# Patch all the libs to reference shared libs from ${libs_dir}.
+# This is our very simple containerization.
+#
+for lib in ${libs_dir}/*.so*; do
+	echo "Setting rpath to ${opt_dir}/libs for $lib"
+	patchelf --set-rpath ${opt_dir}/libs "$lib"
+done
+
+#
+# Final containerization effort - bundle and use the same interpreter as the
+# build machine.
+#
+ld_linux_path=$(ldd ${aznfsclient} | grep "ld-linux" | awk '{print $1}')
+ld_linux_name=$(basename "$ld_linux_path")
+ld_linux="${libs_dir}/${ld_linux_name}"
+cp -avfH  "${ld_linux_path}" "${ld_linux}"
+
+patchelf --set-interpreter ${opt_dir}/libs/${ld_linux_name} ${aznfsclient}
 
 # Create the deb package.
 dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
