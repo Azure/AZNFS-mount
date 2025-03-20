@@ -315,6 +315,8 @@ process_nfsv4_mounts()
                         chattr -f +i $new_file_path
 
                         eecho "daneiwo new conf path = $new_file_path"
+                        l_conf = $new_file_path
+                        eecho "~~~~~~~l_conf= $l_conf~~~~~~~~"
 
                             
                         if [ $? -ne 0 ]; then
@@ -388,7 +390,7 @@ process_nfsv4_mounts()
                         fi
 
                         # start the stunnel process
-                        stunnel_status_new=$(stunnel $l_pid)
+                        stunnel_status_new=$(stunnel $l_conf)
 
                         eecho "Daniewo stunnelstatus = $stunnel_status_new"
 
