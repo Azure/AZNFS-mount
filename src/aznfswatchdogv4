@@ -203,6 +203,7 @@ process_nfsv4_mounts()
 
         IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"  
         IP_changed = false
+        eecho "l_ip = $l_ip"
 
         if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
@@ -262,7 +263,8 @@ process_nfsv4_mounts()
             #probably need to check if it returns empty as well.
             #we grab the entire lines, for each entry etc. 
             #only do is fslocation actually returns a nonzero line
-            if [-n $fslocation_entry]; then
+            eecho "daniewo fslocationentry=$fslocation_entry"
+            if [-n "$fslocation_entry"]; then
                 
                 for entry in $fslocation_entry; do 
                     eecho "daniewo fslocation_entry = $entry"
