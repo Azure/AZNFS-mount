@@ -266,8 +266,8 @@ process_nfsv4_mounts()
             eecho "daniewo fslocationentry=$fslocation_entry"
             if [-n "$fslocation_entry"]; then
                 
-                for entry in $fslocation_entry; do 
-                    eecho "daniewo fslocation_entry = $entry"
+                # for entry in $fslocation_entry; do 
+                #     eecho "daniewo fslocation_entry = $entry"
 
                     #extract fslocation entry
                     IFS=" " read l_fqdn old_ip new_ip l_prt <<< $fslocation_entry
@@ -393,7 +393,7 @@ process_nfsv4_mounts()
                         eecho "Daniewo stunnelstatus = $stunnel_status_new"
 
                     fi
-                done
+                # done
             fi
             
             # update_mountmapv3_entry version of TLS which will update the mountmapv4 entry and update stunnel
