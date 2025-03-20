@@ -315,7 +315,7 @@ process_nfsv4_mounts()
                         chattr -f +i $new_file_path
 
                         eecho "daneiwo new conf path = $new_file_path"
-                        l_conf = $new_file_path
+                        l_conf=$new_file_path
                         eecho "~~~~~~~l_conf= $l_conf~~~~~~~~"
 
                             
