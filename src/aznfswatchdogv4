@@ -264,7 +264,7 @@ process_nfsv4_mounts()
             #we grab the entire lines, for each entry etc. 
             #only do is fslocation actually returns a nonzero line
             eecho "daniewo fslocationentry=$fslocation_entry"
-            if [-n "$fslocation_entry"]; then
+            if [ -n "$fslocation_entry" ]; then
                 
                 # for entry in $fslocation_entry; do 
                 #     eecho "daniewo fslocation_entry = $entry"
