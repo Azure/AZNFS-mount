@@ -272,9 +272,6 @@ esac
 
 ensure_pkg
 
-#
-# Check package updates from microsoft respository
-#
 if [ $apt -eq 1 ]; then
     current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
     available_upgrade_version=$(apt list --upgradable 2>/dev/null | grep '\<aznfs\>' | awk '{print $2}')
@@ -291,6 +288,9 @@ if [ $apt -eq 1 ]; then
         fi
     fi
 
+#
+# Check package updates from microsoft respository
+#
 elif [ $zypper -eq 1 ]; then
     current_version=$(zypper list-updates -r "microsoft-sles15-prod-yum" | grep "\<aznfs\>" | awk '{print $7}')
     available_upgrade_version=$(zypper list-updates -r "microsoft-sles15-prod-yum"| grep "\<aznfs\>" | awk '{print $9}')
