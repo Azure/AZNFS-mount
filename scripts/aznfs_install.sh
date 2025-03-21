@@ -272,9 +272,12 @@ esac
 
 ensure_pkg
 
+#
+# Check package updates from microsoft respository
+#
 if [ $apt -eq 1 ]; then
     current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
-    available_upgrade_version=$(apt list --upgradable 2>/dev/null | grep "aznfs" | awk '{print $2}')
+    available_upgrade_version=$(apt list --upgradable 2>/dev/null | grep '\<aznfs\>' | awk '{print $2}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
@@ -289,8 +292,8 @@ if [ $apt -eq 1 ]; then
     fi
 
 elif [ $zypper -eq 1 ]; then
-    current_version=$(zypper info aznfs | grep "Version" | awk '{print $3}')
-    available_upgrade_version=$(zypper list-updates | grep "aznfs" | awk '{print $5}')
+    current_version=$(zypper list-updates -r "microsoft-sles15-prod-yum" | grep "\<aznfs\>" | awk '{print $7}')
+    available_upgrade_version=$(zypper list-updates -r "microsoft-sles15-prod-yum"| grep "\<aznfs\>" | awk '{print $9}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
@@ -306,13 +309,7 @@ elif [ $zypper -eq 1 ]; then
 
 else
     current_version=$(rpm -q aznfs)
-
-    # If the package is not available, exit. We need this line to skip parsing the error message.
-    if ! $yum list --available aznfs > /dev/null 2>&1; then
-        exit 0
-    fi
-
-    available_upgrade_version=$($yum list --available aznfs | tail -1 | awk '{print $2}')
+    available_upgrade_version=$($yum list --available aznfs | grep "\<aznfs\>" | awk '{print $2}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
