@@ -64,7 +64,7 @@ stages:
           #   displayName: "Print Version Info"
 
           - script: |
-              sudo apt-get update
+              sudo apt -y update
               sudo apt install -y gcc-aarch64-linux-gnu
             displayName: "Install Cross-Compile Tools"
 
@@ -81,9 +81,9 @@ stages:
               for dir in deb rpm suse stunnel; do
                 mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
-              cp $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              cp -f $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
               for dir in rpm suse stunnel; do
-                cp $(work_dir)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
+                cp -f $(work_dir)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
@@ -118,7 +118,7 @@ stages:
             displayName: 'List Artifacts'
 
           - script: |
-              sudo apt-get update
+              sudo apt -y update
               wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
               sudo dpkg -i packages-microsoft-prod.deb
               sudo apt update 
