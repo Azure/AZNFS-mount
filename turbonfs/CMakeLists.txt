@@ -172,7 +172,7 @@ if(NOT NINJA_FOUND)
 endif()
 
 # Meson will install the fuse library and header files in the following paths.
-set(fuse3_LIBRARY "/usr/local/lib/x86_64-linux-gnu/libfuse3.a")
+set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
 set(fuse3_INCLUDE_DIR "/usr/local/include")
 
 add_custom_command(
@@ -345,7 +345,20 @@ target_compile_options(${CMAKE_PROJECT_NAME}
 # forced to use the shared version and bundle it.
 #
 set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+
 find_library(GNUTLS_STATIC_LIB libgnutls.a REQUIRED)
+#
+# arm64 libgnutls.a has multiple definitions for some symbols exported by
+# libcrypto.a. The libcrypto.a object has some more symbols which are needed,
+# so we delete the offending object from libgnutls.a before linking.
+#
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+execute_process(
+	COMMAND bash -c "cp -vf ${GNUTLS_STATIC_LIB} /tmp/gnutls.a; ar dv /tmp/gnutls.a aes-aarch64.o"
+	COMMAND_ERROR_IS_FATAL ANY)
+set(GNUTLS_STATIC_LIB /tmp/gnutls.a)
+endif()
+
 find_library(HOGWEED_STATIC_LIB libhogweed.a REQUIRED)
 find_library(NETTLE_STATIC_LIB libnettle.a REQUIRED)
 find_library(TASN1_STATIC_LIB libtasn1.a REQUIRED)
@@ -382,7 +395,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       ${GNUTLS_ALL_LIBRARIES}
                       yaml-cpp
                       spdlog
-                      Azure::azure-identity 
+                      Azure::azure-identity
                       Azure::azure-storage-blobs
                       nlohmann_json::nlohmann_json)
 

@@ -19,6 +19,11 @@ fi
 
 mkdir -p build && cd build
 
+# vcpkg required env variable VCPKG_FORCE_SYSTEM_BINARIES to be set for arm64.
+if [ "$(uname -m)" == "aarch64" ]; then
+    export VCPKG_FORCE_SYSTEM_BINARIES=1
+fi
+
 if [ "$BUILD_TYPE" == "Debug" ]; then
     # tcmalloc doesn't play well with ASAN.
     JEMALLOC=ON

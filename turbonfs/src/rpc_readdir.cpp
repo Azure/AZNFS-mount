@@ -35,6 +35,26 @@ directory_entry::directory_entry(char *name_,
                                  cookie3 cookie_,
                                  uint64_t fileid_) :
     cookie(cookie_),
+#if defined(__aarch64__)
+    attributes {
+        .st_dev = 0,
+        .st_ino = fileid_,
+        .st_mode = 0,
+        .st_nlink = 0,
+        .st_uid = 0,
+        .st_gid = 0,
+        .st_rdev = 0,
+        .__pad1 = 0,
+        .st_size = 0,
+        .st_blksize = 0,
+        .__pad2 = 0,
+        .st_blocks = 0,
+        .st_atim = {0, 0},
+        .st_mtim = {0, 0},
+        .st_ctim = {0, 0},
+        .__glibc_reserved = {}
+    },
+#else
     attributes {
         .st_dev = 0,
         .st_ino = fileid_,
@@ -52,6 +72,7 @@ directory_entry::directory_entry(char *name_,
         .st_ctim = {0, 0},
         .__glibc_reserved = {}
     },
+#endif
     has_attributes(false),
     nfs_inode(nullptr),
     name(name_)
