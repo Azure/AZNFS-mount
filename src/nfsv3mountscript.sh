@@ -463,12 +463,20 @@ fix_mount_options()
                 exit 1
             fi
             if [ ! -f "$CONFIG_FILE_PATH" ]; then
-                eecho "Default config file not found!"
-                eecho "Provide a config file using the configfile=/path/to/your/config.yaml mount option, or create a valid config file at: $CONFIG_FILE_PATH, and try again!"
-                eecho "Refer sample config file at: $SAMPLE_CONFIG_PATH"
-                exit 1
+                echo
+                wecho "***************************************************************************"
+                wecho "No config file provided and default config file $CONFIG_FILE_PATH"
+                wecho "not found. Using sample config from $SAMPLE_CONFIG_PATH."
+                wecho "This will work with default settings but you might want to provide your own config using"
+                wecho "configfile=/path/to/your/config.yaml mount option, or create a global config at"
+                wecho "$CONFIG_FILE_PATH!"
+                wecho "Refer to the sample config file $SAMPLE_CONFIG_PATH."
+                wecho "***************************************************************************"
+                echo
+                CONFIG_FILE_PATH=$SAMPLE_CONFIG_PATH
+            else
+                vvecho "Using default config file: $CONFIG_FILE_PATH"
             fi
-            vvecho "Using default config file: $CONFIG_FILE_PATH"
         else
             vvecho "Using config file: $config_file_path"
             CONFIG_FILE_PATH=$config_file_path
