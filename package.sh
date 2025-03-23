@@ -32,7 +32,7 @@ generate_rpm_package()
 
 	# Overwrite rpm_pkg_dir in case of Mariner, RedHat7, and Centos7.
 	if [ "$rpm_dir" == "stunnel" ]; then
-		rpm_pkg_dir="${pkg_name}_stunnel_custom-${RELEASE_NUMBER}-1.x86_64"
+		rpm_pkg_dir="${pkg_name}_stunnel_custom-${RELEASE_NUMBER}-1.$arch"
 		custom_stunnel_required=1
 	fi
 
