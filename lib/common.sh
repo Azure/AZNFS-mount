@@ -699,12 +699,19 @@ get_check_host_value()
         ["usgovcloudapi.net$"]="*.file.core.usgovcloudapi.net"
     )
 
-    for cert in "${!certs[@]}"; do
-        if [[ "$hostname" =~ $cert ]]; then
-                check_host_value="${certs[$cert]}"
-                break
-        fi
-    done
+    # If AZURE_ENDPOINT_OVERRIDE environment variable is set, use it.
+    if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
+        # Remove any leading dot.
+        modified_endpoint=${AZURE_ENDPOINT_OVERRIDE#.}
+        check_host_value="*.file.core.$modified_endpoint"
+    else
+        for cert in "${!certs[@]}"; do
+            if [[ "$hostname" =~ $cert ]]; then
+                    check_host_value="${certs[$cert]}"
+                    break
+            fi
+        done
+    fi
 
     echo "$check_host_value"
 }
