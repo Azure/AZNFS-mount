@@ -242,6 +242,7 @@ verify_super_user
 #
 __m=$(uname -m 2>/dev/null) || __m=unknown
 __s=$(uname -s 2>/dev/null) || __s=unknown
+
 #
 # Try to detect the distro in a resilient manner and set distro_id
 # global variables.

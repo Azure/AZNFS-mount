@@ -20,14 +20,17 @@ parameters:
     default: false
 
   - name: versionName
-    displayName: "Version Name"
+    displayName: 'Version Name'
     type: string
-    default: "0.0.0"
+    default: '0.0.0'
 
   - name: buildType
-    displayName: 'Turbo Client build type'
-    type: string
-    default: 'Release'
+     displayName: 'Turbo Client build type'
+     type: string
+     default: 'Release'
+     values:
+     - Release
+     - Debug
 
 # Do not trigger this pipeline automatically
 trigger:
@@ -47,17 +50,19 @@ stages:
   - stage: BuildPackages
     displayName: "Build and Package Artifacts"
     jobs:
-      - job: package_mount_helper_amd64
+      - job: package_aznfs_amd64
         displayName: Package and Release ${{ parameters.versionName }} for amd64
         pool:
-          vmImage: "ubuntu-22.04"
+          vmImage: "ubuntu-24.04"
 
         steps:
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
           #   displayName: "Print Version Info"
 
-          - script: uname -m
+          - script: |
+              arch=$(uname -m)
+              echo "Building version ${{ parameters.versionName }} for ${{ arch }}"
             displayName: "Build Agent Architecture"
 
           - checkout: self
@@ -104,7 +109,7 @@ stages:
 
         pool:
           vmImage: 'ubuntu-20.04'
-        
+
         steps:
           - checkout: none
 
