@@ -62,7 +62,7 @@ stages:
 
           - script: |
               arch=$(uname -m)
-              echo "Building version ${{ parameters.versionName }} for ${{ arch }}"
+              echo "Building version ${{ parameters.versionName }} for $arch"
             displayName: "Build Agent Architecture"
 
           - checkout: self
