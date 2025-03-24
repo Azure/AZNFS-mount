@@ -64,7 +64,7 @@ stages:
           #   displayName: "Print Version Info"
 
           - checkout: self
-            path: amd64
+            path: amd64/AZNFS-mount
             displayName: 'Checkout repository'
 
           - script: |
@@ -117,7 +117,7 @@ stages:
           #   displayName: "Print Version Info"
 
           - checkout: self
-            path: arm64 
+            path: arm64/AZNFS-mount
             displayName: 'Checkout repository'
 
           - script: |
