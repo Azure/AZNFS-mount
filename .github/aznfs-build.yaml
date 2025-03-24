@@ -60,10 +60,11 @@ stages:
 
         steps:
           - script: |
-              mkdir -p $(root_dir)/amd64
+              mkdir -p amd64
+              cd amd64
               git clone https://github.com/Azure/AZNFS-mount
             displayName: 'Checkout Code'
-            workingDirectory: $(root_dir)/amd64
+            workingDirectory: $(root_dir)
 
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
@@ -114,10 +115,11 @@ stages:
 
         steps:
           - script: |
-              mkdir -p $(root_dir)/amd64
+              mkdir -p arm64
+              cd arm64
               git clone https://github.com/Azure/AZNFS-mount
             displayName: 'Checkout Code'
-            workingDirectory: $(root_dir)/arm64
+            workingDirectory: $(root_dir)
 
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
