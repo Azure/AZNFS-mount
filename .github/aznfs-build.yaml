@@ -26,10 +26,7 @@ parameters:
 
   - name: buildType
     displayName: 'Turbo Client build type'
-    type: choice
-    options:
-      - Release
-      - Debug
+    type: string
     default: 'Release'
 
 # Do not trigger this pipeline automatically
