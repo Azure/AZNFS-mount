@@ -20,9 +20,17 @@ parameters:
     default: false
 
   - name: versionName
-    displayName: "Version Name"
+    displayName: 'Version Name'
     type: string
-    default: "0.0.0"
+    default: '0.0.0'
+
+  - name: buildType
+    displayName: 'Turbo Client build type'
+    type: string
+    default: 'Release'
+    values:
+    - Release
+    - Debug
 
 # Do not trigger this pipeline automatically
 trigger:
@@ -42,38 +50,37 @@ stages:
   - stage: BuildPackages
     displayName: "Build and Package Artifacts"
     jobs:
-      - job: Build_Package
-        displayName: "Build and Package"
+      - job: package_aznfs_amd64
+        displayName: Package and Release ${{ parameters.versionName }} for amd64
         pool:
-          vmImage: "ubuntu-latest"
-
-        variables:
-          - name: root_dir
-            value: '$(System.DefaultWorkingDirectory)'
-          - name: work_dir
-            value: '$(System.DefaultWorkingDirectory)/AZNFS-mount'
+          vmImage: "ubuntu-24.04"
 
         steps:
-          - script: |
-              git clone https://github.com/Azure/AZNFS-mount
-            displayName: 'Checkout Code'
-            workingDirectory: $(root_dir)
-
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
           #   displayName: "Print Version Info"
 
           - script: |
-              sudo apt -y update
-              sudo apt install -y gcc-aarch64-linux-gnu
-            displayName: "Install Cross-Compile Tools"
+              arch=$(uname -m)
+              echo "Building version ${{ parameters.versionName }} for $arch"
+            displayName: "Build Agent Architecture"
+
+          - checkout: self
+            path: amd64/AZNFS-mount
+            displayName: 'Checkout repository'
 
           - script: |
+              sudo apt update
+              sudo apt install -y patchelf
+            displayName: "Install patchelf"
+          
+          - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
-              export STG_DIR=$(work_dir)
-              export SOURCE_DIR=$(work_dir)
-              chmod +x $(work_dir)/generate_package.sh
-              $(work_dir)/generate_package.sh
+              export STG_DIR=$(System.DefaultWorkingDirectory)
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
+              export BUILD_TYPE=${{ parameters.buildType }}
+              chmod +x $SOURCE_DIR/generate_package.sh
+              $SOURCE_DIR/generate_package.sh
             displayName: "Run Package Script"
 
           - script: |
@@ -81,9 +88,9 @@ stages:
               for dir in deb rpm suse stunnel; do
                 mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
-              cp -f $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              cp -f $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
               for dir in rpm suse stunnel; do
-                cp -f $(work_dir)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
+                cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
@@ -102,7 +109,7 @@ stages:
 
         pool:
           vmImage: 'ubuntu-20.04'
-        
+
         steps:
           - checkout: none
 
@@ -121,7 +128,7 @@ stages:
               sudo apt -y update
               wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
               sudo dpkg -i packages-microsoft-prod.deb
-              sudo apt update 
+              sudo apt update
               sudo apt install apt-transport-https -y
               sudo apt install dotnet-sdk-3.1 -y
             displayName: "Update dependencies"
@@ -348,5 +355,3 @@ stages:
                     echo "Publishing for $distro to $repoName"
                     pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
                   done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
-
-  

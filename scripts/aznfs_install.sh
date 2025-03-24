@@ -248,7 +248,7 @@ __s=$(uname -s 2>/dev/null) || __s=unknown
 # global variables.
 #
 case "${__m}:${__s}" in
-    "x86_64:Linux")
+    "x86_64:Linux" | "aarch64:Linux")
         if [ -f /etc/centos-release ]; then
             pecho "Retrieving distro info from /etc/centos-release..."
             distro_id="centos"
@@ -258,8 +258,8 @@ case "${__m}:${__s}" in
             distro_id=$(canonicalize_distro_id $distro_id)
         else
             eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
-            pecho "If the problem persists, contact Microsoft support."
             eecho "Cannot install aznfs package updates."
+            pecho "Please contact Microsoft support."
             exit 1
         fi
         ;;
