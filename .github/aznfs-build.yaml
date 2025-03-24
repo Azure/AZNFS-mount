@@ -68,11 +68,10 @@ stages:
           #     echo "Building version ${{ parameters.versionName }}"
           #   displayName: "Print Version Info"
 
-          - name: Install patchelf
-            shell: bash
-            run: |
+          - script: |
               sudo apt update
               sudo apt install -y patchelf
+            displayName: "Install patchelf"
           
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
@@ -122,11 +121,10 @@ stages:
           #     echo "Building version ${{ parameters.versionName }}"
           #   displayName: "Print Version Info"
 
-          - name: Install patchelf
-            shell: bash
-            run: |
+          - script: |
               sudo apt update
               sudo apt install -y patchelf
+            displayName: "Install patchelf"
           
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
