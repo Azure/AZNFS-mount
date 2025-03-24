@@ -51,7 +51,7 @@ stages:
         displayName: Package and Release ${{ parameters.versionName }} for arm64
         pool:
           vmImage: "ubuntu-22.04"
-          architecture: 'arm64'
+          platform: 'arm64'
 
         steps:
         
