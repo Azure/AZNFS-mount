@@ -56,7 +56,7 @@ stages:
           - name: root_dir
             value: '$(System.DefaultWorkingDirectory)'
           - name: work_dir
-            value: '$(System.DefaultWorkingDirectory)/amd64/AZNFS-mount'
+            value: '$(System.DefaultWorkingDirectory)/AZNFS-mount'
 
         steps:
           # - script: |
@@ -108,7 +108,7 @@ stages:
           - name: root_dir
             value: '$(System.DefaultWorkingDirectory)'
           - name: work_dir
-            value: '$(System.DefaultWorkingDirectory)/arm64/AZNFS-mount'
+            value: '$(System.DefaultWorkingDirectory)/AZNFS-mount'
 
         steps:
 
