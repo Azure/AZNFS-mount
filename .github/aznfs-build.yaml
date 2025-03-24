@@ -54,6 +54,9 @@ stages:
           architecture: 'arm64'
 
         steps:
+        
+          - script: uname -m
+            displayName: "Build Agent Architecture"
 
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
