@@ -1,0 +1,167 @@
+#
+# Share details
+# These will ONLY be used if the user runs the binary directly or passes
+# "none" as source in the mount command. In that case account and container
+# are mandatory, cloud_suffix can be guessed and port is default 2048.
+#
+account: sjc22prdste06hnfsv3acc1
+container: nfsv3test
+
+#cloud_suffix: blob.core.windows.net
+#cloud_suffix: blob.preprod.core.windows.net
+#port: 2048
+
+#
+# Auth Config
+#
+auth: false
+
+#
+# NFS mount options
+# These have the same name and meaning as Linux NFS client mount options.
+# Also note that only a subset of Linux mount options are supported.
+# readdir_maxcount
+# lookupcache: all|none|pos|positive
+#
+nconnect: 96
+timeo: 600
+retrans: 2
+acregmin: 3
+acregmax: 60
+acdirmin: 30
+acdirmax: 60
+actimeo: 300
+lookupcache: all
+rsize: 3145728
+wsize: 3145728
+
+#
+# Option controlling transport security, takes following values:
+# none: do not use TLS encryption.
+# tls: use TLS encryption, as defined in RPC-with-TLS RFC 9289.
+#
+xprtsec: none
+
+#
+# aznfsclient will disable (to be precise, resist) OOM killing as it's an
+# important process and killing it may cause data loss. If you don't want
+# aznfsclient to do that, set this to false.
+#
+oom_kill_disable: true
+
+#
+# Consistency config.
+# This controls the consistency level desired wrt updates from other clients.
+# Following values are supported (from lowest to highest consistency):
+# - solowriter
+#   Use this when this fuse client is the only one accessing the share or all
+#   other clients have mounted the share readonly, and hence it's guaranteed that
+#   file/dirs cannot be updated outside our knowledge. This implies we can cache
+#   attributes and data indefinitely and local changes will correctly update the
+#   caches.
+#   actimeo config will be ignored and set to "infinite" value.
+#   Beware, if you wrongly choose this when there are other clients actually
+#   making changes to the share (creating/deleting files/dirs) those changes may
+#   not reflect for indefinitely long period.
+#
+# - standardnfs
+#   Use this to get the same consistency as standard NFS, which is close-to-open
+#   consistency with fresh attributes queried every actimeo period. actimeo
+#   config will be honoured.
+#   Files/directories are assumed to not have changed till actimeo after which
+#   we make a GETATTR call to query the attributes based on which we decide if
+#   the file/dir cache needs to be invalidated.
+#   Hence any changes done by other clients will be reflected no later than
+#   actimeo period.
+#   Other non-NFS protocol clients may not see changes to files made by this
+#   fuse client till the file is closed.
+#
+# - azurempa (Multi Protocol Access)
+#   This is same as "standard" with one difference - non-NFS protocol clients
+#   will see changes to files made by this fuse client more promptly.
+#   Use this if you want to access files updated by this client, from other
+#   non-NFS protocols.
+#
+consistency: solowriter
+
+#
+# Misc options
+# fuse_* config variables control some fuse configurable value.
+# fuse_max_threads has the same effect as fuse cmdline option "-o max_threads=".
+# fuse_max_idle_threads has the same effect as fuse cmdline option "-o max_idle_threads=".
+# Value of -1 for these imply "use fuse defaults". Fuse defaults must be fine for most cases.
+#
+readdir_maxcount: 1048576
+fuse_max_threads: -1
+fuse_max_idle_threads: -1
+fuse_max_background: 4096
+
+#
+# Cache config
+#
+# We cache the following:
+# - file/dir attributes
+# - lookup results
+# - readdir data
+# - file data
+#
+# attributes are cached in the kernel and/or user and can be controlled by the
+# following mount options:
+# - acregmin/acregmax
+# - acdirmin/acdirmax
+# - actimeo
+# - lookupcache
+#
+# Attribute caching can be effectively disabled by setting actimeo to 0.
+#
+# Readdir data can be cached in the kernel and user caches.
+# User cache is always enabled.
+# kernel cache can be controlled using cache.readdir.kernel.enable config.
+#
+# File data can be cached in the kernel and/or user caches.
+# User cache is always enabled, it can be memory and/or file backed (file
+# backed cache is currently not supported).
+# kernel cache can be controlled using cache.data.kernel.enable config.
+# Memory backed caches are controlled using cache.data.* configs, while
+# file backed cache are controlled using filecache.* configs.
+#
+# If your workload is primarily large files read/write then kernel data cache
+# (cache.data.kernel.enable) should not be enabled and data cache should be
+# enabled. For small file, small IO workloads you may get better performance
+# with kernel cache enabled.
+#
+# Readahead is automatically scaled (up and down) based on the available cache
+# and whether there are ongoing writes competing for the cache. readahead_kb
+# is the initial value which is the scaled appropriately. It can be set to 0
+# for disabling readaheads completely.
+# For most cases you don't need to specify readahead_kb explicitly.
+#
+# cache.data.user.max_size_mb can be expressed as a percentage or an absolute
+# value expressed in MiB. Percentage is of the total RAM in the system. It can
+# be expressed as e.g., "80%.
+# If not specified the default cache size is 60% of the total RAM but capped
+# at 16GB.
+#
+#readahead_kb: 16384
+cache.attr.user.enable: true
+cache.readdir.kernel.enable: true
+cache.data.kernel.enable: false
+#cache.data.user.max_size_mb: "60%"
+#cache.data.user.max_size_mb: 4096
+
+#
+# These are currently not supported.
+#
+#filecache.enable: false
+#filecache.cachedir: /mnt
+#filecache.max_size_gb: 1000
+#cache_max_mb: 4096
+
+#
+# Config controlling misc system behaviour.
+#
+sys.force_stable_writes: true
+sys.resolve_before_reconnect: true
+sys.nodrc.remove_noent_as_success: true
+sys.nodrc.rename_noent_as_success: true
+sys.nodrc.create_exist_as_success: true
