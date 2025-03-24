@@ -25,12 +25,12 @@ parameters:
     default: '0.0.0'
 
   - name: buildType
-     displayName: 'Turbo Client build type'
-     type: string
-     default: 'Release'
-     values:
-     - Release
-     - Debug
+    displayName: 'Turbo Client build type'
+    type: string
+    default: 'Release'
+    values:
+    - Release
+    - Debug
 
 # Do not trigger this pipeline automatically
 trigger:
@@ -100,7 +100,7 @@ stages:
             inputs:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
-        
+
   - stage: ReleaseArtifacts
     displayName: "Sign and Release Artifacts"
     jobs:
@@ -355,5 +355,3 @@ stages:
                     echo "Publishing for $distro to $repoName"
                     pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
                   done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
-
-  
