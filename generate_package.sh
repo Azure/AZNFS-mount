@@ -122,7 +122,7 @@ generate_rpm_package()
 
 	# Create the rpm package.
 	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-
+	
 	# Remove the temporary files.
 	rm ${STG_DIR}/${rpm_pkg_dir}.tar.gz
 }

@@ -59,16 +59,13 @@ stages:
             value: '$(System.DefaultWorkingDirectory)/amd64/AZNFS-mount'
 
         steps:
-          - script: |
-              mkdir -p amd64
-              cd amd64
-              git clone https://github.com/Azure/AZNFS-mount
-            displayName: 'Checkout Code'
-            workingDirectory: $(root_dir)
-
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
           #   displayName: "Print Version Info"
+
+          - checkout: self
+            path: amd64
+            displayName: 'Checkout repository'
 
           - script: |
               sudo apt update
@@ -114,16 +111,14 @@ stages:
             value: '$(System.DefaultWorkingDirectory)/arm64/AZNFS-mount'
 
         steps:
-          - script: |
-              mkdir -p arm64
-              cd arm64
-              git clone https://github.com/Azure/AZNFS-mount
-            displayName: 'Checkout Code'
-            workingDirectory: $(root_dir)
 
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
           #   displayName: "Print Version Info"
+
+          - checkout: self
+            path: arm64 
+           displayName: 'Checkout repository'
 
           - script: |
               sudo apt update
