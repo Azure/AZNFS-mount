@@ -24,6 +24,14 @@ parameters:
     type: string
     default: "0.0.0"
 
+  - name: buildType
+    displayName: 'Turbo Client build type'
+    type: choice
+    options:
+      - Release
+      - Debug
+    default: 'Release'
+
 # Do not trigger this pipeline automatically
 trigger:
   - none
@@ -42,38 +50,40 @@ stages:
   - stage: BuildPackages
     displayName: "Build and Package Artifacts"
     jobs:
-      - job: Build_Package
-        displayName: "Build and Package"
+      - job: package_mount_helper_amd64
+        displayName: Package and Release ${{ parameters.versionName }} for amd64
         pool:
-          vmImage: "ubuntu-latest"
+          vmImage: "ubuntu-22.04"
 
         variables:
           - name: root_dir
             value: '$(System.DefaultWorkingDirectory)'
           - name: work_dir
-            value: '$(System.DefaultWorkingDirectory)/AZNFS-mount'
+            value: '$(System.DefaultWorkingDirectory)/amd64/AZNFS-mount'
 
         steps:
           - script: |
               git clone https://github.com/Azure/AZNFS-mount
             displayName: 'Checkout Code'
-            workingDirectory: $(root_dir)
+            workingDirectory: $(root_dir)/amd64
 
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
           #   displayName: "Print Version Info"
 
-          - script: |
-              sudo apt -y update
-              sudo apt install -y gcc-aarch64-linux-gnu
-            displayName: "Install Cross-Compile Tools"
-
+          - name: Install patchelf
+           shell: bash
+            run: |
+              sudo apt update
+              sudo apt install -y patchelf
+          
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
               export STG_DIR=$(work_dir)
               export SOURCE_DIR=$(work_dir)
-              chmod +x $(work_dir)/generate_package.sh
-              $(work_dir)/generate_package.sh
+              export BUILD_TYPE=${{ parameters.buildType }}
+              chmod +x $SOURCE_DIR/generate_package.sh
+              $SOURCE_DIR/generate_package.sh
             displayName: "Run Package Script"
 
           - script: |
@@ -85,6 +95,60 @@ stages:
               for dir in rpm suse stunnel; do
                 cp -f $(work_dir)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
+              echo "Listing Built Files..."
+              ls -R $(Build.ArtifactStagingDirectory)
+            displayName: "List Build Outputs"
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)
+              artifactName: 'aznfs-temp'
+        
+      - job: package_mount_helper_arm64
+        displayName: Package and Release ${{ parameters.versionName }} for arm64
+        pool:
+          vmImage: "ubuntu-22.04-arm"
+
+        variables:
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/arm64/AZNFS-mount'
+
+        steps:
+          - script: |
+              git clone https://github.com/Azure/AZNFS-mount
+            displayName: 'Checkout Code'
+            workingDirectory: $(root_dir)/arm64
+
+          # - script: |
+          #     echo "Building version ${{ parameters.versionName }}"
+          #   displayName: "Print Version Info"
+
+          - name: Install patchelf
+           shell: bash
+            run: |
+              sudo apt update
+              sudo apt install -y patchelf
+          
+          - script: |
+              export RELEASE_NUMBER=${{ parameters.versionName }}
+              export STG_DIR=$(work_dir)
+              export SOURCE_DIR=$(work_dir)
+              export BUILD_TYPE=${{ parameters.buildType }}
+              chmod +x $SOURCE_DIR/generate_package.sh
+              $SOURCE_DIR/generate_package.sh
+            displayName: "Run Package Script"
+
+          - script: |
+              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts
+              for dir in deb rpm suse stunnel; do
+                mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
+              done
+              cp -f $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_arm64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              #for dir in rpm suse stunnel; do
+              #  cp -f $(work_dir)/$dir/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
+              #done
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
             displayName: "List Build Outputs"
