@@ -47,56 +47,11 @@ stages:
   - stage: BuildPackages
     displayName: "Build and Package Artifacts"
     jobs:
-      - job: package_mount_helper_amd64
-        displayName: Package and Release ${{ parameters.versionName }} for amd64
-        pool:
-          vmImage: "ubuntu-22.04"
-
-        steps:
-          # - script: |
-          #     echo "Building version ${{ parameters.versionName }}"
-          #   displayName: "Print Version Info"
-
-          - checkout: self
-            path: amd64/AZNFS-mount
-            displayName: 'Checkout repository'
-
-          - script: |
-              sudo apt update
-              sudo apt install -y patchelf
-            displayName: "Install patchelf"
-          
-          - script: |
-              export RELEASE_NUMBER=${{ parameters.versionName }}
-              export STG_DIR=$(System.DefaultWorkingDirectory)
-              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
-              export BUILD_TYPE=${{ parameters.buildType }}
-              chmod +x $SOURCE_DIR/generate_package.sh
-              $SOURCE_DIR/generate_package.sh
-            displayName: "Run Package Script"
-
-          - script: |
-              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts
-              for dir in deb rpm suse stunnel; do
-                mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
-              done
-              cp -f $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
-              for dir in rpm suse stunnel; do
-                cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
-              done
-              echo "Listing Built Files..."
-              ls -R $(Build.ArtifactStagingDirectory)
-            displayName: "List Build Outputs"
-
-          - task: PublishBuildArtifacts@1
-            inputs:
-              PathtoPublish: $(Build.ArtifactStagingDirectory)
-              artifactName: 'aznfs-temp'
-        
       - job: package_mount_helper_arm64
         displayName: Package and Release ${{ parameters.versionName }} for arm64
         pool:
-          vmImage: "ubuntu-22.04-arm"
+          vmImage: "ubuntu-22.04"
+          architecture: 'arm64'
 
         steps:
 
