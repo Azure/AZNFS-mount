@@ -118,7 +118,7 @@ stages:
 
           - checkout: self
             path: arm64 
-           displayName: 'Checkout repository'
+            displayName: 'Checkout repository'
 
           - script: |
               sudo apt update
