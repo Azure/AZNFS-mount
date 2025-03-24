@@ -242,7 +242,6 @@ verify_super_user
 #
 __m=$(uname -m 2>/dev/null) || __m=unknown
 __s=$(uname -s 2>/dev/null) || __s=unknown
-
 #
 # Try to detect the distro in a resilient manner and set distro_id
 # global variables.
@@ -258,14 +257,28 @@ case "${__m}:${__s}" in
             distro_id=$(canonicalize_distro_id $distro_id)
         else
             eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
+            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest' or try running install after setting env variable 'AZNFS_FORCE_PACKAGE_MANAGER' to one of 'apt', 'yum', 'dnf', or 'zypper'"
             pecho "If the problem persists, contact Microsoft support."
-            eecho "Cannot install aznfs package updates."
+            exit 1
+        fi
+        ;;
+    "aarch64:Linux")
+        if [ -f /etc/centos-release ]; then
+            pecho "Retrieving distro info from /etc/centos-release..."
+            distro_id="centos"
+        elif [ -f /etc/os-release ]; then
+            pecho "Retrieving distro info from /etc/os-release..."
+            distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+            distro_id=$(canonicalize_distro_id $distro_id)
+        else
+            eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
+            pecho "Download .deb/.rpm package based on your distro from 'https://github.com/Azure/AZNFS-mount/releases/latest' or try running install after setting env variable 'AZNFS_FORCE_PACKAGE_MANAGER' to one of 'apt', 'yum', 'dnf', or 'zypper'"
+            pecho "If the problem persists, contact Microsoft support."
             exit 1
         fi
         ;;
     *)
         eecho "[FATAL] Unsupported platform: ${__m}:${__s}."
-        eecho "[FATAL] AZNFS package update aborted."
         exit 1
         ;;
 esac
