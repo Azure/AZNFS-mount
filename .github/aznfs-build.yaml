@@ -52,12 +52,6 @@ stages:
         pool:
           vmImage: "ubuntu-22.04"
 
-        variables:
-          - name: root_dir
-            value: '$(System.DefaultWorkingDirectory)'
-          - name: work_dir
-            value: '$(System.DefaultWorkingDirectory)/AZNFS-mount'
-
         steps:
           # - script: |
           #     echo "Building version ${{ parameters.versionName }}"
@@ -74,8 +68,8 @@ stages:
           
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
-              export STG_DIR=$(work_dir)
-              export SOURCE_DIR=$(work_dir)
+              export STG_DIR=$(System.DefaultWorkingDirectory)
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
               export BUILD_TYPE=${{ parameters.buildType }}
               chmod +x $SOURCE_DIR/generate_package.sh
               $SOURCE_DIR/generate_package.sh
@@ -86,9 +80,9 @@ stages:
               for dir in deb rpm suse stunnel; do
                 mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
-              cp -f $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              cp -f $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
               for dir in rpm suse stunnel; do
-                cp -f $(work_dir)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
+                cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
@@ -103,12 +97,6 @@ stages:
         displayName: Package and Release ${{ parameters.versionName }} for arm64
         pool:
           vmImage: "ubuntu-22.04-arm"
-
-        variables:
-          - name: root_dir
-            value: '$(System.DefaultWorkingDirectory)'
-          - name: work_dir
-            value: '$(System.DefaultWorkingDirectory)/AZNFS-mount'
 
         steps:
 
@@ -127,8 +115,8 @@ stages:
           
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
-              export STG_DIR=$(work_dir)
-              export SOURCE_DIR=$(work_dir)
+              export STG_DIR=$(System.DefaultWorkingDirectory)
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
               export BUILD_TYPE=${{ parameters.buildType }}
               chmod +x $SOURCE_DIR/generate_package.sh
               $SOURCE_DIR/generate_package.sh
@@ -139,9 +127,9 @@ stages:
               for dir in deb rpm suse stunnel; do
                 mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
-              cp -f $(work_dir)/deb/aznfs-${{ parameters.versionName }}-1_arm64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              cp -f $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_arm64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
               #for dir in rpm suse stunnel; do
-              #  cp -f $(work_dir)/$dir/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
+              #  cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               #done
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
