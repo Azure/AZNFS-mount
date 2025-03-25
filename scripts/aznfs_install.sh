@@ -294,8 +294,8 @@ if [ $apt -eq 1 ]; then
 # Check package updates from microsoft respository
 #
 elif [ $zypper -eq 1 ]; then
-    current_version=$(zypper list-updates -r "microsoft-sles15-prod-yum" | grep "\<aznfs\>" | awk '{print $7}')
-    available_upgrade_version=$(zypper list-updates -r "microsoft-sles15-prod-yum"| grep "\<aznfs\>" | awk '{print $9}')
+    current_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $7}')
+    available_upgrade_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $9}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
