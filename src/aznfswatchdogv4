@@ -403,6 +403,8 @@ process_nfsv4_mounts()
                         eecho "Daniewo stunnelstatus = $stunnel_status_new"
                         eecho "daniewo after kill l_pid=$new_file_path2 $(cat $new_file_path2)"
 
+                        l_pid=$new_file_path2
+
                     fi
                 # done
             fi
