@@ -389,7 +389,15 @@ process_nfsv4_mounts()
                         fi
 
                         # start the stunnel process
-                        stunnel_status_new=$(stunnel $l_conf)
+                        #daniewo kill 
+                        pid=$(cat $l_pid)
+                        kill -9 $pid
+                        if [ $? -ne 0 ]; then
+                            eecho "Unable to kill stunnel process $pid!"
+                        fi
+
+                        stunnel_status_new=$(stunnel $l_conf) 
+                        #the new PID needs to be updated in the pid file. grab new PID of the stunnel process
 
                         eecho "Daniewo stunnelstatus = $stunnel_status_new"
 
