@@ -147,7 +147,9 @@ ensure_pkg()
     elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         use_dnf_or_yum
         $yum -y check-update
-        if [ $? -ne 0 ]; then
+
+        # 0 means no update available, 100 means updates found.
+        if [ $? -eq 1 ]; then
             echo
             eecho "\"${yum} -y check-update\" failed"
             eecho "Please make sure \"${yum} -y check-update\" runs successfully and then try again!"
@@ -292,8 +294,8 @@ if [ $apt -eq 1 ]; then
 # Check package updates from microsoft respository
 #
 elif [ $zypper -eq 1 ]; then
-    current_version=$(zypper list-updates -r "microsoft-sles15-prod-yum" | grep "\<aznfs\>" | awk '{print $7}')
-    available_upgrade_version=$(zypper list-updates -r "microsoft-sles15-prod-yum"| grep "\<aznfs\>" | awk '{print $9}')
+    current_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $7}')
+    available_upgrade_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $9}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
@@ -308,8 +310,9 @@ elif [ $zypper -eq 1 ]; then
     fi
 
 else
-    current_version=$(rpm -q aznfs)
-    available_upgrade_version=$($yum list --available aznfs | grep "\<aznfs\>" | awk '{print $2}')
+    current_pkg_name=$(rpm -q aznfs)
+    current_version=$(echo "$current_pkg_name" | sed -E 's/^aznfs-(.+)\.[^.]+$/\1/')
+    available_upgrade_version=$($yum list available aznfs | grep "\<aznfs\>" | awk '{print $2}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
