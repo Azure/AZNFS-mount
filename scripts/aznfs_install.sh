@@ -147,7 +147,9 @@ ensure_pkg()
     elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         use_dnf_or_yum
         $yum -y check-update
-        if [ $? -ne 0 ]; then
+
+        # 0 means no update available, 100 means updates found.
+        if [ $? -eq 1 ]; then
             echo
             eecho "\"${yum} -y check-update\" failed"
             eecho "Please make sure \"${yum} -y check-update\" runs successfully and then try again!"
@@ -309,7 +311,7 @@ elif [ $zypper -eq 1 ]; then
 
 else
     current_version=$(rpm -q aznfs)
-    available_upgrade_version=$($yum list --available aznfs | grep "\<aznfs\>" | awk '{print $2}')
+    available_upgrade_version=$($yum list available aznfs | grep "\<aznfs\>" | awk '{print $2}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
