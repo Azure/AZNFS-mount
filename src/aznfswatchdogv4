@@ -366,10 +366,10 @@ process_nfsv4_mounts()
                         new_file_path2=$(echo "$l_pid" | sed "s/${l_ip}/${new_ip}/g")
                         eecho "daniewo new pid path = $new_file_path2"
                         chattr -f -i $l_pid
-                        mv -vf $l_pid $new_file_path2
-                        chattr -f +i $new_file_path2
+                        #mv -vf $l_pid $new_file_path2
+                        #chattr -f +i $new_file_path2
 
-                        l_pid=$new_file_path2 #update l_pid id file so that it reads properly
+                        #l_pid=$new_file_path2 #update l_pid id file so that it reads properly
 
                         # do the work here daniewo
 
@@ -401,7 +401,7 @@ process_nfsv4_mounts()
                         #the new PID needs to be updated in the pid file. grab new PID of the stunnel process
 
                         eecho "Daniewo stunnelstatus = $stunnel_status_new"
-                        eecho "daniewo after kill l_pid=$l_pid $(cat $l_pid)"
+                        eecho "daniewo after kill l_pid=$new_file_path2 $(cat $new_file_path2)"
 
                     fi
                 # done
