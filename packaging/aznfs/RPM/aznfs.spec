@@ -1,7 +1,7 @@
 Name: AZNFS_PACKAGE_NAME
 Version: x.y.z
 Release: 1
-Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
+Summary: Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
 %if 0%{?custom_stunnel}

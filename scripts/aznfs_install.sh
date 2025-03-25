@@ -146,7 +146,7 @@ ensure_pkg()
         apt=1
     elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         use_dnf_or_yum
-        $yum -y check-update
+        $yum -y check-update --refresh
 
         # 0 means no update available, 100 means updates found.
         if [ $? -eq 1 ]; then
