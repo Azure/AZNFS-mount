@@ -398,7 +398,7 @@ process_nfsv4_mounts()
                         fi
 
                         eecho "daniewo cat l_conf $(cat $l_conf)"
-                        stunnel_status_new=$(stunnel $l_conf) 
+                        stunnel_status_new=$(stunnel $l_conf 2>&1)
                         #the new PID needs to be updated in the pid file. grab new PID of the stunnel process
 
                         eecho "Daniewo stunnelstatus = $stunnel_status_new"
