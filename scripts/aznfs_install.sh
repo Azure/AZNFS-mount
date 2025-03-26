@@ -229,8 +229,12 @@ create_flag_file()
 # Action starts here #
 ######################
 
-parse_user_config
-pecho "Running auto-update..."
+# Check if an argument is provided and equals "auto-update".
+if [ $# -gt 0 ] && [ "$1" == "auto-update" ]; then
+    RUN_MODE="auto-update"
+    parse_user_config
+    pecho "Running auto-update..."
+fi
 
 #
 # Only super user can install aznfs.
