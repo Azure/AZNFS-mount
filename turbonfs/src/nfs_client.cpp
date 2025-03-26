@@ -244,15 +244,19 @@ void nfs_client::periodic_updater()
         uint64_t expected = last_genid.load();
         if (rw_genid.compare_exchange_strong(expected, expected + 1)) {
             w_MBps = (GET_GBL_STATS(server_bytes_written) - last_server_bytes_written) /
-                     ((now_sec - last_sec) * 1000'000);
+                     (intvl * 1000'000);
             r_MBps = (GET_GBL_STATS(server_bytes_read) - last_server_bytes_read) /
-                     ((now_sec - last_sec) * 1000'000);
+                     (intvl * 1000'000);
 
             last_sec = now_sec;
             last_server_bytes_read = GET_GBL_STATS(server_bytes_read);
             last_server_bytes_written = GET_GBL_STATS(server_bytes_written);
             last_genid = rw_genid.load();
         }
+    }
+
+    if (max_cache == 0) {
+        return;
     }
 
     /*
