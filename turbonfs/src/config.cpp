@@ -335,6 +335,11 @@ bool aznfsc_cfg::set_defaults_and_sanitize()
         readdir_maxcount = 1048576;
     if (readahead_kb == -1)
         readahead_kb = AZNFSCFG_READAHEAD_KB_DEF;
+
+    if (fuse_max_background == -1) {
+        fuse_max_background = AZNFSCFG_FUSE_MAX_BG_DEF;
+    }
+
     if (cache.data.user.enable) {
         if (cache.data.user.max_size_mb < 0) {
             /*
