@@ -357,8 +357,10 @@ process_nfsv4_mounts()
                         new_file_path3=$(echo "$l_log" | sed "s/${l_ip}/${new_ip}/g")
                         eecho "daneiwo new log path = $new_file_path3"
                         chattr -f -i $l_log
-                        mv -vf $l_log $new_file_path3
-                        chattr -f +i $new_file_path3
+
+                        rm $l_log
+                        # mv -vf $l_log $new_file_path3
+                        # chattr -f +i $new_file_path3
 
                         l_log=$new_file_path3
 
