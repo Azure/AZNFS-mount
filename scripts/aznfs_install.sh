@@ -138,21 +138,28 @@ ensure_pkg()
         apt -y update
         if [ $? -ne 0 ]; then
             echo
-            eecho "\"apt update\" failed"
-            eecho "Please make sure \"apt update\" runs successfully and then try again!"
+            eecho "\"apt -y update\" failed"
+            eecho "Please make sure \"apt -y update\" runs successfully and then try again!"
             echo
             exit 1
         fi
         apt=1
     elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
         use_dnf_or_yum
-        $yum -y check-update --refresh
+        check_update_opt=" --refresh"
+        $yum -y check-update $check_update_opt >/dev/null 2>&1
+
+        # centos7 doesn't support --refresh option.
+        if [ $? -eq 1 ]; then
+            check_update_opt=""
+            $yum -y check-update
+        fi
 
         # 0 means no update available, 100 means updates found.
         if [ $? -eq 1 ]; then
             echo
-            eecho "\"${yum} -y check-update\" failed"
-            eecho "Please make sure \"${yum} -y check-update\" runs successfully and then try again!"
+            eecho "\"${yum} -y check-update$check_update_opt\" failed"
+            eecho "Please make sure \"${yum} -y check-update$check_update_opt\" runs successfully and then try again!"
             echo
             exit 1
         fi

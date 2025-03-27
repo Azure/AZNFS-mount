@@ -12,7 +12,7 @@ Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, ipro
 %endif
 
 %description
-Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
+Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
 
 %prep
 mkdir -p ${STG_DIR}/RPM_DIR/root/rpmbuild/SOURCES/

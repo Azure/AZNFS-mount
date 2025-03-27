@@ -622,7 +622,7 @@ log_version_info()
     sleep 2
 
     if [ "$distro_id" == "ubuntu" ]; then
-        current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+        current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
     elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
         current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
     elif [ "$distro_id" == "sles" ]; then
