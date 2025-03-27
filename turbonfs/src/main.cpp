@@ -120,7 +120,7 @@ static void aznfsc_ll_init(void *userdata,
     /*
      * Fuse kernel driver must issue parallel readahead requests.
      */
-    conn->want |= FUSE_CAP_ASYNC_READ;
+    // conn->want |= FUSE_CAP_ASYNC_READ;
 
     // Blob NFS doesn't support locking.
     conn->want &= ~FUSE_CAP_POSIX_LOCKS;
@@ -139,8 +139,8 @@ static void aznfsc_ll_init(void *userdata,
     conn->want &= ~FUSE_CAP_SPLICE_MOVE;
     conn->want &= ~FUSE_CAP_SPLICE_READ;
 
-    conn->want |= FUSE_CAP_AUTO_INVAL_DATA;
-    conn->want |= FUSE_CAP_ASYNC_DIO;
+    // conn->want |= FUSE_CAP_AUTO_INVAL_DATA;
+    // conn->want |= FUSE_CAP_ASYNC_DIO;
 
     if (aznfsc_cfg.cache.data.kernel.enable) {
         conn->want |= FUSE_CAP_WRITEBACK_CACHE;
