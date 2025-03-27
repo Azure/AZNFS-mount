@@ -112,32 +112,89 @@ get_cert_path_based_and_command()
     if command -v apt-get &> /dev/null; then
         CERT_PATH="/usr/local/share/ca-certificates"
         CERT_UPDATE_COMMAND="update-ca-certificates"
-        STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
     # Check if we're on a Red Hat-based distribution
     elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
         CERT_PATH="/etc/pki/ca-trust/source/anchors"
         CERT_UPDATE_COMMAND="update-ca-trust extract"
-        STUNNEL_CAFILE="${CERT_PATH}/DigiCert_Global_Root_G2.crt"
+        mkdir -p /etc/ssl/certs
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create /etc/ssl/certs path for certificate!"
+            return 1
+        fi
     # Check if we're on a SUSE-based distribution
     elif command -v zypper &> /dev/null; then
         CERT_PATH="/etc/pki/trust/anchors"
         CERT_UPDATE_COMMAND="update-ca-certificates"
-        STUNNEL_CAFILE="${CERT_PATH}/DigiCert_Global_Root_G2.crt"
+        mkdir -p /etc/ssl/certs
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create /etc/ssl/certs path for certificate!"
+            return 1
+        fi
     else
         eecho "[FATAL] Unsupported distribution!"
         return 1
     fi
+
+    STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
+}
+
+extract_CA()
+{
+    awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print > "'$STUNNEL_CAFILE'"} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Failed to extract DigiCert Global Root G2 certificate from /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem!"
+        return 1
+    fi
+}
+
+compare_CA_thumbprint()
+{
+    local thumbprint=$(openssl x509 -in $STUNNEL_CAFILE -noout -fingerprint | cut -d'=' -f2)
+    local expected_thumbprint=$(awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem | openssl x509 -noout -fingerprint -sha1 2&>1 | cut -d'=' -f2)
+
+    if [ "$thumbprint" != "$expected_thumbprint" ]; then
+        return 1
+    fi
+
+    vecho "Thumbprint of the installed DigiCert Global Root G2 certificate matches the expected value."
 }
 
 install_CA_cert()
 {
-    wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O ${CERT_PATH}/DigiCert_Global_Root_G2.crt
+    # For Debian-based and SUSE-based distributions, if the cert exits, it's in /etc/ssl/certs/DigiCert_Global_Root_G2.pem. For RedHat-based distributions, it's' in /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem.
+    if command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+        # If certificate already exists in the system, extract it and return.
+        grep -q "DigiCert Global Root G2" /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+        if [ $? -eq 0 ]; then
+            vecho "DigiCert Global Root G2 certificate already exists. Extranting it to ${STUNNEL_CAFILE}."
+            if ! extract_CA; then
+                return 1
+            fi
+            return 0
+        fi
+    else
+        if [ -f /etc/ssl/certs/DigiCert_Global_Root_G2.pem ]; then
+            vecho "DigiCert Global Root G2 certificate already exists in /etc/ssl/certs. No need to install it again."
+            return 0
+        fi
+    fi
+
+    wget_error=$(wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O ${CERT_PATH}/DigiCert_Global_Root_G2.crt 2>&1)
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem !"
+        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem! Error: ${wget_error}"
         return 1
     fi
 
     $CERT_UPDATE_COMMAND
+
+    # In RedHat-based distributions, we need to extract the certificate to /etc/ssl/certs for stunnel to pick it up.
+    if command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+        if ! extract_CA; then
+            return 1
+        fi
+    fi
+
+    vecho "Successfully installed DigiCert_Global_Root_G2 certificate to ${CERT_PATH}/DigiCert_Global_Root_G2.crt."
 }
 
 #
@@ -153,12 +210,22 @@ add_stunnel_configuration()
     fi
 
     if [ ! -f $STUNNEL_CAFILE ]; then
-        vecho "CA root cert is missing for stunnel configuration. Installing DigiCert_Global_Root_G2 certificate."
+        vecho "CA root cert is missing for stunnel configuration. Install or extract DigiCert_Global_Root_G2 certificate."
         install_CA_cert
         if [ $? -ne 0 ]; then
             chattr -f +i $stunnel_conf_file
             eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
             return 1
+        fi
+    else
+        vecho "DigiCert_Global_Root_G2 certificate already exists in $STUNNEL_CAFILE."
+        # Since the certificate is extracted from the system's CA bundle, we need to compare the thumbprint of the installed certificate with the expected value.
+        if command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+            if ! compare_CA_thumbprint; then
+                vecho "Thumbprint of the installed DigiCert Global Root G2 certificate does not match the expected value! Extracting the certificate again."
+                rm -f $STUNNEL_CAFILE
+                install_CA_cert
+            fi
         fi
     fi
 
