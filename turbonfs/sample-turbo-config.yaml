@@ -1,3 +1,7 @@
+##############################################
+##### REMOVE FROM RELEASE BRANCHES START #####
+##############################################
+
 #
 # Share details
 # These will ONLY be used if the user runs the binary directly or passes
@@ -12,42 +16,75 @@ container: nfsv3test
 #port: 2048
 
 #
-# Auth Config
+# Misc options
+# fuse_* config variables control some fuse configurable value.
+# fuse_max_threads has the same effect as fuse cmdline option "-o max_threads=".
+# fuse_max_idle_threads has the same effect as fuse cmdline option "-o max_idle_threads=".
+# Value of -1 for these imply "use fuse defaults". Fuse defaults must be fine for most cases.
 #
-auth: false
+fuse_max_threads: -1
+fuse_max_idle_threads: -1
+fuse_max_background: 4096
+
+#
+# These are currently not supported.
+#
+#filecache.enable: false
+#filecache.cachedir: /mnt
+#filecache.max_size_gb: 1000
+#cache_max_mb: 4096
+
+#
+# Config controlling misc system behaviour.
+#
+sys.force_stable_writes: true
+sys.resolve_before_reconnect: true
+sys.nodrc.remove_noent_as_success: true
+sys.nodrc.rename_noent_as_success: true
+sys.nodrc.create_exist_as_success: true
+
+############################################
+##### REMOVE FROM RELEASE BRANCHES END #####
+############################################
+
+###################
+##### Phase 1 #####
+###################
 
 #
 # NFS mount options
 # These have the same name and meaning as Linux NFS client mount options.
 # Also note that only a subset of Linux mount options are supported.
-# readdir_maxcount
-# lookupcache: all|none|pos|positive
 #
+
+# valid range: [1, 256]
 nconnect: 96
+
+# valid range: [100, 6000]
 timeo: 600
+
+# valid range: [1, 100]
 retrans: 2
+
+# valid range: [1, 3600]
 acregmin: 3
 acregmax: 60
 acdirmin: 30
 acdirmax: 60
 actimeo: 300
+
+# valid values: all|none|pos|positive
 lookupcache: all
+
+# valid range: [1048576, 3145728]
+# also rsize must not be greater than wsize.
 rsize: 3145728
 wsize: 3145728
 
-#
-# Option controlling transport security, takes following values:
-# none: do not use TLS encryption.
-# tls: use TLS encryption, as defined in RPC-with-TLS RFC 9289.
-#
-xprtsec: none
-
-#
-# aznfsclient will disable (to be precise, resist) OOM killing as it's an
-# important process and killing it may cause data loss. If you don't want
-# aznfsclient to do that, set this to false.
-#
-oom_kill_disable: true
+# count/maxcount value passed in READDIR/READDIRPLUS RPC requests.
+# valid range: [8192, 3145728]
+# effective value depends on the server support.
+readdir_maxcount: 1048576
 
 #
 # Consistency config.
@@ -82,19 +119,9 @@ oom_kill_disable: true
 #   Use this if you want to access files updated by this client, from other
 #   non-NFS protocols.
 #
+# valid values: solowriter and standardnfs, for now.
+#
 consistency: solowriter
-
-#
-# Misc options
-# fuse_* config variables control some fuse configurable value.
-# fuse_max_threads has the same effect as fuse cmdline option "-o max_threads=".
-# fuse_max_idle_threads has the same effect as fuse cmdline option "-o max_idle_threads=".
-# Value of -1 for these imply "use fuse defaults". Fuse defaults must be fine for most cases.
-#
-readdir_maxcount: 1048576
-fuse_max_threads: -1
-fuse_max_idle_threads: -1
-fuse_max_background: 4096
 
 #
 # Cache config
@@ -150,18 +177,25 @@ cache.data.kernel.enable: false
 #cache.data.user.max_size_mb: 4096
 
 #
-# These are currently not supported.
+# aznfsclient will disable (to be precise, resist) OOM killing as it's an
+# important process and killing it may cause data loss. If you don't want
+# aznfsclient to do that, set this to false.
 #
-#filecache.enable: false
-#filecache.cachedir: /mnt
-#filecache.max_size_gb: 1000
-#cache_max_mb: 4096
+oom_kill_disable: true
+
+###################
+##### Phase 2 #####
+###################
 
 #
-# Config controlling misc system behaviour.
+# Auth Config
 #
-sys.force_stable_writes: true
-sys.resolve_before_reconnect: true
-sys.nodrc.remove_noent_as_success: true
-sys.nodrc.rename_noent_as_success: true
-sys.nodrc.create_exist_as_success: true
+auth: false
+
+#
+# Option controlling transport security, takes following values:
+# none: do not use TLS encryption.
+# tls: use TLS encryption, as defined in RPC-with-TLS RFC 9289.
+#
+xprtsec: none
+
