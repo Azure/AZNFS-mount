@@ -621,6 +621,8 @@ int main(int argc, char *argv[])
     int wait_iter;
     std::string log_file_name;
     std::string log_file_path;
+    std::string mount_source;
+    std::string extra_options;
 
     /* 
      * There can only be 1 reader of this pipe. Hence, we should ensure we 
@@ -666,14 +668,6 @@ int main(int argc, char *argv[])
     status_pipe_error_string = "Mount failed, check log file " +
                                log_file_path + " for details";
 
-    /*
-     * Hide fuse'ism and behave like a normal POSIX fs.
-     * TODO: Make this configurable?
-     */
-    if (fuse_opt_add_arg(&args, "-oallow_other,default_permissions") == -1) {
-        goto err_out0;
-    }
-
     if (opts.show_help) {
         aznfsc_help(argv[0]);
         fuse_cmdline_help();
@@ -701,7 +695,7 @@ int main(int argc, char *argv[])
 
     // Parse aznfsclient specific options.
     if (fuse_opt_parse(&args, &aznfsc_cfg, aznfsc_opts, NULL) == -1) {
-        goto err_out0;
+        goto err_out1;
     }
 
     /*
@@ -711,7 +705,7 @@ int main(int argc, char *argv[])
 
     // Parse config yaml if --config-yaml option provided.
     if (!aznfsc_cfg.parse_config_yaml()) {
-        goto err_out0;
+        goto err_out1;
     }
 
     /*
@@ -720,12 +714,12 @@ int main(int argc, char *argv[])
      */
     if (aznfsc_cfg.account == nullptr) {
         AZLogError("Account name must be set either from cmdline or config yaml!");
-        goto err_out0;
+        goto err_out1;
     }
 
     if (aznfsc_cfg.container == nullptr) {
         AZLogError("Container name must be set either from cmdline or config yaml!");
-        goto err_out0;
+        goto err_out1;
     }
 
     aznfsc_cfg.mountpoint = opts.mountpoint;
@@ -733,7 +727,7 @@ int main(int argc, char *argv[])
     // Set default values for config variables not set using the above.
     if (!aznfsc_cfg.set_defaults_and_sanitize()) {
         AZLogError("Error setting one or more default config!");
-        goto err_out0;
+        goto err_out1;
     }
 
     /*
@@ -754,6 +748,25 @@ int main(int argc, char *argv[])
         if (aznfsc_cfg.fuse_max_idle_threads != -1) {
             opts.max_idle_threads = aznfsc_cfg.fuse_max_idle_threads;
         }
+    }
+
+    /*
+     * Hide fuse'ism and behave like a normal POSIX fs.
+     * Note that we ask fuse to do the permission checks instead of the NFS
+     * server. This way we get 16+ groups handling for free.
+     * TODO: Make this configurable?
+     *
+     * Also set fsname to the correct mount source for clearer mount output.
+     * Also PID of the fuse process is useful to associate a mount with the
+     * fuse process, which helps in debugging.
+     */
+    mount_source = aznfsc_cfg.server + ":" + aznfsc_cfg.export_path +
+                   "[PID=" + std::to_string(::getpid()) + "]";
+    extra_options = std::string("-oallow_other,default_permissions,fsname=") +
+                               mount_source;
+
+    if (fuse_opt_add_arg(&args, extra_options.c_str()) == -1) {
+        goto err_out1;
     }
 
     se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops),
