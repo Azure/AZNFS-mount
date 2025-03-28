@@ -23,10 +23,18 @@ is_valid_fqdn()
 {
     # If AZURE_ENDPOINT_OVERRIDE environment variable is set, use it to verify FQDN
     if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
-        modified_endpoint=$(echo $AZURE_ENDPOINT_OVERRIDE |  sed 's/\./\\./g')
-        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.$modified_endpoint$ ]]
+        # Remove any leading dot.
+        modified_endpoint=${AZURE_ENDPOINT_OVERRIDE#.}
+        override_endpoint=$(echo $modified_endpoint |  sed 's/\./\\./g')
+        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.$override_endpoint$ ]]
     else
-        [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.(windows\.net|usgovcloudapi\.net|chinacloudapi\.cn)$ ]]
+        if [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)(\.preprod)?\.core\.(windows\.net|usgovcloudapi\.net|chinacloudapi\.cn)$ ]]; then
+            return 0
+        elif [[ $1 =~ ^([a-z0-9]{3,24}|fs-[a-z0-9]{1,21})(\.z[0-9]+)?(\.privatelink)?\.(file|blob)\.storage\.azure\.net$ ]]; then
+            return 0
+        else
+            return 1
+        fi
     fi
 }
 
