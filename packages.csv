@@ -4,6 +4,7 @@ Ubuntu-18.04,aznfsDeb,microsoft-ubuntu-bionic-prod-apt,bionic
 Ubuntu-20.04,aznfsDeb,microsoft-ubuntu-focal-prod-apt,focal
 Ubuntu-22.04,aznfsDeb,microsoft-ubuntu-jammy-prod-apt,jammy
 Ubuntu-24.04,aznfsDeb,microsoft-ubuntu-noble-prod-apt,noble
+RHEL-7.3,aznfsRpmStunnel,microsoft-rhel7.3-prod-yum,
 RHEL-7.0,aznfsRpmStunnel,microsoft-rhel7.0-prod-yum,
 RHEL-8.0,aznfsRpm,microsoft-rhel8.0-prod-yum,
 RHEL-9.0,aznfsRpm,microsoft-rhel9.0-prod-yum,
