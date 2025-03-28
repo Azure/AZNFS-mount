@@ -22,6 +22,8 @@ NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 DEBUG_LEVEL="info"
 
+stunnel_timeout_idle=61
+
 # Certificates related variables.
 CERT_PATH=
 CERT_UPDATE_COMMAND=
@@ -149,8 +151,8 @@ extract_CA()
 
 compare_CA_thumbprint()
 {
-    local thumbprint=$(openssl x509 -in $STUNNEL_CAFILE -noout -fingerprint | cut -d'=' -f2)
-    local expected_thumbprint=$(awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem | openssl x509 -noout -fingerprint -sha1 2&>1 | cut -d'=' -f2)
+    local thumbprint=$(openssl x509 -in $STUNNEL_CAFILE -noout -fingerprint 2>/dev/null | cut -d'=' -f2)
+    local expected_thumbprint=$(awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem | openssl x509 -noout -fingerprint -sha1 2>/dev/null | cut -d'=' -f2)
 
     if [ "$thumbprint" != "$expected_thumbprint" ]; then
         return 1
@@ -225,6 +227,11 @@ add_stunnel_configuration()
                 vecho "Thumbprint of the installed DigiCert Global Root G2 certificate does not match the expected value! Extracting the certificate again."
                 rm -f $STUNNEL_CAFILE
                 install_CA_cert
+                if [ $? -ne 0 ]; then
+                    chattr -f +i $stunnel_conf_file
+                    eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+                    return 1
+                fi
             fi
         fi
     fi
@@ -279,6 +286,13 @@ add_stunnel_configuration()
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add pid file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "TIMEOUTidle = $stunnel_timeout_idle" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
         return 1
     fi
 
