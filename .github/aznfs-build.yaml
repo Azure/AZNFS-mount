@@ -1,24 +1,4 @@
 parameters:
-  - name: publish_artifacts
-    displayName: 'Publish Artifacts to Linux Repos'
-    type: boolean
-    default: false
-
-  - name: draft
-    displayName: 'Post as Draft Release'
-    type: boolean
-    default: false
-
-  - name: prerelease
-    displayName: 'Post as PreRelease'
-    type: boolean
-    default: false
-
-  - name: update_version
-    displayName: 'Update Version'
-    type: boolean
-    default: false
-
   - name: versionName
     displayName: 'Version Name'
     type: string
@@ -108,7 +88,7 @@ stages:
         timeoutInMinutes: 120
 
         pool:
-          vmImage: 'ubuntu-20.04'
+          vmImage: 'ubuntu-22.04'
 
         steps:
           - checkout: none
@@ -126,11 +106,11 @@ stages:
 
           - script: |
               sudo apt -y update
-              wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
+              wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb
               sudo dpkg -i packages-microsoft-prod.deb
               sudo apt update
               sudo apt install apt-transport-https -y
-              sudo apt install dotnet-sdk-3.1 -y
+              sudo apt install dotnet-sdk-9.0 -y
             displayName: "Update dependencies"
 
           - task: EsrpCodeSigning@5
@@ -278,7 +258,7 @@ stages:
         timeoutInMinutes: 120
       
         pool:
-          vmImage: 'ubuntu-20.04'
+          vmImage: 'ubuntu-22.04'
 
         variables:
             - name: root_dir
