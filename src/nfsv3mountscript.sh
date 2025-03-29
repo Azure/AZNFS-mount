@@ -23,6 +23,12 @@ mount_point=$5
 DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
 IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
 
+#
+# Directory where the turbo log file will be created.
+# User can override it with AZNFSC_LOGDIR env variable.
+#
+AZNFSC_LOGDIR="${AZNFSC_LOGDIR:-/opt/microsoft/aznfs/data}"
+
 # Aznfs port, defaults to 2048.
 AZNFS_PORT="${AZNFS_PORT:-2048}"
 
@@ -947,6 +953,22 @@ create_aznfsclient_mount_args()
 
     # Finally add the mount point.
     AZNFSCLIENT_MOUNT_ARGS="$args $mount_point"
+
+    turbo_log=$AZNFSC_LOGDIR/turbo$(echo $mount_point | tr -s "/" "_").log
+    if [ ! -f $turbo_log ]; then
+        touch $turbo_log
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${turbo_log}'!"
+            eecho "Mount failed!"
+            exit 1
+        fi
+    fi
+
+    #
+    # Turbo mount uses different log file for each mount.
+    # All logs from here on will come in that log file.
+    #
+    LOGFILE=$turbo_log
 }
 
 #
@@ -979,7 +1001,15 @@ aznfsclient_mount()
     # Get the gatepass before the actual mount.
     #
     gatepass_mount
-    $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS &
+    vecho "fuse command: $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f"
+    vvecho "Using log file $LOGFILE"
+
+    #
+    # We append to the logfile w/o any support for re-opening log file for
+    # log rotation. Use copytruncate option in logrotate config.
+    # Redirect stderr too for capturing assert/asan failures.
+    #
+    $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f >> $LOGFILE 2>&1 &
 
     vvecho "Waiting for mount to complete (timeout: 30 seconds)..."
 
@@ -1002,17 +1032,18 @@ aznfsclient_mount()
     # -1 -> some other error in mounting.
     # 
     if [ $read_status -gt 128 ]; then
-        eecho "Mount timed out, check for details!"
+        eecho "Mount timed out, check $LOGFILE for details!"
         return $read_status
     elif [ "$mount_status" == "-2" ]; then
         eecho "Auth enabled in config but 'az login' not detected"
         eecho "Please perform 'az login' and then try to mount again!"
+        eecho "Check $LOGFILE for details!"
         return 1
     elif [ "$mount_status" != "0" ]; then
         if [ -n "$mount_str" ]; then
             eecho "$mount_str"
         else
-            eecho "Mount failed with status $mount_status"
+            eecho "Mount failed with status $mount_status, check $LOGFILE for details!"
         fi
         return 1
     else

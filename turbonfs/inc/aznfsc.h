@@ -143,6 +143,9 @@ typedef struct aznfsc_cfg
     // config.yaml file path specified using --config-file= cmdline option.
     const char *config_yaml = nullptr;
 
+    // Enable debug logging?
+    bool debug = false;
+
     /*************************************************
      **                Mount path                   **
      ** Identify the server and the export to mount **

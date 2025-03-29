@@ -22,6 +22,7 @@ container: nfsv3test
 # fuse_max_idle_threads has the same effect as fuse cmdline option "-o max_idle_threads=".
 # Value of -1 for these imply "use fuse defaults". Fuse defaults must be fine for most cases.
 #
+debug: false
 fuse_max_threads: -1
 fuse_max_idle_threads: -1
 fuse_max_background: 4096
