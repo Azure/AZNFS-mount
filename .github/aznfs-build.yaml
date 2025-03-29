@@ -325,13 +325,17 @@ stages:
                   echo "now adding packages to repositories..."
 
                   while IFS=, read -r distro PackageArchType repoName releaseName; do
-                    echo "Uploading packages for $distro"
-                    pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!PackageArchType} $repoName $releaseName
-                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
+                    if [ -n "$repoName" ]; then
+                      echo "Uploading packages for $distro"
+                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!PackageArchType} $repoName $releaseName
+                    fi
+                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv; echo)
 
                   #################################### Publish the repositories #####################################
 
                   while IFS=, read -r distro PackageArchType repoName releaseName; do
-                    echo "Publishing for $distro to $repoName"
-                    pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
-                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv)
+                    if [ -n "$repoName" ]; then
+                      echo "Publishing for $distro to $repoName"
+                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
+                    fi
+                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv; echo)
