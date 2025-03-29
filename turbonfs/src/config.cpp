@@ -114,6 +114,8 @@ do { \
     try {
         YAML::Node config = YAML::LoadFile(config_yaml);
 
+        _CHECK_BOOL(debug);
+
         _CHECK_STR(account);
         _CHECK_STR(container);
         _CHECK_STR(cloud_suffix);

@@ -41,9 +41,6 @@ bool is_azlogin_required = false;
  */
 std::string status_pipe_error_string;
 
-// LogFile for this mount.
-const string optdirdata = "/opt/microsoft/aznfs/data";
-
 static const struct fuse_opt aznfsc_opts[] =
 {
     AZNFSC_OPT("--config-file=%s", config_yaml),
@@ -356,21 +353,6 @@ static void handle_usr1([[maybe_unused]] int signum)
     errno = saved_errno;
 }
 
-static std::string get_logdir()
-{
-    const char *logdir = ::getenv("AZNFSC_LOGDIR");
-
-    /*
-     * spdlog will create the dir if it doesn't exist, so we don't need to
-     * check for existence,
-     */
-    if (logdir) {
-        return logdir;
-    }
-
-    return optdirdata;
-}
-
 std::string run_command(const std::string& command)
 {
     /*
@@ -619,8 +601,6 @@ int main(int argc, char *argv[])
     struct fuse_loop_config *loop_config = fuse_loop_cfg_create();
     int ret = -1;
     int wait_iter;
-    std::string log_file_name;
-    std::string log_file_path;
     std::string mount_source;
     std::string extra_options;
 
@@ -652,21 +632,6 @@ int main(int argc, char *argv[])
         AZLogError("Mountpoint must be provided!");
         goto err_out0;
     }
-
-    log_file_name = opts.mountpoint;
-    std::replace(log_file_name.begin(), log_file_name.end(), '/', '_');
-
-    log_file_path = get_logdir() + "/turbo" + log_file_name + ".log";
-    set_file_logger(log_file_path);
-
-    AZLogInfo("Logfile: {}", log_file_path);
-
-    /*
-     * Once we have the logfile, set default error message to convey to the
-     * user.
-     */
-    status_pipe_error_string = "Mount failed, check log file " +
-                               log_file_path + " for details";
 
     if (opts.show_help) {
         aznfsc_help(argv[0]);
@@ -706,6 +671,18 @@ int main(int argc, char *argv[])
     // Parse config yaml if --config-yaml option provided.
     if (!aznfsc_cfg.parse_config_yaml()) {
         goto err_out1;
+    }
+
+    /*
+     * If config yaml had debug config set to true, reset log level to debug.
+     */
+    if (aznfsc_cfg.debug) {
+        opts.debug = true;
+    }
+
+    if (opts.debug) {
+        enable_debug_logs = true;
+        spdlog::set_level(spdlog::level::debug);
     }
 
     /*
