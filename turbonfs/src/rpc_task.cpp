@@ -5445,6 +5445,17 @@ void rpc_task::get_readdir_entries_from_cache()
          */
         send_readdir_or_readdirplus_response(readdirentries);
     }
+
+    /*
+     * fuse knows about readdir eof when we return 0 entries.
+     * That also signifies that entire directory has been enumerated and we
+     * can clear the readdirectory_cache for the directory. We do this only
+     * when kernel readdir cache is enabled.
+     */
+    if (readdirentries.empty() && is_eof &&
+        aznfsc_cfg.cache.readdir.kernel.enable) {
+        nfs_inode->invalidate_cache(true /* purge_now */);
+    }
 }
 
 void rpc_task::fetch_readdir_entries_from_server()

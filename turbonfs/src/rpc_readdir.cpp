@@ -701,9 +701,6 @@ bool readdirectory_cache::remove(cookie3 cookie,
     return true;
 }
 
-/*
- * inode_map_lock_0 must be held by the caller.
- */
 void readdirectory_cache::clear()
 {
     /*
