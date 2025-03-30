@@ -2,6 +2,10 @@
 #include "nfs_inode.h"
 #include "nfs_client.h"
 
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_caches = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_dirents_g = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::bytes_allocated_g = 0;
+
 directory_entry::directory_entry(char *name_,
                                  cookie3 cookie_,
                                  const struct stat& attr,
@@ -29,6 +33,9 @@ directory_entry::directory_entry(char *name_,
      */
     assert(!nfs_inode->is_forgotten());
     nfs_inode->dircachecnt++;
+
+    readdirectory_cache::num_dirents_g++;
+    readdirectory_cache::bytes_allocated_g += get_cache_size();
 }
 
 directory_entry::directory_entry(char *name_,
@@ -88,6 +95,9 @@ directory_entry::directory_entry(char *name_,
      */
     assert(attributes.st_ino == fileid_);
     assert(attributes.st_mode == 0);
+
+    readdirectory_cache::num_dirents_g++;
+    readdirectory_cache::bytes_allocated_g += get_cache_size();
 }
 
 directory_entry::~directory_entry()
@@ -98,6 +108,12 @@ directory_entry::~directory_entry()
         assert(nfs_inode->dircachecnt > 0);
         nfs_inode->dircachecnt--;
     }
+
+    assert(readdirectory_cache::num_dirents_g > 0);
+    readdirectory_cache::num_dirents_g--;
+
+    assert(readdirectory_cache::bytes_allocated_g >= get_cache_size());
+    readdirectory_cache::bytes_allocated_g -= get_cache_size();
 
     assert(name != nullptr);
     ::free(name);
@@ -111,6 +127,9 @@ readdirectory_cache::~readdirectory_cache()
      * The cache must have been purged before deleting.
      */
     assert(dir_entries.empty());
+
+    assert(readdirectory_cache::num_caches > 0);
+    readdirectory_cache::num_caches--;
 }
 
 void readdirectory_cache::set_lookuponly()
@@ -615,6 +634,13 @@ bool readdirectory_cache::remove(cookie3 cookie,
         if (is_dnlc_remove) {
             set_lookuponly();
         }
+
+        /*
+         * This directory_entry is being removed from this readdirectory_cache,
+         * reduce cache_size. Note that the directory_entry may not be freed
+         * just yet as there could have references held.
+         */
+        cache_size -= dirent->get_cache_size();
 
         /*
          * Remove the DNLC entry.

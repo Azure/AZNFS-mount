@@ -145,6 +145,14 @@ consistency: solowriter
 # Readdir data can be cached in the kernel and user caches.
 # User cache is always enabled.
 # kernel cache can be controlled using cache.readdir.kernel.enable config.
+# It's almost never beneficial to disable the kernel readdir cache.
+# When fuse forgets a directory inode, we clear the userspace directory cache
+# for that directory. This usually works well but sometimes fuse doesn't
+# eagerly forget inodes, this may cause userspace cache to build up and take
+# lot of space. In that case setting cache.readdir.user.clear_after_enumerate
+# may help. It'll cause directory cache to be cleared as soon as the directory
+# is completely enumerated. Since our directory cache doubles as DNLC, it may
+# hurt lookup performance.
 #
 # File data can be cached in the kernel and/or user caches.
 # User cache is always enabled, it can be memory and/or file backed (file
@@ -173,6 +181,8 @@ consistency: solowriter
 #readahead_kb: 16384
 cache.attr.user.enable: true
 cache.readdir.kernel.enable: true
+cache.readdir.user.clear_after_enumerate: false
+cache.readdir.user.max_size_mb: 4096
 cache.data.kernel.enable: false
 #cache.data.user.max_size_mb: "60%"
 #cache.data.user.max_size_mb: 4096

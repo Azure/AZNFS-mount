@@ -116,7 +116,7 @@ struct directory_entry
          *
          * Note: It may take slightly more than this.
          */
-        return sizeof(*this) + strlen(name) + 4*sizeof(uint64_t);
+        return sizeof(*this) + ::strlen(name) + 4*sizeof(uint64_t);
     }
 
     /**
@@ -290,6 +290,8 @@ public:
         assert(dir_entries.empty());
         // Initial cookie_verifier must be 0.
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
+
+        readdirectory_cache::num_caches++;
     }
 
     ~readdirectory_cache();
@@ -502,5 +504,12 @@ public:
      * 2. readdirectory_cache has invalidate_pending set.
      */
     void clear_if_needed();
+
+    /*
+     * Global stats for all caches.
+     */
+    static std::atomic<uint64_t> num_caches;
+    static std::atomic<uint64_t> num_dirents_g;
+    static std::atomic<uint64_t> bytes_allocated_g;
 };
 #endif /* __READDIR_RPC_TASK___ */
