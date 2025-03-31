@@ -9,7 +9,8 @@
 #include <dirent.h>
 
 // 1GB
-#define MAX_CACHE_SIZE_LIMIT 1073741824
+//#define MAX_CACHE_SIZE_LIMIT 1073741824
+#define MAX_CACHE_SIZE_LIMIT 1048576
 
 //struct readdirectory_cache;
 //struct directory_entry;
@@ -88,7 +89,7 @@ struct directory_entry
      * (and the fileid), hence we won't have the inode set.
      */
     struct nfs_inode *const nfs_inode;
-    char *const name;
+    const char *const name;
 
     // Constructor for adding a readdirplus returned entry.
     directory_entry(char* name_,
@@ -490,7 +491,7 @@ public:
      * Also delete the inodes for those entries for which this was the last
      * ref.
      */
-    void clear();
+    void clear(bool acquire_lock = true);
 
     void invalidate()
     {
