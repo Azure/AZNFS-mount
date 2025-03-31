@@ -295,6 +295,13 @@ void rpc_stats_az::dump_stats()
     str += "  " + std::to_string(readdirectory_cache::bytes_allocated_g) +
                   " bytes allocated (" +
                   std::to_string(allocate_pct) + "%)\n";
+    str += "  " + std::to_string(readdirectory_cache::num_dirents_returned_g) +
+                  " directory entries returned to fuse over " +
+                  std::to_string(readdirectory_cache::num_readdir_calls_g) +
+                  " readdir and " +
+                  std::to_string(readdirectory_cache::num_readdirplus_calls_g) +
+                  " readdirplus calls\n";
+
 
 
     str += "Application statistics:\n";

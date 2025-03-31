@@ -354,9 +354,14 @@ bool aznfsc_cfg::set_defaults_and_sanitize()
     }
 
     if (cache.readdir.user.enable) {
-        if (cache.readdir.user.max_size_mb < 0) {
+        /*
+         * If not set from config, set to default value of 4GB.
+         */
+        if (cache.readdir.user.max_size_mb == -1) {
             cache.readdir.user.max_size_mb = 4096;
         }
+
+        assert(cache.readdir.user.max_size_mb > 0);
     }
 
     if (filecache.enable) {

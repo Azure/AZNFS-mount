@@ -1708,6 +1708,8 @@ void nfs_client::readdir(
     off_t offset,
     struct fuse_file_info* file)
 {
+    readdirectory_cache::num_readdir_calls_g++;
+
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_READDIR);
     struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
@@ -1725,6 +1727,8 @@ void nfs_client::readdirplus(
     off_t offset,
     struct fuse_file_info* file)
 {
+    readdirectory_cache::num_readdirplus_calls_g++;
+
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_READDIRPLUS);
     struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 

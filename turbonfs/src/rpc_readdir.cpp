@@ -4,6 +4,9 @@
 
 /* static */ std::atomic<uint64_t> readdirectory_cache::num_caches = 0;
 /* static */ std::atomic<uint64_t> readdirectory_cache::num_dirents_g = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_readdir_calls_g = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_readdirplus_calls_g = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_dirents_returned_g = 0;
 /* static */ std::atomic<uint64_t> readdirectory_cache::bytes_allocated_g = 0;
 
 directory_entry::directory_entry(char *name_,
@@ -200,17 +203,23 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
                               const cookieverf3 *cookieverf,
                               bool acquire_lock)
 {
+    // Maximum readdir cache size allowed in bytes.
+    static const uint64_t max_cache =
+        (aznfsc_cfg.cache.readdir.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_cache != 0);
+
     assert(entry != nullptr);
     assert(entry->name != nullptr);
     // 0 is not a valid cookie.
     assert(entry->cookie != 0);
 
     /*
-     * TODO: Fix this.
-     * If we run out of global readdir cache space, stop adding new
-     * directory entries to the cache. We will still return the requested
-     * directory entries to fuse so existing enumeration will work fine,
-     * but new enumerations will 
+     * If this cache grows beyond the single cache limit, purge this cache.
+     * This removes all cookies added till now making space for newer cookies,
+     * thus supporting unlimited directory enumerations. Since we remove the
+     * older cookies, any re-enumeration attempt will not find the starting
+     * entries cached and would cause fresh readdir calls to the server.
+     * This should work fine, and will be a non-issue with kernel readdir cache.
      */
     if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
         AZLogWarn("[{}] Readdir cache exceeded per-directory cache limit "
@@ -220,9 +229,23 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
                 cache_size, MAX_CACHE_SIZE_LIMIT, entry->name,
                 entry->nfs_inode ? entry->nfs_inode->get_fuse_ino() : -1);
         clear(acquire_lock);
+        assert(cache_size < MAX_CACHE_SIZE_LIMIT);
     }
 
-    assert(cache_size < MAX_CACHE_SIZE_LIMIT);
+    /*
+     * If we run out of global readdir cache space, stop adding new
+     * directory entries to the cache. We will still return the requested
+     * directory entries to fuse so existing enumeration will work fine.
+     */
+    if (bytes_allocated_g > max_cache) {
+        AZLogWarn("[{}] Readdir cache exceeded global cache limit "
+                "({} > {}) while adding entry [name: {}, ino: {}], not "
+                "adding to cache!",
+                dir_inode->get_fuse_ino(),
+                bytes_allocated_g.load(), max_cache, entry->name,
+                entry->nfs_inode ? entry->nfs_inode->get_fuse_ino() : -1);
+        return false;
+    }
 
     {
         /*
@@ -647,7 +670,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
         /*
          * This directory_entry is being removed from this readdirectory_cache,
          * reduce cache_size. Note that the directory_entry may not be freed
-         * just yet as there could have references held.
+         * just yet as there could be references held to it.
          */
         assert(cache_size >= dirent->get_cache_size());
         cache_size -= dirent->get_cache_size();
