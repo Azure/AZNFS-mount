@@ -640,6 +640,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
          * reduce cache_size. Note that the directory_entry may not be freed
          * just yet as there could have references held.
          */
+        assert(cache_size >= dirent->get_cache_size());
         cache_size -= dirent->get_cache_size();
 
         /*

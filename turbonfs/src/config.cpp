@@ -171,7 +171,6 @@ do { \
 
         _CHECK_BOOL(cache.attr.user.enable);
         _CHECK_BOOL(cache.readdir.kernel.enable);
-        _CHECK_BOOL(cache.readdir.user.clear_after_enumerate);
         _CHECK_INT(cache.readdir.user.max_size_mb,
                    AZNFSCFG_CACHE_MAX_MB_MIN, AZNFSCFG_CACHE_MAX_MB_MAX);
         // User readdir cache cannot be turned off.
@@ -472,7 +471,6 @@ done_cloud_suffix:
     AZLogDebug("cache.attr.user.enable = {}", cache.attr.user.enable);
     AZLogDebug("cache.readdir.kernel.enable = {}", cache.readdir.kernel.enable);
     AZLogDebug("cache.readdir.user.enable = {}", cache.readdir.user.enable);
-    AZLogDebug("cache.readdir.user.clear_after_enumerate = {}", cache.readdir.user.clear_after_enumerate);
     AZLogDebug("cache.readdir.user.max_size_mb = {}", cache.readdir.user.max_size_mb);
     AZLogDebug("cache.data.kernel.enable = {}", cache.data.kernel.enable);
     AZLogDebug("cache.data.user.enable = {}", cache.data.user.enable);

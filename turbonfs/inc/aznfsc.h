@@ -298,19 +298,6 @@ typedef struct aznfsc_cfg
 
                 // Max userspace readdir cache size in MB.
                 int max_size_mb = -1;
-
-                /*
-                 * If set the userspace readdirectory_cache for a directory is
-                 * cleared as soon as fuse enumerates the directory till eof.
-                 * This helps keep memory usage in check but prevents future
-                 * enumeration for the same directory to not hit the cache.
-                 * This is mostly not a problem if kernel readdir cache is
-                 * enabled and kernel has cached those directory entries, but
-                 * since our readdirectory_cache doubles as a DNLC cache too,
-                 * any LOOKUP attempt for entries in that directory will also
-                 * not be able to avail the cache.
-                 */
-                bool clear_after_enumerate = false;
             } user;
         } readdir;
 
