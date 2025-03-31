@@ -24,6 +24,10 @@ DEBUG_LEVEL="info"
 
 stunnel_timeout_idle=61
 
+isDebian=0
+isRedHat=0
+isSUSE=0
+
 # Certificates related variables.
 CERT_PATH=
 CERT_UPDATE_COMMAND=
@@ -110,12 +114,10 @@ find_next_available_port_and_start_stunnel()
 
 get_cert_path_based_and_command()
 {
-    # Check if we're on a Debian-based distribution
-    if command -v apt-get &> /dev/null; then
+    if [ $isDebian -eq 1 ]; then
         CERT_PATH="/usr/local/share/ca-certificates"
         CERT_UPDATE_COMMAND="update-ca-certificates"
-    # Check if we're on a Red Hat-based distribution
-    elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+    elif [ $isRedHat -eq 1 ]; then
         CERT_PATH="/etc/pki/ca-trust/source/anchors"
         CERT_UPDATE_COMMAND="update-ca-trust extract"
         mkdir -p /etc/ssl/certs
@@ -123,17 +125,9 @@ get_cert_path_based_and_command()
             eecho "[FATAL] Not able to create /etc/ssl/certs path for certificate!"
             return 1
         fi
-    # Check if we're on a SUSE-based distribution
-    elif command -v zypper &> /dev/null; then
+    elif [ $isSUSE -eq 1 ]; then
         CERT_PATH="/etc/pki/trust/anchors"
         CERT_UPDATE_COMMAND="update-ca-certificates"
-        if [ $? -ne 0 ]; then
-            eecho "[FATAL] Not able to create /etc/ssl/certs path for certificate!"
-            return 1
-        fi
-    else
-        eecho "[FATAL] Unsupported distribution!"
-        return 1
     fi
 
     STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
@@ -153,17 +147,17 @@ compare_CA_thumbprint()
     local thumbprint=$(openssl x509 -in $STUNNEL_CAFILE -noout -fingerprint 2>/dev/null | cut -d'=' -f2)
     local expected_thumbprint=$(awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem | openssl x509 -noout -fingerprint -sha1 2>/dev/null | cut -d'=' -f2)
 
+    vecho "Comparing the thumbprint of the installed DigiCert Global Root G2 certificate. Expected: ${expected_thumbprint}, Installed: ${thumbprint}."
+
     if [ "$thumbprint" != "$expected_thumbprint" ]; then
         return 1
     fi
-
-    vecho "Thumbprint of the installed DigiCert Global Root G2 certificate matches the expected value. Expected: ${expected_thumbprint}, Installed: ${thumbprint}."
 }
 
 install_CA_cert()
 {
     # For Debian-based and SUSE-based distributions, if the cert exits, it's in /etc/ssl/certs/DigiCert_Global_Root_G2.pem. For RedHat-based distributions, it's' in /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem.
-    if command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+    if [ $isRedHat -eq 1 ]; then
         # If certificate already exists in the system, extract it and return.
         grep -q "DigiCert Global Root G2" /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
         if [ $? -eq 0 ]; then
@@ -189,7 +183,7 @@ install_CA_cert()
     $CERT_UPDATE_COMMAND
 
     # In RedHat-based distributions, we need to extract the certificate to /etc/ssl/certs for stunnel to pick it up.
-    if command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+    if [ $isRedHat -eq 1 ]; then
         if ! extract_CA; then
             return 1
         fi
@@ -221,7 +215,7 @@ add_stunnel_configuration()
     else
         vecho "DigiCert_Global_Root_G2 certificate already exists in $STUNNEL_CAFILE."
         # Since the certificate is extracted from the system's CA bundle, we need to compare the thumbprint of the installed certificate with the expected value.
-        if command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+        if [ $isRedHat -eq 1 ]; then
             if ! compare_CA_thumbprint; then
                 vecho "Thumbprint of the installed DigiCert Global Root G2 certificate does not match the expected value! Extracting the certificate again."
                 rm -f $STUNNEL_CAFILE
@@ -387,6 +381,20 @@ tls_nfsv4_files_share_mount()
     local storageaccount
     local container
     local extra
+
+    # Check if we're on a Debian-based distribution
+    if command -v apt-get &> /dev/null; then
+        isDebian=1
+    # Check if we're on a Red Hat-based distribution
+    elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+        isRedHat=1
+    # Check if we're on a SUSE-based distribution
+    elif command -v zypper &> /dev/null; then
+        isSUSE=1
+    else
+        eecho "[FATAL] Unsupported distribution!"
+        return 1
+    fi
 
     # Set trap to cleanup the lock on mountmap file on exit.
     trap 'cleanup' EXIT
