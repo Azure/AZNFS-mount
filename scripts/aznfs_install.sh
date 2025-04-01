@@ -302,7 +302,7 @@ if [ $apt -eq 1 ]; then
 #
 elif [ $zypper -eq 1 ]; then
     current_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $7}')
-    available_upgrade_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $9}')
+    available_upgrade_version=$($yum list available aznfs |& grep "\<aznfs\>" | awk '{print $2}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
