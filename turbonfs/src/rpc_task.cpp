@@ -5841,6 +5841,7 @@ void rpc_task::send_readdir_or_readdirplus_response(
             startidx = 0;
             assert(0);
         } else {
+            readdirectory_cache::num_dirents_returned_g += num_entries_added;
             DEC_GBL_STATS(fuse_responses_awaited, 1);
         }
     } else {
