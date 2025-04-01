@@ -207,6 +207,7 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
     static const uint64_t max_cache =
         (aznfsc_cfg.cache.readdir.user.max_size_mb * 1024 * 1024ULL);
     assert(max_cache != 0);
+    const uint64_t max_single_cache = std::min((uint64_t) MAX_CACHE_SIZE_LIMIT, max_cache);
 
     assert(entry != nullptr);
     assert(entry->name != nullptr);
@@ -221,15 +222,15 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
      * entries cached and would cause fresh readdir calls to the server.
      * This should work fine, and will be a non-issue with kernel readdir cache.
      */
-    if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
+    if (cache_size >= max_single_cache) {
         AZLogWarn("[{}] Readdir cache exceeded per-directory cache limit "
                 "({} > {}) while adding entry [name: {}, ino: {}], clearing "
                 "cache!",
                 dir_inode->get_fuse_ino(),
-                cache_size, MAX_CACHE_SIZE_LIMIT, entry->name,
+                cache_size, max_single_cache, entry->name,
                 entry->nfs_inode ? entry->nfs_inode->get_fuse_ino() : -1);
         clear(acquire_lock);
-        assert(cache_size < MAX_CACHE_SIZE_LIMIT);
+        assert(cache_size < max_single_cache);
     }
 
     /*
