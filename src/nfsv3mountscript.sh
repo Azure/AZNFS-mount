@@ -98,13 +98,13 @@ USING_PORT_2047=false
 # file in OPT_DIR. The user can override this by passing the "configfile=/path/to/file"
 # option.
 #
-CONFIG_FILE_PATH=$OPTDIRDATA/turbo-config.yaml
+CONFIG_FILE_PATH=$OPTDIR/turbo-config.yaml
 
 #
 # Sample config file for aznfsclient. User NEEDS to copy this and create a new config
 # file.
 #
-SAMPLE_CONFIG_PATH=$OPTDIRDATA/sample-turbo-config.yaml
+SAMPLE_CONFIG_PATH=$OPTDIR/sample-turbo-config.yaml
 
 #
 # Holds the path to the aznfsclient binary. This will be used to mount if the user has
@@ -445,7 +445,7 @@ fix_mount_options()
     # configfile is a turbo only option. If the user is using turbo but has not provided 
     # a config file, the default file created in OPT_DIR should be used. The user first
     # needs to refer the sample-turbo-config.yaml file in OPTDIR and create their own copy
-    # at: $OPTDIRDATA/turbo-config.yaml
+    # at: $OPTDIR/turbo-config.yaml
     #
     config_file_path=
     matchstr="(^|,)configfile=([^,]+)"
