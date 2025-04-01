@@ -207,7 +207,8 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
     static const uint64_t max_cache =
         (aznfsc_cfg.cache.readdir.user.max_size_mb * 1024 * 1024ULL);
     assert(max_cache != 0);
-    const uint64_t max_single_cache = std::min((uint64_t) MAX_CACHE_SIZE_LIMIT, max_cache);
+    // Single cache must not be allowed to be more than half the global max.
+    const uint64_t max_single_cache = std::min((uint64_t) MAX_CACHE_SIZE_LIMIT, max_cache / 2);
 
     assert(entry != nullptr);
     assert(entry->name != nullptr);
