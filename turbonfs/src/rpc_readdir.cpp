@@ -2,6 +2,13 @@
 #include "nfs_inode.h"
 #include "nfs_client.h"
 
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_caches = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_dirents_g = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_readdir_calls_g = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_readdirplus_calls_g = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::num_dirents_returned_g = 0;
+/* static */ std::atomic<uint64_t> readdirectory_cache::bytes_allocated_g = 0;
+
 directory_entry::directory_entry(char *name_,
                                  cookie3 cookie_,
                                  const struct stat& attr,
@@ -29,6 +36,9 @@ directory_entry::directory_entry(char *name_,
      */
     assert(!nfs_inode->is_forgotten());
     nfs_inode->dircachecnt++;
+
+    readdirectory_cache::num_dirents_g++;
+    readdirectory_cache::bytes_allocated_g += get_cache_size();
 }
 
 directory_entry::directory_entry(char *name_,
@@ -88,6 +98,9 @@ directory_entry::directory_entry(char *name_,
      */
     assert(attributes.st_ino == fileid_);
     assert(attributes.st_mode == 0);
+
+    readdirectory_cache::num_dirents_g++;
+    readdirectory_cache::bytes_allocated_g += get_cache_size();
 }
 
 directory_entry::~directory_entry()
@@ -99,8 +112,14 @@ directory_entry::~directory_entry()
         nfs_inode->dircachecnt--;
     }
 
+    assert(readdirectory_cache::num_dirents_g > 0);
+    readdirectory_cache::num_dirents_g--;
+
+    assert(readdirectory_cache::bytes_allocated_g >= get_cache_size());
+    readdirectory_cache::bytes_allocated_g -= get_cache_size();
+
     assert(name != nullptr);
-    ::free(name);
+    ::free(const_cast<char*>(name));
 }
 
 readdirectory_cache::~readdirectory_cache()
@@ -111,6 +130,9 @@ readdirectory_cache::~readdirectory_cache()
      * The cache must have been purged before deleting.
      */
     assert(dir_entries.empty());
+
+    assert(readdirectory_cache::num_caches > 0);
+    readdirectory_cache::num_caches--;
 }
 
 void readdirectory_cache::set_lookuponly()
@@ -181,10 +203,50 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
                               const cookieverf3 *cookieverf,
                               bool acquire_lock)
 {
+    // Maximum readdir cache size allowed in bytes.
+    static const uint64_t max_cache =
+        (aznfsc_cfg.cache.readdir.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_cache != 0);
+    const uint64_t max_single_cache = std::min((uint64_t) MAX_CACHE_SIZE_LIMIT, max_cache);
+
     assert(entry != nullptr);
     assert(entry->name != nullptr);
     // 0 is not a valid cookie.
     assert(entry->cookie != 0);
+
+    /*
+     * If this cache grows beyond the single cache limit, purge this cache.
+     * This removes all cookies added till now making space for newer cookies,
+     * thus supporting unlimited directory enumerations. Since we remove the
+     * older cookies, any re-enumeration attempt will not find the starting
+     * entries cached and would cause fresh readdir calls to the server.
+     * This should work fine, and will be a non-issue with kernel readdir cache.
+     */
+    if (cache_size >= max_single_cache) {
+        AZLogWarn("[{}] Readdir cache exceeded per-directory cache limit "
+                "({} > {}) while adding entry [name: {}, ino: {}], clearing "
+                "cache!",
+                dir_inode->get_fuse_ino(),
+                cache_size, max_single_cache, entry->name,
+                entry->nfs_inode ? entry->nfs_inode->get_fuse_ino() : -1);
+        clear(acquire_lock);
+        assert(cache_size < max_single_cache);
+    }
+
+    /*
+     * If we run out of global readdir cache space, stop adding new
+     * directory entries to the cache. We will still return the requested
+     * directory entries to fuse so existing enumeration will work fine.
+     */
+    if (bytes_allocated_g > max_cache) {
+        AZLogWarn("[{}] Readdir cache exceeded global cache limit "
+                "({} > {}) while adding entry [name: {}, ino: {}], not "
+                "adding to cache!",
+                dir_inode->get_fuse_ino(),
+                bytes_allocated_g.load(), max_cache, entry->name,
+                entry->nfs_inode ? entry->nfs_inode->get_fuse_ino() : -1);
+        return false;
+    }
 
     {
         /*
@@ -197,16 +259,6 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
         std::shared_mutex dummy_lock;
         std::unique_lock<std::shared_mutex> lock(
                 acquire_lock ? readdircache_lock_2 : dummy_lock);
-
-        // TODO: Fix this.
-        if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
-            AZLogWarn("[{}] Readdir cache exceeded per-directory cache limit "
-                      "({} > {}). Not adding entry [name: {}, ino: {}]",
-                      dir_inode->get_fuse_ino(),
-                      cache_size, MAX_CACHE_SIZE_LIMIT, entry->name,
-                      entry->nfs_inode ? entry->nfs_inode->get_fuse_ino() : -1);
-            return false;
-        }
 
         if (entry->nfs_inode) {
             /*
@@ -617,6 +669,14 @@ bool readdirectory_cache::remove(cookie3 cookie,
         }
 
         /*
+         * This directory_entry is being removed from this readdirectory_cache,
+         * reduce cache_size. Note that the directory_entry may not be freed
+         * just yet as there could be references held to it.
+         */
+        assert(cache_size >= dirent->get_cache_size());
+        cache_size -= dirent->get_cache_size();
+
+        /*
          * Remove the DNLC entry.
          */
         [[maybe_unused]] const int cnt = dnlc_map.erase(dirent->name);
@@ -701,10 +761,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
     return true;
 }
 
-/*
- * inode_map_lock_0 must be held by the caller.
- */
-void readdirectory_cache::clear()
+void readdirectory_cache::clear(bool acquire_lock)
 {
     /*
      * TODO: Later when we implement readdirectory_cache purging due to
@@ -717,7 +774,9 @@ void readdirectory_cache::clear()
     std::vector<struct nfs_inode*> tofree_vec;
 
     {
-        std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
+        std::shared_mutex dummy_lock;
+        std::unique_lock<std::shared_mutex> lock(
+                acquire_lock ? readdircache_lock_2 : dummy_lock);
 
         /*
          * If dir_entries has one or more entries those must have been returned

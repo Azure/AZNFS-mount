@@ -295,6 +295,9 @@ typedef struct aznfsc_cfg
              */
             struct {
                 const bool enable = true;
+
+                // Max userspace readdir cache size in MB.
+                int max_size_mb = -1;
             } user;
         } readdir;
 

@@ -201,7 +201,7 @@ void rpc_stats_az::dump_stats()
                   " inodes silly-renamed (waiting for last close)\n";
 
     // Maximum cache size allowed in bytes.
-    static const uint64_t max_cache =
+    uint64_t max_cache =
         (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
     assert(max_cache != 0);
 
@@ -222,7 +222,7 @@ void rpc_stats_az::dump_stats()
     str += "  " + std::to_string(bytes_chunk_cache::num_chunks_g) +
                   " chunks in chunkmap\n";
 
-    const double allocate_pct =
+    double allocate_pct =
         ((bytes_chunk_cache::bytes_allocated_g * 100.0) / max_cache);
     str += "  " + std::to_string(bytes_chunk_cache::bytes_allocated_g) +
                   " bytes allocated (" +
@@ -268,6 +268,41 @@ void rpc_stats_az::dump_stats()
                       " msec avg lock wait (" +
                       std::to_string(lockwait_pct) + "% had to wait)\n";
     }
+
+    // Maximum readdir cache size allowed in bytes.
+    max_cache =
+        (aznfsc_cfg.cache.readdir.user.max_size_mb * 1024 * 1024ULL);
+    assert(max_cache != 0);
+
+    str += "Readdir Cache statistics:\n";
+    if (aznfsc_cfg.cache.readdir.user.enable) {
+        str += "  " + std::to_string(aznfsc_cfg.cache.readdir.user.max_size_mb) +
+                      " MB user cache size configured\n";
+    } else {
+        str += "  user cache disabled\n";
+    }
+    if (aznfsc_cfg.cache.readdir.kernel.enable) {
+        str += "  kernel cache enabled\n";
+    } else {
+        str += "  kernel cache disabled\n";
+    }
+    str += "  " + std::to_string(readdirectory_cache::num_caches) +
+                  " directory caches\n";
+    str += "  " + std::to_string(readdirectory_cache::num_dirents_g) +
+                  " total directory entries cached\n";
+    allocate_pct =
+        ((readdirectory_cache::bytes_allocated_g * 100.0) / max_cache);
+    str += "  " + std::to_string(readdirectory_cache::bytes_allocated_g) +
+                  " bytes allocated (" +
+                  std::to_string(allocate_pct) + "%)\n";
+    str += "  " + std::to_string(readdirectory_cache::num_dirents_returned_g) +
+                  " directory entries returned to fuse over " +
+                  std::to_string(readdirectory_cache::num_readdir_calls_g) +
+                  " readdir and " +
+                  std::to_string(readdirectory_cache::num_readdirplus_calls_g) +
+                  " readdirplus calls\n";
+
+
 
     str += "Application statistics:\n";
     const uint64_t avg_app_read_size =
