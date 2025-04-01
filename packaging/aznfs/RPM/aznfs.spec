@@ -318,6 +318,9 @@ if [ $1 == 0 ]; then
 	systemctl disable aznfswatchdogv4
 
 	echo "Stopped aznfswatchdog service"
+
+    	# %files: These files are deleted during uninstallation after %preun and before %postun
+	chattr -i -f /opt/microsoft/aznfs/sample-turbo-config.yaml
 fi
 
 %postun
@@ -326,7 +329,6 @@ if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	chattr -i -f /opt/microsoft/aznfs/data/mountmapv4
-	chattr -i -f /opt/microsoft/aznfs/sample-turbo-config.yaml
 	rm -rf /opt/microsoft/aznfs
 	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
 	rm -rf /etc/stunnel/microsoft
