@@ -315,10 +315,9 @@ if [ $1 == 0 ]; then
 
 	# %files: These files are deleted during uninstallation after %preun and before %postun
 	if [ -f /opt/microsoft/aznfs/data/sample-turbo-config.yaml ]; then
-			chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
-			mv -vf /opt/microsoft/aznfs/sample-turbo-config.yaml /opt/microsoft/aznfs/
+		chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+		mv -vf /opt/microsoft/aznfs/data/sample-turbo-config.yaml /opt/microsoft/aznfs/
 	fi
-
 fi
 
 %postun
