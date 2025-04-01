@@ -327,6 +327,7 @@ if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	chattr -i -f /opt/microsoft/aznfs/data/mountmapv4
 	chattr -i -f /opt/microsoft/aznfs/sample-turbo-config.yaml
+	lsattr /opt/microsoft/aznfs/
 	rm -rf /opt/microsoft/aznfs
 	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
 	rm -rf /etc/stunnel/microsoft
