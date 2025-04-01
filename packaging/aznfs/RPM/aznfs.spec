@@ -226,9 +226,9 @@ if [ $1 == 2 ]; then
 
 	# Move the turbo sample config file to appropriate location if it exists according to %files.
 	if [ -f /opt/microsoft/aznfs/data/sample-turbo-config.yaml ]; then
-			chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
-			mv -vf /opt/microsoft/aznfs/data/sample-turbo-config.yaml /opt/microsoft/aznfs/
-			chattr -f +i /opt/microsoft/aznfs/sample-turbo-config.yaml
+		chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+		mv -vf /opt/microsoft/aznfs/data/sample-turbo-config.yaml /opt/microsoft/aznfs/
+		chattr -f +i /opt/microsoft/aznfs/sample-turbo-config.yaml
 	fi
 fi
 
