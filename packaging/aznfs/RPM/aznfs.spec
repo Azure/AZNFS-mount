@@ -318,9 +318,13 @@ if [ $1 == 0 ]; then
 	systemctl disable aznfswatchdogv4
 
 	echo "Stopped aznfswatchdog service"
+	lsattr /opt/microsoft/aznfs/
+	echo "####### line inside preun-> after lsattr"
 fi
 
 %postun
+lsattr /opt/microsoft/aznfs/
+echo "####### line inside postun-> after lsattr before if "
 # In case of purge/remove.
 if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/mountmap
