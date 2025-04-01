@@ -223,12 +223,18 @@ if [ $1 == 2 ]; then
 	        mv -vf /opt/microsoft/aznfs/randbytes /opt/microsoft/aznfs/data/
 	        chattr -f +i /opt/microsoft/aznfs/data/randbytes
 	fi
+
+	# Move the turbo sample config file to appropriate location if it exists according to %files.
+	if [ -f /opt/microsoft/aznfs/data/sample-turbo-config.yaml ]; then
+			chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+			mv -vf /opt/microsoft/aznfs/data/sample-turbo-config.yaml /opt/microsoft/aznfs/
+			chattr -f +i /opt/microsoft/aznfs/sample-turbo-config.yaml
+	fi
 fi
 
-# Move the turbo sample config file to optdirdata if it exists.
+# Make the turbo sample config file immutable if it exists.
 if [ -f /opt/microsoft/aznfs/sample-turbo-config.yaml ]; then
-        mv -vf /opt/microsoft/aznfs/sample-turbo-config.yaml /opt/microsoft/aznfs/data/
-        chattr -f +i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+        chattr -f +i /opt/microsoft/aznfs/sample-turbo-config.yaml
 fi
 
 # Check if the config file exists; if not, create it.
