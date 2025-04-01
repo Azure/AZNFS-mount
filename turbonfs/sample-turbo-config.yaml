@@ -89,8 +89,13 @@ consistency: solowriter
 # Attribute caching can be effectively disabled by setting actimeo to 0.
 #
 # Readdir data can be cached in the kernel and user caches.
-# User cache is always enabled.
+# User cache is always enabled. Its max size can be capped using the
+# cache.readdir.user.max_size_mb config (default 4096). This is the size of all
+# directory caches combined. Once the readdir cache size exceeds the max size,
+# further entries are not cached. This means that we won't get any readdir ahead
+# benefits, though it won't affect directory enumeration functionally.
 # kernel cache can be controlled using cache.readdir.kernel.enable config.
+# It's almost never beneficial to disable the kernel readdir cache.
 #
 # File data can be cached in the kernel and/or user caches.
 # User cache is always enabled, it can be memory and/or file backed (file
@@ -119,6 +124,7 @@ consistency: solowriter
 #readahead_kb: 16384
 cache.attr.user.enable: true
 cache.readdir.kernel.enable: true
+#cache.readdir.user.max_size_mb: 4096
 cache.data.kernel.enable: false
 #cache.data.user.max_size_mb: "60%"
 #cache.data.user.max_size_mb: 4096

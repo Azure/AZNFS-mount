@@ -4573,7 +4573,12 @@ static void readdir_callback(
      */
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
-    if (cookie_gap) {
+    /*
+     * "get_seq_last_cookie() == 0" is a common case when we purge the dircache
+     * if it grows beyond the configured limit. In that case all subsequent
+     * calls will see a cookie_gap and flood the logs.
+     */
+    if (cookie_gap && (dircache_handle->get_seq_last_cookie() != 0)) {
         AZLogWarn("[{}] readdir_callback: GAP in cookie requested ({} -> {})",
                   dir_ino, dircache_handle->get_seq_last_cookie(),
                   task->rpc_api->readdir_task.get_offset());
@@ -4982,7 +4987,12 @@ static void readdirplus_callback(
      */
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUSX(rpc_status, res));
 
-    if (cookie_gap) {
+    /*
+     * "get_seq_last_cookie() == 0" is a common case when we purge the dircache
+     * if it grows beyond the configured limit. In that case all subsequent
+     * calls will see a cookie_gap and flood the logs.
+     */
+    if (cookie_gap && (dircache_handle->get_seq_last_cookie() != 0)) {
         AZLogWarn("[{}] readdirplus_callback: GAP in cookie requested ({} -> {})",
                   dir_ino, dircache_handle->get_seq_last_cookie(),
                   task->rpc_api->readdir_task.get_offset());
@@ -5841,6 +5851,7 @@ void rpc_task::send_readdir_or_readdirplus_response(
             startidx = 0;
             assert(0);
         } else {
+            readdirectory_cache::num_dirents_returned_g += num_entries_added;
             DEC_GBL_STATS(fuse_responses_awaited, 1);
         }
     } else {

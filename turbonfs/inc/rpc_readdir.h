@@ -8,11 +8,11 @@
 #include <ctime>
 #include <dirent.h>
 
-// 1GB
-#define MAX_CACHE_SIZE_LIMIT 1073741824
-
-//struct readdirectory_cache;
-//struct directory_entry;
+/*
+ * 1GB should be sufficient to support ~4M entries in a directory, of course it
+ * will vary based on file name lengths.
+ */
+#define MAX_CACHE_SIZE_LIMIT (1024ULL * 1024 * 1024)
 
 /*
  * This is an entry in the unified readdir/DNLC cache.
@@ -88,7 +88,7 @@ struct directory_entry
      * (and the fileid), hence we won't have the inode set.
      */
     struct nfs_inode *const nfs_inode;
-    char *const name;
+    const char *const name;
 
     // Constructor for adding a readdirplus returned entry.
     directory_entry(char* name_,
@@ -114,9 +114,10 @@ struct directory_entry
          * pointers and a key and value, all 8 bytes each, so we add those
          * to get a closer estimate.
          *
+         * Note: For usual filename lengths it comes to ~250 bytes.
          * Note: It may take slightly more than this.
          */
-        return sizeof(*this) + strlen(name) + 4*sizeof(uint64_t);
+        return sizeof(*this) + ::strlen(name) + 4*sizeof(uint64_t);
     }
 
     /**
@@ -290,6 +291,8 @@ public:
         assert(dir_entries.empty());
         // Initial cookie_verifier must be 0.
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
+
+        readdirectory_cache::num_caches++;
     }
 
     ~readdirectory_cache();
@@ -488,7 +491,7 @@ public:
      * Also delete the inodes for those entries for which this was the last
      * ref.
      */
-    void clear();
+    void clear(bool acquire_lock = true);
 
     void invalidate()
     {
@@ -502,5 +505,20 @@ public:
      * 2. readdirectory_cache has invalidate_pending set.
      */
     void clear_if_needed();
+
+    /*
+     * Global stats for all caches.
+     */
+    static std::atomic<uint64_t> num_caches;
+    // Cum dirents caches across all readdir caches.
+    static std::atomic<uint64_t> num_dirents_g;
+    // Readdir calls made by fuse.
+    static std::atomic<uint64_t> num_readdir_calls_g;
+    // Readdirplus calls made by fuse.
+    static std::atomic<uint64_t> num_readdirplus_calls_g;
+    // Cum dirents returned to fuse.
+    static std::atomic<uint64_t> num_dirents_returned_g;
+    // Total bytes consumed by all readdir caches.
+    static std::atomic<uint64_t> bytes_allocated_g;
 };
 #endif /* __READDIR_RPC_TASK___ */

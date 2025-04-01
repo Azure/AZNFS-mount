@@ -171,6 +171,8 @@ do { \
 
         _CHECK_BOOL(cache.attr.user.enable);
         _CHECK_BOOL(cache.readdir.kernel.enable);
+        _CHECK_INT(cache.readdir.user.max_size_mb,
+                   AZNFSCFG_CACHE_MAX_MB_MIN, AZNFSCFG_CACHE_MAX_MB_MAX);
         // User readdir cache cannot be turned off.
         assert(cache.readdir.user.enable);
         _CHECK_BOOL(cache.data.kernel.enable);
@@ -355,6 +357,18 @@ bool aznfsc_cfg::set_defaults_and_sanitize()
             }
         }
     }
+
+    if (cache.readdir.user.enable) {
+        /*
+         * If not set from config, set to default value of 4GB.
+         */
+        if (cache.readdir.user.max_size_mb == -1) {
+            cache.readdir.user.max_size_mb = 4096;
+        }
+
+        assert(cache.readdir.user.max_size_mb > 0);
+    }
+
     if (filecache.enable) {
         if (filecache.max_size_gb == -1)
             filecache.max_size_gb = AZNFSCFG_FILECACHE_MAX_GB_DEF;
@@ -467,6 +481,7 @@ done_cloud_suffix:
     AZLogDebug("cache.attr.user.enable = {}", cache.attr.user.enable);
     AZLogDebug("cache.readdir.kernel.enable = {}", cache.readdir.kernel.enable);
     AZLogDebug("cache.readdir.user.enable = {}", cache.readdir.user.enable);
+    AZLogDebug("cache.readdir.user.max_size_mb = {}", cache.readdir.user.max_size_mb);
     AZLogDebug("cache.data.kernel.enable = {}", cache.data.kernel.enable);
     AZLogDebug("cache.data.user.enable = {}", cache.data.user.enable);
     AZLogDebug("cache.data.user.max_size_mb = {}", cache.data.user.max_size_mb);

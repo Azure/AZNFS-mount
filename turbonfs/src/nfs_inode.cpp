@@ -1720,6 +1720,17 @@ bool nfs_inode::release(fuse_req_t req)
      *
      * This is the close side of cto consistency. Any open after this point
      * will cause the file data to be fetched from the server.
+     *
+     * Note: For directory inodes this will clear the readdirectory_cache for
+     *       the inode. Few things to note:
+     *       1. With kernel readdir cache enabled, this should not affect
+     *          readdir performance. Infact this is a good thing to do as
+     *          readdirectory_cache for a directory will be rarely needed after
+     *          a directory is enumerated fully and its fd closed.
+     *       2. Since our readdirectory_cache doubles as DNLC cache too, this
+     *          may affect lookups as they won't hit the cache now.
+     *
+     *       TODO: Should this invalidation be controlled using a config?
      */
     invalidate_cache(true /* purge_now */);
     invalidate_attribute_cache();
