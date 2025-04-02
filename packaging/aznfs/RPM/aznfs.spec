@@ -227,7 +227,7 @@ fi
 
 # Move the turbo sample config file to optdirdata if it exists.
 if [ -f /opt/microsoft/aznfs/sample-turbo-config.yaml ]; then
-		# chattr if sample config already present (needed for upgrade)
+	# chattr if sample config already present (needed for upgrade)
         if [ -f /opt/microsoft/aznfs/data/sample-turbo-config.yaml ]; then
                 chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
         fi
