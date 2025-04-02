@@ -227,8 +227,20 @@ fi
 
 # Move the turbo sample config file to optdirdata if it exists.
 if [ -f /opt/microsoft/aznfs/sample-turbo-config.yaml ]; then
+		echo "###### lsattr /opt/microsoft/aznfs ###############"
+		lsattr /opt/microsoft/aznfs
+
+		echo "###### lsattr /opt/microsoft/aznfs/data ###############"
+		lsattr /opt/microsoft/aznfs/data
+
         mv -vf /opt/microsoft/aznfs/sample-turbo-config.yaml /opt/microsoft/aznfs/data/
         chattr -f +i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+
+		echo "###### POST MOVE- lsattr /opt/microsoft/aznfs ###############"
+		lsattr /opt/microsoft/aznfs
+
+		echo "###### POST MOVE- lsattr /opt/microsoft/aznfs/data ###############"
+		lsattr /opt/microsoft/aznfs/data
 fi
 
 # Check if the config file exists; if not, create it.
