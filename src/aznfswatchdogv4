@@ -312,7 +312,7 @@ process_nfsv4_mounts()
                         new_file_path=$(echo "$l_conf" | sed "s/${l_ip}/${new_ip}/g")
                         chattr -f -i $l_conf
                         mv -vf $l_conf $new_file_path
-                        chattr -f +i $new_file_path
+                        #chattr -f +i $new_file_path
 
                         eecho "daneiwo new conf path = $new_file_path"
                         l_conf=$new_file_path
@@ -337,6 +337,7 @@ process_nfsv4_mounts()
                         eecho "daniewo ------ output for outmountmap $outmountmap"
                         eecho "======daniewo newchecksumhash=$newchecksumhash, l_checksumhash=$l_checksumhash"
 
+                        #lock the mountmap while updating outmountmap and do the same for configuration file.
                         ret=$?
                         if [ $ret -eq 0 ]; then
                             #
@@ -351,7 +352,7 @@ process_nfsv4_mounts()
                             fi
                         fi
 
-                        chattr -f +i $MOUNTMAPv4
+                        #chattr -f +i $MOUNTMAPv4
 
                         #update filepath for logs
                         new_file_path3=$(echo "$l_log" | sed "s/${l_ip}/${new_ip}/g")
@@ -697,8 +698,8 @@ fi
 
 while :; do
     sleep $MONITOR_INTERVAL_SECS
-    process_nfsv4_mounts
-    #process_nfsv4_nontlsmounts
+    #process_nfsv4_mounts
+    process_nfsv4_nontlsmounts
     #daniewo process nontlsmounts and track for migration
 
 done
