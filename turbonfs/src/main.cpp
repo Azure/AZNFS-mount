@@ -353,6 +353,34 @@ static void handle_usr1([[maybe_unused]] int signum)
     errno = saved_errno;
 }
 
+/**
+ * Block various signals that can cause process termination.
+ * This is a safety thing to prevent fuse process from being killed causing
+ * mount to become unavailable.
+ *
+ * Note: There are few other signals like SIGABRT, SIGALRM, etc, but those are
+ *       rarely sent from commandline, so we leave them unchanged.
+ */
+#ifdef ENABLE_RELEASE_BUILD
+static void block_termination_signals()
+{
+    if (set_signal_handler(SIGHUP, SIG_IGN) != 0) {
+        AZLogError("set_signal_handler(SIGHUP) failed: {}", ::strerror(errno));
+    }
+
+    if (set_signal_handler(SIGINT, SIG_IGN) != 0) {
+        AZLogError("set_signal_handler(SIGINT) failed: {}", ::strerror(errno));
+    }
+
+    // SIGTERM may be used in the shutdown path, gracefully unmount.
+#if 0
+    if (set_signal_handler(SIGTERM, SIG_IGN) != 0) {
+        AZLogError("set_signal_handler(SIGTERM) failed: {}", ::strerror(errno));
+    }
+#endif
+}
+#endif
+
 std::string run_command(const std::string& command)
 {
     /*
@@ -757,6 +785,10 @@ int main(int argc, char *argv[])
         AZLogError("fuse_set_signal_handlers failed");
         goto err_out2;
     }
+
+#ifdef ENABLE_RELEASE_BUILD
+    block_termination_signals();
+#endif
 
     /*
      * Setup SIGUSR1 handler for dumping RPC stats.
