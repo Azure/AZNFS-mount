@@ -144,12 +144,14 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
          */
         if (w_MBps > 100 && r_MBps > 100) {
             rnw = (nconn >= 4);
-            AZLogInfo("[RNW=true] Write: {} Gbps, Read: {} Gbps",
-                      (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
+            AZLogInfoNR("[RNW=true] Write: {} Gbps, Read: {} Gbps",
+                        (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
         } else {
             rnw = false;
-            AZLogInfo("[RNW=false] Write: {} Gbps, Read: {} Gbps",
-                      (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
+            if (w_MBps > 0 || r_MBps > 0) {
+                AZLogInfoNR("[RNW=false] Write: {} Gbps, Read: {} Gbps",
+                            (w_MBps * 8.0) / 1000, (r_MBps * 8.0) / 1000);
+            }
         }
 
         assert(!rnw || (rconn > 0 && wconn > 0));

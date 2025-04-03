@@ -84,6 +84,18 @@
 #define AZLogVerbose(...)  /* nothing */
 #endif
 
+/*
+ * In release builds the NR macros map to debug.
+ * NR => No Release
+ */
+#ifdef ENABLE_RELEASE_BUILD
+#define AZLogWarnNR AZLogDebug
+#define AZLogInfoNR AZLogDebug
+#else
+#define AZLogWarnNR AZLogWarn
+#define AZLogInfoNR AZLogInfo
+#endif
+
 void init_log();
 void set_file_logger(const std::string& log_file_path);
 extern bool enable_debug_logs;

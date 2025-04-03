@@ -20,6 +20,14 @@ option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" OFF)
 option(ENABLE_JEMALLOC "Use jemalloc for malloc/free/new/delete" ON)
 option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" OFF)
+#
+# Builds that make it to customers need to be extra careful about any unnecessary
+# logging. Some warning logs we have in our code are to attract developer
+# attention, those are not useful for customers and unnecessarily flood their
+# logs.
+# Note: Don't use it for anything other than logging control!
+#
+option(ENABLE_RELEASE_BUILD "Turn it on when making release builds used by customers" OFF)
 
 #
 # Enable paranoid checks only in debug builds.
@@ -55,6 +63,10 @@ endif()
 
 if(ENABLE_NON_AZURE_NFS)
   add_definitions(-DENABLE_NON_AZURE_NFS)
+endif()
+
+if(ENABLE_RELEASE_BUILD)
+  add_definitions(-DENABLE_RELEASE_BUILD)
 endif()
 
 if(ENABLE_CHATTY)
