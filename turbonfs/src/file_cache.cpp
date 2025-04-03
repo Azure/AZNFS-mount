@@ -2877,10 +2877,10 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
     assert(bytes_cached == 0);
 
     if (bytes_allocated != 0) {
-        AZLogWarn("[{}] Cache purge: bytes_allocated is still {}, some user "
-                  "is still holding on to the bytes_chunk/membuf even after "
-                  "dropping the inuse count: backing_file_name={}",
-                  CACHE_TAG, bytes_allocated.load(), backing_file_name);
+        AZLogWarnNR("[{}] Cache purge: bytes_allocated is still {}, some user "
+                    "is still holding on to the bytes_chunk/membuf even after "
+                    "dropping the inuse count: backing_file_name={}",
+                    CACHE_TAG, bytes_allocated.load(), backing_file_name);
 #if 0
         assert(0);
 #endif
