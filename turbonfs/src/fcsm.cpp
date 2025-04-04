@@ -343,8 +343,11 @@ void fcsm::ctgtq_cleanup()
                        task->rpc_api->write_task.get_offset(),
                        task->rpc_api->write_task.get_offset() +
                        task->rpc_api->write_task.get_size());
-
-            task->reply_write(task->rpc_api->write_task.get_size());
+            if (inode->get_write_error() == 0) {
+                task->reply_write(task->rpc_api->write_task.get_size());
+            } else {
+                task->reply_error(inode->get_write_error());
+            }
         } else if (ctgt.done) {
             AZLogInfo("[{}] [FCSM] ctgtq_cleanup: purging blocking commit "
                        "target: {}",
@@ -392,8 +395,11 @@ void fcsm::ftgtq_cleanup()
                        task->rpc_api->write_task.get_offset(),
                        task->rpc_api->write_task.get_offset() +
                        task->rpc_api->write_task.get_size());
-
-            task->reply_write(task->rpc_api->write_task.get_size());
+            if (inode->get_write_error() == 0) {
+                task->reply_write(task->rpc_api->write_task.get_size());
+            } else {
+                task->reply_error(inode->get_write_error());
+            }
         } else if (ftgt.done) {
             AZLogInfo("[{}] [FCSM] ftgtq_cleanup: purging blocking flush "
                        "target: {}",
@@ -416,6 +422,17 @@ void fcsm::ensure_commit(uint64_t write_off,
                          std::atomic<bool> *done,
                          bool commit_full)
 {
+    /*
+     * If there is some error encounter in previous write,
+     * fail this request right away.
+     */
+    if (inode->get_write_error()) {
+        AZLogWarn("[{}] Previous write to this Blob failed with error={}, "
+            "skipping new write!", inode->get_fuse_ino(), inode->get_write_error());
+        task->reply_error(inode->get_write_error());
+        return;
+    }
+
     assert(inode->is_flushing);
     assert(!inode->is_stable_write());
 
@@ -661,6 +678,17 @@ void fcsm::ensure_flush(uint64_t write_off,
                         std::atomic<bool> *done,
                         bool flush_full_unstable)
 {
+    /*
+     * If there is some error encounter in previous write,
+     * fail this request right away.
+     */
+    if (inode->get_write_error()) {
+        AZLogWarn("[{}] Previous write to this Blob failed with error={}, "
+            "skipping new write!", inode->get_fuse_ino(), inode->get_write_error());
+        task->reply_error(inode->get_write_error());
+        return;
+    }
+
     assert(inode->is_flushing);
     /*
      * Only one of task and done can be passed.
@@ -1080,6 +1108,156 @@ void fcsm::on_commit_complete(uint64_t commit_bytes)
 
     inode->flush_unlock();
 }
+
+void fcsm::on_flush_fail(uint64_t flush_bytes)
+{
+    // Must be called only for success.
+    assert(inode->get_write_error() != 0);
+    assert(flush_bytes != 0);
+
+    // Must be called from flush/write callback.
+    assert(fc_cb_running());
+
+    // See below why we cannot assert this.
+#if 0
+    // Flush callback can only be called if FCSM is running.
+    assert(is_running);
+#endif
+
+    /*
+     * Commit will only be run after current flush completes.
+     * Since we are inside flush completion callback, commit cannot be
+     * running yet.
+     */
+    assert(!inode->is_commit_in_progress());
+
+    // a byte can only be committed after it's flushed successfully.
+    assert(committing_seq_num <= flushed_seq_num);
+    assert(committed_seq_num <= committing_seq_num);
+    assert(committing_seq_num <= flushing_seq_num);
+
+    // Update flushed_seq_num to account for the newly flushed bytes.
+    flushed_seq_num += flush_bytes;
+
+    // flushed_seq_num can never go more than flushing_seq_num.
+    assert(flushed_seq_num <= flushing_seq_num);
+
+    AZLogDebug("[{}] [FCSM] on_flush_fail({}), Fd: {}, Fing: {}, "
+               "Cd: {}, Cing: {}, Fq: {}, Cq: {}, bytes_flushing: {}",
+               inode->get_fuse_ino(),
+               flush_bytes,
+               flushed_seq_num.load(),
+               flushing_seq_num.load(),
+               committed_seq_num.load(),
+               committing_seq_num.load(),
+               ftgtq.size(),
+               ctgtq.size(),
+               inode->get_filecache()->bytes_flushing.load());
+
+    /*
+     * If this is not the last completing flush (of the multiple parallel
+     * flushes that sync_membufs() may start), don't do anything.
+     * Only the last completing flush checks flush targets, as we cannot
+     * start a new flush or commit till the current flush completes fully.
+     */
+    if (inode->get_filecache()->is_flushing_in_progress()) {
+        return;
+    }
+
+    inode->flush_lock();
+
+    /*
+     * Multiple libnfs (callback) threads can find is_flushing_in_progress()
+     * return false. The first one to get the flush_lock, gets to run the
+     * queued flush targets which includes completing the waiting tasks and/or
+     * trigger pending flush/commit. Other flush callback threads which get
+     * the lock after the first one, should simply return. They check for
+     * one of the following conditions to avoid duplicating work:
+     * 1. The first one didn't find anything to do, so it stopped the FSCM.
+     * 2. The first one triggered a flush target.
+     * 3. The first one triggered a commit target.
+     */
+    if (inode->get_filecache()->is_flushing_in_progress() ||
+        inode->is_commit_in_progress() ||
+        !is_running()) {
+        assert(is_running() || ftgtq.empty());
+        inode->flush_unlock();
+        return;
+    }
+
+    /*
+     * Entire flush is done and no new flush can start, so flushed_seq_num must
+     * match flushing_seq_num.
+     */
+    assert(flushed_seq_num == flushing_seq_num);
+
+    /*
+     * Go over all queued flush targets to see if any can be completed after
+     * the latest flush completed.
+     */
+    while (!ftgtq.empty()) {
+        struct fctgt& tgt = ftgtq.front();
+
+        assert(tgt.fcsm == this);
+
+        /*
+         * ftgtq has flush targets in increasing order of flushed_seq_num, so
+         * as soon as we find one that's greater than flushed_seq_num, we can
+         * safely skip the rest.
+         */
+        if (tgt.flush_seq > flushed_seq_num) {
+            break;
+        }
+
+        if (tgt.task) {
+            // Only one of task or done can be present.
+            assert(!tgt.done);
+            assert(tgt.task->magic == RPC_TASK_MAGIC);
+            assert(tgt.task->get_op_type() == FUSE_WRITE);
+            assert(tgt.task->rpc_api->write_task.is_fe());
+            assert(tgt.task->rpc_api->write_task.get_size() > 0);
+
+            AZLogDebug("[{}] [FCSM] completing blocking flush target: {}, "
+                       "flushed_seq_num: {}, write task: [{}, {})",
+                       inode->get_fuse_ino(),
+                       tgt.flush_seq,
+                       flushed_seq_num.load(),
+                       tgt.task->rpc_api->write_task.get_offset(),
+                       tgt.task->rpc_api->write_task.get_offset() +
+                       tgt.task->rpc_api->write_task.get_size());
+
+            tgt.task->reply_error(inode->get_write_error());
+        } else if (tgt.done) {
+            AZLogDebug("[{}] [FCSM] completing blocking flush target: {}, "
+                       "flushed_seq_num: {}",
+                       inode->get_fuse_ino(),
+                       tgt.flush_seq,
+                       flushed_seq_num.load());
+
+            assert(*tgt.done == false);
+            *tgt.done = true;
+        } else {
+            AZLogDebug("[{}] [FCSM] completing non-blocking flush target: {}, "
+                       "flushed_seq_num: {}",
+                       inode->get_fuse_ino(),
+                       tgt.flush_seq,
+                       flushed_seq_num.load());
+        }
+
+        // Flush target accomplished, remove from queue.
+        ftgtq.pop();
+    }
+
+    /*
+     * cleanup the ctgtq and ftgtq queue.
+     */
+    ftgtq_cleanup();
+    ctgtq_cleanup();
+
+    clear_running();
+    inode->flush_unlock();
+}
+
 
 /**
  * TODO: We MUST ensure that on_flush_complete() doesn't block else it'll
