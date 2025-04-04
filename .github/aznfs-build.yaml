@@ -64,6 +64,7 @@ stages:
               export BUILD_TYPE=${{ parameters.buildType }}
               chmod +x $SOURCE_DIR/generate_package.sh
               $SOURCE_DIR/generate_package.sh
+              cat $SOURCE_DIR/turbonfs/build/vcpkg-bootstrap.log
             displayName: "Run Package Script"
 
           - script: |
