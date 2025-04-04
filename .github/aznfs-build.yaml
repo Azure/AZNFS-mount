@@ -33,7 +33,7 @@ stages:
       - job: package_aznfs_amd64
         displayName: Package and Release ${{ parameters.versionName }} for amd64
         pool:
-          vmImage: "ubuntu-24.04"
+          name: "AznfsARMDevOpsPool"
 
         steps:
           # - script: |
