@@ -54,6 +54,7 @@ stages:
               sudo apt install -y patchelf
               sudo apt install -y build-essential
               sudo apt install -y cmake
+              sudo apt install -y curl zip unzip tar g++ pkg-config
             displayName: "Install patchelf"
           
           - script: |
