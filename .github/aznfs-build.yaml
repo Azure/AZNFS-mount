@@ -53,6 +53,7 @@ stages:
               sudo apt update
               sudo apt install -y patchelf
               sudo apt install -y build-essential
+              sudo apt install -y cmake
             displayName: "Install patchelf"
           
           - script: |
