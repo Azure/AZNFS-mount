@@ -52,6 +52,7 @@ stages:
           - script: |
               sudo apt update
               sudo apt install -y patchelf
+              sudo apt install -y build-essential
             displayName: "Install patchelf"
           
           - script: |
