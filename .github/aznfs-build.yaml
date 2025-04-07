@@ -36,10 +36,6 @@ stages:
           vmImage: "ubuntu-24.04"
 
         steps:
-          # - script: |
-          #     echo "Building version ${{ parameters.versionName }}"
-          #   displayName: "Print Version Info"
-
           - script: |
               arch=$(uname -m)
               echo "Building version ${{ parameters.versionName }} for $arch"
@@ -71,6 +67,52 @@ stages:
               cp -f $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
               for dir in rpm suse stunnel; do
                 cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
+              done
+              echo "Listing Built Files..."
+              ls -R $(Build.ArtifactStagingDirectory)
+            displayName: "List Build Outputs"
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)
+              artifactName: 'aznfs-temp'
+
+      - job: package_aznfs_arm64
+        displayName: Package and Release ${{ parameters.versionName }} for arm64
+        pool:
+          name: "AznfsARMDevOpsPool"
+        steps:
+          - script: |
+              arch=$(uname -m)
+              echo "Building version ${{ parameters.versionName }} for $arch"
+            displayName: "Build Agent Architecture"
+
+          - checkout: self
+            path: arm64/AZNFS-mount
+            displayName: 'Checkout repository'
+
+          - script: |
+              sudo apt update
+              sudo apt install -y patchelf build-essential cmake curl zip unzip tar g++ pkg-config ninja-build rpm
+            displayName: "Install Dependencies"
+
+          - script: |
+              export RELEASE_NUMBER=${{ parameters.versionName }}
+              export STG_DIR=$(System.DefaultWorkingDirectory)
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
+              export BUILD_TYPE=${{ parameters.buildType }}
+              chmod +x $SOURCE_DIR/generate_package.sh
+              $SOURCE_DIR/generate_package.sh
+            displayName: "Run Package Script"
+
+          - script: |
+              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts
+              for dir in deb rpm suse stunnel; do
+                mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
+              done
+              cp -avf $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_arm64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              for dir in rpm suse stunnel; do
+                cp -avf $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
