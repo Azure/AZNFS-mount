@@ -618,7 +618,7 @@ int main(int argc, char *argv[])
     // Initialize logger first thing.
     init_log();
 
-    AZLogDebug("aznfsclient version {}.{}.{}",
+    AZLogInfo("aznfsclient version {}.{}.{}",
                AZNFSCLIENT_VERSION_MAJOR,
                AZNFSCLIENT_VERSION_MINOR,
                AZNFSCLIENT_VERSION_PATCH);
