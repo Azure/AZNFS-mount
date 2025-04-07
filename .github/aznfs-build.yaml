@@ -54,7 +54,7 @@ stages:
               sudo apt install -y patchelf
               sudo apt install -y build-essential
               sudo apt install -y cmake
-              sudo apt install -y curl zip unzip tar g++ pkg-config ninja-build
+              sudo apt install -y curl zip unzip tar g++ pkg-config ninja-build rpm
             displayName: "Install patchelf"
           
           - script: |
@@ -64,9 +64,6 @@ stages:
               export BUILD_TYPE=${{ parameters.buildType }}
               chmod +x $SOURCE_DIR/generate_package.sh
               $SOURCE_DIR/generate_package.sh
-              echo ###################
-              ls -ltr $SOURCE_DIR/turbonfs/build
-              cat $SOURCE_DIR/turbonfs/build/vcpkg-bootstrap.log
             displayName: "Run Package Script"
 
           - script: |
@@ -74,9 +71,9 @@ stages:
               for dir in deb rpm suse stunnel; do
                 mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
-              cp -f $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_arm64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              cp -avf $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_arm64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
               for dir in rpm suse stunnel; do
-                cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
+                cp -avf $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
