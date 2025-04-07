@@ -105,9 +105,7 @@ bool nfs_connection::open()
 
         [[maybe_unused]]
         const uint64_t n = snprintf(client_version, sizeof(client_version),
-                                    "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
-                                    AZNFSCLIENT_VERSION_MINOR,
-                                    AZNFSCLIENT_VERSION_PATCH);
+                                    "%s", AZNFSCLIENT_VERSION);
         assert(n < sizeof(client_version));
 
         std::string client_id = get_clientid();
