@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.7)
 project(aznfsclient
         DESCRIPTION "FUSE driver for mounting Blob NFS shares"
         LANGUAGES CXX
-        VERSION 0.1.0)
+        VERSION ${PACKAGE_VERSION})
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
