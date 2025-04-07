@@ -618,10 +618,7 @@ int main(int argc, char *argv[])
     // Initialize logger first thing.
     init_log();
 
-    AZLogDebug("aznfsclient version {}.{}.{}",
-               AZNFSCLIENT_VERSION_MAJOR,
-               AZNFSCLIENT_VERSION_MINOR,
-               AZNFSCLIENT_VERSION_PATCH);
+    AZLogInfo("aznfsclient version %s", AZNFSCLIENT_VERSION);
 
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct fuse_session *se = NULL;
@@ -766,7 +763,7 @@ int main(int argc, char *argv[])
      * fuse process, which helps in debugging.
      */
     mount_source = aznfsc_cfg.server + ":" + aznfsc_cfg.export_path +
-                   "[PID=" + std::to_string(::getpid()) + "]";
+                   "[PID=" + std::to_string(::getpid()) + ",vers=" + AZNFSCLIENT_VERSION + "]";
     extra_options = std::string("-oallow_other,default_permissions,fsname=") +
                                mount_source;
 
