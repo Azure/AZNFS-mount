@@ -766,7 +766,10 @@ int main(int argc, char *argv[])
      * fuse process, which helps in debugging.
      */
     mount_source = aznfsc_cfg.server + ":" + aznfsc_cfg.export_path +
-                   "[PID=" + std::to_string(::getpid()) + "]";
+                    "[PID=" + std::to_string(::getpid()) +
+                    ",vers=" + std::to_string(AZNFSCLIENT_VERSION_MAJOR) + "." +
+                            std::to_string(AZNFSCLIENT_VERSION_MINOR) + "." +
+                            std::to_string(AZNFSCLIENT_VERSION_PATCH) + "]";
     extra_options = std::string("-oallow_other,default_permissions,fsname=") +
                                mount_source;
 
