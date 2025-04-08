@@ -68,6 +68,7 @@ stages:
               for dir in rpm suse stunnel; do
                 cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
+              cp -avf $(System.DefaultWorkingDirectory)/package.csv $(Build.ArtifactStagingDirectory)
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
             displayName: "List Build Outputs"
@@ -325,14 +326,6 @@ stages:
           - script: |
               sudo ls -lRt $(Build.ArtifactStagingDirectory)
             displayName: 'List Signed Artifacts'
-
-          # Format of packages.csv : <Distro Name>,<Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
-          - script: |
-              wget https://raw.githubusercontent.com/Azure/AZNFS-mount/main/packages.csv -O packages.csv
-              cat ./packages.csv
-            displayName: 'Fetch packages.csv'
-            workingDirectory: $(Build.ArtifactStagingDirectory)/
-
 
           - task: AzureCLI@2
             inputs:
