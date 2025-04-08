@@ -68,7 +68,7 @@ stages:
               for dir in rpm suse stunnel; do
                 cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
-              cp -avf $(System.DefaultWorkingDirectory)/package.csv $(Build.ArtifactStagingDirectory)
+              cp -avf $(System.DefaultWorkingDirectory)/packages.csv $(Build.ArtifactStagingDirectory)
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
             displayName: "List Build Outputs"
