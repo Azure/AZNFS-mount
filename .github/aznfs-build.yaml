@@ -80,7 +80,7 @@ stages:
       - job: package_aznfs_arm64
         displayName: Package and Release ${{ parameters.versionName }} for arm64
         pool:
-          name: "aznfs-arm-devops-pool1"
+          name: "aznfs-arm-devops-pool"
         steps:
           - script: |
               arch=$(uname -m)
@@ -354,14 +354,26 @@ stages:
                   aznfsDeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_amd64.deb`
                   echo "AZNFS DEB Package ID: $aznfsDeb"
 
+                  aznfsArm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_arm64.deb`
+                  echo "AZNFS ARM DEB Package ID: $aznfsArm"
+
                   aznfsRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.x86_64.rpm`
                   echo "AZNFS RPM Package ID: $aznfsRpm"
+                  
+                  aznfsArcRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.aarch64.rpm`
+                  echo "AZNFS ARC RPM Package ID: $aznfsArcRpm"
 
                   aznfsRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.x86_64.rpm`
                   echo "AZNFS Sles RPM Package ID: $aznfsRpmSles"
 
+                  aznfsArcRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.aarch64.rpm`
+                  echo "AZNFS ARC Sles RPM Package ID: $aznfsArcRpmSles"
+
                   aznfsRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.x86_64.rpm`
                   echo "AZNFS Stunnel RPM Package ID: $aznfsRpmStunnel"
+                  
+                  aznfsArcRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.aarch64.rpm`
+                  echo "AZNFS ARC Stunnel RPM Package ID: $aznfsRpmStunnel"
 
                   ################################### Add uploaded packages to its repository ######################################
                   echo "now adding packages to repositories..."
