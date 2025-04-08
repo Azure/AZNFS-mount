@@ -1222,6 +1222,17 @@ int nfs_inode::wait_for_ongoing_flush()
             break;
         }
 
+        /*
+         * There is a possibilty that release() call might race with this thread
+         * after releasing the flush_lock below causing it to invalidate the filehandle
+         * cache and thereby releasing the inode. This should not happen as this thread is
+         * yet to check the completion of the flush operation and it requires access
+         * to the underlying membufs. Hence flush_check_running should be incremented
+         * before releasing the flush_lock to make sure release is aware of this operation
+         * and hence will wait for this to complete before invalidating the cache.
+         */
+        ++flush_check_running;
+
         flush_unlock();
 
         AZLogDebug("[{}] wait_for_ongoing_flush(), attempt #{}, {} membufs, "
@@ -1282,6 +1293,9 @@ int nfs_inode::wait_for_ongoing_flush()
              */
             filecache_handle->release(bc.offset, bc.length);
         }
+
+        // Drop the flush_check_running as we are done checking for flushing.
+        --flush_check_running;
 
         // Re-grab flush_lock, now that the wait is over.
         flush_lock();

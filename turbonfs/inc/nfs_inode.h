@@ -136,6 +136,17 @@ struct nfs_inode
     mutable std::mutex iflush_lock_3;
 
     /*
+     * This tracks the number of operations waiting for the ongoing flush
+     * to complete. The operations will wait for the ongoing flushes to
+     * complete by releasing the flush_lock and then regrabing the flush_lock
+     * to check for completion. flush_check_running should be incremented before
+     * releasing the flush_lock and decremented before reaquiring the flush_lock.
+     * The inode should NOT be release if this count is non-zero.
+     * Check wait_for_ongoing_flush() for more details.
+     */
+    std::atomic<uint64_t> flush_check_running = 0;
+
+    /*
      * S_IFREG, S_IFDIR, etc.
      * 0 is not a valid file type.
      */
@@ -1672,6 +1683,21 @@ public:
         force_update_attr_nolock(fattr);
     }
 
+    void wait_for_flush_check_complete()
+    {
+        for (int i = 0; i < 1000 && flush_check_running != 0; i++) {
+            AZLogDebug("[{}] wait_for_flush_check_complete({})",
+                       get_fuse_ino(), flush_check_running.load());
+            ::usleep(1000);
+        }
+
+        if (flush_check_running) {
+            AZLogError("[{}] wait_for_flush_check_complete: {}"
+                       "checking for flush is not completed, giving up!",
+                       get_fuse_ino(), flush_check_running.load());
+        }
+    }
+
     /**
      * Invalidate/zap the cached data. This will correctly invalidate cached
      * data for both file and directory caches.
@@ -1713,6 +1739,15 @@ public:
                     if (has_rastate()) {
                         get_rastate()->wait_for_ongoing_readahead();
                     }
+
+                    /*
+                     * Wait for any threads checking for flush operation to complete.
+                     * When the threads wait for any ongoing flushes, they do so by
+                     * releasing the flush_lock and waiting for some amount of time.
+                     * We should wait till that operation is complete and not invalidate
+                     * the cache as the threads will still need access to the membufs.
+                     */
+                    wait_for_flush_check_complete();
 
                     AZLogDebug("[{}] (Purgenow) Purging filecache", get_fuse_ino());
                     filecache_handle->clear(true /* shutdown */);
