@@ -80,7 +80,7 @@ stages:
       - job: package_aznfs_arm64
         displayName: Package and Release ${{ parameters.versionName }} for arm64
         pool:
-          name: "AznfsARMDevOpsPool"
+          name: "aznfs-arm-devops-pool1"
         steps:
           - script: |
               arch=$(uname -m)
