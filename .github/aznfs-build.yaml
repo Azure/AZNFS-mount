@@ -376,7 +376,7 @@ stages:
                       echo "Uploading packages for $distro"
                       pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!PackageArchType} $repoName $releaseName
                     fi
-                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv; echo)
+                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/aznfs-signed/packages.csv; echo)
 
                   #################################### Publish the repositories #####################################
 
@@ -385,4 +385,4 @@ stages:
                       echo "Publishing for $distro to $repoName"
                       pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
                     fi
-                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv; echo)
+                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/aznfs-signed/packages.csv; echo)
