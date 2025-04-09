@@ -319,7 +319,7 @@ elif [ $zypper -eq 1 ]; then
 else
     current_pkg_name=$(rpm -q aznfs)
     current_version=$(echo "$current_pkg_name" | sed -E 's/^aznfs-(.+)\.[^.]+$/\1/')
-    available_upgrade_version=$($yum list available aznfs |& grep "\<aznfs\>" | awk '{print $2}')
+    available_upgrade_version=$($yum list available aznfs.${__m} |& grep "\<aznfs\>" | awk '{print $2}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
