@@ -30,7 +30,7 @@ AZNFS is supported on following Linux distros:
 - RedHat7, RedHat8, RedHat9
 - Rocky8, Rocky9
 - SUSE (SLES 15)
-
+- Oracle7, Oracle8, Oracle9
 
 ## Install Instructions
 
