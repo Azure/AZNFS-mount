@@ -36,10 +36,6 @@ stages:
           vmImage: "ubuntu-24.04"
 
         steps:
-          # - script: |
-          #     echo "Building version ${{ parameters.versionName }}"
-          #   displayName: "Print Version Info"
-
           - script: |
               arch=$(uname -m)
               echo "Building version ${{ parameters.versionName }} for $arch"
@@ -71,6 +67,53 @@ stages:
               cp -f $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
               for dir in rpm suse stunnel; do
                 cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
+              done
+              cp -avf $(System.DefaultWorkingDirectory)/packages.csv $(Build.ArtifactStagingDirectory)
+              echo "Listing Built Files..."
+              ls -R $(Build.ArtifactStagingDirectory)
+            displayName: "List Build Outputs"
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)
+              artifactName: 'aznfs-temp'
+
+      - job: package_aznfs_arm64
+        displayName: Package and Release ${{ parameters.versionName }} for arm64
+        pool:
+          name: "aznfs-arm-devops-pool"
+        steps:
+          - script: |
+              arch=$(uname -m)
+              echo "Building version ${{ parameters.versionName }} for $arch"
+            displayName: "Build Agent Architecture"
+
+          - checkout: self
+            path: arm64/AZNFS-mount
+            displayName: 'Checkout repository'
+
+          - script: |
+              sudo apt update
+              sudo apt install -y patchelf build-essential cmake curl zip unzip tar g++ pkg-config ninja-build rpm
+            displayName: "Install Dependencies"
+
+          - script: |
+              export RELEASE_NUMBER=${{ parameters.versionName }}
+              export STG_DIR=$(System.DefaultWorkingDirectory)
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
+              export BUILD_TYPE=${{ parameters.buildType }}
+              chmod +x $SOURCE_DIR/generate_package.sh
+              $SOURCE_DIR/generate_package.sh
+            displayName: "Run Package Script"
+
+          - script: |
+              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts
+              for dir in deb rpm suse stunnel; do
+                mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
+              done
+              cp -avf $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_arm64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              for dir in rpm suse stunnel; do
+                cp -avf $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
@@ -284,14 +327,6 @@ stages:
               sudo ls -lRt $(Build.ArtifactStagingDirectory)
             displayName: 'List Signed Artifacts'
 
-          # Format of packages.csv : <Distro Name>,<Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
-          - script: |
-              wget https://raw.githubusercontent.com/Azure/AZNFS-mount/main/packages.csv -O packages.csv
-              cat ./packages.csv
-            displayName: 'Fetch packages.csv'
-            workingDirectory: $(Build.ArtifactStagingDirectory)/
-
-
           - task: AzureCLI@2
             inputs:
               addSpnToEnvironment: true
@@ -312,14 +347,26 @@ stages:
                   aznfsDeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_amd64.deb`
                   echo "AZNFS DEB Package ID: $aznfsDeb"
 
+                  aznfsArm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_arm64.deb`
+                  echo "AZNFS ARM DEB Package ID: $aznfsArm"
+
                   aznfsRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.x86_64.rpm`
                   echo "AZNFS RPM Package ID: $aznfsRpm"
+                  
+                  aznfsArcRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.aarch64.rpm`
+                  echo "AZNFS ARC RPM Package ID: $aznfsArcRpm"
 
                   aznfsRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.x86_64.rpm`
                   echo "AZNFS Sles RPM Package ID: $aznfsRpmSles"
 
+                  aznfsArcRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.aarch64.rpm`
+                  echo "AZNFS ARC Sles RPM Package ID: $aznfsArcRpmSles"
+
                   aznfsRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.x86_64.rpm`
                   echo "AZNFS Stunnel RPM Package ID: $aznfsRpmStunnel"
+                  
+                  aznfsArcRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.aarch64.rpm`
+                  echo "AZNFS ARC Stunnel RPM Package ID: $aznfsRpmStunnel"
 
                   ################################### Add uploaded packages to its repository ######################################
                   echo "now adding packages to repositories..."
@@ -329,7 +376,7 @@ stages:
                       echo "Uploading packages for $distro"
                       pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!PackageArchType} $repoName $releaseName
                     fi
-                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv; echo)
+                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/aznfs-signed/packages.csv; echo)
 
                   #################################### Publish the repositories #####################################
 
@@ -338,4 +385,4 @@ stages:
                       echo "Publishing for $distro to $repoName"
                       pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
                     fi
-                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/packages.csv; echo)
+                  done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/aznfs-signed/packages.csv; echo)
