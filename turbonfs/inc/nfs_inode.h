@@ -1679,12 +1679,14 @@ public:
      * will be deferred till the next access to the cache, and will be done in
      * the context that accesses the cache, but the caller can request the cache
      * to be purged inline by passing purge_now as true.
+     * shutdown should be passed as true only in the actual aznfsclient shutdown
+     * path and should be false otherwise.
      *
      * LOCKS: None when purge_now is false.
      *        When purge_now is true, exclusive chunkmap_lock_43 for files and
      *        exclusive readdircache_lock_2 for directories.
      */
-    void invalidate_cache(bool purge_now = false)
+    void invalidate_cache(bool purge_now = false, bool shutdown = false)
     {
         if (is_dir()) {
             if (has_dircache()) {
@@ -1715,7 +1717,7 @@ public:
                     }
 
                     AZLogDebug("[{}] (Purgenow) Purging filecache", get_fuse_ino());
-                    filecache_handle->clear(true /* shutdown */);
+                    filecache_handle->clear(shutdown);
                     AZLogDebug("[{}] (Purgenow) Purged filecache", get_fuse_ino());
                 }
             }

@@ -241,7 +241,7 @@ try_again:
          * lock on chunkmap_lock_43 for files and readdircache_lock_2 for
          * directories.
          */
-        invalidate_cache(true /* purge_now */);
+        invalidate_cache(true /* purge_now */, true /* shutdown*/);
 
         /*
          * Reduce the extra refcnt and revert the cnt.
@@ -1716,7 +1716,7 @@ bool nfs_inode::release(fuse_req_t req)
     /*
      * Since the last open count on the inode is dropped and the inode is now
      * truly getting deleted, invalidate the attribute cache and clear the data
-     * cache.
+     * cache. This does a soft purge
      *
      * This is the close side of cto consistency. Any open after this point
      * will cause the file data to be fetched from the server.
