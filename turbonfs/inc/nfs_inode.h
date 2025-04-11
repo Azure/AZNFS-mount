@@ -1680,12 +1680,36 @@ public:
      * the context that accesses the cache, but the caller can request the cache
      * to be purged inline by passing purge_now as true.
      *
+     * 'shutdown' argument doesn't necessarily mean we are calling this from
+     * shutdown path, but it means that the caller wants to be stricter about
+     * purging the caches. f.e., for file cache it would mean disregarding
+     * inuse, dirty or any of the flags that we usually won't purge.
+     * This is mostly true when calling from shutdown but can be true in
+     * other cases too.
+     * shutdown is ignored for directory cache.
+     *
+     * We have the following cases (for file cache):
+     * 1. purge_now=false, shutdown=false: Don't purge now, but on next call to
+     *                                     bytes_chunk_cache::scan().
+     * 2. purge_now=true, shutdown=false: Purge now, but skip inuse and dirty
+     *                                    membufs.
+     * 3. purge_now=true, shutdown=true: Purge now, forcing purge for inuse and
+     *                                   dirty membufs too, they should not
+     *                                   exist and hence we assert for them.
+     * 4. purge_now=false, shutdown=true: Invalid call.
+     *
      * LOCKS: None when purge_now is false.
      *        When purge_now is true, exclusive chunkmap_lock_43 for files and
      *        exclusive readdircache_lock_2 for directories.
      */
-    void invalidate_cache(bool purge_now = false)
+    void invalidate_cache(bool purge_now = false, bool shutdown = false)
     {
+        /*
+         * shutdown implies force purging which only makes sense if purge_now
+         * is true.
+         */
+        assert(!shutdown || purge_now);
+
         if (is_dir()) {
             if (has_dircache()) {
                 assert(dircache_handle);
@@ -1714,9 +1738,11 @@ public:
                         get_rastate()->wait_for_ongoing_readahead();
                     }
 
-                    AZLogDebug("[{}] (Purgenow) Purging filecache", get_fuse_ino());
-                    filecache_handle->clear(true /* shutdown */);
-                    AZLogDebug("[{}] (Purgenow) Purged filecache", get_fuse_ino());
+                    AZLogDebug("[{}] (Purgenow) {}Purging filecache",
+                               get_fuse_ino(), shutdown ? "Force ": "");
+                    filecache_handle->clear(shutdown /* shutdown */);
+                    AZLogDebug("[{}] (Purgenow) {}Purged filecache",
+                               get_fuse_ino(), shutdown ? "Force ": "");
                 }
             }
         }
