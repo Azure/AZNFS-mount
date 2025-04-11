@@ -241,7 +241,7 @@ try_again:
          * lock on chunkmap_lock_43 for files and readdircache_lock_2 for
          * directories.
          */
-        invalidate_cache(true /* purge_now */);
+        invalidate_cache(true /* purge_now */, true /* shutdown*/);
 
         /*
          * Reduce the extra refcnt and revert the cnt.
@@ -1731,8 +1731,21 @@ bool nfs_inode::release(fuse_req_t req)
      *          may affect lookups as they won't hit the cache now.
      *
      *       TODO: Should this invalidation be controlled using a config?
+     *
+     * Note: We pass false for shutdown here as we don't want force purging
+     *       of inuse/dirty membufs. Note that it's possible that after we
+     *       decide that it's the last close of the file (and thus we should
+     *       purge the cache), application can open another handle on the file
+     *       and start read/write which can grab filecache membufs. We should
+     *       leave them out. Flushing the cache will not cause any correctness
+     *       issue, just some inefficiency.
+     *       Another possibility is that nfs_inode::wait_for_ongoing_flush()
+     *       releases the flush lock while still holding the inuse count on
+     *       the membufs. Above client->flush() will proceed and we may come
+     *       here with inuse count on the membufs. Again, we can leave them
+     *       out and let wait_for_ongoing_flush() release those.
      */
-    invalidate_cache(true /* purge_now */);
+    invalidate_cache(true /* purge_now */, false /* shutdown */);
     invalidate_attribute_cache();
 
     /*
