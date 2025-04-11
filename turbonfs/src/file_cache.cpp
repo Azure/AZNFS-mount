@@ -2703,6 +2703,9 @@ void bytes_chunk_cache::clear_nolock(bool shutdown)
      * Since bytes_chunk_cache::get() increases the inuse count of all membufs
      * returned, and it does that while holding the bytes_chunk_cache::lock, we
      * can safely remove from chunkmap iff inuse/dirty/locked are not set.
+     *
+     * When shutdown is true we don't expect any of the above membuf types to
+     * be present, so we assert.
      */
     const uint64_t start_size = chunkmap.size();
 
