@@ -1481,7 +1481,7 @@ static void write_iov_callback(
         inode->get_fcsm()->on_flush_complete(bciov->orig_length);
     } else {
         // TODO: Add fcsm::on_flush_fail() and call it from here.
-        assert(0);
+        inode->get_fcsm()->on_flush_fail(bciov->orig_length);
     }
 
     delete bciov;
