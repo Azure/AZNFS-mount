@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.7)
 
+# Set default package version if not provided
+if(NOT DEFINED PACKAGE_VERSION)
+    set(PACKAGE_VERSION "0.0.1")
+endif()
+
 project(aznfsclient
         DESCRIPTION "FUSE driver for mounting Blob NFS shares"
         LANGUAGES CXX
