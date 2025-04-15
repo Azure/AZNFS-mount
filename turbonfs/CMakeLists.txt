@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.7)
 
+# Assert package version cannot be empty.
+if(NOT DEFINED PACKAGE_VERSION OR PACKAGE_VERSION STREQUAL "")
+    message(FATAL_ERROR "PACKAGE_VERSION not defined or not valid. Please provide a valid version, e.g., 0.0.1")
+endif()
+
 project(aznfsclient
         DESCRIPTION "FUSE driver for mounting Blob NFS shares"
         LANGUAGES CXX

@@ -6,6 +6,7 @@ if [ $# -ne 1 ] || [ "$1" != "Release" -a "$1" != "Debug" ]; then
 fi
 
 BUILD_TYPE=$1
+RELEASE_NUMBER="0.0.1"
 
 export VCPKG_ROOT=extern/vcpkg
 
@@ -39,6 +40,7 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
       -DENABLE_JEMALLOC=$JEMALLOC \
       -DENABLE_PARANOID=$PARANOID \
       -DENABLE_INSECURE_AUTH_FOR_DEVTEST=$INSECURE_AUTH_FOR_DEVTEST \
+      -DPACKAGE_VERSION=$RELEASE_NUMBER \
       -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
 
 #cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_NO_FUSE=ON ..
