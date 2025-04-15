@@ -1,17 +1,12 @@
 #!/bin/bash
 
-if [ $# -eq 0 ] || [ $# -gt 2 ] || [ "$1" != "Release" -a "$1" != "Debug" ]; then
-    echo "Usage: ./build.sh <Release|Debug> <x.y.z|optional>"
+if [ $# -ne 1 ] || [ "$1" != "Release" -a "$1" != "Debug" ]; then
+    echo "Usage: ./build.sh <Release|Debug>"
     exit 1
 fi
 
 BUILD_TYPE=$1
-
-if [ -n "$2" ]; then
-    RELEASE_NUMBER="$2"
-else
-    RELEASE_NUMBER="0.0.1"
-fi
+RELEASE_NUMBER="0.0.1"
 
 export VCPKG_ROOT=extern/vcpkg
 
