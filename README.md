@@ -94,7 +94,8 @@ It starts a systemd service named **aznfswatchdog** which monitors the change in
 Blob NFS shares. If it detects a change in endpoint IP, aznfswatchdog will update the iptables DNAT rule and NFS
 traffic will be forwarded to new endpoint IP.
 > [!NOTE]
-> After an Azure Blob NFS endpoint is unmounted, the local proxy IP-to-endpoint mapping remains cached in the mountmap for 5 minutes. If the same endpoint is remounted within this period, it will automatically reuse the previous proxy IP address. During this period, it will ignore `AZNFS_IP_PREFIXES` environment variable if it is set.
+> 1. Ensure that all mounted Azure Blob NFS shares are unmounted before setting the AZNFS_IP_PREFIXES environment variable.
+> 2. After an Azure Blob NFS endpoint is unmounted, the local proxy IP-to-endpoint mapping remains cached in the mountmap. **aznfswatchdog** takes 5 minutes from the last unmount to remove this entry. Once the entry is cleared, a fresh mount will honor the `AZNFS_IP_PREFIXES` variable, but only for 2 or 3 octets. If the same endpoint is remounted within this 5-minute period, it will automatically reuse the previous proxy IP address and ignore the `AZNFS_IP_PREFIXES` environment variable if it is set.
 
 ## Limitations
 
