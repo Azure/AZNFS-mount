@@ -131,7 +131,7 @@ canonicalize_distro_id()
 # If distro_id is already detected it uses that else it tries to guess
 # the distro.
 #
-ensure_pkg_PMC()
+ensure_pkg()
 {
     local distro="$distro_id"
     local version="$version_id"
@@ -139,7 +139,7 @@ ensure_pkg_PMC()
 
     if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
         curl -sSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/$distro/$version/packages-microsoft-prod.deb
-        sudo dpkg -i /tmp/packages-microsoft-prod.deb /tmp/
+        sudo dpkg -i /tmp/packages-microsoft-prod.deb
         rm -f /tmp/packages-microsoft-prod.deb
 
         apt -y update
@@ -155,7 +155,7 @@ ensure_pkg_PMC()
         use_dnf_or_yum
 
         curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
-        sudo rpm -i packages-microsoft-prod.rpm /tmp/
+        sudo rpm -i /tmp/packages-microsoft-prod.rpm
         rm -f /tmp/packages-microsoft-prod.rpm
 
         check_update_opt=" --refresh"
@@ -177,7 +177,7 @@ ensure_pkg_PMC()
         fi
     elif [ "$distro" == "sles" ]; then
         curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
-        sudo rpm -i packages-microsoft-prod.rpm
+        sudo rpm -i /tmp/packages-microsoft-prod.rpm
         rm -f /tmp/packages-microsoft-prod.rpm
         
         zypper=1
@@ -251,23 +251,19 @@ create_flag_file()
 }
 
 
-move_mountmap
+move_mountmap()
 {
     chattr -i -f /opt/microsoft/aznfs/data/mountmap
     mv -vf /opt/microsoft/aznfs/data/mountmap /tmp/
     chattr +i -f /tmp/mountmap
 }
 
-move_mountmap_back
+move_mountmap_back()
 {
     chattr -i -f /tmp/mountmap
-    mv -vf /tmp/mountmap /opt/microsoft/aznfs/data/ 
-    chattr +i -f /tmp/mountmap
-}
-
-remove_aznfs_sles
-{
-    zypper remove -y aznfs_sles
+    chattr -i -f /opt/microsoft/aznfs/data/mountmap
+    mv -vf /tmp/mountmap /opt/microsoft/aznfs/data/
+    chattr +i -f /opt/microsoft/aznfs/data/
 }
 
 ######################
@@ -323,7 +319,6 @@ case "${__m}:${__s}" in
 esac
 
 ensure_pkg
-ensure_pkg_PMC
 
 if [ $apt -eq 1 ]; then
     current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
@@ -345,21 +340,19 @@ if [ $apt -eq 1 ]; then
 # Check package updates from microsoft respository
 #
 elif [ $zypper -eq 1 ]; then
-    current_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $7}')
-    available_upgrade_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $9}')
-
     move_mountmap
 
-    if [ -n "$available_upgrade_version" ]; then
-        create_flag_file
-        secho "Updating AZNFS from '$current_version' to '$available_upgrade_version'..."
-        zypper update -y aznfs
-        if [ $? -ne 0 ]; then
-            eecho "[ERROR] Failed to update aznfs package to '$available_upgrade_version'."
-            exit 1
-        else
-            package_updated=1
-        fi
+    create_flag_file
+    # find out $available_upgrade_version
+    # secho "Updating AZNFS from '$current_version' to '$available_upgrade_version'..."
+    install_output=$(zypper install -y --replacefiles aznfs 2>&1)
+    if [ $? -ne 0 ]; then
+        # eecho "[ERROR] Failed to update aznfs package to '$available_upgrade_version'."
+        eecho "[ERROR] Failed to update aznfs package."
+        eecho "[ERROR] $install_output"
+        exit 1
+    else
+        package_updated=1
     fi
 
 else
@@ -381,10 +374,12 @@ else
 fi
 
 if [ $package_updated -eq 1 ]; then
-    secho "Successfully updated AZNFS version '$current_version' to '$available_upgrade_version'."
+    # secho "Successfully updated AZNFS version '$current_version' to '$available_upgrade_version'."
+    secho "Successfully updated AZNFS version."
     pecho "Restarting aznfs watchdog service to apply changes..."
     systemctl daemon-reload
     systemctl restart aznfswatchdog
+    systemctl restart aznfswatchdogv4
 
     move_mountmap_back
 else
