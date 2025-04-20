@@ -18,6 +18,7 @@ yum="yum"
 apt=0
 zypper=0
 distro_id=
+version_id=
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -133,8 +134,14 @@ canonicalize_distro_id()
 ensure_pkg()
 {
     local distro="$distro_id"
+    local version="$version_id"
+    local major_version="${version%%.*}"
 
     if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
+        curl -sSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/$distro/$version/packages-microsoft-prod.deb
+        sudo dpkg -i /tmp/packages-microsoft-prod.deb
+        rm -f /tmp/packages-microsoft-prod.deb
+
         apt -y update
         if [ $? -ne 0 ]; then
             echo
@@ -144,8 +151,13 @@ ensure_pkg()
             exit 1
         fi
         apt=1
-    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" -o "$distro" == "ol" ]; then
+    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" -o "$distro" == "alma" ]; then
         use_dnf_or_yum
+
+        curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
+        sudo rpm -i /tmp/packages-microsoft-prod.rpm
+        rm -f /tmp/packages-microsoft-prod.rpm
+
         check_update_opt=" --refresh"
         $yum -y check-update $check_update_opt >/dev/null 2>&1
 
@@ -164,6 +176,10 @@ ensure_pkg()
             exit 1
         fi
     elif [ "$distro" == "sles" ]; then
+        curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
+        sudo rpm -i /tmp/packages-microsoft-prod.rpm
+        rm -f /tmp/packages-microsoft-prod.rpm
+        
         zypper=1
         zypper refresh
         if [ $? -ne 0 ]; then
@@ -234,6 +250,30 @@ create_flag_file()
     fi
 }
 
+
+
+backup_mountmap()
+{
+    local mountmap_path="/opt/microsoft/aznfs/data/mountmap"
+    local backup_path="/tmp/mountmap"
+
+    chattr -i -f "$mountmap_path"
+    mv -vf "$mountmap_path" "$backup_path"
+    chattr +i -f "$backup_path"
+}
+
+restore_mountmap()
+{
+    local mountmap_path="/opt/microsoft/aznfs/data/mountmap"
+    local backup_path="/tmp/mountmap"
+
+    chattr -i -f "$backup_path"
+    chattr -i -f "$mountmap_path"
+    mv -vf "$backup_path" "$mountmap_path"
+    chattr +i -f "$mountmap_path"
+}
+
+
 ######################
 # Action starts here #
 ######################
@@ -253,18 +293,25 @@ __m=$(uname -m 2>/dev/null) || __m=unknown
 __s=$(uname -s 2>/dev/null) || __s=unknown
 
 #
-# Try to detect the distro in a resilient manner and set distro_id
-# global variables.
+# Try to detect the distro in a resilient manner and set distro_id and version_id
+# global variables. This is important for the package manager to work correctly.
 #
 case "${__m}:${__s}" in
     "x86_64:Linux" | "aarch64:Linux")
         if [ -f /etc/centos-release ]; then
             pecho "Retrieving distro info from /etc/centos-release..."
-            distro_id="centos"
+            distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+            if [ "$distro_id" == "almalinux" ]; then
+                distro_id="alma"
+            else
+                distro_id="centos"
+            fi
+            version_id=$(grep "^VERSION_ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
         elif [ -f /etc/os-release ]; then
             pecho "Retrieving distro info from /etc/os-release..."
             distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
             distro_id=$(canonicalize_distro_id $distro_id)
+            version_id=$(grep "^VERSION_ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
         else
             eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
             eecho "Cannot install aznfs package updates."
@@ -301,15 +348,17 @@ if [ $apt -eq 1 ]; then
 # Check package updates from microsoft respository
 #
 elif [ $zypper -eq 1 ]; then
-    current_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $7}')
-    available_upgrade_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $9}')
+    backup_mountmap
+    current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
+    available_upgrade_version=$(zypper search -s aznfs 2>/dev/null | grep -m 1 "\<aznfs\>" | awk '{print $6}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
         secho "Updating AZNFS from '$current_version' to '$available_upgrade_version'..."
-        zypper update -y aznfs
+        install_output=$(zypper install -y --replacefiles aznfs 2>&1)
         if [ $? -ne 0 ]; then
-            eecho "[ERROR] Failed to update aznfs package to '$available_upgrade_version'."
+            eecho "[ERROR] Failed to update aznfs package."
+            eecho "[ERROR] $install_output"
             exit 1
         else
             package_updated=1
@@ -338,8 +387,11 @@ if [ $package_updated -eq 1 ]; then
     secho "Successfully updated AZNFS version '$current_version' to '$available_upgrade_version'."
     pecho "Restarting aznfs watchdog service to apply changes..."
     systemctl daemon-reload
+    systemctl enable aznfswatchdogv4
     systemctl restart aznfswatchdog
-    systemctl restart aznfswatchdogv4
+    systemctl start aznfswatchdogv4
+
+    restore_mountmap
 else
     pecho "aznfs is already up-to-date."
 fi
