@@ -160,8 +160,13 @@ ensure_pkg()
             exit 1
         fi
         apt=1
-    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" -o "$distro" == "alma" ]; then
+    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" -o "$distro" == "ol" ]; then
         use_dnf_or_yum
+
+        # Oracle Linux is also a derivative of RHEL.
+        if [ "$distro" == "ol" ]; then
+            distro="rhel"
+        fi
 
         curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
         if [ $? -ne 0 ]; then
