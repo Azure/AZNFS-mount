@@ -139,7 +139,16 @@ ensure_pkg()
 
     if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
         curl -sSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/$distro/$version/packages-microsoft-prod.deb
-        sudo dpkg -i /tmp/packages-microsoft-prod.deb
+        if [ $? -ne 0 ]; then
+            eecho "[ERROR] Failed to download packages-microsoft-prod.deb"
+            exit 1
+        fi
+
+        dpkg -i /tmp/packages-microsoft-prod.deb
+        if [ $? -ne 0 ]; then
+            eecho "[ERROR] Failed to install packages-microsoft-prod.deb"
+            exit 1
+        fi
         rm -f /tmp/packages-microsoft-prod.deb
 
         apt -y update
@@ -155,7 +164,16 @@ ensure_pkg()
         use_dnf_or_yum
 
         curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
-        sudo rpm -i /tmp/packages-microsoft-prod.rpm
+        if [ $? -ne 0 ]; then
+            eecho "[ERROR] Failed to download packages-microsoft-prod.rpm"
+            exit 1
+        fi
+
+        rpm -i /tmp/packages-microsoft-prod.rpm
+        if [ $? -ne 0 ]; then
+            eecho "[ERROR] Failed to install packages-microsoft-prod.rpm"
+            exit 1
+        fi
         rm -f /tmp/packages-microsoft-prod.rpm
 
         check_update_opt=" --refresh"
@@ -177,9 +195,18 @@ ensure_pkg()
         fi
     elif [ "$distro" == "sles" ]; then
         curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
-        sudo rpm -i /tmp/packages-microsoft-prod.rpm
+        if [ $? -ne 0 ]; then
+            eecho "[ERROR] Failed to download packages-microsoft-prod.rpm"
+            exit 1
+        fi
+
+        rpm -i /tmp/packages-microsoft-prod.rpm
+        if [ $? -ne 0 ]; then
+            eecho "[ERROR] Failed to install packages-microsoft-prod.rpm"
+            exit 1
+        fi
         rm -f /tmp/packages-microsoft-prod.rpm
-        
+
         zypper=1
         zypper refresh
         if [ $? -ne 0 ]; then
@@ -386,8 +413,8 @@ if [ $package_updated -eq 1 ]; then
     pecho "Restarting aznfs watchdog service to apply changes..."
     systemctl daemon-reload
     systemctl enable aznfswatchdogv4
-    systemctl restart aznfswatchdog
     systemctl start aznfswatchdogv4
+    systemctl restart aznfswatchdog
 
     restore_mountmap
 else
