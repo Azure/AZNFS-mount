@@ -392,6 +392,7 @@ elif [ $zypper -eq 1 ]; then
             exit 1
         else
             package_updated=1
+            restore_mountmap
         fi
     fi
 
@@ -420,8 +421,6 @@ if [ $package_updated -eq 1 ]; then
     systemctl enable aznfswatchdogv4
     systemctl start aznfswatchdogv4
     systemctl restart aznfswatchdog
-
-    restore_mountmap
 else
     pecho "aznfs is already up-to-date."
 fi
