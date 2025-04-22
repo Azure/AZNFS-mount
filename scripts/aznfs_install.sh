@@ -175,7 +175,7 @@ ensure_pkg()
         fi
 
         rpm -i /tmp/packages-microsoft-prod.rpm
-        if [ $? -ne 0 ]; then
+        if [ $? -ne 0 ] && [ $? -ne 1 ]; then
             eecho "[ERROR] Failed to install packages-microsoft-prod.rpm"
             exit 1
         fi
@@ -206,7 +206,7 @@ ensure_pkg()
         fi
 
         rpm -i /tmp/packages-microsoft-prod.rpm
-        if [ $? -ne 0 ]; then
+        if [ $? -ne 0 ] && [ $? -ne 1 ]; then
             eecho "[ERROR] Failed to install packages-microsoft-prod.rpm"
             exit 1
         fi
