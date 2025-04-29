@@ -57,23 +57,25 @@ get_host_from_share()
         return 1
     fi
 
-    # Split host by "."
-    IFS=. read -r -a hostparts <<< "$host"
+    if [ "$nfs_vers" == "3" ]; then
+        # Split host by "."
+        IFS=. read -r -a hostparts <<< "$host"
 
-    account="${hostparts[0]}"
+        account="${hostparts[0]}"
 
-    for part in "${hostparts[@]}"; do
-       if [[ "$part" == "file" || "$part" == "blob" ]]; then
-            hostprefix="$part"
-            break
+        for part in "${hostparts[@]}"; do
+        if [[ "$part" == "blob" ]]; then
+                hostprefix="$part"
+                break
+            fi
+        done
+
+        # Check if the prefix matches the expected azprefix
+        if [ "$hostprefix" != "$azprefix" ]; then
+            echo "Bad share name: ${hostshare}."
+            echo "Share must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers"
+            return 1
         fi
-    done
-
-    # Check if the prefix matches the expected azprefix
-    if [ "$hostprefix" != "$azprefix" ]; then
-        echo "Bad share name: ${hostshare}."
-        echo "Share must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers"
-        return 1
     fi
 
     echo "$host"
@@ -245,14 +247,19 @@ if [ "$USING_AZNFSCLIENT" != true ] || [ "$1" != "none" ]; then
 
     # TODO: Comment out below code for devfabric. 'is_valid_fqdn' will fail on devfabric.
     if ! is_valid_fqdn "$nfs_host" "$AZ_PREFIX"; then
-        eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
-        if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
-            eecho "Must be of the form 'account.$AZ_PREFIX.core.$AZURE_ENDPOINT_OVERRIDE'!"
+        if [ "$nfs_vers" == "4.1" ]; then
+            wecho "$AZ_PREFIX NFS endpoint: ${nfs_host} is a not default storage-account FQDN! Additional step may be needed to mount"
+            wecho "Remember to set environment variable "AZURE_ENDPOINT_OVERRIDE" for mounting non-Public Azure Cloud regions or when using Custom DNS."
         else
-            eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
+            eecho "Not a valid Azure $AZ_PREFIX NFS endpoint: ${nfs_host}!"
+            if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
+                eecho "Must be of the form 'account.$AZ_PREFIX.core.$AZURE_ENDPOINT_OVERRIDE'!"
+            else
+                eecho "Must be of the form 'account.$AZ_PREFIX.core.windows.net'!"
+            fi
+            eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint suffix!"
+            exit 1
         fi
-        eecho "For isolated environments, must set the environment variable AZURE_ENDPOINT_OVERRIDE to the appropriate endpoint suffix!"
-        exit 1
     fi
 
     nfs_dir=$(get_dir_from_share "$1" "$AZ_PREFIX")
