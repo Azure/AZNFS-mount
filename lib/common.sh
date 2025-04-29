@@ -703,7 +703,7 @@ get_check_host_value()
     if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
         # Remove any leading dot.
         modified_endpoint=${AZURE_ENDPOINT_OVERRIDE#.}
-        check_host_value="*.file.core.$modified_endpoint"
+        check_host_value="*.file.$modified_endpoint"
     else
         for cert in "${!certs[@]}"; do
             if [[ "$hostname" =~ $cert ]]; then
