@@ -168,6 +168,11 @@ ensure_pkg()
             distro="rhel"
         fi
 
+        # Special case for rhel 7.
+        if [ "$distro" == "rhel" ] && [ "$major_version" == "7" ]; then
+            major_version="7.0"
+        fi
+
         curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
         if [ $? -ne 0 ]; then
             eecho "[ERROR] Failed to download https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm"
