@@ -10,7 +10,7 @@ OPTDIR="/opt/microsoft/${APPNAME}"
 OPTDIRDATA="${OPTDIR}/data"
 LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 RANDBYTES="${OPTDIRDATA}/randbytes"
-INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
+INSTALLSCRIPT="${OPTDIR}/aznfs_install_github_to_pmc.sh"
 
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
