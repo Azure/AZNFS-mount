@@ -140,7 +140,7 @@ ensure_pkg()
     if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
         curl -sSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/$distro/$version/packages-microsoft-prod.deb
         if [ $? -ne 0 ]; then
-            eecho "[ERROR] Failed to download packages-microsoft-prod.deb"
+            eecho "[ERROR] Failed to download https://packages.microsoft.com/config/$distro/$version/packages-microsoft-prod.deb"
             exit 1
         fi
 
@@ -170,12 +170,12 @@ ensure_pkg()
 
         curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
         if [ $? -ne 0 ]; then
-            eecho "[ERROR] Failed to download packages-microsoft-prod.rpm"
+            eecho "[ERROR] Failed to download https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm"
             exit 1
         fi
 
-        rpm -i /tmp/packages-microsoft-prod.rpm
-        if [ $? -ne 0 ] && [ $? -ne 1 ]; then
+        rpm -i --force /tmp/packages-microsoft-prod.rpm
+        if [ $? -ne 0 ]; then
             eecho "[ERROR] Failed to install packages-microsoft-prod.rpm"
             exit 1
         fi
@@ -201,12 +201,12 @@ ensure_pkg()
     elif [ "$distro" == "sles" ]; then
         curl -sSL -o /tmp/packages-microsoft-prod.rpm https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm
         if [ $? -ne 0 ]; then
-            eecho "[ERROR] Failed to download packages-microsoft-prod.rpm"
+            eecho "[ERROR] Failed to download https://packages.microsoft.com/config/$distro/$major_version/packages-microsoft-prod.rpm"
             exit 1
         fi
 
-        rpm -i /tmp/packages-microsoft-prod.rpm
-        if [ $? -ne 0 ] && [ $? -ne 1 ]; then
+        rpm -i --force /tmp/packages-microsoft-prod.rpm
+        if [ $? -ne 0 ]; then
             eecho "[ERROR] Failed to install packages-microsoft-prod.rpm"
             exit 1
         fi
@@ -282,27 +282,6 @@ create_flag_file()
     fi
 }
 
-backup_mountmap()
-{
-    local mountmap_path="/opt/microsoft/aznfs/data/mountmap"
-    local backup_path="/tmp/mountmap"
-
-    chattr -i -f "$mountmap_path"
-    mv -vf "$mountmap_path" "$backup_path"
-    chattr +i -f "$backup_path"
-}
-
-restore_mountmap()
-{
-    local mountmap_path="/opt/microsoft/aznfs/data/mountmap"
-    local backup_path="/tmp/mountmap"
-
-    chattr -i -f "$backup_path"
-    chattr -i -f "$mountmap_path"
-    mv -vf "$backup_path" "$mountmap_path"
-    chattr +i -f "$mountmap_path"
-}
-
 
 ######################
 # Action starts here #
@@ -358,6 +337,10 @@ esac
 
 ensure_pkg
 
+pecho "Dumping mountmap content..."
+mountmapcontent=$(cat "/opt/microsoft/aznfs/data/mountmap" 2>/dev/null)
+pecho "$mountmapcontent"
+
 if [ $apt -eq 1 ]; then
     current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
     available_upgrade_version=$(apt list --upgradable 2>/dev/null | grep '\<aznfs\>' | awk '{print $2}')
@@ -378,7 +361,6 @@ if [ $apt -eq 1 ]; then
 # Check package updates from microsoft respository
 #
 elif [ $zypper -eq 1 ]; then
-    backup_mountmap
     current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
     available_upgrade_version=$(zypper search -s aznfs 2>/dev/null | grep -m 1 "\<aznfs\>" | awk '{print $6}')
 
@@ -392,7 +374,6 @@ elif [ $zypper -eq 1 ]; then
             exit 1
         else
             package_updated=1
-            restore_mountmap
         fi
     fi
 
