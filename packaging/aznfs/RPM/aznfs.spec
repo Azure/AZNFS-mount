@@ -42,26 +42,26 @@ cleanup_stunnel_files()
 	local stunnel_dir=$1
 	cd -
 	rm -rf /tmp/${stunnel_dir}
-	rm -f /tmp/stunnel-latest.tar.gz
+	rm -f /tmp/stunnel-5.56.tar.gz
 }
 
-# Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat 7 is not compatible with aznfs.
+Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat 7 is not compatible with aznfs.
 if grep -qi "mariner" /etc/os-release || grep -qi "azurelinux" /etc/os-release || [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
 	# Install stunnel from source.
-	wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
+	wget https://www.stunnel.org/archive/5.x/stunnel-5.56.tar.gz -P /tmp
 	if [ $? -ne 0 ]; then
 		echo "Failed to download stunnel source code. Please install stunnel and try again."
 		exit 1
 	fi
 
-	tar -xvf /tmp/stunnel-latest.tar.gz -C /tmp
+	tar -xvf /tmp/stunnel-5.56.tar.gz -C /tmp
 	if [ $? -ne 0 ]; then
 		echo "Failed to extract stunnel tarball. Please install stunnel and try again."
-		rm -f /tmp/stunnel-latest.tar.gz
+		rm -f /tmp/stunnel-5.56.tar.gz
 		exit 1
 	fi
 
-	stunnel_dir=$(tar -tf /tmp/stunnel-latest.tar.gz | head -n 1 | cut -f1 -d'/')
+	stunnel_dir=$(tar -tf /tmp/stunnel-5.56.tar.gz | head -n 1 | cut -f1 -d'/')
 
 	cd /tmp/$stunnel_dir
 	./configure
