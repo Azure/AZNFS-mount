@@ -98,9 +98,9 @@ AZNFS is supported on following Linux distros:
 	```
 	sudo mount -t aznfs -o vers=4.1 <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
-   For isolated environments, ensure that the environment variable "AZURE_ENDPOINT_OVERRIDE" is set to the appropriate endpoint before running the mount command:
+   Remember to set environment variable "AZURE_ENDPOINT_OVERRIDE" for mounting non-Public Azure Cloud regions and when using Custom DNS. For example, for Azure China Cloud:
 	```
-	export AZURE_ENDPOINT_OVERRIDE="example.end.point"
+	export AZURE_ENDPOINT_OVERRIDE="chinacloudapi.cn"
 	```
 - Mount Azure File NFSv4 share without TLS:
 	```
