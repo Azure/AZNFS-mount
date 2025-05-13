@@ -134,7 +134,7 @@ ensure_pkg()
 {
     local distro="$distro_id"
 
-    if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
+    if [ "$distro" == "ubuntu" ]; then
         apt -y update
         if [ $? -ne 0 ]; then
             echo
@@ -144,7 +144,7 @@ ensure_pkg()
             exit 1
         fi
         apt=1
-    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" ]; then
+    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" -o "$distro" == "ol" ]; then
         use_dnf_or_yum
         check_update_opt=" --refresh"
         $yum -y check-update $check_update_opt >/dev/null 2>&1
