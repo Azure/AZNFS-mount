@@ -622,11 +622,12 @@ log_version_info()
     sleep 2
 
     if [ "$distro_id" == "ubuntu" ]; then
-        current_version=$(apt-cache show aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
-    elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
-        current_version=$(yum info aznfs 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2)
+        current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
+    elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" -o "$distro" == "mariner" -o "$distro" == "ol" ]; then
+        current_pkg_name=$(rpm -q aznfs)
+        current_version=$(echo "$current_pkg_name" | sed -E 's/^aznfs-(.+)\.[^.]+$/\1/')
     elif [ "$distro_id" == "sles" ]; then
-        current_version=$(zypper info aznfs_sles 2>/dev/null | grep "^Version" | tr -d " " | cut -d ':' -f2 | cut -d '-' -f1)
+        current_version=$(zypper search --details -i aznfs | grep "\<aznfs\>" | awk '{print $7}')
     else
         # Ideally, this should not happen.
         current_version="Unknown"
@@ -699,12 +700,19 @@ get_check_host_value()
         ["usgovcloudapi.net$"]="*.file.core.usgovcloudapi.net"
     )
 
-    for cert in "${!certs[@]}"; do
-        if [[ "$hostname" =~ $cert ]]; then
-                check_host_value="${certs[$cert]}"
-                break
-        fi
-    done
+    # If AZURE_ENDPOINT_OVERRIDE environment variable is set, use it.
+    if [[ -n "$AZURE_ENDPOINT_OVERRIDE" ]]; then
+        # Remove any leading dot.
+        modified_endpoint=${AZURE_ENDPOINT_OVERRIDE#.}
+        check_host_value="*.file.core.$modified_endpoint"
+    else
+        for cert in "${!certs[@]}"; do
+            if [[ "$hostname" =~ $cert ]]; then
+                    check_host_value="${certs[$cert]}"
+                    break
+            fi
+        done
+    fi
 
     echo "$check_host_value"
 }

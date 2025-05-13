@@ -15,14 +15,21 @@ on:
       versionName:
         description: 'Version Name'
         required: true
+      buildType:
+        type: choice
+        description: 'Build Type'
+        options:
+        - Release
+        - Debug
+        default: 'Release'
 
 permissions:
   contents: write
 
 jobs:
-  package_mount_helper:
-    name: Package and Release Mount Helper ${{ github.event.inputs.versionName }} (Test Release)
-    runs-on: ubuntu-latest
+  package_mount_helper_amd64:
+    name: Package and Release ${{ github.event.inputs.versionName }} for amd64 (Test Release)
+    runs-on: ubuntu-22.04
     steps:
     - name: Check Version Number
       shell: bash
@@ -32,21 +39,24 @@ jobs:
             echo "Test Release version must be of the form 0.y.z" 
             false
         fi
-    - name: Install arm64 Cross-Compile Toolchain
+    - name: Install patchelf
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt install -y gcc-aarch64-linux-gnu
+        sudo apt update
+        sudo apt install -y patchelf
     - name: Checkout repository
       uses: actions/checkout@v3
+      with:
+        path: amd64
     - name: Run Package.sh
       shell: bash
       run: |
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
-        export STG_DIR=$GITHUB_WORKSPACE
-        export SOURCE_DIR=$GITHUB_WORKSPACE
-        chmod +x $GITHUB_WORKSPACE/package.sh
-        $GITHUB_WORKSPACE/package.sh
+        export STG_DIR=$GITHUB_WORKSPACE/amd64
+        export SOURCE_DIR=$GITHUB_WORKSPACE/amd64
+        export BUILD_TYPE=${{ github.events.inputs.buildType }}
+        chmod +x $SOURCE_DIR/package.sh
+        $SOURCE_DIR/package.sh
     - name: Create Test Release
       uses: softprops/action-gh-release@v1
       with:
@@ -55,11 +65,57 @@ jobs:
         tag_name: ${{ github.event.inputs.versionName }}
         target_commitish: ${{ github.sha }}
         files: |
-          ${{ github.workspace }}/deb/aznfs-${{ github.event.inputs.versionName }}-1_amd64.deb
-          ${{ github.workspace }}/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.rpm
-          ${{ github.workspace }}/suse/root/rpmbuild/RPMS/x86_64/aznfs_sles-${{ github.event.inputs.versionName }}-1.x86_64.rpm
-          ${{ github.workspace }}/scripts/aznfs_install.sh
-          ${{ github.workspace }}/tarball/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.tar.gz
-          ${{ github.workspace }}/tarball/aznfs-${{ github.event.inputs.versionName }}-1.arm64.tar.gz
+          ${{ github.workspace }}/amd64/deb/aznfs-${{ github.event.inputs.versionName }}-1_amd64.deb
+          ${{ github.workspace }}/amd64/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace }}/amd64/suse/root/rpmbuild/RPMS/x86_64/aznfs_sles-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace }}/amd64/stunnel/root/rpmbuild/RPMS/x86_64/aznfs_stunnel_custom-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace }}/amd64/scripts/aznfs_install.sh
+          ${{ github.workspace }}/amd64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.tar.gz
+        body: |
+          New Test Release ${{ github.event.inputs.versionName }}
+
+  package_mount_helper_arm64:
+    name: Package and Release ${{ github.event.inputs.versionName }} for arm64 (Test Release)
+    runs-on: ubuntu-22.04-arm
+    steps:
+    - name: Check Version Number
+      shell: bash
+      run: |
+        versionName=${{ github.event.inputs.versionName }}
+        if echo $versionName | grep -v -q "^0\."; then 
+            echo "Test Release version must be of the form 0.y.z" 
+            false
+        fi
+    - name: Install patchelf
+      shell: bash
+      run: |
+        sudo apt update
+        sudo apt install -y patchelf
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        path: arm64
+    - name: Run Package.sh
+      shell: bash
+      run: |
+        export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+        export STG_DIR=$GITHUB_WORKSPACE/arm64
+        export SOURCE_DIR=$GITHUB_WORKSPACE/arm64
+        export BUILD_TYPE=${{ github.events.inputs.buildType }}
+        chmod +x $SOURCE_DIR/package.sh
+        $SOURCE_DIR/package.sh
+    - name: Create Test Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Test Release ${{ github.event.inputs.versionName }}
+        prerelease: true
+        tag_name: ${{ github.event.inputs.versionName }}
+        target_commitish: ${{ github.sha }}
+        files: |
+          ${{ github.workspace }}/arm64/deb/aznfs-${{ github.event.inputs.versionName }}-1_arm64.deb
+          ${{ github.workspace }}/arm64/rpm/root/rpmbuild/RPMS/aarch64/aznfs-${{ github.event.inputs.versionName }}-1.aarch64.rpm
+          ${{ github.workspace }}/arm64/suse/root/rpmbuild/RPMS/aarch64/aznfs_sles-${{ github.event.inputs.versionName }}-1.aarch64.rpm
+          ${{ github.workspace }}/arm64/stunnel/root/rpmbuild/RPMS/aarch64/aznfs_stunnel_custom-${{ github.event.inputs.versionName }}-1.aarch64.rpm
+          ${{ github.workspace }}/arm64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.aarch64.tar.gz
         body: |
           New Test Release ${{ github.event.inputs.versionName }}

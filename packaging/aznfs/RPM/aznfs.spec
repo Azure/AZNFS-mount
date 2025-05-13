@@ -1,18 +1,22 @@
 Name: AZNFS_PACKAGE_NAME
 Version: x.y.z
 Release: 1
-Summary: Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
+Summary: Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc, make
+%if 0%{?custom_stunnel}
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc, make, wget
 Recommends: build-essential
+%else
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
+%endif
 
 %description
-Mount helper program for correctly handling endpoint IP address changes for Azure Blob NFS mounts and providing a secure communication channel for Azure File NFS mounts
+Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
 
 %prep
 mkdir -p ${STG_DIR}/RPM_DIR/root/rpmbuild/SOURCES/
-tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${STG_DIR}/RPM_DIR/
+tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.BUILD_ARCH.tar.gz -C ${STG_DIR}/RPM_DIR/
 
 %files
 /usr/sbin/aznfswatchdog
@@ -25,6 +29,9 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.x86_64.tar.gz -C ${S
 /opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
 /lib/systemd/system/aznfswatchdogv4.service
+OPT_LIBS
+/opt/microsoft/aznfs/sample-turbo-config.yaml
+/sbin/aznfsclient
 
 %pre
 init="$(ps -q 1 -o comm=)"
@@ -33,75 +40,68 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
-INSTALLED_STUNNEL_VERSION="0"
-REQUIRED_STUNNEL_VERSION="5.73"
-
-if command -v stunnel >/dev/null 2>&1; then
-    INSTALLED_STUNNEL_VERSION=$(stunnel -version 2>&1 | grep -Eo 'stunnel [0-9]+\.[0-9]+' | awk '{print $2}')
-fi
-
 cleanup_stunnel_files()
 {
+	local stunnel_dir=$1
 	cd -
-	rm -rf /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}
-	rm -f /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz
+	rm -rf /tmp/${stunnel_dir}
+	rm -f /tmp/stunnel-latest.tar.gz
 }
 
-# Install stunnel if not present or if the installed version is older than the required version.
-if (( $(echo $REQUIRED_STUNNEL_VERSION $INSTALLED_STUNNEL_VERSION | awk '{if ($1 > $2) print 1;}') )) ; then
-	
+# Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat 7 is not compatible with aznfs.
+if grep -qi "mariner" /etc/os-release || [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
 	# Install stunnel from source.
-	wget https://www.stunnel.org/archive/5.x/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz -P /tmp
+	wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
 	if [ $? -ne 0 ]; then
 		echo "Failed to download stunnel source code. Please install stunnel and try again."
 		exit 1
 	fi
 
-	tar -xvf /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}.tar.gz -C /tmp
+	tar -xvf /tmp/stunnel-latest.tar.gz -C /tmp
 	if [ $? -ne 0 ]; then
 		echo "Failed to extract stunnel tarball. Please install stunnel and try again."
-		cleanup_stunnel_files
+		rm -f /tmp/stunnel-latest.tar.gz
 		exit 1
 	fi
 
-	cd /tmp/stunnel-${REQUIRED_STUNNEL_VERSION}
+	stunnel_dir=$(tar -tf /tmp/stunnel-latest.tar.gz | head -n 1 | cut -f1 -d'/')
+
+	cd /tmp/$stunnel_dir
 	./configure
 	if [ $? -ne 0 ]; then
 		echo "Failed to configure the build. Please install stunnel and try again."
-		cleanup_stunnel_files
+		cleanup_stunnel_files $stunnel_dir
 		exit 1
 	fi
 
 	make
 	if [ $? -ne 0 ]; then
 		echo "Failed to build stunnel. Please install stunnel and try again."
-		cleanup_stunnel_files
+		cleanup_stunnel_files $stunnel_dir
 		exit 1
 	fi
 
 	make install
 	if [ $? -ne 0 ]; then
 		echo "Failed to install stunnel. Please install stunnel and try again."
-		cleanup_stunnel_files
+		cleanup_stunnel_files $stunnel_dir
 		exit 1
 	fi
 
-	cleanup_stunnel_files
+	cleanup_stunnel_files $stunnel_dir
 
 	# Remove the old link and create a symlink to stunnel binary.
-    [ -f /bin/stunnel ] && mv /bin/stunnel /bin/stunnel.old
-    ln -sf /usr/local/bin/stunnel /bin/stunnel
+	[ -f /bin/stunnel ] && mv /bin/stunnel /bin/stunnel.old
+	ln -sf /usr/local/bin/stunnel /bin/stunnel
 
-    if command -v stunnel >/dev/null 2>&1; then
-        echo "Successfully installed stunnel version ${REQUIRED_STUNNEL_VERSION}"
-        rm -f /bin/stunnel.old
-    else
-        echo "Failed to install stunnel version ${REQUIRED_STUNNEL_VERSION}. Please install stunnel and try again."
-        mv /bin/stunnel.old /bin/stunnel > /dev/null 2>&1
-        exit 1
-    fi
-else
-	echo "stunnel version $INSTALLED_STUNNEL_VERSION is already installed."
+	if command -v stunnel >/dev/null 2>&1; then
+		echo "Successfully installed stunnel version ${stunnel_dir}"
+		rm -f /bin/stunnel.old
+	else
+		echo "Failed to install stunnel version ${stunnel_dir}. Please install stunnel and try again."
+		mv /bin/stunnel.old /bin/stunnel > /dev/null 2>&1
+		exit 1
+	fi
 fi
 
 flag_file="/tmp/.update_in_progress_from_watchdog.flag"
@@ -225,6 +225,16 @@ if [ $1 == 2 ]; then
 	fi
 fi
 
+# Move the turbo sample config file to optdirdata if it exists.
+if [ -f /opt/microsoft/aznfs/sample-turbo-config.yaml ]; then
+	# chattr if sample config already present (needed for upgrade)
+        if [ -f /opt/microsoft/aznfs/data/sample-turbo-config.yaml ]; then
+                chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+        fi
+        mv -vf /opt/microsoft/aznfs/sample-turbo-config.yaml /opt/microsoft/aznfs/data/
+        chattr -f +i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+fi
+
 # Check if the config file exists; if not, create it.
 if [ ! -f "$CONFIG_FILE" ]; then
         # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
@@ -306,6 +316,12 @@ if [ $1 == 0 ]; then
 	systemctl disable aznfswatchdogv4
 
 	echo "Stopped aznfswatchdog service"
+
+	# %files: These files are deleted during uninstallation after %preun and before %postun
+	if [ -f /opt/microsoft/aznfs/data/sample-turbo-config.yaml ]; then
+		chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+		mv -vf /opt/microsoft/aznfs/data/sample-turbo-config.yaml /opt/microsoft/aznfs/
+	fi
 fi
 
 %postun

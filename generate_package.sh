@@ -25,14 +25,8 @@ generate_rpm_package()
 	rpm_dir=$1
 	custom_stunnel_required=0
 
-	# Overwrite rpm_pkg_dir in case of SUSE.
-	if [ "$rpm_dir" == "suse" ]; then
-		rpm_pkg_dir="${pkg_name}_sles-${RELEASE_NUMBER}-1.$arch"
-	fi
-
 	# Overwrite rpm_pkg_dir in case of Mariner, RedHat7, and Centos7.
 	if [ "$rpm_dir" == "stunnel" ]; then
-		rpm_pkg_dir="${pkg_name}_stunnel_custom-${RELEASE_NUMBER}-1.$arch"
 		custom_stunnel_required=1
 	fi
 
@@ -97,21 +91,15 @@ generate_rpm_package()
 	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	sed -i -e "s/RPM_DIR/${rpm_dir}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	sed -i -e "s/BUILD_ARCH/${arch}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-	
+	sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+
 	# Replace the placeholders for various package names in aznfs.spec file. 
 	if [ "$rpm_dir" == "suse" ]; then
-		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_sles/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/NETCAT_PACKAGE_NAME/netcat-openbsd/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		# For SLES, sysvinit-tools provides pidof.
 		sed -i -e "s/PROCPS_PACKAGE_NAME/sysvinit-tools/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/DISTRO/suse/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	else
-		if [ "$rpm_dir" == "stunnel" ]; then
-			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_stunnel_custom/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		else
-			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		fi
-
 		sed -i -e "s/NETCAT_PACKAGE_NAME/nmap-ncat/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		# In new versions of Centos/RedHat/Rocky, procps-ng provides pidof. For older versions, it is provided by sysvinit-tools but since it is not
 		# present in new versions, only install procps-ng which exists in all versions.
@@ -122,74 +110,11 @@ generate_rpm_package()
 
 	# Create the rpm package.
 	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+
+	# Remove the temporary files.
+	rm ${STG_DIR}/${rpm_pkg_dir}.tar.gz
 }
 
-generate_tarball_package()
-{
-    local arch=$1
-    local tar_pkg_dir
-    local compiler
-
-    tar_pkg_dir="${pkg_name}-${RELEASE_NUMBER}-1.$arch"
-    compiler="gcc"
-
-    # Create the directory to hold the package contents.
-    mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}
-
-    # Copy other static package file(s).
-    mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
-    cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
-    cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin
-
-    # Compile mount.aznfs.c and put the executable into ${STG_DIR}/tarball/${tar_pkg_dir}/
-    mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}/sbin
-    $compiler -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
-
-    # Copy the required files to the package directory.
-    mkdir -p ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}
-    cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
-    cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
-    cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
-    cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
-    cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
-
-    # Set AKS_USER variable to true inside aznfswatchdog to indicate use by Azure Kubernetes Service (AKS).
-    sed -i -e 's/AKS_USER="false"/AKS_USER="true"/' -e "s/RELEASE_NUMBER_FOR_AKS=x.y.z/RELEASE_NUMBER_FOR_AKS=${RELEASE_NUMBER}/" ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
-
-    ###########################################
-    # Bundle aznfsclient and its dependencies #
-    ###########################################
-
-    # copy the aznfsclient config file.
-    cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
-
-    # copy the aznfsclient binary.
-    cp -avf ${aznfsclient} ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/aznfsclient
-
-    #
-    # Package aznfsclient dependencies in opt_dir/libs.
-    # libs_dir must already be populated with the required dependencies from
-    # the debian packaging step. Simply copy all those to rpm_libs_dir.
-    #
-    tarball_libs_dir=${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/libs
-    mkdir -p ${tarball_libs_dir}
-    cp -avfH ${libs_dir}/* ${tarball_libs_dir}
-
-    # Set appropriate permissions.
-    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
-    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin/aznfswatchdog
-    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/usr/sbin/aznfswatchdogv4
-    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/mountscript.sh
-    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/nfsv3mountscript.sh
-    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/nfsv4mountscript.sh
-    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/aznfs_install.sh
-    chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
-    chmod 4755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
-
-    # Create the tar.gz package.
-    cd ${STG_DIR}/tarball/${tar_pkg_dir}
-    tar -czvf ${STG_DIR}/tarball/${tar_pkg_dir}.tar.gz *
-}
 
 #STG_DIR, RELEASE_NUMBER and SOURCE_DIR will be taken as env var.
 pkg_name="aznfs"
@@ -318,8 +243,4 @@ generate_rpm_package suse
 # Generate rpm package with custom stunnel installation for Mariner, RedHat7, and Centos7.
 generate_rpm_package stunnel
 
-#############################
-# Generating Tarball for AKS#
-#############################
 
-generate_tarball_package $arch

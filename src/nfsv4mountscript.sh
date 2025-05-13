@@ -22,6 +22,12 @@ NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 DEBUG_LEVEL="info"
 
+stunnel_timeout_idle=61
+
+isDebian=0
+isRedHat=0
+isSUSE=0
+
 # Certificates related variables.
 CERT_PATH=
 CERT_UPDATE_COMMAND=
@@ -108,36 +114,82 @@ find_next_available_port_and_start_stunnel()
 
 get_cert_path_based_and_command()
 {
-    # Check if we're on a Debian-based distribution
-    if command -v apt-get &> /dev/null; then
+    if [ $isDebian -eq 1 ]; then
         CERT_PATH="/usr/local/share/ca-certificates"
         CERT_UPDATE_COMMAND="update-ca-certificates"
-        STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
-    # Check if we're on a Red Hat-based distribution
-    elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+    elif [ $isRedHat -eq 1 ]; then
         CERT_PATH="/etc/pki/ca-trust/source/anchors"
         CERT_UPDATE_COMMAND="update-ca-trust extract"
-        STUNNEL_CAFILE="${CERT_PATH}/DigiCert_Global_Root_G2.crt"
-    # Check if we're on a SUSE-based distribution
-    elif command -v zypper &> /dev/null; then
+        mkdir -p /etc/ssl/certs
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create /etc/ssl/certs path for certificate!"
+            return 1
+        fi
+    elif [ $isSUSE -eq 1 ]; then
         CERT_PATH="/etc/pki/trust/anchors"
         CERT_UPDATE_COMMAND="update-ca-certificates"
-        STUNNEL_CAFILE="${CERT_PATH}/DigiCert_Global_Root_G2.crt"
-    else
-        eecho "[FATAL] Unsupported distribution!"
+    fi
+
+    STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
+}
+
+extract_CA()
+{
+    awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print > "'$STUNNEL_CAFILE'"} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Failed to extract DigiCert Global Root G2 certificate from /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem!"
+        return 1
+    fi
+}
+
+compare_CA_thumbprint()
+{
+    local thumbprint=$(openssl x509 -in $STUNNEL_CAFILE -noout -fingerprint 2>/dev/null | cut -d'=' -f2)
+    local expected_thumbprint=$(awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem | openssl x509 -noout -fingerprint -sha1 2>/dev/null | cut -d'=' -f2)
+
+    vecho "Comparing the thumbprint of the installed DigiCert Global Root G2 certificate. Expected: ${expected_thumbprint}, Installed: ${thumbprint}."
+
+    if [ "$thumbprint" != "$expected_thumbprint" ]; then
         return 1
     fi
 }
 
 install_CA_cert()
 {
-    wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O ${CERT_PATH}/DigiCert_Global_Root_G2.crt
+    # For Debian-based and SUSE-based distributions, if the cert exits, it's in /etc/ssl/certs/DigiCert_Global_Root_G2.pem. For RedHat-based distributions, it's' in /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem.
+    if [ $isRedHat -eq 1 ]; then
+        # If certificate already exists in the system, extract it and return.
+        grep -q "DigiCert Global Root G2" /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+        if [ $? -eq 0 ]; then
+            vecho "DigiCert Global Root G2 certificate already exists. Extranting it to ${STUNNEL_CAFILE}."
+            if ! extract_CA; then
+                return 1
+            fi
+            return 0
+        fi
+    else
+        if [ -f /etc/ssl/certs/DigiCert_Global_Root_G2.pem ]; then
+            vecho "DigiCert Global Root G2 certificate already exists in /etc/ssl/certs. No need to install it again."
+            return 0
+        fi
+    fi
+
+    wget_error=$(wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O ${CERT_PATH}/DigiCert_Global_Root_G2.crt 2>&1)
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem !"
+        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem! Error: ${wget_error}"
         return 1
     fi
 
     $CERT_UPDATE_COMMAND
+
+    # In RedHat-based distributions, we need to extract the certificate to /etc/ssl/certs for stunnel to pick it up.
+    if [ $isRedHat -eq 1 ]; then
+        if ! extract_CA; then
+            return 1
+        fi
+    fi
+
+    vecho "Successfully installed DigiCert_Global_Root_G2 certificate to ${CERT_PATH}/DigiCert_Global_Root_G2.crt."
 }
 
 #
@@ -153,12 +205,27 @@ add_stunnel_configuration()
     fi
 
     if [ ! -f $STUNNEL_CAFILE ]; then
-        vecho "CA root cert is missing for stunnel configuration. Installing DigiCert_Global_Root_G2 certificate."
+        vecho "CA root cert is missing for stunnel configuration. Install or extract DigiCert_Global_Root_G2 certificate."
         install_CA_cert
         if [ $? -ne 0 ]; then
             chattr -f +i $stunnel_conf_file
             eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
             return 1
+        fi
+    else
+        vecho "DigiCert_Global_Root_G2 certificate already exists in $STUNNEL_CAFILE."
+        # Since the certificate is extracted from the system's CA bundle, we need to compare the thumbprint of the installed certificate with the expected value.
+        if [ $isRedHat -eq 1 ]; then
+            if ! compare_CA_thumbprint; then
+                vecho "Thumbprint of the installed DigiCert Global Root G2 certificate does not match the expected value! Extracting the certificate again."
+                rm -f $STUNNEL_CAFILE
+                install_CA_cert
+                if [ $? -ne 0 ]; then
+                    chattr -f +i $stunnel_conf_file
+                    eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+                    return 1
+                fi
+            fi
         fi
     fi
 
@@ -212,6 +279,13 @@ add_stunnel_configuration()
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add pid file path to $stunnel_conf_file!"
+        return 1
+    fi
+
+    echo "TIMEOUTidle = $stunnel_timeout_idle" >> $stunnel_conf_file
+    if [ $? -ne 0 ]; then
+        chattr -f +i $stunnel_conf_file
+        eecho "Failed to add TIMEOUTidle to $stunnel_conf_file!"
         return 1
     fi
 
@@ -307,6 +381,20 @@ tls_nfsv4_files_share_mount()
     local storageaccount
     local container
     local extra
+
+    # Check if we're on a Debian-based distribution
+    if command -v apt-get &> /dev/null; then
+        isDebian=1
+    # Check if we're on a Red Hat-based distribution
+    elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+        isRedHat=1
+    # Check if we're on a SUSE-based distribution
+    elif command -v zypper &> /dev/null; then
+        isSUSE=1
+    else
+        eecho "[FATAL] Unsupported distribution!"
+        return 1
+    fi
 
     # Set trap to cleanup the lock on mountmap file on exit.
     trap 'cleanup' EXIT
