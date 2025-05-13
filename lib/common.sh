@@ -623,7 +623,7 @@ log_version_info()
 
     if [ "$distro_id" == "ubuntu" ]; then
         current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
-    elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
+    elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" -o "$distro" == "mariner" -o "$distro" == "ol" ]; then
         current_pkg_name=$(rpm -q aznfs)
         current_version=$(echo "$current_pkg_name" | sed -E 's/^aznfs-(.+)\.[^.]+$/\1/')
     elif [ "$distro_id" == "sles" ]; then
