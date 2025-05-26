@@ -186,6 +186,14 @@ check_turbo_option()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         export USING_AZNFSCLIENT=true
     fi
+    
+    #
+    # Check if fuse flag is passed. We need to support both options for some reason.
+    #
+    matchstr="(^|,)fuse(,|$)"
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        export USING_AZNFSCLIENT=true
+    fi
 }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
