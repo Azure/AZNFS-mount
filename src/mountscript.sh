@@ -188,7 +188,8 @@ check_turbo_option()
     fi
     
     #
-    # Check if fuse flag is passed. We need to support both options for some reason.
+    # We need to support both options as some customer using turbo option.
+    # TODO: Once we have confirmation no customer using should remove turbo option.
     #
     matchstr="(^|,)fuse(,|$)"
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
