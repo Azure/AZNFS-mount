@@ -853,7 +853,7 @@ int main(int argc, char *argv[])
     /*
      * We come here when user unmounts the fuse filesystem.
      */
-    AZLogInfo("Shutting down!");
+    AZLogInfo("Shutting down! ret:{}", ret);
 
     /*
      * Clear the stats signal, else it may cause a crash if received while

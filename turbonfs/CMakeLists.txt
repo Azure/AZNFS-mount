@@ -32,7 +32,7 @@ option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" 
 # logs.
 # Note: Don't use it for anything other than logging control!
 #
-option(ENABLE_RELEASE_BUILD "Turn it on when making release builds used by customers" OFF)
+option(ENABLE_RELEASE_BUILD "Turn it on when making release builds used by customers" ON)
 
 #
 # Enable paranoid checks only in debug builds.
@@ -49,6 +49,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_link_options(-fsanitize=address)
   endif()
 else()
+  if(ENABLE_RELEASE_BUILD)
+    add_definitions(-DENABLE_RELEASE_BUILD)
+  endif()
   set(MESON_BUILD_TYPE release)
 endif()
 
@@ -70,9 +73,9 @@ if(ENABLE_NON_AZURE_NFS)
   add_definitions(-DENABLE_NON_AZURE_NFS)
 endif()
 
-if(ENABLE_RELEASE_BUILD)
-  add_definitions(-DENABLE_RELEASE_BUILD)
-endif()
+#if(ENABLE_RELEASE_BUILD)
+#  add_definitions(-DENABLE_RELEASE_BUILD)
+#endif()
 
 if(ENABLE_CHATTY)
   add_definitions(-DENABLE_CHATTY)
