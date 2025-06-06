@@ -323,22 +323,22 @@ add_stunnel_configuration()
     # otherwise stunnel complains about the missing ciphers for TLSv1.3 - need to do add it even if using
     # TLSv1.2, since ciphers for both TLS versions are checked as part of the initialization process.
 
-    distro_id=
-    if [ -f /etc/os-release ]; then
-        distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
-        distro_id=$(canonicalize_distro_id $distro_id)
-    fi
+    # distro_id=
+    # if [ -f /etc/os-release ]; then
+    #     distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+    #     distro_id=$(canonicalize_distro_id $distro_id)
+    # fi
 
-    if [ "$distro_id" == "mariner" ]; then
-        # List available TLSv1.3 ciphersuites using OpenSSL
-        available_ciphers=$(openssl ciphers -s -tls1_3 | awk '{print $1}')
-        echo "ciphersuites = $available_ciphers" >> $stunnel_conf_file
-        if [ $? -ne 0 ]; then
-            chattr -f +i $stunnel_conf_file
-            eecho "Failed to add 'ciphersuites' info to $stunnel_conf_file!"
-            return 1
-        fi
-    fi
+    # if [ "$distro_id" == "mariner" ]; then
+    #     # List available TLSv1.3 ciphersuites using OpenSSL
+    #     available_ciphers=$(openssl ciphers -s -tls1_3 | awk '{print $1}')
+    #     echo "ciphersuites = $available_ciphers" >> $stunnel_conf_file
+    #     if [ $? -ne 0 ]; then
+    #         chattr -f +i $stunnel_conf_file
+    #         eecho "Failed to add 'ciphersuites' info to $stunnel_conf_file!"
+    #         return 1
+    #     fi
+    # fi
 
     chattr -f +i $stunnel_conf_file
 }

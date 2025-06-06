@@ -48,8 +48,8 @@ cleanup_stunnel_files()
 	rm -f /tmp/stunnel-latest.tar.gz
 }
 
-# Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat 7 is not compatible with aznfs.
-if grep -qi "mariner" /etc/os-release || [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
+# Default stunnel package version on RedHat 7 and Centos 7 is not compatible with aznfs.
+if [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
 	# Install stunnel from source.
 	wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
 	if [ $? -ne 0 ]; then
@@ -289,22 +289,24 @@ if [ $1 == 0 ]; then
 	if [ $existing_mounts_v3 -ne 0 -o $existing_mounts_v4 -ne 0 ]; then
 		echo
 		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
-		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
-		read -n 1 result < /dev/tty
-		echo
-		if [ "$result" != "y" -a "$result" != "Y" ]; then
-			echo "Removal aborted!"
-			if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
-				echo
-				echo "*******************************************************************"
-				echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
-				echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
-				echo "To fix this, run the below command to install dependencies:"
-				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME stunnel net-tools"
-				echo "*******************************************************************"
-				echo
+		if ! grep -qi "azurelinux" /etc/os-release; then
+			echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
+			read -n 1 result < /dev/tty
+			echo
+			if [ "$result" != "y" -a "$result" != "Y" ]; then
+				echo "Removal aborted!"
+				if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
+					echo
+					echo "*******************************************************************"
+					echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
+					echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
+					echo "To fix this, run the below command to install dependencies:"
+					echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME stunnel net-tools"
+					echo "*******************************************************************"
+					echo
+				fi
+				exit 1
 			fi
-			exit 1
 		fi
 	fi
 
