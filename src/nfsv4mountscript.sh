@@ -32,6 +32,7 @@ isSUSE=0
 CERT_PATH=
 CERT_UPDATE_COMMAND=
 STUNNEL_CAFILE=
+ssl_version=
 
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
 CONNECT_PORT=2049
@@ -251,8 +252,11 @@ add_stunnel_configuration()
         return 1
     fi
 
-    # TODO: Change to TLSv1.3 once we have TLSv1.3 version enabled.
-    echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
+    if [ -n "$ssl_version" ]; then
+        echo "sslVersion = TLSv${ssl_version}" >> $stunnel_conf_file
+    else
+        echo "sslVersion = TLSv1.3" >> $stunnel_conf_file
+    fi
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
         eecho "Failed to add sslVersion option to $stunnel_conf_file!"
@@ -323,22 +327,20 @@ add_stunnel_configuration()
     # otherwise stunnel complains about the missing ciphers for TLSv1.3 - need to do add it even if using
     # TLSv1.2, since ciphers for both TLS versions are checked as part of the initialization process.
 
-    # distro_id=
-    # if [ -f /etc/os-release ]; then
-    #     distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
-    #     distro_id=$(canonicalize_distro_id $distro_id)
-    # fi
+    distro_id=
+    if [ -f /etc/os-release ]; then
+        distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(canonicalize_distro_id $distro_id)
+    fi
 
-    # if [ "$distro_id" == "mariner" ]; then
-    #     # List available TLSv1.3 ciphersuites using OpenSSL
-    #     available_ciphers=$(openssl ciphers -s -tls1_3 | awk '{print $1}')
-    #     echo "ciphersuites = $available_ciphers" >> $stunnel_conf_file
-    #     if [ $? -ne 0 ]; then
-    #         chattr -f +i $stunnel_conf_file
-    #         eecho "Failed to add 'ciphersuites' info to $stunnel_conf_file!"
-    #         return 1
-    #     fi
-    # fi
+    if [ "$distro_id" == "azurelinux" ]; then
+        echo "ciphers = DEFAULT" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add 'ciphersuites' info to $stunnel_conf_file!"
+            return 1
+        fi
+    fi
 
     chattr -f +i $stunnel_conf_file
 }
@@ -381,6 +383,27 @@ tls_nfsv4_files_share_mount()
     local storageaccount
     local container
     local extra
+
+    # Check if user has provided SSLVersion in the mount options.Add commentMore actions
+    if [[ "$MOUNT_OPTIONS" == *"tls"* ]]; then
+
+        ssl_version=$(echo "$MOUNT_OPTIONS" | grep -oE 'tls=[^,]+' | awk -F= '{print $2}')
+
+        # Check if SSL version is either 1.2 or 1.3
+        if [[ "$ssl_version" == "1.2" || "$ssl_version" == "1.3" ]]; then
+            echo "TLS version option: $ssl_version"
+        else
+            echo "No valid TLS version. Please provide a valid TLS version (1.2 or 1.3)."
+            exit 1
+        fi
+
+        # Remove the tls option from MOUNT_OPTIONS.
+        if [[ "$MOUNT_OPTIONS" == *"tls=${ssl_version},"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//tls=$ssl_version,/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,tls=$ssl_version/}
+        fi
+    fi
 
     # Check if we're on a Debian-based distribution
     if command -v apt-get &> /dev/null; then

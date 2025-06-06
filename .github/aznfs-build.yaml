@@ -61,10 +61,11 @@ stages:
 
           - script: |
               mkdir -p $(Build.ArtifactStagingDirectory)/artifacts
-              for dir in deb rpm suse stunnel; do
+              for dir in deb rpm suse stunnel azurelinux; do
                 mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
               cp -f $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_amd64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              cp -f $(System.DefaultWorkingDirectory)/rpm/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/azurelinux
               for dir in rpm suse stunnel; do
                 cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
@@ -108,10 +109,11 @@ stages:
 
           - script: |
               mkdir -p $(Build.ArtifactStagingDirectory)/artifacts
-              for dir in deb rpm suse stunnel; do
+              for dir in deb rpm suse stunnel azurelinux; do
                 mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
               cp -avf $(System.DefaultWorkingDirectory)/deb/aznfs-${{ parameters.versionName }}-1_arm64.deb $(Build.ArtifactStagingDirectory)/artifacts/deb
+              cp -avf $(System.DefaultWorkingDirectory)/rpm/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/azurelinux
               for dir in rpm suse stunnel; do
                 cp -avf $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/aarch64/aznfs-${{ parameters.versionName }}-1.aarch64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
@@ -207,6 +209,35 @@ stages:
                 [
                 {
                   "KeyCode": "CP-450779-Pgp",
+                  "OperationCode": "LinuxSign",
+                  "ToolName": "sign",
+                  "ToolVersion": "1.0",
+                  "Parameters": {}
+                }
+                ]
+
+          - task: EsrpCodeSigning@5
+            displayName: 'ESRP CodeSigning MI AzureLinux'
+            inputs:
+              ConnectedServiceName: 'Azure AZNFS'
+              AppRegistrationClientId: $(AppRegistrationClientId)
+              AppRegistrationTenantId: $(AppRegistrationTenantId)
+
+              UseMSIAuthentication: true
+              AuthAKVName: $(AuthAKVName)
+              AuthSignCertName: $(AuthSignCertName)
+
+              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/azurelinux
+              Pattern: '*.rpm'
+              SessionTimeout: 90
+              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+              MaxConcurrency: 25
+              signConfigType: inlineSignParams
+              VerboseLogin: true
+              inlineOperation: |
+                [
+                {
+                  "KeyCode": "CP-459159-Pgp",
                   "OperationCode": "LinuxSign",
                   "ToolName": "sign",
                   "ToolVersion": "1.0",
@@ -367,6 +398,12 @@ stages:
                   
                   aznfsArcRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.aarch64.rpm`
                   echo "AZNFS ARC Stunnel RPM Package ID: $aznfsRpmStunnel"
+
+                  aznfsRpmAzureLinux=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/azurelinux/aznfs*-1.x86_64.rpm`
+                  echo "AZNFS RPM Package ID: $aznfsRpmAzureLinux"
+
+                  aznfsArcRpmAzureLinux=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/azurelinux/aznfs*-1.aarch64.rpm`
+                  echo "AZNFS ARC RPM Package ID: $aznfsArcRpmAzureLinux"
 
                   ################################### Add uploaded packages to its repository ######################################
                   echo "now adding packages to repositories..."
