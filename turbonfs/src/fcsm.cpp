@@ -1254,6 +1254,11 @@ void fcsm::on_flush_fail(uint64_t flush_bytes)
     ftgtq_cleanup();
     ctgtq_cleanup();
 
+    /*
+     * Ensure all flush/commit targets are completed.
+     */
+    assert(ftgtq.empty() && ctgtq.empty());
+
     clear_running();
     inode->flush_unlock();
 }
