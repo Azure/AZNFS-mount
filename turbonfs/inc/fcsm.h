@@ -137,6 +137,13 @@ public:
     void on_commit_complete(uint64_t commit_bytes);
 
     /**
+     * Callback to be called when flush failed.
+     * If commit failed we mark membuf from commit_pending to dirty
+     * and change writes to stable, so it's already taken care.
+     */
+    void on_flush_fail(uint64_t flush_bytes);
+
+    /**
      * Is the state machine currently running, i.e. it has sent (one or more)
      * flush requests or a commit request and is waiting for it to complete.
      * At any point only one flush (executed as one or more parallel write
