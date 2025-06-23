@@ -132,7 +132,7 @@ perform_aznfs_update()
         AZNFS_RELEASE_SUSE="aznfs_sles-${RELEASE_NUMBER}-1"
         package_name=${AZNFS_RELEASE_SUSE}.x86_64.rpm
     else
-        if [[ "$distro_id" == "mariner" || "$distro_id" == "azurelinux" || $(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1) == 7 ]] ; then
+        if [[ $(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1) == 7 ]] ; then
             AZNFS_RELEASE="aznfs_stunnel_custom-${RELEASE_NUMBER}-1"
             package_name=${AZNFS_RELEASE}.x86_64.rpm
         else
@@ -296,7 +296,7 @@ ensure_pkg()
         apt=1
         apt install -y $pkg
         install_error=$?
-    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "mariner" -o "$distro" == "ol" -o  "$distro" == "azurelinux" ]; then
+    elif [ "$distro" == "centos" -o "$distro" == "rocky" -o "$distro" == "rhel" -o "$distro" == "ol" -o  "$distro" == "azurelinux" ]; then
         # lsb_release package is called redhat-lsb-core in redhat/centos.
         if [ "$pkg" == "lsb-release" ]; then
             pkg="redhat-lsb-core"
