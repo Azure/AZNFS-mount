@@ -33,6 +33,8 @@ CERT_PATH=
 CERT_UPDATE_COMMAND=
 STUNNEL_CAFILE=
 
+ssl_version=
+
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
 CONNECT_PORT=2049
 
@@ -251,6 +253,11 @@ add_stunnel_configuration()
         return 1
     fi
 
+    # Set sslVersion if specified in the mount options.
+    if [ -n "$ssl_version" ]; then
+        echo "sslVersion = TLSv${ssl_version}" >> $stunnel_conf_file
+    fi
+
     echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -386,6 +393,27 @@ tls_nfsv4_files_share_mount()
     else
         eecho "[FATAL] Unsupported distribution!"
         return 1
+    fi
+
+    # Check if user has provided SSLVersion in the mount options.
+    if [[ "$MOUNT_OPTIONS" == *"tls"* ]]; then
+
+        ssl_version=$(echo "$MOUNT_OPTIONS" | grep -oE 'tls=[^,]+' | awk -F= '{print $2}')
+
+        # Check if SSL version is either 1.2 or 1.3
+        if [[ "$ssl_version" == "1.2" || "$ssl_version" == "1.3" ]]; then
+            echo "TLS version option: $ssl_version"
+        else
+            echo "No valid TLS version. Please provide a valid TLS version (1.2 or 1.3)."
+            exit 1
+        fi
+
+        # Remove the tls option from MOUNT_OPTIONS.
+        if [[ "$MOUNT_OPTIONS" == *"tls=${ssl_version},"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//tls=$ssl_version,/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,tls=$ssl_version/}
+        fi
     fi
 
     # Set trap to cleanup the lock on mountmap file on exit.
