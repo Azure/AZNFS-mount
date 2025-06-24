@@ -27,7 +27,45 @@ variables:
 # ADO pipelines documentation:
 # https://learn.microsoft.com/en-us/azure/devops/pipelines/repos/azure-repos-git?view=azure-devops&tabs=yaml
 stages:
+  - stage: CheckVersion
+    displayName: "Check Version on Non-Release Branches"
+    jobs:
+      - job: CheckVersion
+        steps:
+        - script: |
+            echo "##[section]Version validation script started"
+            echo "Branch ref: $(Build.SourceBranch)"
+            echo "Provided version: ${{ parameters.versionName }}"
+
+            # Extract the actual branch name from the full reference (e.g., refs/heads/feature/foo -> feature/foo)
+            branchName=$(echo "$(Build.SourceBranch)" | sed 's#refs/heads/##')
+            echo "Extracted branch name: $branchName"
+
+            # Define the release branch and minimum allowed version for flexibility
+            release_branch="release/3.0"
+            min_version="3.0.0"
+
+            # Only validate version if NOT on the release branch
+            if [[ "$branchName" != "$release_branch" ]]; then
+              version="${{ parameters.versionName }}"
+              echo "##[command]Non-release branch detected. Checking if version $version exceeds allowed minimum ($min_version)..."
+
+              # Compare version using sort -V
+              if [[ "$(echo -e "$version\n3.0.0" | sort -V | head -n1)" != "$version" ]]; then
+                echo "##[error]Version $version is NOT permitted on non-release branches (must be <= $min_version)."
+                exit 1
+              else
+                echo "##[command]Version check PASSED: $version is allowed on $branchName."
+              fi
+            else
+              echo "##[command]On release branch ($release_branch). Version check skipped."
+            fi
+
+            echo "##[section]Version validation script completed"
+          displayName: 'Validate versionName for non-release branches'
   - stage: BuildPackages
+    dependsOn: CheckVersion
+    condition: succeeded('CheckVersion')
     displayName: "Build and Package Artifacts"
     jobs:
       - job: package_aznfs_amd64
@@ -125,6 +163,8 @@ stages:
               artifactName: 'aznfs-temp'
 
   - stage: ReleaseArtifacts
+    dependsOn: BuildPackages
+    condition: succeeded('BuildPackages')
     displayName: "Sign and Release Artifacts"
     jobs:
       - job: SignArtifacts
