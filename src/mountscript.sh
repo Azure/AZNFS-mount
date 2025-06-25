@@ -186,6 +186,15 @@ check_turbo_option()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         export USING_AZNFSCLIENT=true
     fi
+    
+    #
+    # We need to support both options as some customer using turbo option.
+    # TODO: Once we have confirmation no customer using should remove turbo option.
+    #
+    matchstr="(^|,)fuse(,|$)"
+    if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
+        export USING_AZNFSCLIENT=true
+    fi
 }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
