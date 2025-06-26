@@ -27,7 +27,31 @@ variables:
 # ADO pipelines documentation:
 # https://learn.microsoft.com/en-us/azure/devops/pipelines/repos/azure-repos-git?view=azure-devops&tabs=yaml
 stages:
+  - stage: CheckVersion
+    displayName: "Check Version on Non-Release Branches"
+    jobs:
+      - job: CheckVersion
+        steps:
+        - script: |
+            echo "Branch: $(Build.SourceBranch)"
+            echo "Version: ${{ parameters.versionName }}"
+
+            # Extract branch name from full ref
+            branchName=$(echo "$(Build.SourceBranch)" | sed 's#refs/heads/##')
+
+            # Check if it's NOT a release branch
+            if [[ "$branchName" != "release/3.0" ]]; then
+              version="${{ parameters.versionName }}"
+              # Compare version using sort -V
+              if [[ "$(echo -e "$version\n3.0.0" | sort -V | head -n1)" != "$version" ]]; then
+                echo "##vso[task.logissue type=error]Version $version is not allowed on non-release branches."
+                exit 1
+              fi
+            fi
+          displayName: 'Validate versionName for non-release branches'
   - stage: BuildPackages
+    dependsOn: CheckVersion
+    condition: succeeded('CheckVersion')
     displayName: "Build and Package Artifacts"
     jobs:
       - job: package_aznfs_amd64
@@ -125,6 +149,8 @@ stages:
               artifactName: 'aznfs-temp'
 
   - stage: ReleaseArtifacts
+    dependsOn: BuildPackages
+    condition: succeeded('BuildPackages')
     displayName: "Sign and Release Artifacts"
     jobs:
       - job: SignArtifacts
