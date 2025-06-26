@@ -11,6 +11,39 @@ Recommends: build-essential
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
 %endif
 
+# The included libraries should not be provided to the system as a whole
+%global __provides_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
+%global __requires_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
+
+%install
+# Create necessary directories
+mkdir -p %{buildroot}/opt/microsoft/aznfs/libs
+mkdir -p %{buildroot}/opt/microsoft/aznfs
+mkdir -p %{buildroot}/lib/systemd/system
+mkdir -p %{buildroot}/sbin
+mkdir -p %{buildroot}/usr/sbin
+ 
+# Install scripts and binaries
+install -m 0755 opt/microsoft/aznfs/aznfs_install.sh %{buildroot}/opt/microsoft/aznfs/
+install -m 0755 opt/microsoft/aznfs/common.sh %{buildroot}/opt/microsoft/aznfs/
+install -m 0755 opt/microsoft/aznfs/mountscript.sh %{buildroot}/opt/microsoft/aznfs/
+install -m 0755 opt/microsoft/aznfs/nfsv3mountscript.sh %{buildroot}/opt/microsoft/aznfs/
+install -m 0755 opt/microsoft/aznfs/nfsv4mountscript.sh %{buildroot}/opt/microsoft/aznfs/
+install -m 0644 opt/microsoft/aznfs/sample-turbo-config.yaml %{buildroot}/opt/microsoft/aznfs/
+ 
+# Install libraries
+install -m 0644 opt/microsoft/aznfs/libs/*.so* %{buildroot}/opt/microsoft/aznfs/libs/
+ 
+# Install systemd service files
+install -m 0644 lib/systemd/system/aznfswatchdog.service %{buildroot}/lib/systemd/system/
+install -m 0644 lib/systemd/system/aznfswatchdogv4.service %{buildroot}/lib/systemd/system/
+ 
+# Install executables
+install -m 0755 sbin/aznfsclient %{buildroot}/sbin/
+install -m 0755 sbin/mount.aznfs %{buildroot}/sbin/
+install -m 0755 usr/sbin/aznfswatchdog %{buildroot}/usr/sbin/
+install -m 0755 usr/sbin/aznfswatchdogv4 %{buildroot}/usr/sbin/
+
 %description
 Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
 
@@ -19,19 +52,34 @@ mkdir -p ${STG_DIR}/RPM_DIR/root/rpmbuild/SOURCES/
 tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.BUILD_ARCH.tar.gz -C ${STG_DIR}/RPM_DIR/
 
 %files
-/usr/sbin/aznfswatchdog
-/usr/sbin/aznfswatchdogv4
-/sbin/mount.aznfs
+%license LICENSE
+%doc README.md
+ 
+# Scripts and config
+/opt/microsoft/aznfs/aznfs_install.sh
 /opt/microsoft/aznfs/common.sh
 /opt/microsoft/aznfs/mountscript.sh
 /opt/microsoft/aznfs/nfsv3mountscript.sh
 /opt/microsoft/aznfs/nfsv4mountscript.sh
-/opt/microsoft/aznfs/aznfs_install.sh
+/opt/microsoft/aznfs/sample-turbo-config.yaml
+ 
+# Libraries
+/opt/microsoft/aznfs/libs/ld-linux-x86-64.so.2
+/opt/microsoft/aznfs/libs/libc.so.6
+/opt/microsoft/aznfs/libs/libffi.so.8
+/opt/microsoft/aznfs/libs/libm.so.6
+/opt/microsoft/aznfs/libs/libp11-kit.so.0
+/opt/microsoft/aznfs/libs/libunistring.so.5
+ 
+# Systemd service files
 /lib/systemd/system/aznfswatchdog.service
 /lib/systemd/system/aznfswatchdogv4.service
-OPT_LIBS
-/opt/microsoft/aznfs/sample-turbo-config.yaml
+ 
+# Executables
 /sbin/aznfsclient
+/sbin/mount.aznfs
+/usr/sbin/aznfswatchdog
+/usr/sbin/aznfswatchdogv4
 
 %pre
 init="$(ps -q 1 -o comm=)"
