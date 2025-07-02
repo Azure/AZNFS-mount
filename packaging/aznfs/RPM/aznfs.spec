@@ -11,19 +11,9 @@ Recommends: build-essential
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
 %endif
 
-%global __provides_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
-%global __requires_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
-%global __requires_exclude_from ^/sbin/aznfsclient
-%global __requires_exclude_from ^/usr/sbin/aznfswatchdog
-%global __requires_exclude_from ^/usr/sbin/aznfswatchdogv4
-%global __requires_exclude_from ^/sbin/mount.aznfs
-%global __requires_exclude_from ^/lib/systemd/system/aznfswatchdog.service
-%global __requires_exclude_from ^/lib/systemd/system/aznfswatchdogv4.service
-%global __requires_exclude_from ^/opt/microsoft/aznfs/common.sh
-%global __requires_exclude_from ^/opt/microsoft/aznfs/mountscript.sh
-%global __requires_exclude_from ^/opt/microsoft/aznfs/nfsv3mountscript.sh
-%global __requires_exclude_from ^/opt/microsoft/aznfs/nfsv4mountscript.sh
-%global __requires_exclude_from ^/opt/microsoft/aznfs/aznfs_install.sh
+
+%global __requires_exclude_from ^(/opt/microsoft/aznfs/libs/.*\.so.*|/sbin/aznfsclient|/usr/sbin/aznfswatchdog|/usr/sbin/aznfswatchdogv4|/sbin/mount.aznfs|/lib/systemd/system/aznfswatchdog.service|/lib/systemd/system/aznfswatchdogv4.service|/opt/microsoft/aznfs/common.sh|/opt/microsoft/aznfs/mountscript.sh|/opt/microsoft/aznfs/nfsv3mountscript.sh|/opt/microsoft/aznfs/nfsv4mountscript.sh|/opt/microsoft/aznfs/aznfs_install.sh)$
+
 
 %description
 Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
