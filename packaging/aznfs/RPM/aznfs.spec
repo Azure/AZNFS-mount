@@ -11,6 +11,7 @@ Recommends: build-essential
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
 %endif
 
+%global __provides_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
 %global __requires_exclude_from ^(/opt/microsoft/aznfs/libs/.*\.so.*|/sbin/aznfsclient)$
 
 %description
