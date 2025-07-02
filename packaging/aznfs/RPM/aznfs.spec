@@ -19,6 +19,11 @@ Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, ipro
 %global __requires_exclude_from ^/sbin/mount.aznfs
 %global __requires_exclude_from ^/lib/systemd/system/aznfswatchdog.service
 %global __requires_exclude_from ^/lib/systemd/system/aznfswatchdogv4.service
+%global __requires_exclude_from ^/opt/microsoft/aznfs/common.sh
+%global __requires_exclude_from ^/opt/microsoft/aznfs/mountscript.sh
+%global __requires_exclude_from ^/opt/microsoft/aznfs/nfsv3mountscript.sh
+%global __requires_exclude_from ^/opt/microsoft/aznfs/nfsv4mountscript.sh
+%global __requires_exclude_from ^/opt/microsoft/aznfs/aznfs_install.sh
 
 %description
 Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
