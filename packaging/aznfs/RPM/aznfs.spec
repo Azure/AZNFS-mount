@@ -1,3 +1,5 @@
+AutoReq: no
+
 Name: AZNFS_PACKAGE_NAME
 Version: x.y.z
 Release: 1
