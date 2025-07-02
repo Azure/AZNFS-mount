@@ -12,7 +12,7 @@ Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, ipro
 %endif
 
 
-%global __requires_exclude_from ^(/opt/microsoft/aznfs/libs/.*\.so.*|/sbin/aznfsclient|/usr/sbin/aznfswatchdog|/usr/sbin/aznfswatchdogv4|/sbin/mount.aznfs|/lib/systemd/system/aznfswatchdog.service|/lib/systemd/system/aznfswatchdogv4.service|/opt/microsoft/aznfs/common.sh|/opt/microsoft/aznfs/mountscript.sh|/opt/microsoft/aznfs/nfsv3mountscript.sh|/opt/microsoft/aznfs/nfsv4mountscript.sh|/opt/microsoft/aznfs/aznfs_install.sh)$
+%global __requires_exclude_from ^(/opt/microsoft/aznfs/libs/.*\.so.*|/sbin/aznfsclient)$
 
 
 %description
