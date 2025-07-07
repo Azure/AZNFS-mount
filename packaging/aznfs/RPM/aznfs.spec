@@ -11,6 +11,18 @@ Recommends: build-essential
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
 %endif
 
+#
+# We bundle some libs under /opt/microsoft/aznfs/libs/ which are to be used by /sbin/aznfsclient.
+# This allows us to not have dependency on the libs provided by the distro thus making us agnostic of the distro and the
+# same binary correctly works on all distros regardless of the glibc version (and/or other libs) used by the distro.
+# We do this as some of the libs that we use do not have a static version.
+# With the __provides_exclude_from directive we tell the RPM package manager to leave these libs alone for our use
+# and not confuse other packages with those. Since we are self sufficient and we don't need any libs from the system,
+# we use the __requires_exclude_from directive to tell the package manager.
+#
+%global __provides_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
+%global __requires_exclude_from ^(/opt/microsoft/aznfs/libs/.*\.so.*|/sbin/aznfsclient)$
+
 %description
 Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
 
