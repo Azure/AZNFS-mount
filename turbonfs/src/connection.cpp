@@ -77,9 +77,8 @@ failed_get_clientip:
 bool nfs_connection::open()
 {
     const int nodelay = 1;
-    std::string client_id;
-    int ret = -1;
     uint64_t n;
+    int ret;
 
     // open() must be called only for a closed connection.
     assert(nfs_context == nullptr);
@@ -106,10 +105,6 @@ bool nfs_connection::open()
 
     nfs_destroy_url(url);
 
-    if (mo.auth) {
-        mo.authtype = "AzAuthAAD";
-    }
-    
     // 16 should be sufficient to hold the version string.
     char client_version[16];
 
@@ -119,7 +114,7 @@ bool nfs_connection::open()
                                 AZNFSCLIENT_VERSION_PATCH);
     assert(n < sizeof(client_version));
 
-    client_id = get_clientid();
+    static const std::string client_id = get_clientid();
 
     assert(!mo.export_path.empty());
     assert(!mo.authtype.empty());

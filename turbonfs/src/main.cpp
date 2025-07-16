@@ -517,7 +517,7 @@ auth_token_cb_res *get_auth_token_and_setargs_cb_none(struct auth_context *auth)
     }
 
     cb_res->azauth_data = strdup("None");
-    cb_res->expiry_time = static_cast<uint64_t>(time(NULL))+300;
+    cb_res->expiry_time = static_cast<uint64_t>(time(NULL));
 
     return cb_res;
 }

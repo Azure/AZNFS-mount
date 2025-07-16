@@ -108,12 +108,16 @@ struct mount_options
         actimeo(aznfsc_cfg.actimeo),
         readdir_maxcount(aznfsc_cfg.readdir_maxcount),
         readahead_kb(aznfsc_cfg.readahead_kb),
-        auth(aznfsc_cfg.auth),
-        authtype(aznfsc_cfg.authtype)
+        auth(aznfsc_cfg.auth)
     {
         assert(!server.empty());
         assert(!export_path.empty());
         assert(!mountpoint.empty());
+
+        authtype = "AzAuthNone";
+        if (auth) {
+            authtype = "AzAuthAAD";
+        }
     }
 
     /**
