@@ -17,7 +17,6 @@ std::string get_clientid() {
     struct ifaddrs *ifaddr = nullptr;
     struct ifaddrs *ifa = nullptr;
     char ip[INET_ADDRSTRLEN] = {0};
-    static std::string client_id = std::to_string(get_current_usecs()) + "-";
 
     /*
      * Whatever is encoded here should not exceed the maximum possible that can be 
@@ -60,19 +59,27 @@ std::string get_clientid() {
         goto failed_get_clientip;
     }
 
-    client_id += std::string(ip);
+    // Build and cache the client ID only once.
+    static std::string client_id = std::to_string(get_current_usecs()) + "-" + std::string(ip);
 
-failed_get_clientip:
     // We cannot send clientid of size more than MAX_IP_LENGTH.
     assert(client_id.length() <= MAX_IP_LENGTH);
     AZLogDebug("Using clientid {}", client_id);
 
     return client_id;
+
+failed_get_clientip:
+    static std::string fallback_client_id = std::to_string(get_current_usecs()) + "-unknown";
+    AZLogDebug("Using fallback clientid {}", fallback_client_id);
+    return fallback_client_id;
 }
 
 bool nfs_connection::open()
 {
     const int nodelay = 1;
+    std::string client_id;
+    int ret = -1;
+    uint64_t n;
 
     // open() must be called only for a closed connection.
     assert(nfs_context == nullptr);
@@ -100,38 +107,39 @@ bool nfs_connection::open()
     nfs_destroy_url(url);
 
     if (mo.auth) {
-        // 16 should be sufficient to hold the version string.
-        char client_version[16];
+        mo.authtype = "AzAuthAAD";
+    }
+    
+    // 16 should be sufficient to hold the version string.
+    char client_version[16];
 
-        [[maybe_unused]]
-        const uint64_t n = snprintf(client_version, sizeof(client_version),
-                                    "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
-                                    AZNFSCLIENT_VERSION_MINOR,
-                                    AZNFSCLIENT_VERSION_PATCH);
-        assert(n < sizeof(client_version));
+    n = snprintf(client_version, sizeof(client_version),
+                                "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
+                                AZNFSCLIENT_VERSION_MINOR,
+                                AZNFSCLIENT_VERSION_PATCH);
+    assert(n < sizeof(client_version));
 
-        std::string client_id = get_clientid();
+    client_id = get_clientid();
 
-        assert(!mo.export_path.empty());
-        assert(!mo.authtype.empty());
-        assert(strlen(client_version) > 0);
-        assert(!client_id.empty());
+    assert(!mo.export_path.empty());
+    assert(!mo.authtype.empty());
+    assert(strlen(client_version) > 0);
+    assert(!client_id.empty());
 
-        const int ret = nfs_set_auth_context(nfs_context,
-                                             mo.export_path.c_str(),
-                                             mo.authtype.c_str(),
-                                             client_version,
-                                             client_id.c_str());
-        if (ret != 0) {
-            AZLogError("Failed to set auth values in nfs context, "
-                       "exportpath={} authtype={} "
-                       "clientversion={} clientid={}",
-                       mo.export_path.c_str(),
-                       mo.authtype.c_str(),
-                       client_version,
-                       client_id.c_str());
-            goto destroy_context;
-        }
+    ret = nfs_set_auth_context(nfs_context,
+                                mo.export_path.c_str(),
+                                mo.authtype.c_str(),
+                                client_version,
+                                client_id.c_str());
+    if (ret != 0) {
+        AZLogError("Failed to set auth values in nfs context, "
+                    "exportpath={} authtype={} "
+                    "clientversion={} clientid={}",
+                    mo.export_path.c_str(),
+                    mo.authtype.c_str(),
+                    client_version,
+                    client_id.c_str());
+        goto destroy_context;
     }
 
     /*
