@@ -720,6 +720,7 @@ tls_nfsv4_files_share_mount()
             #
             # If this echo fails then MOUNTMAPv4 could be truncated.
             #
+            vecho "Adding mountmap entry: $out"
             echo "$out" > $MOUNTMAPv4
             ret=$?
             out=
@@ -730,6 +731,8 @@ tls_nfsv4_files_share_mount()
 
         chattr -f +i $MOUNTMAPv4
         vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${stunnel_port}"
+        vecho "findmnt: $(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)"
+        vecho "netstat: $($NETSTATCOMMAND -anp | grep stunnel | grep `cat $stunnel_pid_file`)"
     fi
 }
 
