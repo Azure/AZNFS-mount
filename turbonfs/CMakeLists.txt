@@ -1,14 +1,10 @@
 cmake_minimum_required(VERSION 3.7)
-
+set(PACKAGE_VERSION "1.0.0")
 # Assert package version cannot be empty.
 if(NOT DEFINED PACKAGE_VERSION OR PACKAGE_VERSION STREQUAL "")
     message(FATAL_ERROR "PACKAGE_VERSION not defined or not valid. Please provide a valid version, e.g., 0.0.1")
 endif()
-
-project(aznfsclient
-        DESCRIPTION "FUSE driver for mounting Blob NFS shares"
-        LANGUAGES CXX
-        VERSION ${PACKAGE_VERSION})
+project(aznfsclient VERSION ${PACKAGE_VERSION} DESCRIPTION "FUSE driver for mounting Blob NFS shares" LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -167,7 +163,7 @@ endif()
 find_program(MESON_EXECUTABLE meson QUIET)
 if(NOT MESON_FOUND)
     message(STATUS "meson not found, trying to install meson!")
-    execute_process(COMMAND sudo apt install -y meson
+    execute_process(COMMAND tdnf install -y meson
                     RESULT_VARIABLE MESON_INSTALL_RESULT)
     if(NOT MESON_INSTALL_RESULT EQUAL "0")
         message(FATAL_ERROR "apt install meson failed with ${MESON_INSTALL_RESULT}, try installing meson manually and then run cmake again")
@@ -182,7 +178,7 @@ endif()
 find_program(NINJA_EXECUTABLE ninja QUIET)
 if(NOT NINJA_FOUND)
     message(STATUS "ninja not found, trying to install ninja-build!")
-    execute_process(COMMAND sudo apt install -y ninja-build
+    execute_process(COMMAND tdnf install -y ninja-build
                     RESULT_VARIABLE NINJA_INSTALL_RESULT)
     if(NOT NINJA_INSTALL_RESULT EQUAL "0")
         message(FATAL_ERROR "apt install ninja-build failed with ${NINJA_INSTALL_RESULT}, try installing ninja-build manually and then run cmake again")
@@ -192,7 +188,8 @@ if(NOT NINJA_FOUND)
 endif()
 
 # Meson will install the fuse library and header files in the following paths.
-set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
+#set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
+set(fuse3_LIBRARY "/usr/local/lib/libfuse3.a")
 set(fuse3_INCLUDE_DIR "/usr/local/include")
 
 add_custom_command(
@@ -210,7 +207,7 @@ add_custom_target(libfuse ALL DEPENDS ${fuse3_LIBRARY})
 find_package(GnuTLS "3.4.6" QUIET)
 if(NOT GNUTLS_FOUND)
     message(STATUS "GnuTLS not found, trying to install gnutls-dev!")
-    execute_process(COMMAND sudo apt install -y gnutls-dev
+    execute_process(COMMAND tdnf install -y gnutls-dev
                     RESULT_VARIABLE GNUTLS_INSTALL_RESULT)
     if(NOT GNUTLS_INSTALL_RESULT EQUAL "0")
         message(FATAL_ERROR "apt install gnutls-dev failed with ${GNUTLS_INSTALL_RESULT}, try installing gnutls-dev manually and then run cmake again")
@@ -230,7 +227,7 @@ endif()
 find_package(tcmalloc QUIET)
 if(NOT tcmalloc_FOUND)
     message(STATUS "tcmalloc not found, trying to install libgoogle-perftools-dev!")
-    execute_process(COMMAND sudo apt install -y libgoogle-perftools-dev
+    execute_process(COMMAND tdnf install -y libgoogle-perftools-dev
             RESULT_VARIABLE tcmalloc_INSTALL_RESULT)
     if(NOT tcmalloc_INSTALL_RESULT EQUAL "0")
         message(FATAL_ERROR "apt install libgoogle-perftools-dev failed with ${tcmalloc_INSTALL_RESULT}, try installing libgoogle-perftools-dev manually and then run cmake again")
@@ -279,7 +276,7 @@ find_package(ZLIB QUIET)
 if(NOT ZLIB_FOUND)
     message(STATUS "zlib not found, trying to install zlib1g-dev!")
     execute_process(COMMAND sudo apt install -y zlib1g-dev
-		    RESULT_VARIABLE ZLIB_INSTALL_RESULT)
+                    RESULT_VARIABLE ZLIB_INSTALL_RESULT)
     if(NOT ZLIB_INSTALL_RESULT EQUAL "0")
         message(FATAL_ERROR "apt install zlib1g-dev failed with ${ZLIB_INSTALL_RESULT}, try installing zlib1g-dev manually and then run cmake again")
     else()
@@ -366,7 +363,21 @@ target_compile_options(${CMAKE_PROJECT_NAME}
 #
 set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
 
-find_library(GNUTLS_STATIC_LIB libgnutls.a REQUIRED)
+find_library(GNUTLS_STATIC_LIB libgnutls.a)
+
+# Attempt to find static libgnutls.a first
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+find_library(GNUTLS_STATIC_LIB libgnutls.a)
+
+# If static lib not found, fall back to shared libgnutls.so
+if(NOT GNUTLS_STATIC_LIB)
+    message(WARNING "Static libgnutls.a not found — falling back to shared libgnutls.so")
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .so)
+    find_library(GNUTLS_STATIC_LIB gnutls REQUIRED)
+endif()
+
+
+
 #
 # arm64 libgnutls.a has multiple definitions for some symbols exported by
 # libcrypto.a. The libcrypto.a object has some more symbols which are needed,
@@ -374,23 +385,48 @@ find_library(GNUTLS_STATIC_LIB libgnutls.a REQUIRED)
 #
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
 execute_process(
-	COMMAND bash -c "cp -vf ${GNUTLS_STATIC_LIB} /tmp/gnutls.a; ar dv /tmp/gnutls.a aes-aarch64.o"
-	COMMAND_ERROR_IS_FATAL ANY)
+        COMMAND bash -c "cp -vf ${GNUTLS_STATIC_LIB} /tmp/gnutls.a; ar dv /tmp/gnutls.a aes-aarch64.o"
+        COMMAND_ERROR_IS_FATAL ANY)
 set(GNUTLS_STATIC_LIB /tmp/gnutls.a)
 endif()
 
-find_library(HOGWEED_STATIC_LIB libhogweed.a REQUIRED)
-find_library(NETTLE_STATIC_LIB libnettle.a REQUIRED)
-find_library(TASN1_STATIC_LIB libtasn1.a REQUIRED)
-find_library(IDN2_STATIC_LIB libidn2.a REQUIRED)
-find_library(GMP_STATIC_LIB libgmp.a REQUIRED)
-set(CMAKE_FIND_LIBRARY_SUFFIXES .so)
-find_library(P11_KIT_SHARED_LIB libp11-kit.so REQUIRED)
-find_library(UNISTRING_SHARED_LIB NAMES
-             libunistring.so
-             libunistring.so.5
-             libunistring.so.2
-             REQUIRED)
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+
+# Try static first, fallback to shared if not found
+macro(find_static_or_shared_lib VAR STATIC_NAME SHARED_NAME)
+    set(LIB_SEARCH_PATHS
+        /usr/lib
+        /usr/lib64
+        /usr/local/lib
+        /usr/local/lib64
+        /lib
+        /lib64
+    )
+    find_library(${VAR} ${STATIC_NAME})
+    if(NOT ${VAR})
+        message(WARNING "${STATIC_NAME} not found, falling back to ${SHARED_NAME}")
+        set(CMAKE_FIND_LIBRARY_SUFFIXES .so)
+        find_library(${VAR} ${SHARED_NAME} REQUIRED)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES .a) # reset for next
+    endif()
+endmacro()
+
+# Usage for your libraries:
+find_static_or_shared_lib(HOGWEED_STATIC_LIB libhogweed.a hogweed)
+find_static_or_shared_lib(NETTLE_STATIC_LIB libnettle.a nettle)
+find_static_or_shared_lib(TASN1_STATIC_LIB libtasn1.a tasn1)
+find_static_or_shared_lib(IDN2_STATIC_LIB libidn2.a idn2)
+find_static_or_shared_lib(GMP_STATIC_LIB libgmp.a gmp)
+
+find_static_or_shared_lib(P11_KIT_SHARED_LIB libp11-kit.a p11-kit)
+find_static_or_shared_lib(UNISTRING_SHARED_LIB libunistring.a unistring)
+#find_library(P11_KIT_SHARED_LIB libp11-kit.so REQUIRED)
+#find_library(UNISTRING_SHARED_LIB NAMES
+#
+#libunistring.so
+#             libunistring.so.5
+#             libunistring.so.2
+#             REQUIRED)
 
 set(GNUTLS_ALL_LIBRARIES
     ${GNUTLS_STATIC_LIB}
@@ -424,9 +460,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       ${tcmalloc_LIBRARY})
 endif()
 
-if(ENABLE_JEMALLOC)
-target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a)
-endif()
+#if(ENABLE_JEMALLOC)
+#target_link_libraries(${CMAKE_PROJECT_NAME}
+#                      ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a)
+#endif()
 
 install(TARGETS ${CMAKE_PROJECT_NAME})
