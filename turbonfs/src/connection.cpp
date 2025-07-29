@@ -7,20 +7,9 @@
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <arpa/inet.h>
+#include <uuid/uuid.h>
 
 
-std::string generate_random_guid() 
-{
-    std::string guid;
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 15);
-    const char* hex_chars = "0123456789abcdef";
-    for (int i = 0; i < 16; ++i) {
-        guid += hex_chars[dis(gen)];
-    }
-    return guid;
-}
 
 /*
  * Return a unique id to identify this client to the server.
@@ -30,7 +19,7 @@ std::string generate_random_guid()
  * 1. Unique accross all turbonfs clients.
  * 2. If turbonfs client restarts, it should get a new client id so that server does not confuse the blocks written
  *    by previous client with the restarted one. 
- * Sample client ID: a1b2c3d4e5f60789-1728901234-10.0.0.5
+ * Sample client ID: 1c0732a9-dc6f-436a-adcb-7fab6a9848e71753788278-10.1.0.4.
  */
 
 std::string get_clientid() 
@@ -83,9 +72,18 @@ std::string get_clientid()
 
     // Build and cache the client ID only once.
     static std::string client_id = [clientid_ipaddress]() {
-        std::string guid = generate_random_guid();
+        
+        uuid_t uuid;
+        char uuid_str[37]; // 36 characters + null terminator
+
+        // Generate the UUID
+        uuid_generate(uuid);
+
+        // Convert to string with dashes
+        uuid_unparse(uuid, uuid_str);
+
         long current_secs = static_cast<long>(time(nullptr));
-        std::string client_id_str = guid + "-" + std::to_string(current_secs) + "-" + clientid_ipaddress;
+        std::string client_id_str = std::string(uuid_str) + std::to_string(current_secs) + "-" + clientid_ipaddress;
 
         // Ensure length fits within MAX_CLIENT_ID_LENGTH
         if (client_id_str.length() > MAX_CLIENT_ID_LENGTH) {
