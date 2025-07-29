@@ -24,10 +24,6 @@
 
 std::string get_clientid() 
 {
-    struct ifaddrs *ifaddr = nullptr;
-    struct ifaddrs *ifa = nullptr;
-    char ip[INET_ADDRSTRLEN] = {0};
-
     /*
      * Whatever is encoded here should not exceed the maximum possible that can be 
      * encoded in AZAuth RPC
@@ -36,12 +32,16 @@ std::string get_clientid()
     constexpr size_t MAX_CLIENT_ID_LENGTH = 64;
 
     std::string clientid_ipaddress = "unknown";
+    struct ifaddrs *ifaddr = nullptr;
 
     // Get the list of network interfaces
     if (::getifaddrs(&ifaddr) == -1) {
         AZLogError("Failed to get network interfaces: {}", strerror(errno));
         
     } else {
+        struct ifaddrs *ifa = nullptr;
+        char ip[INET_ADDRSTRLEN] = {0};
+        
         for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
 
             if (ifa->ifa_addr == nullptr)
