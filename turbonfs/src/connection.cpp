@@ -41,7 +41,7 @@ std::string get_clientid()
     } else {
         struct ifaddrs *ifa = nullptr;
         char ip[INET_ADDRSTRLEN] = {0};
-        
+
         for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
 
             if (ifa->ifa_addr == nullptr)
@@ -82,7 +82,7 @@ std::string get_clientid()
         // Convert to string with dashes
         uuid_unparse(uuid, uuid_str);
 
-        long current_secs = static_cast<long>(time(nullptr));
+        const long current_secs = static_cast<long>(time(nullptr));
         std::string client_id_str = std::string(uuid_str) + std::to_string(current_secs) + "-" + clientid_ipaddress;
 
         // Ensure length fits within MAX_CLIENT_ID_LENGTH
