@@ -8,12 +8,33 @@
 #include <ifaddrs.h>
 #include <arpa/inet.h>
 
+
+std::string generate_random_guid() 
+{
+    std::string guid;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 15);
+    const char* hex_chars = "0123456789abcdef";
+    for (int i = 0; i < 16; ++i) {
+        guid += hex_chars[dis(gen)];
+    }
+    return guid;
+}
+
 /*
  * Return a unique id to identify this client to the server.
- * As of now we use the interface IPv4 address string, 
+ * As of now we use a random guid + current time in seconds + interface IPv4 address string,
  * but it can be changed to anything else in future.
+ * We have the following requirements:
+ * 1. Unique accross all turbonfs clients.
+ * 2. If turbonfs client restarts, it should get a new client id so that server does not confuse the blocks written
+ *    by previous client with the restarted one. 
+ * Sample client ID: a1b2c3d4e5f60789-1728901234-10.0.0.5
  */
-std::string get_clientid() {
+
+std::string get_clientid() 
+{
     struct ifaddrs *ifaddr = nullptr;
     struct ifaddrs *ifa = nullptr;
     char ip[INET_ADDRSTRLEN] = {0};
@@ -23,12 +44,13 @@ std::string get_clientid() {
      * encoded in AZAuth RPC
      */
     [[maybe_unused]]
-    constexpr size_t MAX_IP_LENGTH = 64;
+    constexpr size_t MAX_CLIENT_ID_LENGTH = 64;
+
+    std::string clientid_ipaddress = "unknown";
 
     // Get the list of network interfaces
     if (::getifaddrs(&ifaddr) == -1) {
         AZLogError("Failed to get network interfaces: {}", strerror(errno));
-        goto failed_get_clientip;
     }
 
     for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
@@ -47,7 +69,8 @@ std::string get_clientid() {
         // Convert binary address to string.
         if (::inet_ntop(AF_INET, &addr->sin_addr, ip, sizeof(ip)) == nullptr) {
             AZLogError("Failed to convert binary IP to string: {}", strerror(errno));
-            goto failed_get_clientip;
+        } else {
+            clientid_ipaddress = std::string(ip);
         }
         break;
     }
@@ -56,22 +79,27 @@ std::string get_clientid() {
 
     if (ip[0] == '\0') {
         AZLogError("No valid IPv4 address found.");
-        goto failed_get_clientip;
     }
 
     // Build and cache the client ID only once.
-    static std::string client_id = std::to_string(get_current_usecs()) + "-" + std::string(ip);
+    static std::string client_id = [clientid_ipaddress]() {
+        std::string guid = generate_random_guid();
+        long current_secs = static_cast<long>(time(nullptr));
+        std::string client_id_str = guid + "-" + std::to_string(current_secs) + "-" + clientid_ipaddress;
 
-    // We cannot send clientid of size more than MAX_IP_LENGTH.
-    assert(client_id.length() <= MAX_IP_LENGTH);
-    AZLogDebug("Using clientid {}", client_id);
+        // Ensure length fits within MAX_CLIENT_ID_LENGTH
+        if (client_id_str.length() > MAX_CLIENT_ID_LENGTH) {
+            client_id_str = client_id_str.substr(0, MAX_CLIENT_ID_LENGTH);
+        }
+
+        AZLogDebug("Using clientid {}", client_id_str);
+        return client_id_str;
+    }();
+
+    // We cannot send clientid of size more than MAX_CLIENT_ID_LENGTH.
+    assert(client_id.length() <= MAX_CLIENT_ID_LENGTH);
 
     return client_id;
-
-failed_get_clientip:
-    static std::string fallback_client_id = std::to_string(get_current_usecs()) + "-unknown";
-    AZLogDebug("Using fallback clientid {}", fallback_client_id);
-    return fallback_client_id;
 }
 
 bool nfs_connection::open()

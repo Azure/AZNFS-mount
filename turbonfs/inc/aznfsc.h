@@ -177,7 +177,7 @@ typedef struct aznfsc_cfg
 
     /*
      * AuthType for the auth to be performed. 
-     * Default is AzAuthNone. If AAD auth is required, this will be set to AzAuthAAD. 
+     * Default is AzAuthNone. If auth is required as per config, this will be set to AzAuthAAD. 
      */
      std::string authtype = "AzAuthNone";
 

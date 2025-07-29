@@ -80,7 +80,7 @@ struct mount_options
     const bool auth;
 
     // AuthType: Currently we only support AzAuthAAD and AzAuthNone.
-    std::string authtype = "";
+    const std::string authtype;
 
     // Add any other options as needed.
 
@@ -108,16 +108,12 @@ struct mount_options
         actimeo(aznfsc_cfg.actimeo),
         readdir_maxcount(aznfsc_cfg.readdir_maxcount),
         readahead_kb(aznfsc_cfg.readahead_kb),
-        auth(aznfsc_cfg.auth)
+        auth(aznfsc_cfg.auth),
+        authtype(aznfsc_cfg.auth ? "AzAuthAAD" : "AzAuthNone")
     {
         assert(!server.empty());
         assert(!export_path.empty());
         assert(!mountpoint.empty());
-
-        authtype = "AzAuthNone";
-        if (auth) {
-            authtype = "AzAuthAAD";
-        }
     }
 
     /**
