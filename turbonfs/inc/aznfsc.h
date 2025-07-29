@@ -175,12 +175,6 @@ typedef struct aznfsc_cfg
      */
     bool auth = false;
 
-    /*
-     * AuthType for the auth to be performed. 
-     * Default is AzAuthNone. If auth is required as per config, this will be set to AzAuthAAD. 
-     */
-     std::string authtype = "AzAuthNone";
-
     /**********************************************************************
      **                          Mount options                           **
      ** These are deliberately named after the popular NFS mount options **

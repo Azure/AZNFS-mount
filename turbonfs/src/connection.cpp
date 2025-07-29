@@ -40,31 +40,33 @@ std::string get_clientid()
     // Get the list of network interfaces
     if (::getifaddrs(&ifaddr) == -1) {
         AZLogError("Failed to get network interfaces: {}", strerror(errno));
-    }
+        
+    } else {
+        for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
 
-    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-
-        if (ifa->ifa_addr == nullptr)
-            continue;
-        // Skip non IPv4 address. 
-        if (ifa->ifa_addr->sa_family != AF_INET) 
-            continue;
-        // Skip loopback interface.
-        if (::strcmp(ifa->ifa_name, "lo") == 0) 
-            continue;
-
-        struct sockaddr_in *addr = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
-
-        // Convert binary address to string.
-        if (::inet_ntop(AF_INET, &addr->sin_addr, ip, sizeof(ip)) == nullptr) {
-            AZLogError("Failed to convert binary IP to string: {}", strerror(errno));
-        } else {
-            clientid_ipaddress = std::string(ip);
+            if (ifa->ifa_addr == nullptr)
+                continue;
+            // Skip non IPv4 address. 
+            if (ifa->ifa_addr->sa_family != AF_INET) 
+                continue;
+            // Skip loopback interface.
+            if (::strcmp(ifa->ifa_name, "lo") == 0) 
+                continue;
+    
+            struct sockaddr_in *addr = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
+    
+            // Convert binary address to string.
+            if (::inet_ntop(AF_INET, &addr->sin_addr, ip, sizeof(ip)) == nullptr) {
+                AZLogError("Failed to convert binary IP to string: {}", strerror(errno));
+            } else {
+                clientid_ipaddress = std::string(ip);
+            }
+            break;
         }
-        break;
-    }
+    
+        freeifaddrs(ifaddr);
 
-    freeifaddrs(ifaddr);
+    }
 
     if (ip[0] == '\0') {
         AZLogError("No valid IPv4 address found.");
