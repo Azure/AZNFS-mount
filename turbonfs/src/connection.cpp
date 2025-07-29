@@ -64,12 +64,10 @@ std::string get_clientid()
             break;
         }
     
+        if (ip[0] == '\0') {
+            AZLogError("No valid IPv4 address found.");
+        }
         freeifaddrs(ifaddr);
-
-    }
-
-    if (ip[0] == '\0') {
-        AZLogError("No valid IPv4 address found.");
     }
 
     // Build and cache the client ID only once.
