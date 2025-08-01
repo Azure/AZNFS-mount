@@ -30,7 +30,7 @@ generate_rpm_package()
 		rpm_pkg_dir="${pkg_name}_sles-${RELEASE_NUMBER}-1.$arch"
 	fi
 
-	# Overwrite rpm_pkg_dir in case of Mariner, RedHat7, and Centos7.
+	# Overwrite rpm_pkg_dir in case of RedHat7, and Centos7.
 	if [ "$rpm_dir" == "stunnel" ]; then
 		rpm_pkg_dir="${pkg_name}_stunnel_custom-${RELEASE_NUMBER}-1.$arch"
 		custom_stunnel_required=1
@@ -315,7 +315,7 @@ dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 
 generate_rpm_package rpm
 generate_rpm_package suse
-# Generate rpm package with custom stunnel installation for Mariner, RedHat7, and Centos7.
+# Generate rpm package with custom stunnel installation for RedHat7, and Centos7.
 generate_rpm_package stunnel
 
 #############################
