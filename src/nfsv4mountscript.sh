@@ -49,6 +49,17 @@ cleanup() {
     exec {fd2}<&-
 }
 
+get_fips_enablement()
+{
+    fips_mode=$(cat /proc/sys/crypto/fips_enabled)
+
+    if [ $? -eq 0 ] && [[ ${fips_mode} == "1" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
 get_next_available_port()
 {
     for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
@@ -256,6 +267,16 @@ add_stunnel_configuration()
     # Set sslVersion if specified in the mount options.
     if [ -n "$ssl_version" ]; then
         echo "sslVersion = TLSv${ssl_version}" >> $stunnel_conf_file
+    fi
+
+    if get_fips_enablement; then
+        echo "fips = yes" >> $stunnel_conf_file
+        eecho "Enabled fips configuration for stunnel"
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add 'fips = ${_fips}' status to $stunnel_conf_file!"
+            return 1
+        fi
     fi
 
     echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
