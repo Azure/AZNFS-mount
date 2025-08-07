@@ -103,7 +103,6 @@ std::string get_clientid()
 bool nfs_connection::open()
 {
     const int nodelay = 1;
-    uint64_t n;
     int ret;
 
     // open() must be called only for a closed connection.
@@ -134,6 +133,7 @@ bool nfs_connection::open()
     // 16 should be sufficient to hold the version string.
     char client_version[16];
 
+    uint64_t n;
     n = snprintf(client_version, sizeof(client_version),
                                 "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
                                 AZNFSCLIENT_VERSION_MINOR,
