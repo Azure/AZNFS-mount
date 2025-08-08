@@ -104,6 +104,7 @@ bool nfs_connection::open()
 {
     const int nodelay = 1;
     int ret;
+    uint64_t n;
 
     // open() must be called only for a closed connection.
     assert(nfs_context == nullptr);
@@ -133,13 +134,12 @@ bool nfs_connection::open()
     // 16 should be sufficient to hold the version string.
     char client_version[16];
 
-    uint64_t n;
     n = snprintf(client_version, sizeof(client_version),
-                                "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
-                                AZNFSCLIENT_VERSION_MINOR,
-                                AZNFSCLIENT_VERSION_PATCH);
-    assert(n < sizeof(client_version));
+                 "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
+                 AZNFSCLIENT_VERSION_MINOR,
+                 AZNFSCLIENT_VERSION_PATCH);
 
+    assert(n > 0 && static_cast<size_t>(n) < sizeof(client_version));
     static const std::string client_id = get_clientid();
 
     assert(!mo.export_path.empty());
