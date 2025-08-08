@@ -134,13 +134,16 @@ bool nfs_connection::open()
     // 16 should be sufficient to hold the version string.
     char client_version[16];
 
-    int n = snprintf(client_version, sizeof(client_version),
-                 "%d.%d.%d",
-                 AZNFSCLIENT_VERSION_MAJOR,
-                 AZNFSCLIENT_VERSION_MINOR,
-                 AZNFSCLIENT_VERSION_PATCH);
+    n = snprintf(client_version, sizeof(client_version),
+                                "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
+                                AZNFSCLIENT_VERSION_MINOR,
+                                AZNFSCLIENT_VERSION_PATCH);
 
-    assert(n > 0 && static_cast<size_t>(n) < sizeof(client_version));
+    if (n > sizeof(client_version)) {
+        AZLogError("Failed to set client version {}", client_version);
+        goto destroy_context;
+    }
+
     static const std::string client_id = get_clientid();
 
     assert(!mo.export_path.empty());
