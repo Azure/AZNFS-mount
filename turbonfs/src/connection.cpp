@@ -135,9 +135,10 @@ bool nfs_connection::open()
     char client_version[16];
 
     n = ::snprintf(client_version, sizeof(client_version),
-                    "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
-                    AZNFSCLIENT_VERSION_MINOR,
-                    AZNFSCLIENT_VERSION_PATCH);
+                    "%s.%s.%s", 
+                    std::to_string(AZNFSCLIENT_VERSION_MAJOR).c_str(),
+                    std::to_string(AZNFSCLIENT_VERSION_MINOR).c_str(),
+                    std::to_string(AZNFSCLIENT_VERSION_PATCH).c_str());
 
     if (n > sizeof(client_version)) {
         AZLogError("Failed to set client version {}", client_version);
