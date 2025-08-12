@@ -103,8 +103,9 @@ std::string get_clientid()
 bool nfs_connection::open()
 {
     const int nodelay = 1;
-    int ret;
+    [[maybe_unused]]
     uint64_t n;
+    int ret;
 
     // open() must be called only for a closed connection.
     assert(nfs_context == nullptr);
@@ -140,10 +141,7 @@ bool nfs_connection::open()
                     AZNFSCLIENT_VERSION_MINOR,
                     AZNFSCLIENT_VERSION_PATCH);
 
-    if (n > sizeof(client_version)) {
-        AZLogError("Failed to set client version {}", client_version);
-        goto destroy_context;
-    }
+    assert(n < sizeof(client_version));
 
     static const std::string client_id = get_clientid();
 
