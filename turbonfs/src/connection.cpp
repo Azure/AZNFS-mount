@@ -103,6 +103,7 @@ std::string get_clientid()
 bool nfs_connection::open()
 {
     const int nodelay = 1;
+    [[maybe_unused]]
     uint64_t n;
     int ret;
 
@@ -134,10 +135,12 @@ bool nfs_connection::open()
     // 16 should be sufficient to hold the version string.
     char client_version[16];
 
-    n = snprintf(client_version, sizeof(client_version),
-                                "%d.%d.%d", AZNFSCLIENT_VERSION_MAJOR,
-                                AZNFSCLIENT_VERSION_MINOR,
-                                AZNFSCLIENT_VERSION_PATCH);
+    n = ::snprintf(client_version, sizeof(client_version),
+                    "%d.%d.%d", 
+                    AZNFSCLIENT_VERSION_MAJOR,
+                    AZNFSCLIENT_VERSION_MINOR,
+                    AZNFSCLIENT_VERSION_PATCH);
+
     assert(n < sizeof(client_version));
 
     static const std::string client_id = get_clientid();
