@@ -60,59 +60,94 @@ cleanup_stunnel_files()
 	rm -f /tmp/stunnel-latest.tar.gz
 }
 
-# Stunnel package is missing in Mariner package repo, and default stunnel package version on RedHat 7 is not compatible with aznfs.
-if grep -qi "mariner" /etc/os-release || [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
-	# Install stunnel from source.
-	wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
-	if [ $? -ne 0 ]; then
-		echo "Failed to download stunnel source code. Please install stunnel and try again."
-		exit 1
-	fi
+# Function to check if stunnel meets minimum version requirement
+check_stunnel_version() {
+    local required_version="5.40"
 
-	tar -xvf /tmp/stunnel-latest.tar.gz -C /tmp
-	if [ $? -ne 0 ]; then
-		echo "Failed to extract stunnel tarball. Please install stunnel and try again."
-		rm -f /tmp/stunnel-latest.tar.gz
-		exit 1
-	fi
+    if command -v stunnel >/dev/null 2>&1; then
+        # Get installed stunnel version
+        installed_version=$(stunnel -version 2>&1 | grep -Eo 'stunnel [0-9]+\.[0-9]+' | awk '{print $2}')
 
-	stunnel_dir=$(tar -tf /tmp/stunnel-latest.tar.gz | head -n 1 | cut -f1 -d'/')
+        if [ -n "$installed_version" ]; then
+            echo "Found stunnel version: $installed_version"
 
-	cd /tmp/$stunnel_dir
-	./configure
-	if [ $? -ne 0 ]; then
-		echo "Failed to configure the build. Please install stunnel and try again."
-		cleanup_stunnel_files $stunnel_dir
-		exit 1
-	fi
+            # Compare versions using sort -V (version sort)
+            # If required_version appears first when sorted, installed version is >= required
+            if [ "$(printf '%s\n' "$required_version" "$installed_version" | sort -V | head -n1)" = "$required_version" ]; then
+                echo "stunnel version $installed_version meets minimum requirement ($required_version)"
+                return 0  # Success - version is adequate
+            else
+                echo "stunnel version $installed_version is below minimum requirement ($required_version)"
+                return 1  # Failure - version is too old
+            fi
+        else
+            echo "Could not determine stunnel version"
+            return 1  # Failure - version unknown
+        fi
+    else
+        echo "stunnel is not installed"
+        return 1  # Failure - not installed
+    fi
+}
 
-	make
-	if [ $? -ne 0 ]; then
-		echo "Failed to build stunnel. Please install stunnel and try again."
-		cleanup_stunnel_files $stunnel_dir
-		exit 1
-	fi
-
-	make install
-	if [ $? -ne 0 ]; then
-		echo "Failed to install stunnel. Please install stunnel and try again."
-		cleanup_stunnel_files $stunnel_dir
-		exit 1
-	fi
-
-	cleanup_stunnel_files $stunnel_dir
-
-	# Remove the old link and create a symlink to stunnel binary.
-	[ -f /bin/stunnel ] && mv /bin/stunnel /bin/stunnel.old
-	ln -sf /usr/local/bin/stunnel /bin/stunnel
-
-	if command -v stunnel >/dev/null 2>&1; then
-		echo "Successfully installed stunnel version ${stunnel_dir}"
-		rm -f /bin/stunnel.old
+# Default stunnel package version on RedHat 7 and Centos 7 is not compatible with aznfs.
+if [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -d'.' -f1)" -eq 7 ]]; then
+	if check_stunnel_version; then
+        echo "Using existing stunnel installation"
 	else
-		echo "Failed to install stunnel version ${stunnel_dir}. Please install stunnel and try again."
-		mv /bin/stunnel.old /bin/stunnel > /dev/null 2>&1
-		exit 1
+		# Install stunnel from source.
+		echo "Installing stunnel from source"
+		wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
+		if [ $? -ne 0 ]; then
+			echo "Failed to download stunnel source code. Please install stunnel and try again."
+			exit 1
+		fi
+
+		tar -xvf /tmp/stunnel-latest.tar.gz -C /tmp
+		if [ $? -ne 0 ]; then
+			echo "Failed to extract stunnel tarball. Please install stunnel and try again."
+			rm -f /tmp/stunnel-latest.tar.gz
+			exit 1
+		fi
+
+		stunnel_dir=$(tar -tf /tmp/stunnel-latest.tar.gz | head -n 1 | cut -f1 -d'/')
+
+		cd /tmp/$stunnel_dir
+		./configure
+		if [ $? -ne 0 ]; then
+			echo "Failed to configure the build. Please install stunnel and try again."
+			cleanup_stunnel_files $stunnel_dir
+			exit 1
+		fi
+
+		make
+		if [ $? -ne 0 ]; then
+			echo "Failed to build stunnel. Please install stunnel and try again."
+			cleanup_stunnel_files $stunnel_dir
+			exit 1
+		fi
+
+		make install
+		if [ $? -ne 0 ]; then
+			echo "Failed to install stunnel. Please install stunnel and try again."
+			cleanup_stunnel_files $stunnel_dir
+			exit 1
+		fi
+
+		cleanup_stunnel_files $stunnel_dir
+
+		# Remove the old link and create a symlink to stunnel binary.
+		[ -f /bin/stunnel ] && mv /bin/stunnel /bin/stunnel.old
+		ln -sf /usr/local/bin/stunnel /bin/stunnel
+
+		if command -v stunnel >/dev/null 2>&1; then
+			echo "Successfully installed stunnel version ${stunnel_dir}"
+			rm -f /bin/stunnel.old
+		else
+			echo "Failed to install stunnel version ${stunnel_dir}. Please install stunnel and try again."
+			mv /bin/stunnel.old /bin/stunnel > /dev/null 2>&1
+			exit 1
+		fi
 	fi
 fi
 
