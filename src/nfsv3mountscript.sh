@@ -35,6 +35,14 @@ AZNFS_PORT="${AZNFS_PORT:-2048}"
 # Default to checking azure nconnect support.
 AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
 
+# 
+# Default maximum value of nconnect.
+# Users can modify the AZNFS_MAX_NCONNECT variable to a lower value.
+# This allows mounting more than 20 accounts (with the same endpoint IP) 
+# from a single VM by restricting the nconnect value to a lower limit.
+#
+AZNFS_MAX_NCONNECT="${AZNFS_MAX_NCONNECT:-16}"
+
 # Default to fixing mount options passed in to help the user.
 AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 
