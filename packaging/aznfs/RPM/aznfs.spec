@@ -336,22 +336,24 @@ if [ $1 == 0 ]; then
 	if [ $existing_mounts_v3 -ne 0 -o $existing_mounts_v4 -ne 0 ]; then
 		echo
 		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
-		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
-		read -n 1 result < /dev/tty
-		echo
-		if [ "$result" != "y" -a "$result" != "Y" ]; then
-			echo "Removal aborted!"
-			if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
-				echo
-				echo "*******************************************************************"
-				echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
-				echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
-				echo "To fix this, run the below command to install dependencies:"
-				echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME stunnel net-tools"
-				echo "*******************************************************************"
-				echo
+		if ! grep -qi "azurelinux" /etc/os-release; then
+			echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
+			read -n 1 result < /dev/tty
+			echo
+			if [ "$result" != "y" -a "$result" != "Y" ]; then
+				echo "Removal aborted!"
+				if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
+					echo
+					echo "*******************************************************************"
+					echo "Unfortunately some of the anzfs dependencies may have been uninstalled."
+					echo "aznfs mounts may be affected and new aznfs shares cannot be mounted."
+					echo "To fix this, run the below command to install dependencies:"
+					echo "INSTALL_CMD install conntrack-tools iptables bind-utils iproute util-linux nfs-utils NETCAT_PACKAGE_NAME stunnel net-tools"
+					echo "*******************************************************************"
+					echo
+				fi
+				exit 1
 			fi
-			exit 1
 		fi
 	fi
 
