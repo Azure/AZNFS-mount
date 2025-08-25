@@ -328,10 +328,8 @@ add_stunnel_configuration()
         distro_id=$(canonicalize_distro_id $distro_id)
     fi
 
-    if [ "$distro_id" == "mariner" ]; then
-        # List available TLSv1.3 ciphersuites using OpenSSL
-        available_ciphers=$(openssl ciphers -s -tls1_3 | awk '{print $1}')
-        echo "ciphersuites = $available_ciphers" >> $stunnel_conf_file
+    if [ "$distro_id" == "azurelinux" ]; then
+        echo "ciphers = DEFAULT" >> $stunnel_conf_file
         if [ $? -ne 0 ]; then
             chattr -f +i $stunnel_conf_file
             eecho "Failed to add 'ciphersuites' info to $stunnel_conf_file!"
