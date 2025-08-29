@@ -276,7 +276,6 @@ endif()
 # Find uuid library if not, try to install.
 #
 pkg_search_module(UUID QUIET uuid)
-
 if(NOT UUID_FOUND)
     message(STATUS "uuid not found, trying to install uuid-dev!")
     execute_process(COMMAND sudo apt install -y uuid-dev
