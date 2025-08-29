@@ -273,6 +273,24 @@ message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a
 endif()
 
 #
+# Find uuid library if not, try to install.
+#
+pkg_search_module(UUID QUIET uuid)
+if(NOT UUID_FOUND)
+    message(STATUS "uuid not found, trying to install uuid-dev!")
+    execute_process(COMMAND sudo apt install -y uuid-dev
+            RESULT_VARIABLE UUID_INSTALL_RESULT)
+    if(NOT UUID_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install uuid-dev failed with ${UUID_INSTALL_RESULT}, try installing uuid-dev manually and then run cmake again")
+    else()
+        pkg_search_module(UUID REQUIRED uuid)
+    endif()
+endif()
+
+message(STATUS "Using uuid lib ${UUID_LIBRARIES}")
+message(STATUS "Using uuid include dir ${UUID_INCLUDE_DIRS}")
+
+#
 # Install zlib for crc32.
 #
 find_package(ZLIB QUIET)
