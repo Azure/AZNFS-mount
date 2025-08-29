@@ -6,7 +6,7 @@
 # --------------------------------------------------------------------------------------------
 
 # How often do we check for change in FQDN->IP?
-IP_CHANGE_DETECTION_FREQUENCY=60
+IP_CHANGE_DETECTION_FREQUENCY=30 #daniewo, changing to 30 seconds for debugging purposes
 
 # Determines the frequency at which we check for updates of AZNFS and run the daily function.
 DAILY_CHECK_AFTER_SECONDS=86400
