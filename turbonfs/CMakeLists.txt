@@ -263,13 +263,14 @@ if(NOT JEMALLOC_FOUND)
         message(FATAL_ERROR "apt install libjemalloc-dev failed with ${JEMALLOC_INSTALL_RESULT}, try installing libjemalloc-dev manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
-        # will set JEMALLOC_LIBRARY_DIRS variable.
+        # will set JEMALLOC_LIBRARIES variable.
         pkg_search_module(JEMALLOC REQUIRED jemalloc)
     endif()
 endif()
 
 # We want to link against the static jemalloc lib.
-message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a")
+message(STATUS "Using jemalloc lib ${JEMALLOC_LIBRARIES}")
+#message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}")
 endif()
 
 #
@@ -423,14 +424,10 @@ message(STATUS "Using gnutls libraries: ${GNUTLS_ALL_LIBRARIES}")
 
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      -static-libgcc -static-libstdc++
-                      -Wl,-rpath,/opt/microsoft/aznfs/libs
                       ${ZLIB_LIBRARIES}
                       dl
                       pthread
                       nfs
-                      # GNUTLS libraries are needed by static libnfs.
-                      ${GNUTLS_ALL_LIBRARIES}
                       yaml-cpp
                       spdlog
                       Azure::azure-identity
@@ -445,7 +442,7 @@ endif()
 
 if(ENABLE_JEMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a)
+                      ${JEMALLOC_LIBRARIES})
 endif()
 
 install(TARGETS ${CMAKE_PROJECT_NAME})
