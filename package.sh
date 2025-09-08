@@ -284,7 +284,7 @@ libs_dir=${STG_DIR}/deb/${pkg_dir}${opt_dir}/libs
 mkdir -p ${libs_dir}
 
 # # Copy the dependencies.
-# cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
+cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
 
 # #
 # # Patch all the libs to reference shared libs from ${libs_dir}.
