@@ -276,8 +276,8 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4.service ${STG_DIR}/deb/${pkg_dir}${sys
 ###########################################
 
 # # aznfsclient in the final target dir.
-# aznfsclient=${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
-# cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
+aznfsclient=${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
+cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
 
 # # Package aznfsclient dependencies in opt_dir.
 libs_dir=${STG_DIR}/deb/${pkg_dir}${opt_dir}/libs
