@@ -433,7 +433,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       Azure::azure-identity
                       Azure::azure-storage-blobs
                       nlohmann_json::nlohmann_json
-                      uuid)
+                      uuid
+                      GnuTLS::GnuTLS)
 
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
