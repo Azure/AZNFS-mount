@@ -275,36 +275,36 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4.service ${STG_DIR}/deb/${pkg_dir}${sys
 # Bundle aznfsclient and its dependencies #
 ###########################################
 
-# aznfsclient in the final target dir.
-aznfsclient=${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
-cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
+# # aznfsclient in the final target dir.
+# aznfsclient=${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
+# cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
 
-# Package aznfsclient dependencies in opt_dir.
+# # Package aznfsclient dependencies in opt_dir.
 libs_dir=${STG_DIR}/deb/${pkg_dir}${opt_dir}/libs
 mkdir -p ${libs_dir}
 
-# Copy the dependencies.
-cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
+# # Copy the dependencies.
+# cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
 
-#
-# Patch all the libs to reference shared libs from ${libs_dir}.
-# This is our very simple containerization.
-#
-for lib in ${libs_dir}/*.so*; do
-	echo "Setting rpath to ${opt_dir}/libs for $lib"
-	patchelf --set-rpath ${opt_dir}/libs "$lib"
-done
+# #
+# # Patch all the libs to reference shared libs from ${libs_dir}.
+# # This is our very simple containerization.
+# #
+# for lib in ${libs_dir}/*.so*; do
+# 	echo "Setting rpath to ${opt_dir}/libs for $lib"
+# 	patchelf --set-rpath ${opt_dir}/libs "$lib"
+# done
 
-#
-# Final containerization effort - bundle and use the same interpreter as the
-# build machine.
-#
-ld_linux_path=$(ldd ${aznfsclient} | grep "ld-linux" | awk '{print $1}')
-ld_linux_name=$(basename "$ld_linux_path")
-ld_linux="${libs_dir}/${ld_linux_name}"
-cp -avfH  "${ld_linux_path}" "${ld_linux}"
+# #
+# # Final containerization effort - bundle and use the same interpreter as the
+# # build machine.
+# #
+# ld_linux_path=$(ldd ${aznfsclient} | grep "ld-linux" | awk '{print $1}')
+# ld_linux_name=$(basename "$ld_linux_path")
+# ld_linux="${libs_dir}/${ld_linux_name}"
+# cp -avfH  "${ld_linux_path}" "${ld_linux}"
 
-patchelf --set-interpreter ${opt_dir}/libs/${ld_linux_name} ${aznfsclient}
+# patchelf --set-interpreter ${opt_dir}/libs/${ld_linux_name} ${aznfsclient}
 
 # Create the deb package.
 dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
