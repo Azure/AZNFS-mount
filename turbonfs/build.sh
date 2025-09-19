@@ -29,7 +29,7 @@ if [ "$BUILD_TYPE" == "Debug" ]; then
     # tcmalloc doesn't play well with ASAN.
     JEMALLOC=ON
     PARANOID=ON
-    INSECURE_AUTH_FOR_DEVTEST=ON
+    INSECURE_AUTH_FOR_DEVTEST=OFF
 else
     JEMALLOC=ON
     PARANOID=OFF

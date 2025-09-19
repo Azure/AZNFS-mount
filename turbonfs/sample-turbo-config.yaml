@@ -8,7 +8,7 @@
 # "none" as source in the mount command. In that case account and container
 # are mandatory, cloud_suffix can be guessed and port is default 2048.
 #
-account: sjc22prdste06hnfsv3acc1
+account: eaaxscnams20py01ex
 container: nfsv3test
 
 #cloud_suffix: blob.core.windows.net
@@ -59,7 +59,7 @@ sys.nodrc.create_exist_as_success: true
 #
 
 # valid range: [1, 256]
-nconnect: 96
+nconnect: 1
 
 # valid range: [100, 6000]
 timeo: 600
@@ -201,8 +201,8 @@ auth: false
 
 #
 # Option controlling transport security, takes following values:
-# none: do not use TLS encryption.
+# none: do not use T  LS encryption.
 # tls: use TLS encryption, as defined in RPC-with-TLS RFC 9289.
 #
-xprtsec: none
+xprtsec: tls
 
