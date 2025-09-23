@@ -90,8 +90,8 @@ jobs:
         export SOURCE_DIR=$GITHUB_WORKSPACE/azurelinux
         export BUILD_TYPE=${{ github.events.inputs.buildType }}
         export BUILD_MACHINE=azurelinux
-        chmod +x $SOURCE_DIR/package.sh
-        $SOURCE_DIR/package.sh
+        chmod +x $SOURCE_DIR/package_azurelinux.sh
+        $SOURCE_DIR/package_azurelinux.sh
     - name: Create Release (azurelinux)
       uses: softprops/action-gh-release@v1
       with:
