@@ -74,6 +74,7 @@ jobs:
         export STG_DIR=$GITHUB_WORKSPACE/amd64
         export SOURCE_DIR=$GITHUB_WORKSPACE/amd64
         export BUILD_TYPE=${{ github.events.inputs.buildType }}
+        export BUILD_MACHINE=ubuntu
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
     - name: Create Release
@@ -89,6 +90,36 @@ jobs:
           ${{ github.workspace }}/amd64/stunnel/root/rpmbuild/RPMS/x86_64/aznfs_stunnel_custom-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace }}/amd64/scripts/aznfs_install.sh
           ${{ github.workspace }}/amd64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.tar.gz
+        body: |
+          New Release ${{ github.event.inputs.versionName }}
+
+  package_mount_helper_azurelinux:
+    name: Package and Release ${{ github.event.inputs.versionName }} for azurelinux
+    runs-on: AzureLinux-3.0
+    needs: verify_branch_name
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        path: azurelinux
+    - name: Run Package.sh for azurelinux
+      run: |
+        export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+        export STG_DIR=$GITHUB_WORKSPACE/azurelinux
+        export SOURCE_DIR=$GITHUB_WORKSPACE/azurelinux
+        export BUILD_TYPE=${{ github.events.inputs.buildType }}
+        export BUILD_MACHINE=azurelinux
+        chmod +x $SOURCE_DIR/package.sh
+        $SOURCE_DIR/package.sh
+    - name: Create Release (azurelinux)
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Release ${{ github.event.inputs.versionName }}
+        tag_name: ${{ github.event.inputs.versionName }}
+        target_commitish: ${{ github.sha }}
+        files: |
+          ${{ github.workspace }}/azurelinux/rpm/root/rpmbuild/RPMS/x86_64/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace }}/azurelinux/deb/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1_amd64.deb
         body: |
           New Release ${{ github.event.inputs.versionName }}
 
@@ -137,3 +168,6 @@ jobs:
           ${{ github.workspace }}/arm64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.aarch64.tar.gz
         body: |
           New Release ${{ github.event.inputs.versionName }}
+
+
+# TODO: Add for arm64 too.

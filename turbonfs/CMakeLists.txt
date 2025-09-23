@@ -25,6 +25,8 @@ option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" OFF)
 option(ENABLE_JEMALLOC "Use jemalloc for malloc/free/new/delete" ON)
 option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" OFF)
+option(ENABLE_DYNAMIC_LINKS "Use dynamic linking instead of bundling libs" OFF)
+
 #
 # Builds that make it to customers need to be extra careful about any unnecessary
 # logging. Some warning logs we have in our code are to attract developer
@@ -268,9 +270,12 @@ if(NOT JEMALLOC_FOUND)
     endif()
 endif()
 
-# We want to link against the static jemalloc lib.
-message(STATUS "Using jemalloc lib ${JEMALLOC_LIBRARIES}")
-#message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}")
+if(ENABLE_DYNAMIC_LINKS)
+    message(STATUS "Using jemalloc lib ${JEMALLOC_LIBRARIES}")
+else()
+    # We want to link against the static jemalloc lib.
+    message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}")
+endif()
 endif()
 
 #
@@ -423,18 +428,37 @@ set(GNUTLS_ALL_LIBRARIES
 message(STATUS "Using gnutls libraries: ${GNUTLS_ALL_LIBRARIES}")
 
 # All libraries.
-target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${ZLIB_LIBRARIES}
-                      dl
-                      pthread
-                      nfs
-                      yaml-cpp
-                      spdlog
-                      Azure::azure-identity
-                      Azure::azure-storage-blobs
-                      nlohmann_json::nlohmann_json
-                      uuid
-                      GnuTLS::GnuTLS)
+if(ENABLE_DYNAMIC_LINKS)
+  # Dynamic linking: No static flags, use GnuTLS::GnuTLS target
+  target_link_libraries(${CMAKE_PROJECT_NAME}
+                        ${ZLIB_LIBRARIES}
+                        dl
+                        pthread
+                        nfs
+                        yaml-cpp
+                        spdlog
+                        Azure::azure-identity
+                        Azure::azure-storage-blobs
+                        nlohmann_json::nlohmann_json
+                        uuid
+                        GnuTLS::GnuTLS)
+else()
+  # Static linking: Use static-libgcc/libstdc++ and explicit gnutls libraries
+  target_link_libraries(${CMAKE_PROJECT_NAME}
+                        -static-libgcc -static-libstdc++
+                        -Wl,-rpath,/opt/microsoft/aznfs/libs
+                        ${ZLIB_LIBRARIES}
+                        dl
+                        pthread
+                        nfs
+                        ${GNUTLS_ALL_LIBRARIES}
+                        yaml-cpp
+                        spdlog
+                        Azure::azure-identity
+                        Azure::azure-storage-blobs
+                        nlohmann_json::nlohmann_json
+                        uuid)
+endif()
 
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
@@ -442,8 +466,21 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 endif()
 
 if(ENABLE_JEMALLOC)
-target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${JEMALLOC_LIBRARIES})
+  if(ENABLE_DYNAMIC_LINKS)
+    target_link_libraries(${CMAKE_PROJECT_NAME}
+                          ${JEMALLOC_LIBRARIES})
+  else()
+    target_link_libraries(${CMAKE_PROJECT_NAME}
+                          ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a)
+  endif()
 endif()
+
+# --- Debug: Print all static libraries linked ---
+get_target_property(LINK_LIBS ${CMAKE_PROJECT_NAME} LINK_LIBRARIES)
+message(STATUS "==== Libraries linked to ${CMAKE_PROJECT_NAME} ====")
+foreach(lib IN LISTS LINK_LIBS)
+    message(STATUS "  ${lib}")
+endforeach()
+message(STATUS "===============================================")
 
 install(TARGETS ${CMAKE_PROJECT_NAME})
