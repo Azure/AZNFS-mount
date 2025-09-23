@@ -171,7 +171,7 @@ fi
 if [ "$(uname -m)" == "aarch64" ]; then
     export VCPKG_FORCE_SYSTEM_BINARIES=1
 fi
-export VCPKG_FORCE_SYSTEM_BINARIES=1
+# export VCPKG_FORCE_SYSTEM_BINARIES=1
 
 cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DENABLE_PARANOID=${PARANOID} \
