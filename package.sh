@@ -237,7 +237,12 @@ cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 
 # Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
 mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
+if [ "$BUILD_MACHINE" == "azurelinux" ]; then
+gcc ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+else
 gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+fi
+# gcc ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
 
 #
 # We build the turbonfs project here, note that we can set all cmake options in the 
