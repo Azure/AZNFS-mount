@@ -78,7 +78,6 @@ jobs:
   package_mount_helper_azurelinux:
     name: Package and Release ${{ github.event.inputs.versionName }} for azurelinux
     runs-on: self-hosted
-    needs: verify_branch_name
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
