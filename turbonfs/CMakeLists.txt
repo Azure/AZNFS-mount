@@ -146,16 +146,23 @@ if(NOT azure-storage-blobs-cpp_FOUND)
     message(FATAL_ERROR "azure-storage-blobs-cpp not found! Did you run cmake with -DCMAKE_TOOLCHAIN_FILE?")
 endif()
 
+# Choose package manager based on ENABLE_DYNAMIC_LINKS
+if(ENABLE_DYNAMIC_LINKS)
+    set(PKG_MGR tdnf)
+else()
+    set(PKG_MGR apt)
+endif()
+
 #
 # Ensure pkg_search_module(), needed for configuring some packages.
 #
 find_package(PkgConfig QUIET)
 if(NOT PKG_CONFIG_FOUND)
     message(STATUS "pkg-config not found, trying to install pkg-config!")
-    execute_process(COMMAND sudo apt install -y pkg-config
+    execute_process(COMMAND sudo ${PKG_MGR} install -y pkg-config
             RESULT_VARIABLE PKGCONFIG_INSTALL_RESULT)
     if(NOT PKGCONFIG_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install pkg-config failed with ${PKGCONFIG_INSTALL_RESULT}, try installing pkg-config manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install pkg-config failed with ${PKGCONFIG_INSTALL_RESULT}, try installing pkg-config manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # add the pkg_search_module() command.
@@ -169,10 +176,10 @@ endif()
 find_program(MESON_EXECUTABLE meson QUIET)
 if(NOT MESON_FOUND)
     message(STATUS "meson not found, trying to install meson!")
-    execute_process(COMMAND sudo apt install -y meson
+    execute_process(COMMAND sudo ${PKG_MGR} install -y meson
                     RESULT_VARIABLE MESON_INSTALL_RESULT)
     if(NOT MESON_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install meson failed with ${MESON_INSTALL_RESULT}, try installing meson manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install meson failed with ${MESON_INSTALL_RESULT}, try installing meson manually and then run cmake again")
     else()
         find_program(MESON_EXECUTABLE meson REQUIRED)
     endif()
@@ -184,10 +191,10 @@ endif()
 find_program(NINJA_EXECUTABLE ninja QUIET)
 if(NOT NINJA_FOUND)
     message(STATUS "ninja not found, trying to install ninja-build!")
-    execute_process(COMMAND sudo apt install -y ninja-build
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ninja-build
                     RESULT_VARIABLE NINJA_INSTALL_RESULT)
     if(NOT NINJA_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install ninja-build failed with ${NINJA_INSTALL_RESULT}, try installing ninja-build manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ninja-build failed with ${NINJA_INSTALL_RESULT}, try installing ninja-build manually and then run cmake again")
     else()
         find_program(NINJA_EXECUTABLE ninja REQUIRED)
     endif()
@@ -212,10 +219,10 @@ add_custom_target(libfuse ALL DEPENDS ${fuse3_LIBRARY})
 find_package(GnuTLS "3.4.6" QUIET)
 if(NOT GNUTLS_FOUND)
     message(STATUS "GnuTLS not found, trying to install gnutls-dev!")
-    execute_process(COMMAND sudo apt install -y gnutls-dev
+    execute_process(COMMAND sudo ${PKG_MGR} install -y gnutls-dev
                     RESULT_VARIABLE GNUTLS_INSTALL_RESULT)
     if(NOT GNUTLS_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install gnutls-dev failed with ${GNUTLS_INSTALL_RESULT}, try installing gnutls-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install gnutls-dev failed with ${GNUTLS_INSTALL_RESULT}, try installing gnutls-dev manually and then run cmake again")
     else()
         find_package(GnuTLS "3.4.6" REQUIRED)
     endif()
@@ -232,10 +239,10 @@ endif()
 find_package(tcmalloc QUIET)
 if(NOT tcmalloc_FOUND)
     message(STATUS "tcmalloc not found, trying to install libgoogle-perftools-dev!")
-    execute_process(COMMAND sudo apt install -y libgoogle-perftools-dev
+    execute_process(COMMAND sudo ${PKG_MGR} install -y libgoogle-perftools-dev
             RESULT_VARIABLE tcmalloc_INSTALL_RESULT)
     if(NOT tcmalloc_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install libgoogle-perftools-dev failed with ${tcmalloc_INSTALL_RESULT}, try installing libgoogle-perftools-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install libgoogle-perftools-dev failed with ${tcmalloc_INSTALL_RESULT}, try installing libgoogle-perftools-dev manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set tcmalloc_INCLUDE_DIR and tcmalloc_LIBRARY variables.
@@ -259,10 +266,10 @@ pkg_search_module(JEMALLOC QUIET jemalloc)
 
 if(NOT JEMALLOC_FOUND)
     message(STATUS "jemalloc not found, trying to install libjemalloc-dev!")
-    execute_process(COMMAND sudo apt install -y libjemalloc-dev
+    execute_process(COMMAND sudo ${PKG_MGR} install -y libjemalloc-dev
             RESULT_VARIABLE JEMALLOC_INSTALL_RESULT)
     if(NOT JEMALLOC_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install libjemalloc-dev failed with ${JEMALLOC_INSTALL_RESULT}, try installing libjemalloc-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install libjemalloc-dev failed with ${JEMALLOC_INSTALL_RESULT}, try installing libjemalloc-dev manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set JEMALLOC_LIBRARIES variable.
@@ -284,10 +291,10 @@ endif()
 pkg_search_module(UUID QUIET uuid)
 if(NOT UUID_FOUND)
     message(STATUS "uuid not found, trying to install uuid-dev!")
-    execute_process(COMMAND sudo apt install -y uuid-dev
+    execute_process(COMMAND sudo ${PKG_MGR} install -y uuid-dev
             RESULT_VARIABLE UUID_INSTALL_RESULT)
     if(NOT UUID_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install uuid-dev failed with ${UUID_INSTALL_RESULT}, try installing uuid-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install uuid-dev failed with ${UUID_INSTALL_RESULT}, try installing uuid-dev manually and then run cmake again")
     else()
         pkg_search_module(UUID REQUIRED uuid)
     endif()
@@ -302,10 +309,10 @@ message(STATUS "Using uuid include dir ${UUID_INCLUDE_DIRS}")
 find_package(ZLIB QUIET)
 if(NOT ZLIB_FOUND)
     message(STATUS "zlib not found, trying to install zlib1g-dev!")
-    execute_process(COMMAND sudo apt install -y zlib1g-dev
+    execute_process(COMMAND sudo ${PKG_MGR} install -y zlib1g-dev
 		    RESULT_VARIABLE ZLIB_INSTALL_RESULT)
     if(NOT ZLIB_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install zlib1g-dev failed with ${ZLIB_INSTALL_RESULT}, try installing zlib1g-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install zlib1g-dev failed with ${ZLIB_INSTALL_RESULT}, try installing zlib1g-dev manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set ZLIB_INCLUDE_DIR and ZLIB_LIBRARY variables.
