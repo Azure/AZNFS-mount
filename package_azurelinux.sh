@@ -124,6 +124,8 @@ generate_rpm_package()
 	else
 		if [ "$rpm_dir" == "stunnel" ]; then
 			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_stunnel_custom/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		elif [ "$rpm_dir" == "azurelinux" ]; then
+			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}-azurelinux/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		else
 			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		fi
