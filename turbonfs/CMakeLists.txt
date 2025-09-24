@@ -200,9 +200,21 @@ if(NOT NINJA_FOUND)
     endif()
 endif()
 
-# Meson will install the fuse library and header files in the following paths.
-set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
+# Decide fuse3 paths based on ENABLE_DYNAMIC_LINKS.
+if(ENABLE_DYNAMIC_LINKS)
+    # Dynamic: Meson installs directly to /usr/local/lib.
+    set(fuse3_LIBRARY "/usr/local/lib/libfuse3.a")
+else()
+    # Static: Use multiarch layout.
+    set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
+endif()
+
+# Include path remains the same for both cases.
 set(fuse3_INCLUDE_DIR "/usr/local/include")
+
+# Meson will install the fuse library and header files in the following paths.
+# set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
+# set(fuse3_INCLUDE_DIR "/usr/local/include")
 
 add_custom_command(
     OUTPUT ${fuse3_LIBRARY}
