@@ -86,7 +86,7 @@ jobs:
     - name: Run Package.sh for azurelinux
       run: |
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
-        export STG_DIR=$GITHUB_WORKSPACE/azurelinux
+        export STG_DIR=$GITHUB_WORKSPACE
         export SOURCE_DIR=$GITHUB_WORKSPACE/azurelinux
         export BUILD_TYPE=${{ github.events.inputs.buildType }}
         export BUILD_MACHINE=azurelinux
