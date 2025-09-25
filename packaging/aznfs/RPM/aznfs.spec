@@ -8,7 +8,7 @@ URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc, make, wget
 Recommends: build-essential
 
-%elif 0%{?mariner_build}
+%elif 0%{?azurelinux_build}
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools, libuuid, gnutls, jemalloc, libasan
 
 %else
@@ -45,7 +45,9 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.BUILD_ARCH.tar.gz -C
 /opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
 /lib/systemd/system/aznfswatchdogv4.service
+%if !0%{?azurelinux_build}
 OPT_LIBS
+%endif
 /opt/microsoft/aznfs/sample-turbo-config.yaml
 /sbin/aznfsclient
 
