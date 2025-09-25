@@ -99,7 +99,7 @@ jobs:
         tag_name: ${{ github.event.inputs.versionName }}
         target_commitish: ${{ github.sha }}
         files: |
-          ${{ github.workspace }}/azurelinux/rpm/root/rpmbuild/RPMS/x86_64/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace }}/azurelinux/root/rpmbuild/RPMS/x86_64/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1.x86_64.rpm
         body: |
           New Release ${{ github.event.inputs.versionName }}
 
