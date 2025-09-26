@@ -232,10 +232,15 @@ add_custom_target(libfuse ALL DEPENDS ${fuse3_LIBRARY})
 find_package(GnuTLS "3.4.6" QUIET)
 if(NOT GNUTLS_FOUND)
     message(STATUS "GnuTLS not found, trying to install gnutls-dev!")
-    execute_process(COMMAND sudo ${PKG_MGR} install -y gnutls-dev
+    if(PKG_MGR STREQUAL "apt")
+        set(GNUTLS_PKG "gnutls-dev")
+    else()
+        set(GNUTLS_PKG "gnutls-devel")
+    endif()
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${GNUTLS_PKG}
                     RESULT_VARIABLE GNUTLS_INSTALL_RESULT)
     if(NOT GNUTLS_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "${PKG_MGR} install gnutls-dev failed with ${GNUTLS_INSTALL_RESULT}, try installing gnutls-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${GNUTLS_PKG} failed with ${GNUTLS_INSTALL_RESULT}, try installing ${GNUTLS_PKG} manually and then run cmake again")
     else()
         find_package(GnuTLS "3.4.6" REQUIRED)
     endif()
@@ -251,11 +256,16 @@ endif()
 
 find_package(tcmalloc QUIET)
 if(NOT tcmalloc_FOUND)
-    message(STATUS "tcmalloc not found, trying to install libgoogle-perftools-dev!")
-    execute_process(COMMAND sudo ${PKG_MGR} install -y libgoogle-perftools-dev
+    if(PKG_MGR STREQUAL "apt")
+        set(TCMALLOC_PKG "libgoogle-perftools-dev")
+    else()
+        set(TCMALLOC_PKG "gperftools-devel")
+    endif()
+    message(STATUS "tcmalloc not found, trying to install ${TCMALLOC_PKG}!")
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${TCMALLOC_PKG}
             RESULT_VARIABLE tcmalloc_INSTALL_RESULT)
     if(NOT tcmalloc_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "${PKG_MGR} install libgoogle-perftools-dev failed with ${tcmalloc_INSTALL_RESULT}, try installing libgoogle-perftools-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${TCMALLOC_PKG} failed with ${tcmalloc_INSTALL_RESULT}, try installing ${TCMALLOC_PKG} manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set tcmalloc_INCLUDE_DIR and tcmalloc_LIBRARY variables.
@@ -278,11 +288,16 @@ endif()
 pkg_search_module(JEMALLOC QUIET jemalloc)
 
 if(NOT JEMALLOC_FOUND)
-    message(STATUS "jemalloc not found, trying to install libjemalloc-dev!")
-    execute_process(COMMAND sudo ${PKG_MGR} install -y libjemalloc-dev
+    if(${PKG_MGR} STREQUAL "tdnf")
+        set(JEMALLOC_PKG jemalloc-devel)
+    else()
+        set(JEMALLOC_PKG libjemalloc-dev)
+    endif()
+    message(STATUS "jemalloc not found, trying to install ${JEMALLOC_PKG}!")
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${JEMALLOC_PKG}
             RESULT_VARIABLE JEMALLOC_INSTALL_RESULT)
     if(NOT JEMALLOC_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "${PKG_MGR} install libjemalloc-dev failed with ${JEMALLOC_INSTALL_RESULT}, try installing libjemalloc-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${JEMALLOC_PKG} failed with ${JEMALLOC_INSTALL_RESULT}, try installing ${JEMALLOC_PKG} manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set JEMALLOC_LIBRARIES variable.
@@ -303,11 +318,16 @@ endif()
 #
 pkg_search_module(UUID QUIET uuid)
 if(NOT UUID_FOUND)
-    message(STATUS "uuid not found, trying to install uuid-dev!")
-    execute_process(COMMAND sudo ${PKG_MGR} install -y uuid-dev
+    if(PKG_MGR STREQUAL "apt")
+        set(UUID_PKG "uuid-dev")
+    else()
+        set(UUID_PKG "uuid-devel")
+    endif()
+    message(STATUS "uuid not found, trying to install ${UUID_PKG}!")
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${UUID_PKG}
             RESULT_VARIABLE UUID_INSTALL_RESULT)
     if(NOT UUID_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "${PKG_MGR} install uuid-dev failed with ${UUID_INSTALL_RESULT}, try installing uuid-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${UUID_PKG} failed with ${UUID_INSTALL_RESULT}, try installing ${UUID_PKG} manually and then run cmake again")
     else()
         pkg_search_module(UUID REQUIRED uuid)
     endif()
@@ -321,11 +341,16 @@ message(STATUS "Using uuid include dir ${UUID_INCLUDE_DIRS}")
 #
 find_package(ZLIB QUIET)
 if(NOT ZLIB_FOUND)
-    message(STATUS "zlib not found, trying to install zlib1g-dev!")
-    execute_process(COMMAND sudo ${PKG_MGR} install -y zlib1g-dev
+    if(PKG_MGR STREQUAL "apt")
+        set(ZLIB_PKG "zlib1g-dev")
+    else()
+        set(ZLIB_PKG "zlib-devel")
+    endif()
+    message(STATUS "zlib not found, trying to install ${ZLIB_PKG}!")
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${ZLIB_PKG}
 		    RESULT_VARIABLE ZLIB_INSTALL_RESULT)
     if(NOT ZLIB_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "${PKG_MGR} install zlib1g-dev failed with ${ZLIB_INSTALL_RESULT}, try installing zlib1g-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${ZLIB_PKG} failed with ${ZLIB_INSTALL_RESULT}, try installing ${ZLIB_PKG} manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set ZLIB_INCLUDE_DIR and ZLIB_LIBRARY variables.

@@ -83,6 +83,17 @@ jobs:
       uses: actions/checkout@v3
       with:
         path: azurelinux
+
+    - name: Install prerequisites on Azure Linux
+      run: |
+        sudo tdnf update -y
+        sudo tdnf install -y glibc-static rpm-build perl perl-IPC-Cmd \
+          gcc gcc-c++ make git curl unzip zip tar cmake \
+          zlib zlib-devel libuuid-devel gnutls gnutls-devel nfs-utils \
+          libyaml-devel spdlog-devel nlohmann-json-devel cmake make \
+          pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build binutils \
+          kernel-headers kernel-devel autoconf automake libtool
+
     - name: Run Package.sh for azurelinux
       run: |
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
@@ -92,6 +103,7 @@ jobs:
         export BUILD_MACHINE=azurelinux
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
+
     - name: Create Release (azurelinux)
       uses: softprops/action-gh-release@v1
       with:
