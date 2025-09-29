@@ -74,6 +74,7 @@ jobs:
         export STG_DIR=$GITHUB_WORKSPACE/amd64
         export SOURCE_DIR=$GITHUB_WORKSPACE/amd64
         export BUILD_TYPE=${{ github.events.inputs.buildType }}
+        export BUILD_MACHINE=ubuntu
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
     - name: Create Release
@@ -137,3 +138,6 @@ jobs:
           ${{ github.workspace }}/arm64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.aarch64.tar.gz
         body: |
           New Release ${{ github.event.inputs.versionName }}
+
+
+# TODO: Add for arm64 too.

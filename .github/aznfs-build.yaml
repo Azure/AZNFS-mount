@@ -79,6 +79,66 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
+      - job: package_aznfs_azurelinu_amd64
+        displayName: Package and Release ${{ parameters.versionName }} for azurelinux
+        pool:
+          name: 'aznfsazurelinuxdemopool'   # Use your self-hosted agent
+
+        steps:
+          - checkout: self
+            path: azurelinux/AZNFS-mount
+            displayName: 'Checkout repository'
+
+          - script: |
+              echo "Installing prerequisites on Azure Linux..."
+              sudo tdnf update -y
+              sudo tdnf install -y glibc-static rpm-build perl perl-IPC-Cmd \
+                gcc gcc-c++ make git curl unzip zip tar cmake \
+                zlib zlib-devel libuuid-devel gnutls gnutls-devel nfs-utils \
+                libyaml-devel spdlog-devel nlohmann-json-devel cmake make \
+                pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build binutils \
+                kernel-headers kernel-devel autoconf automake libtool jemalloc-devel
+            displayName: "Install prerequisites on Azure Linux"
+          
+          # note: remove later.
+          - script: |
+              echo "=== Validating Build Environment ==="
+              gcc --version
+              cmake --version
+              tdnf --version
+              echo "Architecture: $(uname -m)"
+            displayName: "Validate build environment"
+
+          - script: |
+              export RELEASE_NUMBER=${{ parameters.versionName }}
+              export STG_DIR=$(System.DefaultWorkingDirectory)
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)/azurelinux
+              export BUILD_TYPE=${{ parameters.buildType }}
+              export BUILD_MACHINE=azurelinux
+              chmod +x $SOURCE_DIR/generate_package.sh
+              $SOURCE_DIR/generate_package.sh
+            displayName: "Run Package Script"
+
+          # note: remove later.
+          - script: |
+              echo "=== Directory Structure ==="
+              find $(System.DefaultWorkingDirectory) -name "*.rpm" -type f
+              echo "=== STG_DIR Contents ==="
+              ls -la $(System.DefaultWorkingDirectory)
+            displayName: "Debug: List directory structure"
+
+          - script: |
+              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/rpm
+              cp -f $(System.DefaultWorkingDirectory)/azurelinux/root/rpmbuild/RPMS/x86_64/aznfs-azurelinux-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/rpm
+              echo "Listing Built Files..."
+              ls -R $(Build.ArtifactStagingDirectory)
+            displayName: "Copy RPM to Artifacts"
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)
+              artifactName: 'aznfs-temp'
+
       - job: package_aznfs_arm64
         displayName: Package and Release ${{ parameters.versionName }} for arm64
         pool:
