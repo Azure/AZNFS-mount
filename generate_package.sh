@@ -33,7 +33,7 @@ generate_rpm_package()
 
 	# Overwrite rpm_pkg_dir in case of azurelinux.
 	if [ "$rpm_dir" == "azurelinux" ]; then
-		rpm_pkg_dir="${pkg_name}-azurelinux-${RELEASE_NUMBER}-1.$arch"
+		# rpm_pkg_dir="${pkg_name}-azurelinux-${RELEASE_NUMBER}-1.$arch"
 		azurelinux_build_required=1
 	fi
 
