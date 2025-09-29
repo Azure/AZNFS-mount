@@ -113,7 +113,7 @@ stages:
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
               export STG_DIR=$(System.DefaultWorkingDirectory)
-              export SOURCE_DIR=$(System.DefaultWorkingDirectory)/azurelinux
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
               export BUILD_TYPE=${{ parameters.buildType }}
               export BUILD_MACHINE=azurelinux
               chmod +x $SOURCE_DIR/generate_package.sh
