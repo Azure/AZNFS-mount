@@ -24,10 +24,17 @@ generate_rpm_package()
 {
 	rpm_dir=$1
 	custom_stunnel_required=0
+	azurelinux_build_required=0
 
 	# Overwrite rpm_pkg_dir in case of SUSE.
 	if [ "$rpm_dir" == "suse" ]; then
 		rpm_pkg_dir="${pkg_name}_sles-${RELEASE_NUMBER}-1.$arch"
+	fi
+
+	# Overwrite rpm_pkg_dir in case of azurelinux.
+	if [ "$rpm_dir" == "azurelinux" ]; then
+		rpm_pkg_dir="${pkg_name}-azurelinux-${RELEASE_NUMBER}-1.$arch"
+		azurelinux_build_required=1
 	fi
 
 	# Overwrite rpm_pkg_dir in case of Mariner, RedHat7, and Centos7.
@@ -66,17 +73,33 @@ generate_rpm_package()
 	# copy the aznfsclient config file.
 	cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 
-	# copy the aznfsclient binary.
-	cp -avf ${aznfsclient} ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient
+	if [ "$rpm_dir" != "azurelinux" ]; then
+		# copy the aznfsclient binary.
+		cp -avf ${aznfsclient} ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient
+	else
+		# Define the final target location for aznfsclient
+		aznfsclient_target="${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient"
 
-	#
-	# Package aznfsclient dependencies in opt_dir/libs.
-	# libs_dir must already be populated with the required dependencies from
-	# the debian packaging step. Simply copy all those to rpm_libs_dir.
-	#
-	rpm_libs_dir=${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/libs
-	mkdir -p ${rpm_libs_dir}
-	cp -avfH ${libs_dir}/* ${rpm_libs_dir}
+		# Copy the built aznfsclient binary to the target
+		cp -avf "${SOURCE_DIR}/turbonfs/build/aznfsclient" "${aznfsclient_target}"
+
+		# Optional: fail early if copy fails
+		if [ ! -f "${aznfsclient_target}" ]; then
+			echo "Error: aznfsclient failed to copy to ${aznfsclient_target}"
+			exit 1
+		fi
+	fi
+
+	if [ "$rpm_dir" != "azurelinux" ]; then
+		#
+		# Package aznfsclient dependencies in opt_dir/libs.
+		# libs_dir must already be populated with the required dependencies from
+		# the debian packaging step. Simply copy all those to rpm_libs_dir.
+		#
+		rpm_libs_dir=${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/libs
+		mkdir -p ${rpm_libs_dir}
+		cp -avfH ${libs_dir}/* ${rpm_libs_dir}
+	fi
 
 	# Create the archive for the package.
 	tar -cvzf ${STG_DIR}/${rpm_pkg_dir}.tar.gz -C ${STG_DIR}/${rpm_dir}/tmp root
@@ -84,20 +107,22 @@ generate_rpm_package()
 	# Copy the SPEC file to change the placeholders depending upon the RPM distro.
 	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec ${STG_DIR}/${rpm_dir}/tmp/
 
-	#
-	# Insert the contents of ${rpm_libs_dir}.
-	# This is variable due to the shared library versions.
-	# sed doesn't (easily) support replace target to be multi-line, so we use
-	# awk for this one.
-	#
-	opt_libs=$(for lib in ${rpm_libs_dir}/*; do echo ${opt_dir}/libs/$(basename $lib); done)
-	awk -i inplace -v r="$opt_libs" '{gsub(/OPT_LIBS/,r)}1' ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	if [ "$rpm_dir" != "azurelinux" ]; then
+		#
+		# Insert the contents of ${rpm_libs_dir}.
+		# This is variable due to the shared library versions.
+		# sed doesn't (easily) support replace target to be multi-line, so we use
+		# awk for this one.
+		#
+		opt_libs=$(for lib in ${rpm_libs_dir}/*; do echo ${opt_dir}/libs/$(basename $lib); done)
+		awk -i inplace -v r="$opt_libs" '{gsub(/OPT_LIBS/,r)}1' ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	fi
 
 	# Insert current release number and RPM_DIR value.
 	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	sed -i -e "s/RPM_DIR/${rpm_dir}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	sed -i -e "s/BUILD_ARCH/${arch}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-	
+
 	# Replace the placeholders for various package names in aznfs.spec file. 
 	if [ "$rpm_dir" == "suse" ]; then
 		sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_sles/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
@@ -108,6 +133,8 @@ generate_rpm_package()
 	else
 		if [ "$rpm_dir" == "stunnel" ]; then
 			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}_stunnel_custom/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		elif [ "$rpm_dir" == "azurelinux" ]; then
+			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}-azurelinux/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		else
 			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		fi
@@ -121,7 +148,7 @@ generate_rpm_package()
 	fi
 
 	# Create the rpm package.
-	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "azurelinux_build $azurelinux_build_required" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 }
 
 generate_tarball_package()
@@ -203,29 +230,31 @@ rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 # Insert release number to aznfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
 
-#########################
-# Generate .deb package #
-#########################
+if [ "$BUILD_MACHINE" != "azurelinux" ]; then
+	#########################
+	# Generate .deb package #
+	#########################
 
-# Create the directory to hold the package control and data files for deb package.
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
+	# Create the directory to hold the package control and data files for deb package.
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
 
-# Copy the debian control file(s) and maintainer scripts.
-cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
-chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
+	# Copy the debian control file(s) and maintainer scripts.
+	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
+	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
 
-# Insert current release number.
-sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
-sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+	# Insert current release number.
+	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+	sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
 
-# Copy other static package file(s).
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
-cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+	# Copy other static package file(s).
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 
-# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
-mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
-gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
+	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+fi
 
 #
 # We build the turbonfs project here, note that we can set all cmake options in the 
@@ -246,6 +275,13 @@ else
     INSECURE_AUTH_FOR_DEVTEST=OFF
 fi
 
+# Run azurelinux packaging only on azurelinux runner
+if [ "$BUILD_MACHINE" == "azurelinux" ]; then
+    DYNAMIC_LINKS=ON
+else
+	DYNAMIC_LINKS=OFF
+fi
+
 # vcpkg required env variable VCPKG_FORCE_SYSTEM_BINARIES to be set for arm64.
 if [ "$(uname -m)" == "aarch64" ]; then
     export VCPKG_FORCE_SYSTEM_BINARIES=1
@@ -254,72 +290,77 @@ fi
 cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DENABLE_PARANOID=${PARANOID} \
       -DENABLE_INSECURE_AUTH_FOR_DEVTEST=${INSECURE_AUTH_FOR_DEVTEST} \
+	  -DENABLE_DYNAMIC_LINKS=${DYNAMIC_LINKS} \
       -DPACKAGE_VERSION="${RELEASE_NUMBER}" \
       -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
 make
 popd
 
-mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
-cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
-cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/deb/${pkg_dir}/${opt_dir}/
+if [ "$BUILD_MACHINE" != "azurelinux" ]; then
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
+	cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/deb/${pkg_dir}/${opt_dir}/
 
-mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
-cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
-cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4.service ${STG_DIR}/deb/${pkg_dir}${system_dir}
 
-###########################################
-# Bundle aznfsclient and its dependencies #
-###########################################
+	###########################################
+	# Bundle aznfsclient and its dependencies #
+	###########################################
 
-# aznfsclient in the final target dir.
-aznfsclient=${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
-cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
+	# aznfsclient in the final target dir.
+	aznfsclient=${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
+	cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
 
-# Package aznfsclient dependencies in opt_dir.
-libs_dir=${STG_DIR}/deb/${pkg_dir}${opt_dir}/libs
-mkdir -p ${libs_dir}
+	# Package aznfsclient dependencies in opt_dir.
+	libs_dir=${STG_DIR}/deb/${pkg_dir}${opt_dir}/libs
+	mkdir -p ${libs_dir}
 
-# Copy the dependencies.
-cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
+	# Copy the dependencies.
+	cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
 
-#
-# Patch all the libs to reference shared libs from ${libs_dir}.
-# This is our very simple containerization.
-#
-for lib in ${libs_dir}/*.so*; do
-	echo "Setting rpath to ${opt_dir}/libs for $lib"
-	patchelf --set-rpath ${opt_dir}/libs "$lib"
-done
+	#
+	# Patch all the libs to reference shared libs from ${libs_dir}.
+	# This is our very simple containerization.
+	#
+	for lib in ${libs_dir}/*.so*; do
+		echo "Setting rpath to ${opt_dir}/libs for $lib"
+		patchelf --set-rpath ${opt_dir}/libs "$lib"
+	done
 
-#
-# Final containerization effort - bundle and use the same interpreter as the
-# build machine.
-#
-ld_linux_path=$(ldd ${aznfsclient} | grep "ld-linux" | awk '{print $1}')
-ld_linux_name=$(basename "$ld_linux_path")
-ld_linux="${libs_dir}/${ld_linux_name}"
-cp -avfH  "${ld_linux_path}" "${ld_linux}"
+	#
+	# Final containerization effort - bundle and use the same interpreter as the
+	# build machine.
+	#
+	ld_linux_path=$(ldd ${aznfsclient} | grep "ld-linux" | awk '{print $1}')
+	ld_linux_name=$(basename "$ld_linux_path")
+	ld_linux="${libs_dir}/${ld_linux_name}"
+	cp -avfH  "${ld_linux_path}" "${ld_linux}"
 
-patchelf --set-interpreter ${opt_dir}/libs/${ld_linux_name} ${aznfsclient}
+	patchelf --set-interpreter ${opt_dir}/libs/${ld_linux_name} ${aznfsclient}
 
-# Create the deb package.
-dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
+	# Create the deb package.
+	dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir
 
-#########################
-# Generate .rpm package #
-#########################
+	#########################
+	# Generate .rpm package #
+	#########################
 
-generate_rpm_package rpm
-generate_rpm_package suse
-# Generate rpm package with custom stunnel installation for Mariner, RedHat7, and Centos7.
-generate_rpm_package stunnel
+	generate_rpm_package rpm
+	generate_rpm_package suse
+	# Generate rpm package with custom stunnel installation for Mariner, RedHat7, and Centos7.
+	generate_rpm_package stunnel
 
-#############################
-# Generating Tarball for AKS#
-#############################
+	#############################
+	# Generating Tarball for AKS#
+	#############################
 
-generate_tarball_package $arch
+	generate_tarball_package $arch
+else
+	generate_rpm_package azurelinux
+fi
