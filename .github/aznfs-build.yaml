@@ -116,7 +116,7 @@ stages:
               export SOURCE_DIR=$(System.DefaultWorkingDirectory)
               export BUILD_TYPE=${{ parameters.buildType }}
               export BUILD_MACHINE=azurelinux
-              chmod +x $SOURCE_DIR/generate_package.sh
+              chmod +x $SOURCE_DIR/generate_package.sh 
               $SOURCE_DIR/generate_package.sh
             displayName: "Run Package Script"
 
@@ -129,8 +129,8 @@ stages:
             displayName: "Debug: List directory structure"
 
           - script: |
-              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/rpm
-              cp -f $(System.DefaultWorkingDirectory)/azurelinux/root/rpmbuild/RPMS/x86_64/aznfs-azurelinux-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/rpm
+              mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/rpmazurelinux
+              cp -f $(System.DefaultWorkingDirectory)/azurelinux/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/rpmazurelinux
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
             displayName: "Copy RPM to Artifacts"
