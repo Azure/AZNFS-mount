@@ -188,6 +188,7 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
+# TODO: add azurelinux later to release and publish stages post approvals 
   - stage: ReleaseArtifacts
     displayName: "Sign and Release Artifacts"
     jobs:
