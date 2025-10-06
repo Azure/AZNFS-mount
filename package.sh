@@ -294,6 +294,27 @@ cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DPACKAGE_VERSION="${RELEASE_NUMBER}" \
       -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
 make
+
+# ****** TODO: REMOVE LATER **************
+# Verify the built binary immediately after make
+echo "===== POST-BUILD VERIFICATION ====="
+BUILT_BINARY="${SOURCE_DIR}/turbonfs/build/aznfsclient"
+echo "Checking: ${BUILT_BINARY}"
+ls -lh "${BUILT_BINARY}"
+file "${BUILT_BINARY}"
+echo "LDD output:"
+ldd "${BUILT_BINARY}" | grep -E "fuse3|libfuse|libasan"
+
+if [ "$BUILD_MACHINE" == "azurelinux" ]; then
+    if ldd "${BUILT_BINARY}" | grep -q "libfuse3.so"; then
+        echo "✓ fuse3 dynamically linked"
+    else
+        echo "✗ ERROR: fuse3 NOT dynamically linked!"
+        exit 1
+    fi
+fi
+echo "====================================="
+
 popd
 
 if [ "$BUILD_MACHINE" != "azurelinux" ]; then

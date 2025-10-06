@@ -567,3 +567,15 @@ endforeach()
 message(STATUS "===============================================")
 
 install(TARGETS ${CMAKE_PROJECT_NAME})
+
+# *********** TODO: REMOVE LATER. *********
+# Add post-build verification for dynamic builds
+if(ENABLE_DYNAMIC_LINKS AND NOT ENABLE_NO_FUSE)
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "===== Verifying dynamic fuse3 linking ====="
+        COMMAND ldd $<TARGET_FILE:${CMAKE_PROJECT_NAME}> | grep -E "(fuse3|libfuse)" || 
+                (echo "ERROR: fuse3 NOT found in ldd output!" && exit 1)
+        COMMAND ${CMAKE_COMMAND} -E echo "===== fuse3 successfully linked ====="
+        COMMENT "Verifying fuse3 dynamic linking"
+    )
+endif()
