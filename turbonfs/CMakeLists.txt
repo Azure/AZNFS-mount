@@ -27,7 +27,6 @@ option(ENABLE_JEMALLOC "Use jemalloc for malloc/free/new/delete" ON)
 option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" OFF)
 option(ENABLE_DYNAMIC_LINKS "Use dynamic linking instead of bundling libs" OFF)
 
-message(STATUS "ENABLE_INSECURE_AUTH_FOR_DEVTEST = ${ENABLE_INSECURE_AUTH_FOR_DEVTEST}")
 #
 # Builds that make it to customers need to be extra careful about any unnecessary
 # logging. Some warning logs we have in our code are to attract developer
@@ -87,8 +86,11 @@ endif()
 set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for binaries")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH})
 
-set(LIBFUSE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/libfuse")
-set(LIBFUSE_BUILD_DIR "${CMAKE_BINARY_DIR}/extern/libfuse")
+# Only set libfuse paths for static builds
+if(NOT ENABLE_DYNAMIC_LINKS)
+    set(LIBFUSE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/libfuse")
+    set(LIBFUSE_BUILD_DIR "${CMAKE_BINARY_DIR}/extern/libfuse")
+endif()
 
 #
 # We add the following submodule(s), update them as needed, before starting.
@@ -125,8 +127,11 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/spdlog/CMakeLists.txt")
     message(FATAL_ERROR "The spdlog submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
-if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/libfuse/meson.build")
-    message(FATAL_ERROR "The libfuse submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+# Only check libfuse submodule for static builds
+if(NOT ENABLE_DYNAMIC_LINKS)
+    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/libfuse/meson.build")
+        message(FATAL_ERROR "The libfuse submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+    endif()
 endif()
 
 if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/vcpkg/bootstrap-vcpkg.sh")
@@ -172,59 +177,71 @@ if(NOT PKG_CONFIG_FOUND)
 endif()
 
 #
-# We need meson to compile libfuse.
+# Handle FUSE3 based on build type
 #
-find_program(MESON_EXECUTABLE meson QUIET)
-if(NOT MESON_FOUND)
-    message(STATUS "meson not found, trying to install meson!")
-    execute_process(COMMAND sudo ${PKG_MGR} install -y meson
-                    RESULT_VARIABLE MESON_INSTALL_RESULT)
-    if(NOT MESON_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "${PKG_MGR} install meson failed with ${MESON_INSTALL_RESULT}, try installing meson manually and then run cmake again")
-    else()
-        find_program(MESON_EXECUTABLE meson REQUIRED)
-    endif()
-endif()
-
-#
-# We need ninja to install libfuse in build dir.
-#
-find_program(NINJA_EXECUTABLE ninja QUIET)
-if(NOT NINJA_FOUND)
-    message(STATUS "ninja not found, trying to install ninja-build!")
-    execute_process(COMMAND sudo ${PKG_MGR} install -y ninja-build
-                    RESULT_VARIABLE NINJA_INSTALL_RESULT)
-    if(NOT NINJA_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "${PKG_MGR} install ninja-build failed with ${NINJA_INSTALL_RESULT}, try installing ninja-build manually and then run cmake again")
-    else()
-        find_program(NINJA_EXECUTABLE ninja REQUIRED)
-    endif()
-endif()
-
-# Decide fuse3 paths based on ENABLE_DYNAMIC_LINKS.
 if(ENABLE_DYNAMIC_LINKS)
-    # Dynamic: Meson installs directly to /usr/local/lib.
-    set(fuse3_LIBRARY "/usr/local/lib/libfuse3.a")
+    #
+    # For dynamic builds, use system-installed fuse3 shared library
+    #
+    message(STATUS "Using system-installed fuse3 (dynamic linking)")
+    pkg_search_module(FUSE3 REQUIRED fuse3)
+    
+    if(NOT FUSE3_FOUND)
+        message(FATAL_ERROR "fuse3 not found! Please install fuse3-devel package: sudo tdnf install -y fuse3-devel")
+    endif()
+    
+    message(STATUS "Found fuse3 libraries: ${FUSE3_LIBRARIES}")
+    message(STATUS "Found fuse3 include dirs: ${FUSE3_INCLUDE_DIRS}")
+    message(STATUS "Found fuse3 library dirs: ${FUSE3_LIBRARY_DIRS}")
 else()
-    # Static: Use multiarch layout.
+    #
+    # For static builds, build libfuse from source
+    #
+    message(STATUS "Building libfuse from source (static linking)")
+    
+    #
+    # We need meson to compile libfuse.
+    #
+    find_program(MESON_EXECUTABLE meson QUIET)
+    if(NOT MESON_FOUND)
+        message(STATUS "meson not found, trying to install meson!")
+        execute_process(COMMAND sudo ${PKG_MGR} install -y meson
+                        RESULT_VARIABLE MESON_INSTALL_RESULT)
+        if(NOT MESON_INSTALL_RESULT EQUAL "0")
+            message(FATAL_ERROR "${PKG_MGR} install meson failed with ${MESON_INSTALL_RESULT}, try installing meson manually and then run cmake again")
+        else()
+            find_program(MESON_EXECUTABLE meson REQUIRED)
+        endif()
+    endif()
+
+    #
+    # We need ninja to install libfuse in build dir.
+    #
+    find_program(NINJA_EXECUTABLE ninja QUIET)
+    if(NOT NINJA_FOUND)
+        message(STATUS "ninja not found, trying to install ninja-build!")
+        execute_process(COMMAND sudo ${PKG_MGR} install -y ninja-build
+                        RESULT_VARIABLE NINJA_INSTALL_RESULT)
+        if(NOT NINJA_INSTALL_RESULT EQUAL "0")
+            message(FATAL_ERROR "${PKG_MGR} install ninja-build failed with ${NINJA_INSTALL_RESULT}, try installing ninja-build manually and then run cmake again")
+        else()
+            find_program(NINJA_EXECUTABLE ninja REQUIRED)
+        endif()
+    endif()
+
+    # Use multiarch layout for static builds
     set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
+    set(fuse3_INCLUDE_DIR "/usr/local/include")
+
+    add_custom_command(
+        OUTPUT ${fuse3_LIBRARY}
+        COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static --buildtype=${MESON_BUILD_TYPE}
+        COMMAND ${MESON_EXECUTABLE} compile -C ${LIBFUSE_BUILD_DIR}
+        COMMAND sudo ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
+    )
+
+    add_custom_target(libfuse ALL DEPENDS ${fuse3_LIBRARY})
 endif()
-
-# Include path remains the same for both cases.
-set(fuse3_INCLUDE_DIR "/usr/local/include")
-
-# Meson will install the fuse library and header files in the following paths.
-# set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
-# set(fuse3_INCLUDE_DIR "/usr/local/include")
-
-add_custom_command(
-    OUTPUT ${fuse3_LIBRARY}
-    COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static --buildtype=${MESON_BUILD_TYPE}
-    COMMAND ${MESON_EXECUTABLE} compile -C ${LIBFUSE_BUILD_DIR}
-    COMMAND sudo ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
-)
-
-add_custom_target(libfuse ALL DEPENDS ${fuse3_LIBRARY})
 
 #
 # We need GnuTLS for secure libnfs transport.
@@ -401,7 +418,10 @@ else()
 set(sources ${sources} src/main.cpp)
 add_executable(${CMAKE_PROJECT_NAME}
                ${sources})
-add_dependencies(${CMAKE_PROJECT_NAME} libfuse)
+    # Only add libfuse dependency for static builds
+    if(NOT ENABLE_DYNAMIC_LINKS)
+        add_dependencies(${CMAKE_PROJECT_NAME} libfuse)
+    endif()
 endif()
 
 # All include directories.
@@ -416,10 +436,15 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/spdlog/include")
 
 if(NOT ENABLE_NO_FUSE)
-target_include_directories(${CMAKE_PROJECT_NAME}
-                           PRIVATE "${fuse3_INCLUDE_DIR}")
-target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${fuse3_LIBRARY})
+    if(ENABLE_DYNAMIC_LINKS)
+        # Use system fuse3 include directories
+        target_include_directories(${CMAKE_PROJECT_NAME}
+                                   PRIVATE ${FUSE3_INCLUDE_DIRS})
+    else()
+        # Use built-from-source fuse3 include directory
+        target_include_directories(${CMAKE_PROJECT_NAME}
+                                   PRIVATE "${fuse3_INCLUDE_DIR}")
+    endif()
 endif()
 
 target_compile_options(${CMAKE_PROJECT_NAME}
@@ -490,6 +515,11 @@ if(ENABLE_DYNAMIC_LINKS)
                         nlohmann_json::nlohmann_json
                         uuid
                         GnuTLS::GnuTLS)
+  
+  # Link against system fuse3 (only if not building nofuse)
+  if(NOT ENABLE_NO_FUSE)
+    target_link_libraries(${CMAKE_PROJECT_NAME} ${FUSE3_LIBRARIES})
+  endif()
 else()
   # Static linking: Use static-libgcc/libstdc++ and explicit gnutls libraries
   target_link_libraries(${CMAKE_PROJECT_NAME}
@@ -506,6 +536,11 @@ else()
                         Azure::azure-storage-blobs
                         nlohmann_json::nlohmann_json
                         uuid)
+  
+  # Link against static fuse3 (only if not building nofuse)
+  if(NOT ENABLE_NO_FUSE)
+    target_link_libraries(${CMAKE_PROJECT_NAME} ${fuse3_LIBRARY})
+  endif()
 endif()
 
 if(ENABLE_TCMALLOC)
