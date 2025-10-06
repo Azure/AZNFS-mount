@@ -184,24 +184,40 @@ if(ENABLE_DYNAMIC_LINKS)
     # For dynamic builds, use system-installed fuse3 shared library
     #
     message(STATUS "Using system-installed fuse3 (dynamic linking)")
-    pkg_search_module(FUSE3 REQUIRED fuse3-devel)
-    
+
+    # First try to find fuse3 via pkg-config
+    find_package(PkgConfig REQUIRED)
+    pkg_search_module(FUSE3 QUIET fuse3)
+
     if(NOT FUSE3_FOUND)
-        message(FATAL_ERROR "fuse3 not found! Please install fuse3-devel package: sudo tdnf install -y fuse3-devel")
+        message(STATUS "fuse3 not found via pkg-config, trying to install the devel package")
+
+        if(PKG_MGR STREQUAL "apt")
+            set(FUSE3_PKG "libfuse3-dev")
+        else()
+            set(FUSE3_PKG "fuse3-devel")
+        endif()
+
+        execute_process(COMMAND sudo ${PKG_MGR} install -y ${FUSE3_PKG}
+                        RESULT_VARIABLE FUSE3_INSTALL_RESULT)
+
+        if(NOT FUSE3_INSTALL_RESULT EQUAL "0")
+            message(FATAL_ERROR "Failed to install ${FUSE3_PKG}, please install manually")
+        endif()
+
+        # Retry finding fuse3 after installation
+        pkg_search_module(FUSE3 REQUIRED fuse3)
     endif()
-    
+
     message(STATUS "Found fuse3 libraries: ${FUSE3_LIBRARIES}")
     message(STATUS "Found fuse3 include dirs: ${FUSE3_INCLUDE_DIRS}")
     message(STATUS "Found fuse3 library dirs: ${FUSE3_LIBRARY_DIRS}")
 
     target_include_directories(${CMAKE_PROJECT_NAME}
-        PRIVATE
-        ${FUSE3_INCLUDE_DIRS}
+        PRIVATE ${FUSE3_INCLUDE_DIRS}
     )
 
-    target_link_libraries(${CMAKE_PROJECT_NAME}
-        ${FUSE3_LIBRARIES}
-    )
+    target_link_libraries(${CMAKE_PROJECT_NAME} ${FUSE3_LIBRARIES})
 else()
     #
     # For static builds, build libfuse from source
