@@ -212,12 +212,6 @@ if(ENABLE_DYNAMIC_LINKS)
     message(STATUS "Found fuse3 libraries: ${FUSE3_LIBRARIES}")
     message(STATUS "Found fuse3 include dirs: ${FUSE3_INCLUDE_DIRS}")
     message(STATUS "Found fuse3 library dirs: ${FUSE3_LIBRARY_DIRS}")
-
-    target_include_directories(${CMAKE_PROJECT_NAME}
-        PRIVATE ${FUSE3_INCLUDE_DIRS}
-    )
-
-    target_link_libraries(${CMAKE_PROJECT_NAME} ${FUSE3_LIBRARIES})
 else()
     #
     # For static builds, build libfuse from source
