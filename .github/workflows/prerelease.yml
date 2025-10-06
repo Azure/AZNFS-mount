@@ -93,7 +93,7 @@ jobs:
           zlib zlib-devel libuuid-devel gnutls gnutls-devel nfs-utils \
           libyaml-devel spdlog-devel nlohmann-json-devel cmake make \
           pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build binutils \
-          kernel-headers kernel-devel autoconf automake libtool
+          kernel-headers kernel-devel autoconf automake libtool fuse3-devel
 
     - name: Run Package.sh for azurelinux
       run: |
