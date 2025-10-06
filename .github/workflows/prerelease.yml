@@ -27,7 +27,7 @@ permissions:
   contents: write
 
 jobs:
-  package_mount_helper_amd64:
+  package_mount_helper_ubuntu_amd64:
     name: Package and Release ${{ github.event.inputs.versionName }} for amd64 (Test Release)
     runs-on: ubuntu-22.04
     steps:
@@ -76,7 +76,7 @@ jobs:
           New Test Release ${{ github.event.inputs.versionName }}
 
   # NOTE: COMMENT THIS JOB IF AZURE LINUX RUNNER IS NOT CONNECTED  
-  package_mount_helper_azurelinux:
+  package_mount_helper_azurelinux_amd64:
     name: Package and Release ${{ github.event.inputs.versionName }} for azurelinux
     runs-on: self-hosted
     steps:
@@ -116,7 +116,7 @@ jobs:
         body: |
           New Release ${{ github.event.inputs.versionName }}
 
-  package_mount_helper_arm64:
+  package_mount_helper_ubuntu_arm64:
     name: Package and Release ${{ github.event.inputs.versionName }} for arm64 (Test Release)
     runs-on: ubuntu-22.04-arm
     steps:
