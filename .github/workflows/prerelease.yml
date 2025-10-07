@@ -29,7 +29,7 @@ permissions:
 jobs:
   package_mount_helper_ubuntu_amd64:
     name: Package and Release ${{ github.event.inputs.versionName }} for amd64 (Test Release)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
     - name: Check Version Number
       shell: bash
@@ -118,7 +118,7 @@ jobs:
 
   package_mount_helper_ubuntu_arm64:
     name: Package and Release ${{ github.event.inputs.versionName }} for arm64 (Test Release)
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-24.04-arm
     steps:
     - name: Check Version Number
       shell: bash
