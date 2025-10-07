@@ -577,12 +577,4 @@ if(ENABLE_JEMALLOC)
   endif()
 endif()
 
-# --- Debug: Print all static libraries linked ---
-get_target_property(LINK_LIBS ${CMAKE_PROJECT_NAME} LINK_LIBRARIES)
-message(STATUS "==== Libraries linked to ${CMAKE_PROJECT_NAME} ====")
-foreach(lib IN LISTS LINK_LIBS)
-    message(STATUS "  ${lib}")
-endforeach()
-message(STATUS "===============================================")
-
 install(TARGETS ${CMAKE_PROJECT_NAME})
