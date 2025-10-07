@@ -67,21 +67,18 @@ generate_rpm_package()
 	# copy the aznfsclient config file.
 	cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 
-	if [ "$rpm_dir" != "azurelinux" ]; then
-		# copy the aznfsclient binary.
-		cp -avf ${aznfsclient} ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient
-	else
-		# Define the final target location for aznfsclient
-		aznfsclient_target="${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient"
+	# Common handling for aznfsclient binary copy across all distros.
+	# Define the source and destination for aznfsclient.
+	aznfsclient_src="${SOURCE_DIR}/turbonfs/build/aznfsclient"
+	aznfsclient_target="${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient"
 
-		# Copy the built aznfsclient binary to the target
-		cp -avf "${SOURCE_DIR}/turbonfs/build/aznfsclient" "${aznfsclient_target}"
+	# Copy the built aznfsclient binary to the target
+	cp -avf "${aznfsclient_src}" "${aznfsclient_target}"
 
-		# Optional: fail early if copy fails
-		if [ ! -f "${aznfsclient_target}" ]; then
-			echo "Error: aznfsclient failed to copy to ${aznfsclient_target}"
-			exit 1
-		fi
+	# Fail early if copy fails
+	if [ ! -f "${aznfsclient_target}" ]; then
+		echo "Error: aznfsclient failed to copy to ${aznfsclient_target}"
+		exit 1
 	fi
 
 	if [ "$rpm_dir" != "azurelinux" ]; then
