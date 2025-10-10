@@ -98,7 +98,7 @@ stages:
                 zlib zlib-devel libuuid-devel gnutls gnutls-devel nfs-utils \
                 libyaml-devel spdlog-devel nlohmann-json-devel cmake make \
                 pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build binutils \
-                kernel-headers kernel-devel autoconf automake libtool jemalloc-devel
+                kernel-headers kernel-devel autoconf automake libtool jemalloc-devel fuse3-devel
             displayName: "Install prerequisites on Azure Linux"
           
           # note: remove later.
