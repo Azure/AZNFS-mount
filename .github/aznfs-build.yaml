@@ -176,6 +176,7 @@ stages:
               export SOURCE_DIR=$(System.DefaultWorkingDirectory)
               export BUILD_TYPE=${{ parameters.buildType }}
               export BUILD_MACHINE=ubuntu
+              export DYNAMIC_LINKING=false
               chmod +x $SOURCE_DIR/generate_package.sh
               $SOURCE_DIR/generate_package.sh
             displayName: "Run Package Script"

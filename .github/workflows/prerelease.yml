@@ -22,6 +22,10 @@ on:
         - Release
         - Debug
         default: 'Release'
+      dynamicLinking:
+        description: 'Enable Dynamic Linking for Turbo Client'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -56,6 +60,7 @@ jobs:
         export SOURCE_DIR=$GITHUB_WORKSPACE/amd64
         export BUILD_TYPE=${{ github.event.inputs.buildType }}
         export BUILD_MACHINE=ubuntu
+        export DYNAMIC_LINKING=${{ github.event.inputs.dynamicLinking }}
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
     - name: Create Test Release
@@ -102,6 +107,7 @@ jobs:
         export SOURCE_DIR=$GITHUB_WORKSPACE/azurelinux
         export BUILD_TYPE=${{ github.event.inputs.buildType }}
         export BUILD_MACHINE=azurelinux
+        export DYNAMIC_LINKING=true
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
 
@@ -116,6 +122,7 @@ jobs:
         body: |
           New Release ${{ github.event.inputs.versionName }}
 
+  # TODO: add export DYNAMIC_LINKING.
   package_mount_helper_ubuntu_arm64:
     name: Package and Release ${{ github.event.inputs.versionName }} for arm64 (Test Release)
     runs-on: ubuntu-22.04-arm
@@ -144,6 +151,8 @@ jobs:
         export STG_DIR=$GITHUB_WORKSPACE/arm64
         export SOURCE_DIR=$GITHUB_WORKSPACE/arm64
         export BUILD_TYPE=${{ github.event.inputs.buildType }}
+        export BUILD_MACHINE=ubuntu
+        export DYNAMIC_LINKING=false
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
     - name: Create Test Release
