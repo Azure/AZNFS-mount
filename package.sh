@@ -276,7 +276,7 @@ else
 fi
 
 # Run azurelinux packaging only on azurelinux runner
-if [ "$BUILD_MACHINE" == "azurelinux" ]; then
+if [ "$BUILD_MACHINE" == "azurelinux" || "$DYNAMIC_LINKING" == "true" ]; then
     DYNAMIC_LINKS=ON
 else
 	DYNAMIC_LINKS=OFF
@@ -291,6 +291,7 @@ cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DENABLE_PARANOID=${PARANOID} \
       -DENABLE_INSECURE_AUTH_FOR_DEVTEST=${INSECURE_AUTH_FOR_DEVTEST} \
 	  -DENABLE_DYNAMIC_LINKS=${DYNAMIC_LINKS} \
+	  -DBUILD_MACHINE=${BUILD_MACHINE} \
       -DPACKAGE_VERSION="${RELEASE_NUMBER}" \
       -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
 make
@@ -317,32 +318,37 @@ if [ "$BUILD_MACHINE" != "azurelinux" ]; then
 	aznfsclient=${STG_DIR}/deb/${pkg_dir}/sbin/aznfsclient
 	cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
 
-	# Package aznfsclient dependencies in opt_dir.
-	libs_dir=${STG_DIR}/deb/${pkg_dir}${opt_dir}/libs
-	mkdir -p ${libs_dir}
+	if [ "$DYNAMIC_LINKING" == "false" ]; then
+		# Package aznfsclient dependencies in opt_dir.
+		libs_dir=${STG_DIR}/deb/${pkg_dir}${opt_dir}/libs
+		mkdir -p ${libs_dir}
 
-	# Copy the dependencies.
-	cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
+		# Copy the dependencies.
+		cp -avfH $(ldd ${aznfsclient} | grep "=>" | awk '{print $3}') ${libs_dir}
 
-	#
-	# Patch all the libs to reference shared libs from ${libs_dir}.
-	# This is our very simple containerization.
-	#
-	for lib in ${libs_dir}/*.so*; do
-		echo "Setting rpath to ${opt_dir}/libs for $lib"
-		patchelf --set-rpath ${opt_dir}/libs "$lib"
-	done
+		#
+		# Patch all the libs to reference shared libs from ${libs_dir}.
+		# This is our very simple containerization.
+		#
+		for lib in ${libs_dir}/*.so*; do
+			echo "Setting rpath to ${opt_dir}/libs for $lib"
+			patchelf --set-rpath ${opt_dir}/libs "$lib"
+		done
 
-	#
-	# Final containerization effort - bundle and use the same interpreter as the
-	# build machine.
-	#
-	ld_linux_path=$(ldd ${aznfsclient} | grep "ld-linux" | awk '{print $1}')
-	ld_linux_name=$(basename "$ld_linux_path")
-	ld_linux="${libs_dir}/${ld_linux_name}"
-	cp -avfH  "${ld_linux_path}" "${ld_linux}"
+		#
+		# Final containerization effort - bundle and use the same interpreter as the
+		# build machine.
+		#
+		ld_linux_path=$(ldd ${aznfsclient} | grep "ld-linux" | awk '{print $1}')
+		ld_linux_name=$(basename "$ld_linux_path")
+		ld_linux="${libs_dir}/${ld_linux_name}"
+		cp -avfH  "${ld_linux_path}" "${ld_linux}"
 
-	patchelf --set-interpreter ${opt_dir}/libs/${ld_linux_name} ${aznfsclient}
+		patchelf --set-interpreter ${opt_dir}/libs/${ld_linux_name} ${aznfsclient}
+	else
+		echo "Adding dynamic link runtime dependencies to control file..."
+		sed -i '/^Depends:/ s/$/, libgnutls30, libjemalloc2, libfuse3-3/' ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+	fi
 
 	# Create the deb package.
 	dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir

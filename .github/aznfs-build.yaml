@@ -12,6 +12,14 @@ parameters:
     - Release
     - Debug
 
+  # When set to true, build uses dynamic linking.
+  # When set to false, build uses static linking.
+  # This parameter helps test dynamic linking behavior on Ubuntu or other distros.
+  - name: dynamicLinking
+    displayName: 'Enable Dynamic Linking for Turbo Client'
+    type: boolean
+    default: false
+
 # Do not trigger this pipeline automatically
 trigger:
   - none
@@ -56,6 +64,7 @@ stages:
               export SOURCE_DIR=$(System.DefaultWorkingDirectory)
               export BUILD_TYPE=${{ parameters.buildType }}
               export BUILD_MACHINE=ubuntu
+              export DYNAMIC_LINKING=${{ parameters.DynamicLinking }}
               chmod +x $SOURCE_DIR/generate_package.sh
               $SOURCE_DIR/generate_package.sh
             displayName: "Run Package Script"
@@ -80,7 +89,7 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
-      - job: package_aznfs_azurelinu_amd64
+      - job: package_aznfs_azurelinux_amd64
         displayName: Package and Release ${{ parameters.versionName }} for azurelinux
         pool:
           name: 'aznfsazurelinuxdemopool'   # Use your self-hosted agent
@@ -116,6 +125,7 @@ stages:
               export SOURCE_DIR=$(System.DefaultWorkingDirectory)
               export BUILD_TYPE=${{ parameters.buildType }}
               export BUILD_MACHINE=azurelinux
+              export DYNAMIC_LINKING=true
               chmod +x $SOURCE_DIR/generate_package.sh 
               $SOURCE_DIR/generate_package.sh
             displayName: "Run Package Script"
@@ -140,6 +150,7 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
+      # TODO: add export DYNAMIC_LINKING.
       - job: package_aznfs_arm64
         displayName: Package and Release ${{ parameters.versionName }} for arm64
         pool:

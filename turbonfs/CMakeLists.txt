@@ -152,10 +152,13 @@ if(NOT azure-storage-blobs-cpp_FOUND)
     message(FATAL_ERROR "azure-storage-blobs-cpp not found! Did you run cmake with -DCMAKE_TOOLCHAIN_FILE?")
 endif()
 
-# Choose package manager based on ENABLE_DYNAMIC_LINKS
-if(ENABLE_DYNAMIC_LINKS)
+# Choose package manager based on BUILD_MACHINE
+if(BUILD_MACHINE STREQUAL "azurelinux")
     set(PKG_MGR tdnf)
+elseif(BUILD_MACHINE STREQUAL "ubuntu")
+    set(PKG_MGR apt)
 else()
+    message(WARNING "Unknown build machine '${BUILD_MACHINE}'. Defaulting to apt.")
     set(PKG_MGR apt)
 endif()
 
