@@ -971,7 +971,8 @@ create_aznfsclient_mount_args()
         echo "[DEBUG] Extracting account, container, and cloud_suffix from nfs_dir='$nfs_dir' and nfs_host='$nfs_host'"
 
         # Extract account and container from nfs_dir
-        account=$(echo "$nfs_dir" | awk -F'/' '{print $2}')
+        # account=$(echo "$nfs_dir" | awk -F'/' '{print $2}')
+        account=$(echo "$nfs_host" | cut -d'.' -f1)
         container=$(echo "$nfs_dir" | awk -F'/' '{print $3}')
         cloud_suffix="${nfs_host#*.}"
 
