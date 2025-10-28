@@ -453,15 +453,15 @@ done_cloud_suffix:
         // If account ends with -secondary, don't repeat account in export_path
         std::string base_account = std::string(account);
         export_path = "/" + base_account.substr(0, base_account.size() - 10) + "/" + std::string(container);
-        AZLogDebug("Account ends with '-secondary'. Using base_account='{}', export_path='{}'",
+        AZLogError("Account ends with '-secondary'. Using base_account='{}', export_path='{}'",
                 base_account.substr(0, base_account.size() - 10), export_path);
     } else {
         export_path = "/" + std::string(account) + "/" + std::string(container);
-        AZLogDebug("Account does not end with '-secondary'. Using export_path='{}'", export_path);
+        AZLogError("Account does not end with '-secondary'. Using export_path='{}'", export_path);
     }
 
-    AZLogDebug("Resolved server='{}'", server);
-    AZLogDebug("Resolved export_path='{}'", export_path);
+    AZLogError("Resolved server='{}'", server);
+    AZLogError("Resolved export_path='{}'", export_path);
 
     // Dump the final config values for debugging.
     AZLogDebug("===== config start =====");
