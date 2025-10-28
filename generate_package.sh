@@ -67,19 +67,9 @@ generate_rpm_package()
 	# copy the aznfsclient config file.
 	cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 
-	# Common handling for aznfsclient binary copy across all distros.
-	# Define the source and destination for aznfsclient.
-	aznfsclient_src="${SOURCE_DIR}/turbonfs/build/aznfsclient"
-	aznfsclient_target="${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient"
-
-	# Copy the built aznfsclient binary to the target
-	cp -avf "${aznfsclient_src}" "${aznfsclient_target}"
-
-	# Fail early if copy fails
-	if [ ! -f "${aznfsclient_target}" ]; then
-		echo "Error: aznfsclient failed to copy to ${aznfsclient_target}"
-		exit 1
-	fi
+	# aznfsclient in the final target dir.
+	aznfsclient=${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient
+	cp -avf ${SOURCE_DIR}/turbonfs/build/aznfsclient ${aznfsclient}
 
 	if [ "$rpm_dir" != "azurelinux" ]; then
 		#
@@ -122,9 +112,9 @@ generate_rpm_package()
 		sed -i -e "s/PROCPS_PACKAGE_NAME/sysvinit-tools/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/DISTRO/suse/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	else
-		if [ "$rpm_dir" == "azurelinux" ]; then
-			sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}-azurelinux/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		fi
+		# if [ "$rpm_dir" == "azurelinux" ]; then
+		# 	sed -i -e "s/AZNFS_PACKAGE_NAME/${pkg_name}-azurelinux/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		# fi
 
 		sed -i -e "s/NETCAT_PACKAGE_NAME/nmap-ncat/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		# In new versions of Centos/RedHat/Rocky, procps-ng provides pidof. For older versions, it is provided by sysvinit-tools but since it is not
@@ -155,31 +145,31 @@ rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
 
 
-if [ "$BUILD_MACHINE" != "azurelinux" ]; then
-	#########################
-	# Generate .deb package #
-	#########################
+# if [ "$BUILD_MACHINE" != "azurelinux" ]; then
+# 	#########################
+# 	# Generate .deb package #
+# 	#########################
 
-	# Create the directory to hold the package control and data files for deb package.
-	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
+# 	# Create the directory to hold the package control and data files for deb package.
+# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
 
-	# Copy the debian control file(s) and maintainer scripts.
-	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
-	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
+# 	# Copy the debian control file(s) and maintainer scripts.
+# 	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
+# 	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
 
-	# Insert current release number.
-	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
-	sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+# 	# Insert current release number.
+# 	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+# 	sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
 
-	# Copy other static package file(s).
-	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
-	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
-	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+# 	# Copy other static package file(s).
+# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
+# 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+# 	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 
-	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
-	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
-	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
-fi
+# 	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
+# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
+# 	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+# fi
 
 
 #
@@ -223,6 +213,30 @@ make
 popd
 
 if [ "$BUILD_MACHINE" != "azurelinux" ]; then
+	#########################
+	# Generate .deb package #
+	#########################
+
+	# Create the directory to hold the package control and data files for deb package.
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
+
+	# Copy the debian control file(s) and maintainer scripts.
+	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
+	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
+
+	# Insert current release number.
+	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+	sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+
+	# Copy other static package file(s).
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+
+	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
+	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+
 	mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
 	cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
