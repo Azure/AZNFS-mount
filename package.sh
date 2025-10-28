@@ -82,12 +82,6 @@ generate_rpm_package()
 
 		# Copy the built aznfsclient binary to the target
 		cp -avf "${SOURCE_DIR}/turbonfs/build/aznfsclient" "${aznfsclient_target}"
-
-		# Optional: fail early if copy fails
-		if [ ! -f "${aznfsclient_target}" ]; then
-			echo "Error: aznfsclient failed to copy to ${aznfsclient_target}"
-			exit 1
-		fi
 	fi
 
 	if [ "$rpm_dir" != "azurelinux" ]; then
@@ -230,31 +224,31 @@ rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 # Insert release number to aznfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
 
-if [ "$BUILD_MACHINE" != "azurelinux" ]; then
-	#########################
-	# Generate .deb package #
-	#########################
+# if [ "$BUILD_MACHINE" != "azurelinux" ]; then
+# 	#########################
+# 	# Generate .deb package #
+# 	#########################
 
-	# Create the directory to hold the package control and data files for deb package.
-	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
+# 	# Create the directory to hold the package control and data files for deb package.
+# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
 
-	# Copy the debian control file(s) and maintainer scripts.
-	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
-	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
+# 	# Copy the debian control file(s) and maintainer scripts.
+# 	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
+# 	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
 
-	# Insert current release number.
-	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
-	sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+# 	# Insert current release number.
+# 	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+# 	sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
 
-	# Copy other static package file(s).
-	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
-	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
-	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+# 	# Copy other static package file(s).
+# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
+# 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+# 	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
 
-	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
-	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
-	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
-fi
+# 	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
+# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
+# 	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+# fi
 
 #
 # We build the turbonfs project here, note that we can set all cmake options in the 
@@ -297,6 +291,30 @@ make
 popd
 
 if [ "$BUILD_MACHINE" != "azurelinux" ]; then
+	#########################
+	# Generate .deb package #
+	#########################
+
+	# Create the directory to hold the package control and data files for deb package.
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
+
+	# Copy the debian control file(s) and maintainer scripts.
+	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
+	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
+
+	# Insert current release number.
+	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+	sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
+
+	# Copy other static package file(s).
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
+
+	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
+	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
+	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
+
 	mkdir -p ${STG_DIR}/deb/${pkg_dir}${opt_dir}
 	cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/src/mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
