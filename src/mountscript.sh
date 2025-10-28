@@ -286,6 +286,14 @@ if [ "$USING_AZNFSCLIENT" != true ] || [ "$1" != "none" ]; then
     fi
 fi
 
+pecho "[DEBUG] nfs_vers       = $nfs_vers"
+pecho "[DEBUG] MOUNT_OPTIONS  = $MOUNT_OPTIONS"
+pecho "[DEBUG] OPTIONS        = $OPTIONS"
+pecho "[DEBUG] nfs_host       = $nfs_host"
+pecho "[DEBUG] nfs_dir        = $nfs_dir"
+pecho "[DEBUG] mount_point    = $mount_point"
+pecho "[DEBUG] OPTDIR         = $OPTDIR"
+
 if [ "$nfs_vers" == "4.1" ]; then
     $OPTDIR/nfsv4mountscript.sh "$MOUNT_OPTIONS" "$OPTIONS" "$nfs_host" "$nfs_dir" "$mount_point"
 else

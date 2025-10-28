@@ -445,15 +445,19 @@ done_cloud_suffix:
 
     // Set aggregates.
     server = std::string(account) + "." + std::string(cloud_suffix);
-    
-    if (std::string(account).size() > 10 &&
-            std::string(account).rfind("-secondary") == std::string(account).size() - 10) {
-        // If account ends with -secondary, don't repeat account in export_path
-        std::string base_account = std::string(account);
-        export_path = "/" + base_account.substr(0, base_account.size() - 10) + "/" + std::string(container);
-    } else {
-        export_path = "/" + std::string(account) + "/" + std::string(container);
-    }
+
+    export_path = "/" + std::string(account) + "/" + std::string(container);
+    // Debug logs for verification
+    AZLogDebug("Resolved server = '{}'", server);
+    AZLogDebug("Resolved export_path = '{}'", export_path);
+    // if (std::string(account).size() > 10 &&
+    //         std::string(account).rfind("-secondary") == std::string(account).size() - 10) {
+    //     // If account ends with -secondary, don't repeat account in export_path
+    //     std::string base_account = std::string(account);
+    //     export_path = "/" + base_account.substr(0, base_account.size() - 10) + "/" + std::string(container);
+    // } else {
+    //     export_path = "/" + std::string(account) + "/" + std::string(container);
+    // }
 
     // Dump the final config values for debugging.
     AZLogDebug("===== config start =====");
