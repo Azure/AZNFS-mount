@@ -772,6 +772,9 @@ int main(int argc, char *argv[])
                               std::to_string(AZNFSCLIENT_VERSION_PATCH) + "]";
     extra_options = std::string("-oallow_other,default_permissions,fsname=") + mount_source;
 
+    // Log the extra options
+    AZLogError("extra_options: {}", extra_options);
+
     if (fuse_opt_add_arg(&args, extra_options.c_str()) == -1) {
         goto err_out1;
     }

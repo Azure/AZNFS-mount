@@ -961,34 +961,60 @@ actual_mount()
 #
 create_aznfsclient_mount_args()
 {
+    echo "[DEBUG] Entering create_aznfsclient_mount_args"
+    echo "[DEBUG] CONFIG_FILE_PATH=$CONFIG_FILE_PATH"
+
     args="--config-file=$CONFIG_FILE_PATH"
 
     # Add account, container and cloud_suffix
     if [ -n "$nfs_dir" ] && [ -n "$nfs_host" ]; then
-        account=$(echo "$nfs_dir" | awk -F'/' '{print $2}')
-        args="$args --account=$account"
+        echo "[DEBUG] Extracting account, container, and cloud_suffix from nfs_dir='$nfs_dir' and nfs_host='$nfs_host'"
+
+        # Extract account and container from nfs_dir
+        # account=$(echo "$nfs_dir" | awk -F'/' '{print $2}')
+        account=$(echo "$nfs_host" | cut -d'.' -f1)
         container=$(echo "$nfs_dir" | awk -F'/' '{print $3}')
-        args="$args --container=$container"
         cloud_suffix="${nfs_host#*.}"
-        args="$args --cloud-suffix=$cloud_suffix"
+
+        echo "[DEBUG] Parsed account='$account'"
+        echo "[DEBUG] Parsed container='$container'"
+        echo "[DEBUG] Parsed cloud_suffix='$cloud_suffix'"
+
+        if [ -z "$account" ] || [ -z "$container" ] || [ -z "$cloud_suffix" ]; then
+            echo "[WARN] One or more parsed fields are empty. Check nfs_dir and nfs_host values!"
+        fi
+
+        args="$args --account=$account --container=$container --cloud-suffix=$cloud_suffix"
+    else
+        echo "[WARN] Missing nfs_dir or nfs_host, skipping account/container/cloud_suffix parsing!"
     fi
 
     # Add nconnect value
     nconnect=$(echo "$MOUNT_OPTIONS" | grep -o 'nconnect=[^,]*' | cut -d'=' -f2)
     if [ -n "$nconnect" ]; then
         args="$args --nconnect=$nconnect"
+        echo "[DEBUG] Added nconnect=$nconnect"
+    else
+        echo "[DEBUG] No nconnect option found in MOUNT_OPTIONS"
     fi
 
     # Add port value
     port=$(echo "$MOUNT_OPTIONS" | grep -o 'port=[^,]*' | cut -d'=' -f2)
     if [ -n "$port" ]; then
         args="$args --port=$port"
+        echo "[DEBUG] Added port=$port"
+    else
+        echo "[DEBUG] No port option found in MOUNT_OPTIONS"
     fi
 
     # Finally add the mount point.
     AZNFSCLIENT_MOUNT_ARGS="$args $mount_point"
 
+    echo "[DEBUG] Final AZNFSCLIENT_MOUNT_ARGS='$AZNFSCLIENT_MOUNT_ARGS'"
+
     turbo_log=$AZNFSC_LOGDIR/turbo$(echo $mount_point | tr -s "/" "_").log
+    echo "[DEBUG] turbo_log=$turbo_log"
+
     if [ ! -f $turbo_log ]; then
         touch $turbo_log
         if [ $? -ne 0 ]; then
@@ -996,6 +1022,7 @@ create_aznfsclient_mount_args()
             eecho "Mount failed!"
             exit 1
         fi
+        echo "[DEBUG] Created turbo log file: $turbo_log"
     fi
 
     #
@@ -1003,6 +1030,7 @@ create_aznfsclient_mount_args()
     # All logs from here on will come in that log file.
     #
     LOGFILE=$turbo_log
+    echo "[DEBUG] LOGFILE set to $LOGFILE"
 }
 
 #
@@ -1014,6 +1042,13 @@ create_aznfsclient_mount_args()
 #
 aznfsclient_mount()
 {   
+    echo "[DEBUG] Entering aznfsclient_mount"
+    echo "[DEBUG] CONFIG_FILE_PATH=$CONFIG_FILE_PATH"
+    echo "[DEBUG] nfs_host=$nfs_host"
+    echo "[DEBUG] nfs_dir=$nfs_dir"
+    echo "[DEBUG] mount_point=$mount_point"
+    echo "[DEBUG] MOUNT_OPTIONS=$MOUNT_OPTIONS"
+
     create_aznfsclient_mount_args
 
     # Create named pipe to hold mount status from aznfsclient.
@@ -1023,6 +1058,8 @@ aznfsclient_mount()
         export MOUNT_STATUS_PIPE="/tmp/mount_status_pipe.$$"
     fi
 
+    echo "[DEBUG] MOUNT_STATUS_PIPE=$MOUNT_STATUS_PIPE"
+
     rm -f $MOUNT_STATUS_PIPE
     mkfifo $MOUNT_STATUS_PIPE
 
@@ -1031,10 +1068,14 @@ aznfsclient_mount()
         return 1
     fi
 
+    echo "[DEBUG] Created named pipe successfully."
+
     #
     # Get the gatepass before the actual mount.
     #
     gatepass_mount
+
+    echo "[DEBUG] Launching aznfsclient binary"
     vecho "fuse command: $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f"
     vvecho "Using log file $LOGFILE"
 
@@ -1055,9 +1096,10 @@ aznfsclient_mount()
 
     read_status=$?
 
+    echo "[DEBUG] mount_status=$mount_status, mount_str=$mount_str, read_status=$read_status"
     # Delete the pipe because this is the only reader.
     rm -f $MOUNT_STATUS_PIPE
-
+    
     #
     # Check the exit status to determine if it timed out.
     # If it's not timed out the client should have sent either "0"
@@ -1065,6 +1107,8 @@ aznfsclient_mount()
     # -2 -> auth enabled in config but "az login" not found.
     # -1 -> some other error in mounting.
     # 
+    echo "[DEBUG] Deleted named pipe $MOUNT_STATUS_PIPE"
+
     if [ $read_status -gt 128 ]; then
         eecho "Mount timed out, check $LOGFILE for details!"
         return $read_status
@@ -1082,6 +1126,7 @@ aznfsclient_mount()
         return 1
     else
         vvecho "Mounted successfully."
+        echo "[DEBUG] Mount operation successful."
     fi
 }
 
