@@ -80,7 +80,7 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
-      - job: package_aznfs_azurelinu_amd64
+      - job: package_aznfs_azurelinux_amd64
         displayName: Package and Release ${{ parameters.versionName }} for azurelinux
         pool:
           name: 'aznfsazurelinuxdemopool'   # Use your self-hosted agent
@@ -101,15 +101,6 @@ stages:
                 kernel-headers kernel-devel autoconf automake libtool jemalloc-devel fuse3-devel
             displayName: "Install prerequisites on Azure Linux"
           
-          # note: remove later.
-          - script: |
-              echo "=== Validating Build Environment ==="
-              gcc --version
-              cmake --version
-              tdnf --version
-              echo "Architecture: $(uname -m)"
-            displayName: "Validate build environment"
-
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
               export STG_DIR=$(System.DefaultWorkingDirectory)
@@ -119,14 +110,6 @@ stages:
               chmod +x $SOURCE_DIR/generate_package.sh 
               $SOURCE_DIR/generate_package.sh
             displayName: "Run Package Script"
-
-          # note: remove later.
-          - script: |
-              echo "=== Directory Structure ==="
-              find $(System.DefaultWorkingDirectory) -name "*.rpm" -type f
-              echo "=== STG_DIR Contents ==="
-              ls -la $(System.DefaultWorkingDirectory)
-            displayName: "Debug: List directory structure"
 
           - script: |
               mkdir -p $(Build.ArtifactStagingDirectory)/artifacts/rpmazurelinux

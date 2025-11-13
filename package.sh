@@ -53,7 +53,11 @@ generate_rpm_package()
 
 	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin.
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin
-	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/mount.aznfs
+	if [ "$rpm_dir" == "azurelinux" ]; then
+		gcc ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/mount.aznfs
+	else
+		gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/mount.aznfs
+	fi
 
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}
 	cp -avf ${SOURCE_DIR}/lib/common.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
@@ -223,32 +227,6 @@ rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 
 # Insert release number to aznfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
-
-# if [ "$BUILD_MACHINE" != "azurelinux" ]; then
-# 	#########################
-# 	# Generate .deb package #
-# 	#########################
-
-# 	# Create the directory to hold the package control and data files for deb package.
-# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/DEBIAN
-
-# 	# Copy the debian control file(s) and maintainer scripts.
-# 	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/DEBIAN/* ${STG_DIR}/deb/${pkg_dir}/DEBIAN/
-# 	chmod +x ${STG_DIR}/deb/${pkg_dir}/DEBIAN/*
-
-# 	# Insert current release number.
-# 	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
-# 	sed -i -e "s/BUILD_ARCH/${debarch}/g" ${STG_DIR}/deb/${pkg_dir}/DEBIAN/control
-
-# 	# Copy other static package file(s).
-# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/usr/sbin
-# 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
-# 	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4 ${STG_DIR}/deb/${pkg_dir}/usr/sbin/
-
-# 	# Compile mount.aznfs.c and put the executable into ${STG_DIR}/deb/${pkg_dir}/sbin.
-# 	mkdir -p ${STG_DIR}/deb/${pkg_dir}/sbin
-# 	gcc -static ${SOURCE_DIR}/src/mount.aznfs.c -o ${STG_DIR}/deb/${pkg_dir}/sbin/mount.aznfs
-# fi
 
 #
 # We build the turbonfs project here, note that we can set all cmake options in the 
