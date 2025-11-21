@@ -760,9 +760,16 @@ if [ ! -f "$MOUNTMAPv4" ]; then
     exit 1
 fi
 
+# Need to acquire lock on mountmap while validating chattr functionality
+exec {fd_check}<$MOUNTMAPv4
+flock -e $fd_check
+
 if ! chattr -f +i $MOUNTMAPv4; then
     wecho "chattr does not work for ${MOUNTMAPv4}!"
 fi
+
+flock -u $fd_check
+exec {fd_check}<&-
 
 if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     vecho "notls option is enabled. Mount nfs share without TLS."
