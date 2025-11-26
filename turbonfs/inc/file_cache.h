@@ -1203,6 +1203,14 @@ public:
                  uint64_t& bytes_truncated);
 
     /*
+     * Calculate current cache size by scanning chunkmap.
+     * This is called after truncate clears some chunks from chunkmap.
+     *
+     * Note: Caller must hold chunkmap lock while calling this.
+     */
+    void calculate_cache_size();
+
+    /*
      * Returns all dirty chunks for a given range in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s).
      * Caller will typically sync dirty membuf to Blob and once done must call
