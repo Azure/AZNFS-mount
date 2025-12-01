@@ -1600,7 +1600,7 @@ public:
          */
         static const uint64_t max_dirty_allowed_per_file =
             max_dirty_extent_bytes() * 4;
-        const bool local_pressure =
+        bool local_pressure =
             (bytes_dirty + bytes_commit_pending) > max_dirty_allowed_per_file;
 
         /*

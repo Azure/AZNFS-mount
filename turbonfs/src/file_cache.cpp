@@ -29,7 +29,6 @@
 namespace aznfsc {
 
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_caches = 0;
-
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_chunks_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_get_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_get_g = 0;
@@ -40,6 +39,7 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_allocated_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_cached_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_dirty_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_dirty_membufs_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_flushing_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_commit_pending_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_uptodate_g = 0;
