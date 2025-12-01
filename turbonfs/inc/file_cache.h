@@ -1211,6 +1211,19 @@ public:
     void calculate_cache_size();
 
     /*
+     * Revalidate cache size by recalculatng it.
+     * It is called on open(), as previous inode's cache size may be stale.
+     */
+    void revalidate_cache_size()
+    {
+        if (cache_size != 0)
+        {
+            std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+            calculate_cache_size();
+        }
+    }
+
+    /*
      * Returns all dirty chunks for a given range in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s).
      * Caller will typically sync dirty membuf to Blob and once done must call
