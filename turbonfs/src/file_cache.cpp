@@ -795,6 +795,8 @@ void membuf::set_dirty()
 
     bcc->bytes_dirty_g += length;
     bcc->bytes_dirty += length;
+    bcc->num_dirty_membufs++;
+    bcc->num_dirty_membufs_g++;
 
     assert(bcc->bytes_dirty <= AZNFSC_MAX_FILE_SIZE);
 
@@ -819,6 +821,10 @@ void membuf::clear_dirty()
 
     assert(bcc->bytes_dirty >= length);
     assert(bcc->bytes_dirty_g >= length);
+    assert(bcc->num_dirty_membufs > 0);
+    assert(bcc->num_dirty_membufs_g > 0);
+    bcc->num_dirty_membufs--;
+    bcc->num_dirty_membufs_g--;
     bcc->bytes_dirty -= length;
     bcc->bytes_dirty_g -= length;
 

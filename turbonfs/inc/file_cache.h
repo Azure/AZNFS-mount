@@ -1604,6 +1604,25 @@ public:
             (bytes_dirty + bytes_commit_pending) > max_dirty_allowed_per_file;
 
         /*
+         * In case of smaller writes, number of dirty membufs will be more
+         * than the dirty bytes. So we also check if number of dirty membufs
+         * exceed a threshold, which is derived from max dirty extent bytes.
+         * This will help in keep our byte cache map size under control.
+         *
+         * Note: Block size below 64KB consider as smaller writes for those,
+         *       if we have more than 16 x (max_dirty_extent_bytes()/1MB) membufs
+         *       dirty, we consider that as local pressure.
+         *       f.e. max_dirty_extent_bytes() = 1GB cause 16K dirty membufs to
+         *       trigger inline write.
+         */
+        if (!local_pressure) {
+            static const uint64_t max_dirty_membufs_allowed_per_file =
+                (max_dirty_extent_bytes() * 16)/(1024 * 1024ULL);
+            local_pressure = num_dirty_membufs >
+                              max_dirty_membufs_allowed_per_file;
+        }
+
+        /*
          * TODO: Add counter/stats for counting how many times we forced
          *       inline write due to local and how many times due to global
          *       reasons.
@@ -1772,6 +1791,7 @@ public:
     std::atomic<uint64_t> bytes_allocated = 0;
     std::atomic<uint64_t> bytes_cached = 0;
     std::atomic<uint64_t> bytes_dirty = 0;
+    std::atomic<uint64_t> num_dirty_membufs = 0;
     std::atomic<uint64_t> bytes_flushing = 0;
     std::atomic<uint64_t> bytes_commit_pending = 0;
     std::atomic<uint64_t> bytes_uptodate = 0;
@@ -1791,6 +1811,7 @@ public:
     static std::atomic<uint64_t> bytes_allocated_g;
     static std::atomic<uint64_t> bytes_cached_g;
     static std::atomic<uint64_t> bytes_dirty_g;
+    static std::atomic<uint64_t> num_dirty_membufs_g;
     static std::atomic<uint64_t> bytes_flushing_g;
     static std::atomic<uint64_t> bytes_commit_pending_g;
     static std::atomic<uint64_t> bytes_uptodate_g;
