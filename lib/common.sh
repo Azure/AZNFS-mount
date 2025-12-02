@@ -26,7 +26,7 @@ MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 # This stores the map of local IP and share name an external file endpoint IP.
 #
 MOUNTMAPv4NONTLS="${OPTDIRDATA}/mountmapv4nontls"
-VIRTUALFSLOCATION="${OPTDIRDATA}/fslocation" #test file now
+VIRTUALFSLOCATION="${OPTDIRDATA}/fslocation" #test file now #Daniewo change this to add CRC
 MOUNTMAPFILE=""
 
 #
@@ -481,7 +481,34 @@ create_mountmap_file_nontlsv4()
         chattr -f +i ${!mountmap_filename_nontls}
     fi
 
-    local fslocation_filename=VIRTUALFSLOCATION
+    local fslocation_filename=VIRTUALFSLOCATION #DANIEWO Dynamically add the name here to be with account name crc
+
+    local input="$l_host"
+    local key="${2:-abc}"
+    local acc=0 i b kb xored shift
+    local -a bytes kbytes
+
+    # Read raw byte values (decimal) for input and key
+    LC_ALL=C mapfile -t bytes  < <(printf '%s' "$input" | od -An -v -tu1)
+    LC_ALL=C mapfile -t kbytes < <(printf '%s' "$key"   | od -An -v -tu1)
+    local keylen=${#kbytes[@]}
+
+    # C-style for loop in Bash: for (( init ; cond ; inc )); do ... done
+    for (( i=0; i<${#bytes[@]}; i++ )); do
+        b=${bytes[i]}
+        kb=${kbytes[i % keylen]}
+        xored=$(( b ^ kb ))                 # unsigned char xored = utf8str[i] ^ key[i % key.size()]
+        shift=$(( (i % 4) * 8 ))            # ((i % 4) * 8)
+        acc=$(( acc | ((xored & 0xFF) << shift) ))  # calculatedCrc32 |= (UINT32)xored << shift
+    done
+
+    printf '0x%08X\n' $(( acc & 0xFFFFFFFF ))
+    
+    local fslocation_filename="${fslocation_filename}_${crc32}"
+
+    eecho "[FSLOCATION NAME]=${$fslocation_filename}"
+
+
     if [ ! -f ${!fslocation_filename} ]; then
         touch ${!fslocation_filename}
         if [ $? -ne 0 ]; then
