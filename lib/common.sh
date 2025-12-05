@@ -484,6 +484,7 @@ create_mountmap_file_nontlsv4()
     local fslocation_filename=VIRTUALFSLOCATION #DANIEWO Dynamically add the name here to be with account name crc
 
     local input="$l_host"
+    eecho "LHOST=${l_host}"
     local key="${2:-abc}"
     local acc=0 i b kb xored shift
     local -a bytes kbytes
@@ -506,7 +507,7 @@ create_mountmap_file_nontlsv4()
     
     local fslocation_filename="${fslocation_filename}_${crc32}"
 
-    eecho "[FSLOCATION NAME]=${$fslocation_filename}"
+    eecho "[FSLOCATION NAME]=${fslocation_filename}"
 
 
     if [ ! -f ${!fslocation_filename} ]; then
