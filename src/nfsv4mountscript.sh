@@ -1137,6 +1137,9 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         fi
     fi
 
+    #daniewo 12-5-2025 also add with nfs_host to calculate the crc for the fslocation file store here
+    eecho "daniewo host name is $nfs_host"
+
     # daniewo check if nfs_host here needs to be changed to a local_ip (proxy)
     # nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")
     #nfs_host is the fqdn, we need to mount using l_ip and not nfs_host
