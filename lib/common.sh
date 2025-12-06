@@ -504,6 +504,7 @@ create_mountmap_file_nontlsv4()
     done
 
     printf '0x%08X\n' $(( acc & 0xFFFFFFFF ))
+    eecho "CRC32 calculated is $acc"
     
     local fslocation_filename="${fslocation_filename}_${crc32}"
 
