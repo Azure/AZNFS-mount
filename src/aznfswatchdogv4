@@ -260,6 +260,8 @@ process_nfsv4_mounts()
             #when prt and/or migration has completed, new_ip will be updated. not sure about the lag.
 
             local fslocation_entry=$(grep $l_ip $VIRTUALFSLOCATION)
+            #here it needs to grep for the matching file name AZNFS.txt12345 for the current IP and match against.
+            #here we need to have the file name as part of reading from mountmapv4nontls
             #probably need to check if it returns empty as well.
             #we grab the entire lines, for each entry etc. 
             #only do is fslocation actually returns a nonzero line
@@ -466,6 +468,7 @@ process_nfsv4_nontlsmounts()
 {
     epoch_now=$(date +%s)
     vecho "Process nfsv4 non tls mounts"
+    eecho "Daniewo process non tls mounts now"
     #
     # Go over all lines in MOUNTMAPv4NONTLS and check them for two things:
     # 1. Is that entry still in use by at least one aznfs mount, if not remove the entry.
@@ -510,9 +513,10 @@ process_nfsv4_nontlsmounts()
         fi
         #
         # MOUNTMAPv4nontls line is of the form:
-        # account.blob.preprod.core.windows.net <local ip> <public ip> [<PID>]
+        # account.blob.preprod.core.windows.net <local ip> <public ip> [<PID>] crc32
+        # compare publicIP and crc32
         #
-        IFS=" " read l_host l_ip l_nfsip <<< "$line"
+        IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
         eecho "l_host: $l_host"
 
@@ -696,8 +700,8 @@ fi
 
 while :; do
     sleep $MONITOR_INTERVAL_SECS
-    process_nfsv4_mounts
-    #process_nfsv4_nontlsmounts
+    #process_nfsv4_mounts
+    process_nfsv4_nontlsmounts
     #daniewo process nontlsmounts and track for migration
 
 done

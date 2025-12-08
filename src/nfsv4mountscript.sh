@@ -1159,6 +1159,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     done
 
     acc=$(( acc & 0xFFFFFFFF ))
+   
 
     eecho "Test val is $acc"
     fileName="VIRTUALFSLOCATION"
