@@ -1139,6 +1139,29 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
 
     #daniewo 12-5-2025 also add with nfs_host to calculate the crc for the fslocation file store here
     eecho "daniewo host name is $nfs_host"
+    accountName="testaccount1"
+    key="abc"
+    keylen=${#key}
+
+    acc=0
+    for (( i=0; i<${#accountName}; ++i )); do
+        # Extract single character (byte) from each string
+        ch="${accountName:i:1}"
+        kch="${key:i%keylen:1}"
+
+        # Get decimal byte values
+        b=$(printf '%d' "'$ch")
+        kb=$(printf '%d' "'$kch")
+
+        xored=$(( (b ^ kb) & 0xFF ))
+        shift_amt=$(( (i % 4) * 8 )) 
+        acc=$(( acc ^ (xored << shift_amt ) ))
+    done
+
+    acc=$(( acc & 0xFFFFFFFF ))
+
+    fileName="VIRTUALFSLOCATION"
+    fileName+="$acc"
 
     # daniewo check if nfs_host here needs to be changed to a local_ip (proxy)
     # nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")

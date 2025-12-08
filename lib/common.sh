@@ -483,25 +483,34 @@ create_mountmap_file_nontlsv4()
 
     local fslocation_filename=VIRTUALFSLOCATION #DANIEWO Dynamically add the name here to be with account name crc
 
-    local input="testaccount1"
-    eecho "LHOST=${l_host}"
-    local key="${2:-abc}"
-    local acc=0 i b kb xored shift
-    local -a bytes kbytes
+    
 
-    # Read raw byte values (decimal) for input and key
-    LC_ALL=C mapfile -t bytes  < <(printf '%s' "$input" | od -An -v -tu1)
-    LC_ALL=C mapfile -t kbytes < <(printf '%s' "$key"   | od -An -v -tu1)
-    local keylen=${#kbytes[@]}
+    # accountName="testaccount1"
+    # key="abc"
+    # keylen=${#key}
 
-    # C-style for loop in Bash: for (( init ; cond ; inc )); do ... done
-    for (( i=0; i<${#bytes[@]}; i++ )); do
-        b=${bytes[i]}
-        kb=${kbytes[i % keylen]}
-        xored=$(( b ^ kb ))                 # unsigned char xored = utf8str[i] ^ key[i % key.size()]
-        shift=$(( (i % 4) * 8 ))            # ((i % 4) * 8)
-        acc=$(( acc | ((xored & 0xFF) << shift) ))  # calculatedCrc32 |= (UINT32)xored << shift
-    done
+    # acc=0
+    # for (( i=0; i<${#accountName}; ++i )); do
+    #     # Extract single character (byte) from each string
+    #     ch="${accountName:i:1}"
+    #     kch="${key:i%keylen:1}"
+
+    #     # Get decimal byte values
+    #     b=$(printf '%d' "'$ch")
+    #     kb=$(printf '%d' "'$kch")
+
+    #     xored=$(( (b ^ kb) & 0xFF ))
+    #     shift_amt=$(( (i % 4) * 8 )) 
+    #     acc=$(( acc ^ (xored << shift_amt ) ))
+
+    # done
+
+    # acc=$(( acc & 0xFFFFFFFF ))
+
+    # fileName="VIRTUALFSLOCATION"
+    # fileName+="$acc"
+
+
 
     printf '0x%08X\n' $(( acc & 0xFFFFFFFF ))
     eecho "CRC32 calculated is $acc"
