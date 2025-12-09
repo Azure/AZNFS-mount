@@ -518,9 +518,10 @@ process_nfsv4_nontlsmounts()
         #
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
-        eecho "l_host: $l_host"
+        eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip"
 
-        if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
+        # Daniewo look at the IP line in AZNFS.txt12345 for the file using l_crc32
+        if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" -o -z "$l_crc32" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NONTLS: [$line]!"
             l_mtime=$(ensure_mountmapv3_not_exist "$line")
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
