@@ -1120,7 +1120,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
     fi
 
-    #after checking if the endpoint is mounted with TLS in mountmapv4, check for nontls monutmap file
+    #after checking if the endpoint is mounted with TLS in mountmapv4, check for nontls mountmap file
 
     # Resolve the IP address for the NFS host
     nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv4 "$nfs_host")
@@ -1162,8 +1162,8 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
    
 
     eecho "Test val is $acc"
-    fileName="VIRTUALFSLOCATION"
-    fileName+="$acc"
+    aznfs_file_name="AZNFS.txt${acc}"
+    eecho "AZNFS File NAme is $aznfs_file_name"
 
     # daniewo check if nfs_host here needs to be changed to a local_ip (proxy)
     # nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")
@@ -1196,7 +1196,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     # exit 1
     # fi
 
-    # get local ip for fqdn, this here maps to target
+    # get local ip for fqdn, this here maps to target get_local_ip is from the IPTable
     get_local_ip_for_fqdn $nfs_host
     ret=$? 
 
@@ -1219,6 +1219,24 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         exit 1
     else
         vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
+
+
+        #daniewo add to mountmapv4nontls for the fqdn, local_ip, nfs_ip, AZNFS.txt12345
+        # Acquire lock on the non-TLS mountmap file
+        exec {fd3}<"$MOUNTMAPv4NONTLS"
+        flock -e $fd3
+
+        # Ensure file is writable (remove immutable)
+        chattr -f -i "$MOUNTMAPv4NONTLS"
+
+        # Format: "<FQDN> <LOCAL_IP> <NFS_IP> <AZNFS.txt12345>"
+        new_entry="$nfs_host $LOCAL_IP $nfs_ip $aznfs_file_name"
+        # Reinstate immutability if used
+        chattr -f +i "$MOUNTMAPv4NONTLS"
+
+        # Release lock
+        flock -u $fd3
+        exec {fd3}<&-
     fi
 else
     vecho "Mount nfs share with TLS."
