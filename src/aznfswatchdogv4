@@ -503,7 +503,7 @@ process_nfsv4_nontlsmounts()
     # fi
 
     #do we need to findmnt? copy from nfsv4 or nfsv3 watchdog.
-    findmnt=$(findmnt | grep 'nfs4' | grep -v "$LOCALHOST")
+    
 
     #the bulk of this logic could be shared between v3 and v4 but would need to parameterize the file names
 
@@ -518,7 +518,9 @@ process_nfsv4_nontlsmounts()
         #
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
-        eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip"
+        mountpoint=$(findmnt | grep 'nfs4' | grep -F -- "$l_host" | head -n1 | awk '{print $1}')
+
+        eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip mountpoint: $mountpoint"
 
         #read into the line here to do the ip change detection. this is per Line.
         l_fslocation_line=$(cat "${mount_point}/${l_crc32}")
