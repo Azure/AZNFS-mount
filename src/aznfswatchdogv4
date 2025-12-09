@@ -522,6 +522,8 @@ process_nfsv4_nontlsmounts()
 
         #read into the line here to do the ip change detection. this is per Line.
         l_fslocation_line=$(cat "${mount_point}/${l_crc32}")
+        eecho "file location ${mount_point}/${l_crc32}"
+        eecho "Line l_fslocation_line: $l_fslocation_line"
         read_status=$?
 
         if [ $read_status -ne 0 ]; then
