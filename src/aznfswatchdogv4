@@ -520,6 +520,17 @@ process_nfsv4_nontlsmounts()
 
         eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip"
 
+        #read into the line here to do the ip change detection. this is per Line.
+        l_fslocation_line=$(cat "${mount_point}/${l_crc32}")
+        read_status=$?
+
+        if [ $read_status -ne 0 ]; then
+            eecho "Failed to read from $l_crc32_file"
+            return 1
+        fi
+
+        IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
+
         # Daniewo look at the IP line in AZNFS.txt12345 for the file using l_crc32
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" -o -z "$l_crc32" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NONTLS: [$line]!"
@@ -617,20 +628,20 @@ process_nfsv4_nontlsmounts()
 
         eecho "daniewo local_host is $l_host"
 
-        fqdn_to_find=$l_host
+        # fqdn_to_find=$l_host
         # local fslocation_entry=$grep -m1 "^${fqdn} " $MOUNTMAPv3
         
-        local fslocation_entry=$(grep -m1 $fqdn_to_find $VIRTUALFSLOCATION)
+        #local fslocation_entry=$(grep -m1 $fqdn_to_find $VIRTUALFSLOCATION)
 
-        eecho "daniewo fslocation_entry = $fslocation_entry"
+        #eecho "daniewo fslocation_entry = $fslocation_entry" #Now we need to look at the fslocation file. 
         # FSLOCATION file will have format 
         #lock FSLOCATION and find the line that has the matching FQDN == L_HOST
         # FQDN DestinationIP PRT
         # fqdn_to_find=$l_host
         # nfs_ip=$(grep -m 1 "^$fqdn_to_find " $VIRTUALFSLOCATION | awk '{print $2}')
 
-        IFS=" " read l_fqdn new_ip l_prt <<< $fslocation_entry
-        eecho "daniewo $l_fqdn, $new_ip, $l_prt"
+        #IFS=" " read l_fqdn new_ip l_prt <<< $fslocation_entry
+        #eecho "daniewo $l_fqdn, $new_ip, $l_prt"
 
         #daniewo check why this error code is not working
 
@@ -659,8 +670,8 @@ process_nfsv4_nontlsmounts()
         # If the IP changed for the Blob endpoint, we need to update the DNAT rule.
         # This will take care of migration/failover causing the Blob endpoint IP to change.
         #
-        if [ "$new_ip" != "$l_nfsip" ]; then
-            eecho "daniewwo IP for $l_host changed [$l_nfsip -> $new_ip]."
+        if [ "$l_fslocationIP" != "$l_nfsip" ]; then
+            eecho "daniewwo IP for $l_host changed [$l_nfsip -> $l_fslocationIP]."
 
             #if IP changed, still update the DNAT Rule but also see if this ends up being a ZRS tenant.
             #Not sure what we will do for ZRS though, as we probably should not mount and only detect IP changes from fslocation
@@ -671,7 +682,7 @@ process_nfsv4_nontlsmounts()
             # this can potentially be noisy.
 
             # This will update DNAT rule as well.
-            if ! update_mountmapv3_entry "$line" "$l_host $l_ip $new_ip"; then
+            if ! update_mountmapv3_entry "$line" "$l_host $l_ip $l_fslocationIP"; then
                 eecho "Will reattempt the operation in next iteration."
             else
                 eecho "daniewo empty"
