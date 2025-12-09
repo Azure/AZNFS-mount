@@ -1197,7 +1197,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     # fi
 
     # get local ip for fqdn, this here maps to target get_local_ip is from the IPTable
-    get_local_ip_for_fqdn $nfs_host
+    get_local_ip_for_fqdn $nfs_host   #DANIEWO THIS IS THE CALLER THAT ADDS EVERYTHING INCLUDING INTO MOUNTMAPV4NONTLS.
     ret=$? 
 
     vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."

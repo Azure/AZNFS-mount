@@ -482,43 +482,7 @@ create_mountmap_file_nontlsv4()
     fi
 
     local fslocation_filename=VIRTUALFSLOCATION #DANIEWO Dynamically add the name here to be with account name crc
-
-    
-
-    # accountName="testaccount1"
-    # key="abc"
-    # keylen=${#key}
-
-    # acc=0
-    # for (( i=0; i<${#accountName}; ++i )); do
-    #     # Extract single character (byte) from each string
-    #     ch="${accountName:i:1}"
-    #     kch="${key:i%keylen:1}"
-
-    #     # Get decimal byte values
-    #     b=$(printf '%d' "'$ch")
-    #     kb=$(printf '%d' "'$kch")
-
-    #     xored=$(( (b ^ kb) & 0xFF ))
-    #     shift_amt=$(( (i % 4) * 8 )) 
-    #     acc=$(( acc ^ (xored << shift_amt ) ))
-
-    # done
-
-    # acc=$(( acc & 0xFFFFFFFF ))
-
-    # fileName="VIRTUALFSLOCATION"
-    # fileName+="$acc"
-
-
-
-    printf '0x%08X\n' $(( acc & 0xFFFFFFFF ))
-    eecho "CRC32 calculated is $acc"
-    
-    local fslocation_filename="${fslocation_filename}_${crc32}"
-
-    eecho "[FSLOCATION NAME]=${fslocation_filename}"
-
+    #Daniewo todo 12/8/2025, add code during mountscript to add dynamically for each unique account
 
     if [ ! -f ${!fslocation_filename} ]; then
         touch ${!fslocation_filename}
@@ -544,14 +508,45 @@ ensure_mountmapv3_exist_nolock()
 {
     IFS=" " read l_host l_ip l_nfsip <<< "$1"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
-        eecho "[$1] failed to add to ${MOUNTMAPv3}!"
+        eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
         return 1
     fi
+    eecho "Daniewo updated as part of ensure_mountmapv3_exist_nolock()"
+
+
+    line="$1" 
+    if [ "$AZNFS_VERSION" = "4" ]; then
+        #calculate crc32 and then append to the line
+        IFS="." read l_account <<< "$l_host"
+        #accountName="testaccount1"
+        key="abc"
+        keylen=${#key}
+
+        acc=0
+        for (( i=0; i<${#l_account}; ++i )); do
+            # Extract single character (byte) from each string
+            ch="${l_account:i:1}"
+            kch="${key:i%keylen:1}"
+
+            # Get decimal byte values
+            b=$(printf '%d' "'$ch")
+            kb=$(printf '%d' "'$kch")
+
+            xored=$(( (b ^ kb) & 0xFF ))
+            shift_amt=$(( (i % 4) * 8 )) 
+            acc=$(( acc ^ (xored << shift_amt ) ))
+        done
+
+        acc=$(( acc & 0xFFFFFFFF ))
+        eecho "Test val is $acc"
+            line+=" AZNFS.txt${acc}" #add CRC32 to line
+        fi
 
     egrep -q "^${1}$" $MOUNTMAPFILE
     if [ $? -ne 0 ]; then
         chattr -f -i $MOUNTMAPFILE
-        echo "$1" >> $MOUNTMAPFILE
+        echo "$line" >> $MOUNTMAPFILE #also add the Crc32 here #check the version and then add to the line if it is 4
+        eecho "DANIEWO line= ${line}"
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAPFILE
             eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
