@@ -519,7 +519,8 @@ process_nfsv4_nontlsmounts()
         # compare publicIP and crc32
         #
 
-        #read the mountmap file under lock 
+        # lock mountmap so it is not updated while we are doing a grep on the mountpoints
+        # otherwise it may not have been fully mounted yet
         exec {fd4}<"$MOUNTMAPv4NONTLS"
         flock -e $fd4
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
@@ -695,7 +696,7 @@ process_nfsv4_nontlsmounts()
             # this can potentially be noisy.
 
             # This will update DNAT rule as well.
-            if ! update_mountmapv3_entry "$line" "$l_host $l_ip $l_fslocationIP"; then
+            if ! update_mountmapv3_entry "$line" "$l_host $l_ip $l_fslocationIP $l_crc32"; then
                 eecho "Will reattempt the operation in next iteration."
             else
                 eecho "daniewo empty"
