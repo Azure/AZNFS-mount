@@ -565,7 +565,7 @@ process_nfsv4_nontlsmounts()
         # it around.
         #
         eecho "daniewo l_ip = $l_ip"
-        findmnt=$(findmnt -m | grep "${l_ip}:" >/dev/null)
+        findmnt=$(findmnt -m | grep "${l_ip}" >/dev/null)
         eecho "daniewo findmnt: $findmnt"
         if ! echo "$findmnt" >/dev/null; then
             if $do_unmount_gc; then
