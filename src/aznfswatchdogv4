@@ -498,8 +498,7 @@ process_nfsv4_nontlsmounts()
     # vecho "next: $next_ip_change_detection_epoch"
     do_ip_change_detection=true
     #DANIEWO LOCK THE MOUNTMAPFILEV4 IN CASE A MOUNT IS HAPPENING AT THE SAME TIME, DO NOT PROCESS DURING THEN.
-    exec {fd3}<"$MOUNTMAPv4NONTLS"
-    flock -e $fd3
+    
     # if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
     #     do_ip_change_detection=true
     #         next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)
@@ -519,6 +518,10 @@ process_nfsv4_nontlsmounts()
         # account.blob.preprod.core.windows.net <local ip> <public ip> [<PID>] crc32
         # compare publicIP and crc32
         #
+
+        #read the mountmap file under lock 
+        exec {fd4}<"$MOUNTMAPv4NONTLS"
+        flock -e $fd4
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
         mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$l_ip" | head -n1 | awk '{print $1}')
@@ -537,7 +540,9 @@ process_nfsv4_nontlsmounts()
         fi
 
         IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
-
+        # Release lock
+        flock -u $fd4
+        exec {fd4}<&-
         # Daniewo look at the IP line in AZNFS.txt12345 for the file using l_crc32
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" -o -z "$l_crc32" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NONTLS: [$line]!"
@@ -633,8 +638,6 @@ process_nfsv4_nontlsmounts()
         # and forces the IP to be different. )
         #
         #new_ip=$(resolve_ipv4 "$l_host" "false")
-        # this new_ip will be read from fslocation
-        #use a grep for the line. the format right now will be fqdn nfs_ip
 
         eecho "daniewo local_host is $l_host"
 
@@ -705,9 +708,7 @@ process_nfsv4_nontlsmounts()
         fi
     done
 
-    # Release lock
-    flock -u $fd3
-    exec {fd3}<&-
+    
 
 }
 
