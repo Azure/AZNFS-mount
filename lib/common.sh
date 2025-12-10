@@ -73,7 +73,7 @@ RELEASE_NUMBER_FOR_AKS=x.y.z
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob and nfs file endpoints.
 #
-MONITOR_INTERVAL_SECS=30
+MONITOR_INTERVAL_SECS=60
 
 #
 # ------------------ Common definitions from nfsv3mountscript.sh --------------------
