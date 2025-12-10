@@ -518,7 +518,7 @@ process_nfsv4_nontlsmounts()
         #
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
-        mountpoint=$(findmnt | grep 'nfs4' | grep -F -- "$l_ip" | head -n1 | awk '{print $1}')
+        mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$l_ip" | head -n1 | awk '{print $1}')
 
         eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip mountpoint: $mountpoint"
 
