@@ -518,13 +518,13 @@ process_nfsv4_nontlsmounts()
         #
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
-        mountpoint=$(findmnt | grep 'nfs4' | grep -F -- "$l_host" | head -n1 | awk '{print $1}')
+        mountpoint=$(findmnt | grep 'nfs4' | grep -F -- "$l_ip" | head -n1 | awk '{print $1}')
 
         eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip mountpoint: $mountpoint"
 
         #read into the line here to do the ip change detection. this is per Line.
-        l_fslocation_line=$(cat "${mount_point}/${l_crc32}")
-        eecho "file location ${mount_point}/${l_crc32}"
+        l_fslocation_line=$(cat "${mountpoint}/${l_crc32}")
+        eecho "file location ${mountpoint}/${l_crc32}"
         eecho "Line l_fslocation_line: $l_fslocation_line"
         read_status=$?
 
