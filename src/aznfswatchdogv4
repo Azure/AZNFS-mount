@@ -564,7 +564,7 @@ process_nfsv4_nontlsmounts()
         # As long as we have at least one mount using the MOUNTMAPv3 entry, we leave
         # it around.
         #
-        if ! echo "$findmnt" | grep "${l_ip}:" >/dev/null; then
+        if ! echo "$findmnt -m" | grep "${l_ip}:" >/dev/null; then
             if $do_unmount_gc; then
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
 
