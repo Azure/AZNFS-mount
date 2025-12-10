@@ -497,6 +497,9 @@ process_nfsv4_nontlsmounts()
     # vecho "now: $epoch_now"
     # vecho "next: $next_ip_change_detection_epoch"
     do_ip_change_detection=true
+    #DANIEWO LOCK THE MOUNTMAPFILEV4 IN CASE A MOUNT IS HAPPENING AT THE SAME TIME, DO NOT PROCESS DURING THEN.
+    exec {fd3}<"$MOUNTMAPv4NONTLS"
+    flock -e $fd3
     # if [ $epoch_now -ge $next_ip_change_detection_epoch ]; then
     #     do_ip_change_detection=true
     #         next_ip_change_detection_epoch=$(expr $(date +%s) + $IP_CHANGE_DETECTION_FREQUENCY)
@@ -701,6 +704,10 @@ process_nfsv4_nontlsmounts()
             fi
         fi
     done
+
+    # Release lock
+    flock -u $fd3
+    exec {fd3}<&-
 
 }
 
