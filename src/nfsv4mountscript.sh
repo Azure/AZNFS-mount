@@ -27,8 +27,8 @@ CERT_PATH=
 CERT_UPDATE_COMMAND=
 STUNNEL_CAFILE=
 
-# TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
-CONNECT_PORT=2049
+# TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3. UPDATE BACK AFTER DEMO DANIEWO
+CONNECT_PORT=60304
 
 # Default timeout for mount command to complete in seconds.
 # If the mount command does not complete within this time, the mount is considered failed.
@@ -506,20 +506,21 @@ add_stunnel_configuration()
         return 1
     fi
 
-    echo "verifyChain = yes" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add verifyChain option to $stunnel_conf_file!"
-        return 1
-    fi
+    #TODO: UNCOMMENT AFTER DEMO
+    # echo "verifyChain = yes" >> $stunnel_conf_file
+    # if [ $? -ne 0 ]; then
+    #     chattr -f +i $stunnel_conf_file
+    #     eecho "Failed to add verifyChain option to $stunnel_conf_file!"
+    #     return 1
+    # fi
 
-    stunnel_check_host=$(get_check_host_value "$nfs_host")
-    echo "checkHost = $stunnel_check_host" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add checkHost option to $stunnel_conf_file!"
-        return 1
-    fi
+    # stunnel_check_host=$(get_check_host_value "$nfs_host")
+    # echo "checkHost = $stunnel_check_host" >> $stunnel_conf_file
+    # if [ $? -ne 0 ]; then
+    #     chattr -f +i $stunnel_conf_file
+    #     eecho "Failed to add checkHost option to $stunnel_conf_file!"
+    #     return 1
+    # fi
 
     # TODO: Change to TLSv1.3 once we have TLSv1.3 version enabled.
     echo "sslVersion = TLSv1.2" >> $stunnel_conf_file
