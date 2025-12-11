@@ -515,6 +515,7 @@ ensure_mountmapv3_exist_nolock()
     eecho "Daniewo updated as part of ensure_mountmapv3_exist_nolock()"
 
     line="$1" 
+    wecho "DANIEWO LINE BEFORE ADDED CRC32 IS ${line}"
     if [ "$AZNFS_VERSION" = "4" -a -n "$l_crc32" ]; then
         #calculate crc32 and then append to the line
         IFS="." read l_account <<< "$l_host"
@@ -540,12 +541,12 @@ ensure_mountmapv3_exist_nolock()
         acc=$(( acc & 0xFFFFFFFF ))
         eecho "Test val is $acc"
             line+=" AZNFS.txt${acc}" #add CRC32 to line
-        fi
+    fi
 
     egrep -q "^${1}$" $MOUNTMAPFILE
     if [ $? -ne 0 ]; then
         chattr -f -i $MOUNTMAPFILE
-        echo "$line" >> $MOUNTMAPFILE #also add the Crc32 here #check the version and then add to the line if it is 4
+        echo "$line" >> $MOUNTMAPFILE 
         eecho "DANIEWO line= ${line}"
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAPFILE

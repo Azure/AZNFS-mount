@@ -1138,32 +1138,32 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     fi
 
     #daniewo 12-5-2025 also add with nfs_host to calculate the crc for the fslocation file store here
-    eecho "daniewo host name is $nfs_host"
-    accountName="testaccount1"
-    key="abc"
-    keylen=${#key}
+    # eecho "daniewo host name is $nfs_host"
+    # accountName="testaccount1"
+    # key="abc"
+    # keylen=${#key}
 
-    acc=0
-    for (( i=0; i<${#accountName}; ++i )); do
-        # Extract single character (byte) from each string
-        ch="${accountName:i:1}"
-        kch="${key:i%keylen:1}"
+    # acc=0
+    # for (( i=0; i<${#accountName}; ++i )); do
+    #     # Extract single character (byte) from each string
+    #     ch="${accountName:i:1}"
+    #     kch="${key:i%keylen:1}"
 
-        # Get decimal byte values
-        b=$(printf '%d' "'$ch")
-        kb=$(printf '%d' "'$kch")
+    #     # Get decimal byte values
+    #     b=$(printf '%d' "'$ch")
+    #     kb=$(printf '%d' "'$kch")
 
-        xored=$(( (b ^ kb) & 0xFF ))
-        shift_amt=$(( (i % 4) * 8 )) 
-        acc=$(( acc ^ (xored << shift_amt ) ))
-    done
+    #     xored=$(( (b ^ kb) & 0xFF ))
+    #     shift_amt=$(( (i % 4) * 8 )) 
+    #     acc=$(( acc ^ (xored << shift_amt ) ))
+    # done
 
-    acc=$(( acc & 0xFFFFFFFF ))
+    # acc=$(( acc & 0xFFFFFFFF ))
    
 
-    eecho "Test val is $acc"
-    aznfs_file_name="AZNFS.txt${acc}"
-    eecho "AZNFS File NAme is $aznfs_file_name"
+    # eecho "Test val is $acc"
+    # aznfs_file_name="AZNFS.txt${acc}"
+    # eecho "AZNFS File NAme is $aznfs_file_name"
 
     # daniewo check if nfs_host here needs to be changed to a local_ip (proxy)
     # nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")
@@ -1230,8 +1230,8 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         chattr -f -i "$MOUNTMAPv4NONTLS"
 
         # Format: "<FQDN> <LOCAL_IP> <NFS_IP> <AZNFS.txt12345>"
-        new_entry="$nfs_host $LOCAL_IP $nfs_ip $aznfs_file_name"
-        eecho "nfsIP = $nfs_ip aznfsFileName = $aznfs_file_name"
+        new_entry="$nfs_host $LOCAL_IP $nfs_ip"
+        eecho "nfsIP = $nfs_ip aznfsFileName"
         eecho "New entry to add to MOUNTMAPv4NONTLS: $new_entry"
         # Reinstate immutability if used
         chattr -f +i "$MOUNTMAPv4NONTLS"
