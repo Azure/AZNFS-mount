@@ -1220,6 +1220,9 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     else
         vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
 
+        #TODO: grep nfs_host and nfs_dir and mount_point because it's possible the l_ip may used from a previous connection
+        # and mismatch. So you would have to update localip in the mountmapv4nontls file
+
 
         #daniewo add to mountmapv4nontls for the fqdn, local_ip, nfs_ip, AZNFS.txt12345
         # Acquire lock on the non-TLS mountmap file
