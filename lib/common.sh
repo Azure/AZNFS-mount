@@ -543,7 +543,7 @@ ensure_mountmapv3_exist_nolock()
             line+=" AZNFS.txt${acc}" #add CRC32 to line
     fi
 
-    egrep -q "^${1}$" $MOUNTMAPFILE
+    egrep -q "^${line}$" $MOUNTMAPFILE
     if [ $? -ne 0 ]; then
         chattr -f -i $MOUNTMAPFILE
         echo "$line" >> $MOUNTMAPFILE 
