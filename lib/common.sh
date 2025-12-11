@@ -507,7 +507,7 @@ create_mountmap_file_nontlsv4()
 #
 ensure_mountmapv3_exist_nolock()
 {
-    IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$1"
+    IFS=" " read l_host l_ip l_nfsip <<< "$1"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
         eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
         return 1
@@ -516,7 +516,7 @@ ensure_mountmapv3_exist_nolock()
 
     line="$1" 
     wecho "DANIEWO LINE BEFORE ADDED CRC32 IS ${line}"
-    if [ "$AZNFS_VERSION" = "4" -a -n "$l_crc32" ]; then
+    if [ "$AZNFS_VERSION" = "4" ]; then
         #calculate crc32 and then append to the line
         IFS="." read l_account <<< "$l_host"
         #accountName="testaccount1"
