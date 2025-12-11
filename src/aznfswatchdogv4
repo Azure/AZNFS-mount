@@ -525,7 +525,10 @@ process_nfsv4_nontlsmounts()
         flock -e $fd4
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
-        mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$l_ip" | head -n1 | awk '{print $1}')
+        #DANIEWO TODO: again L_ip maybe invalid as it mounted to the previous IP for now, use l_host and grab the account name
+        accname=$(echo $l_host | awk -F'.file' '{print $1}')
+        eecho "daniewo accname: $accname"
+        mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$accname" | head -n1 | awk '{print $1}')
 
         eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip mountpoint: $mountpoint"
 
