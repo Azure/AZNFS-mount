@@ -394,21 +394,21 @@ resolve_ipv4()
         return 1
     fi
 
-    #
+    # TODO DANIEWO REMOVE  AFTER DEMO
     # Check if the IP-FQDN pair is present in /etc/hosts
     # 
-    if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
-        if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
-            eecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!"
-            eecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes"
-            eecho "Please remove the entry for $hname from /etc/hosts"
-            return 1
-        else
-            wecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!" 1>/dev/null
-            wecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes" 1>/dev/null
-            wecho "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
-        fi
-    fi
+    # if is_present_in_etc_hosts "$ipv4_addr" "$hname"; then
+    #     if [ "$fail_if_present_in_etc_hosts" == "true" ]; then
+    #         eecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!"
+    #         eecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes"
+    #         eecho "Please remove the entry for $hname from /etc/hosts"
+    #         return 1
+    #     else
+    #         wecho "[FATAL] $hname resolved to $ipv4_addr from /etc/hosts!" 1>/dev/null
+    #         wecho "AZNFS depends on dynamically detecting DNS changes for proper handling of endpoint address changes" 1>/dev/null
+    #         wecho "Please remove the entry for $hname from /etc/hosts" 1>/dev/null
+    #     fi
+    # fi
 
     echo $ipv4_addr
     return 0
