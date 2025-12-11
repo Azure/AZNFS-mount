@@ -54,19 +54,20 @@ get_host_from_share()
 
     account="${hostparts[0]}"
 
-    for part in "${hostparts[@]}"; do
-       if [[ "$part" == "file" || "$part" == "blob" ]]; then
-            hostprefix="$part"
-            break
-        fi
-    done
+    #DANIEWO TODO REMOVE AFTER DEMO
+    # for part in "${hostparts[@]}"; do
+    #    if [[ "$part" == "file" || "$part" == "blob" ]]; then
+    #         hostprefix="$part"
+    #         break
+    #     fi
+    # done
 
-    # Check if the prefix matches the expected azprefix
-    if [ "$hostprefix" != "$azprefix" ]; then
-        echo "Bad share name: ${hostshare}."
-        echo "Share must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers"
-        return 1
-    fi
+    # # Check if the prefix matches the expected azprefix
+    # if [ "$hostprefix" != "$azprefix" ]; then
+    #     echo "Bad share name: ${hostshare}."
+    #     echo "Share must be of the form 'account.$azprefix.core.windows.net:/account/container' for vers=$nfs_vers"
+    #     return 1
+    # fi
 
     echo "$host"
 }
