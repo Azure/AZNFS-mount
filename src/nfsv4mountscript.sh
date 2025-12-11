@@ -1231,6 +1231,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
 
         # Format: "<FQDN> <LOCAL_IP> <NFS_IP> <AZNFS.txt12345>"
         new_entry="$nfs_host $LOCAL_IP $nfs_ip $aznfs_file_name"
+        eecho "nfsIP = $nfs_ip aznfsFileName = $aznfs_file_name"
         eecho "New entry to add to MOUNTMAPv4NONTLS: $new_entry"
         # Reinstate immutability if used
         chattr -f +i "$MOUNTMAPv4NONTLS"

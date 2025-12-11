@@ -503,19 +503,19 @@ create_mountmap_file_nontlsv4()
 #
 # This also ensures that the corresponding DNAT rule is created so that MOUNTMAPv3
 # entry and DNAT rule are always in sync.
+# For Nfsv4 Non TLS, also add CRC32 based on the account name
 #
 ensure_mountmapv3_exist_nolock()
 {
-    IFS=" " read l_host l_ip l_nfsip <<< "$1"
+    IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$1"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
         eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
         return 1
     fi
     eecho "Daniewo updated as part of ensure_mountmapv3_exist_nolock()"
 
-
     line="$1" 
-    if [ "$AZNFS_VERSION" = "4" ]; then
+    if [ "$AZNFS_VERSION" = "4" -a -n "$l_crc32" ]; then
         #calculate crc32 and then append to the line
         IFS="." read l_account <<< "$l_host"
         #accountName="testaccount1"
