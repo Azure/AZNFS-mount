@@ -580,8 +580,9 @@ process_nfsv4_nontlsmounts()
         eecho "daniewo mountpoint = $mountpoint"
         findmnt=$(findmnt -m | grep "${mountpoint}" >/dev/null)
         eecho "daniewo findmnt: $findmnt"
+        do_unmount_gc_nfsv4=true
         if ! echo "$findmnt" >/dev/null; then
-            if $do_unmount_gc; then
+            if $do_unmount_gc_nfsv4; then
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
