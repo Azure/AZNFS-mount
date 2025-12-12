@@ -577,14 +577,14 @@ process_nfsv4_nontlsmounts()
         # it around.
         # TODO: For demo, use l_host instead of l_ip for now until we fix the l_ip issue.
         #
-        eecho "daniewo mountpoint = $mountpoint"
+        eecho "daniewo accountname = $accountname"
         #findmnt=$(findmnt -m | grep "${mountpoint}" >/dev/null) bugged as it gives the output to dev/null
-        eecho "daniewo findmnt: $findmnt"
+        eecho "daniewo findmnt: $accountname"
         do_unmount_gc_nfsv4=true
         #if ! echo "$findmnt" >/dev/null; then
-        if ! findmnt -m | grep "${mountpoint}" >/dev/null; then
+        if ! findmnt -m | grep "${accountname}"; then
             if $do_unmount_gc_nfsv4; then
-                pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
+                eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
                 l_mtime=$(ensure_mountmapv3_not_exist "$line" "$mtime_mountmap")
