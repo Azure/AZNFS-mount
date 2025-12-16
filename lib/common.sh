@@ -518,9 +518,7 @@ ensure_mountmapv3_exist_nolock()
     wecho "DANIEWO LINE BEFORE ADDED CRC32 IS ${line}"
     if [ "$AZNFS_VERSION" = "4" ]; then
         #calculate crc32 and then append to the line
-        IFS="." read l_account <<< "$l_host"
-        eecho "l_account is $l_account"
-        #accountName="testaccount1"
+        l_account=${l_host%%.*}
         key="abc"
         keylen=${#key}
 
