@@ -584,7 +584,7 @@ process_nfsv4_nontlsmounts()
         do_unmount_gc_nfsv4=true
         #if ! echo "$findmnt" >/dev/null; then
         if [ -z "$findmnt" ] ; then
-            #if $do_unmount_gc_nfsv4; then
+            if $do_unmount_gc_nfsv4; then
                 eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
@@ -599,7 +599,7 @@ process_nfsv4_nontlsmounts()
                 #
                 [ $? -eq 0 ] && mtime_mountmap=$l_mtime
                 continue
-            #fi
+            fi
         else
             #
             # Verify that iptable entry should be present for corresponding

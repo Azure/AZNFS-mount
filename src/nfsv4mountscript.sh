@@ -1114,6 +1114,18 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         exit 1
     fi
 
+     # Check if the mount to the same endpoint exists that is using non-TLS.
+     mountmapnontls_entry=$(grep -m1 "${nfs_host};" $MOUNTMAPv4NONTLS)
+     if [ -n "$mountmapnontls_entry" ]; then
+        # storage_account=$(echo $mountmap_entry | cut -d';' -f1)
+        eecho "Mount failed!"
+        eecho "Mount to the same endpoint ${nfs_host} exists that is using non-TLS. Cannot mount without non-TLS to the same endpoint as they use the same connection."
+        eecho "If there are no mount using non-TLS on $nfs_host, try mounting again with "clean" option. Otherwise, try unmounting the shares on $nfs_host and run the mount command again."
+        flock -u $fd2
+        exec {fd2}<&-
+        exit 1
+    fi
+
     if [[ "$MOUNT_OPTIONS" == *"notls,"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//notls,/}
     else
@@ -1137,33 +1149,6 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         fi
     fi
 
-    #daniewo 12-5-2025 also add with nfs_host to calculate the crc for the fslocation file store here
-    # eecho "daniewo host name is $nfs_host"
-    # accountName="testaccount1"
-    # key="abc"
-    # keylen=${#key}
-
-    # acc=0
-    # for (( i=0; i<${#accountName}; ++i )); do
-    #     # Extract single character (byte) from each string
-    #     ch="${accountName:i:1}"
-    #     kch="${key:i%keylen:1}"
-
-    #     # Get decimal byte values
-    #     b=$(printf '%d' "'$ch")
-    #     kb=$(printf '%d' "'$kch")
-
-    #     xored=$(( (b ^ kb) & 0xFF ))
-    #     shift_amt=$(( (i % 4) * 8 )) 
-    #     acc=$(( acc ^ (xored << shift_amt ) ))
-    # done
-
-    # acc=$(( acc & 0xFFFFFFFF ))
-   
-
-    # eecho "Test val is $acc"
-    # aznfs_file_name="AZNFS.txt${acc}"
-    # eecho "AZNFS File NAme is $aznfs_file_name"
 
     # daniewo check if nfs_host here needs to be changed to a local_ip (proxy)
     # nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")
