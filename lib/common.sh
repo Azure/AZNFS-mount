@@ -539,7 +539,7 @@ ensure_mountmapv3_exist_nolock()
 
         acc=$(( acc & 0xFFFFFFFF ))
         eecho "Test val is $acc"
-            line+=" AZNFS.txt${acc}" #add CRC32 to line
+            line+=" AZNFSCtrl.txt${acc}" #add CRC32 to line
     fi
 
     egrep -q "^${line}$" $MOUNTMAPFILE
