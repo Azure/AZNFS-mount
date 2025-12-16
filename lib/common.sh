@@ -614,7 +614,7 @@ ensure_mountmapv3_not_exist()
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAPFILE
+            echo "$out" > $MOUNTMAPFILE # Change from echo to printf to prevent the new line when file becomes empty
             ret=$?
             out=
             if [ $ret -ne 0 ]; then

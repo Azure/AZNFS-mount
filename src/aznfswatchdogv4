@@ -691,8 +691,10 @@ process_nfsv4_nontlsmounts()
         # If the IP changed for the Blob endpoint, we need to update the DNAT rule.
         # This will take care of migration/failover causing the Blob endpoint IP to change.
         #
+
+        #if l_nfsip is not empty and l_prt != 0, then we check. Otherwise, don't check.
         eecho "DAniewo updatmountmapv3entry line: $line l_host: $l_host l_ip: $l_ip l_fslocationIP: $l_fslocationIP l_crc32: $l_crc32"
-        if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_nfsip" ]; then
+        if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_nfsip" -a $l_prt != 0 ]; then
             eecho "daniewwo IP for $l_host changed [$l_nfsip -> $l_fslocationIP]."
 
             #if IP changed, still update the DNAT Rule but also see if this ends up being a ZRS tenant.
