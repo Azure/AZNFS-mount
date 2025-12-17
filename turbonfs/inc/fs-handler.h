@@ -381,12 +381,12 @@ static void aznfsc_ll_open(fuse_req_t req,
         if (sync_cache) {
             AZLogDebug("[{}] Sync'ing cache before read", ino);
             inode->flush_cache_and_wait();
-
-            /*
-             * To maintain CTO consistency, we recalculate cache_size.
-             */
-            inode->get_filecache()->revalidate_cache_size();
         }
+
+        /*
+         * To maintain CTO consistency, we recalculate cache_size.
+         */
+        inode->get_filecache()->revalidate_cache_size();
     }
 
     /*

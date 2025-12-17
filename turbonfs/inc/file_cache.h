@@ -1211,6 +1211,15 @@ public:
     void calculate_cache_size();
 
     /*
+     * Calculate dirty cache size by scanning chunkmap.
+     * This is called after read return eof, we need to know
+     * dirty cache size to decide if we can fill buffer with zeros.
+     * If dirty cache size is more than the offset+length being read
+     * we can fill with zeros.
+     */
+    uint64_t calculate_dirty_cache_size();
+
+    /*
      * Revalidate cache size by recalculatng it.
      * It is called on open(), as previous inode's cache size may be stale.
      */

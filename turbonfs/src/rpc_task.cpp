@@ -4031,26 +4031,36 @@ static void read_callback(
         if (res->READ3res_u.resok.eof &&
             (res->READ3res_u.resok.count < issued_length) &&
             ((bc->offset + bc->pvt) < csfsize)) {
-            void *const zb = bc->get_buffer() + bc->pvt;
-            const int64_t zb_len =
-                std::min(csfsize, bc->offset + bc->length) - (bc->offset + bc->pvt);
+            /*
+             * Get last dirty membuf size to see if we can
+             * zero fill the remaining portion of the bc.
+             */
+            auto dirty_cache_size = inode->get_filecache()->calculate_dirty_cache_size();
+            AZLogDebug("[{}] Dirty cache size before zero fill: {} bytes",
+                       ino, dirty_cache_size);
 
-            AZLogDebug("[{}] <{}> read_callback: bc [{}, {}) spans across "
-                       "server file size boundary, filling remaining {} bytes "
-                       "@ offset {}, with 0s. cfsize: {}, sfsize: {}, csfsize: {}",
-                       ino, task->issuing_tid,
-                       issued_offset,
-                       issued_offset + issued_length,
-                       zb_len, bc->offset + bc->pvt,
-                       inode->get_client_file_size(),
-                       inode->get_server_file_size(),
-                       csfsize);
+            if (dirty_cache_size > (bc->offset + bc->pvt)) {
+                void *const zb = bc->get_buffer() + bc->pvt;
+                const int64_t zb_len =
+                    std::min(csfsize, bc->offset + bc->length) - (bc->offset + bc->pvt);
 
-            assert(zb_len > 0);
-            ::memset(zb, 0, zb_len);
-            // Added zb_len more bytes to bc.
-            bc->pvt += zb_len;
-            assert(bc->pvt <= bc->length);
+                AZLogDebug("[{}] <{}> read_callback: bc [{}, {}) spans across "
+                        "server file size boundary, filling remaining {} bytes "
+                        "@ offset {}, with 0s. cfsize: {}, sfsize: {}, csfsize: {}",
+                        ino, task->issuing_tid,
+                        issued_offset,
+                        issued_offset + issued_length,
+                        zb_len, bc->offset + bc->pvt,
+                        inode->get_client_file_size(),
+                        inode->get_server_file_size(),
+                        csfsize);
+
+                assert(zb_len > 0);
+                ::memset(zb, 0, zb_len);
+                // Added zb_len more bytes to bc.
+                bc->pvt += zb_len;
+                assert(bc->pvt <= bc->length);
+            }
         }
 
         /*
