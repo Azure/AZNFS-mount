@@ -1119,7 +1119,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
      if [ -n "$mountmapnontls_entry" ]; then
         # storage_account=$(echo $mountmap_entry | cut -d';' -f1)
         eecho "Mount failed!"
-        eecho "Mount to the same endpoint ${nfs_host} exists that is using non-TLS. Cannot mount without non-TLS to the same endpoint as they use the same connection."
+        eecho "Mount to the same endpoint ${nfs_host} exists that is using non-TLS. Cannot mount to the same endpoint as they use the same connection."
         eecho "If there are no mount using non-TLS on $nfs_host, try mounting again with "clean" option. Otherwise, try unmounting the shares on $nfs_host and run the mount command again."
         flock -u $fd2
         exec {fd2}<&-
