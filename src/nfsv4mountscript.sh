@@ -1115,7 +1115,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     fi
 
      # Check if the mount to the same endpoint exists that is using non-TLS.
-     mountmapnontls_entry=$(grep -m1 "${nfs_host};" $MOUNTMAPv4NONTLS)
+     mountmapnontls_entry=$(grep -m1 "${nfs_host}" $MOUNTMAPv4NONTLS)
      if [ -n "$mountmapnontls_entry" ]; then
         # storage_account=$(echo $mountmap_entry | cut -d';' -f1)
         eecho "Mount failed!"
