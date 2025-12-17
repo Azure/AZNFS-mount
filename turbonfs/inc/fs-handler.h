@@ -319,6 +319,7 @@ static void aznfsc_ll_open(fuse_req_t req,
      * We enable kernel cache explicit for tar and zip files.
      */
     bool require_kernel_cache = inode->get_require_kernel_cache();
+    require_kernel_cache = require_kernel_cache ? true : aznfsc_cfg.cache.data.kernel.enable;
 
     /*
      * We plan to manage our own file cache for better control over writes.
@@ -748,6 +749,7 @@ static void aznfsc_ll_create(fuse_req_t req,
      * See aznfsc_ll_open().
      */
     bool require_kernel_cache = has_tar_or_zip_extension(name);
+    require_kernel_cache = require_kernel_cache ? true : aznfsc_cfg.cache.data.kernel.enable;
 
     fi->direct_io = !require_kernel_cache;
     fi->keep_cache = require_kernel_cache;

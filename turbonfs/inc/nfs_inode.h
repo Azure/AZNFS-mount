@@ -327,8 +327,6 @@ private:
      */
     bool stable_write = true;
 
-    bool require_kernel_cache = false;
-
     /*
      * XXX This is for debugging.
      *     It's set in truncate_start() and cleared in truncate_end().
@@ -354,6 +352,12 @@ public:
      * IMPORTANT: Need to ensure time is sync'ed and it doesn't go back.
      */
     const fuse_ino_t ino;
+
+    /*
+     * Does this inode require kernel cache?
+     */
+    const bool require_kernel_cache;
+
     const uint64_t generation;
 
     /*
