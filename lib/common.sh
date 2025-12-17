@@ -591,7 +591,7 @@ ensure_mountmapv3_not_exist()
         fi
 
         # Delete iptable rule corresponding to the outgoing MOUNTMAPv3 entry.
-        IFS=" " read l_host l_ip l_nfsip <<< "$1"
+        IFS=" " read l_host l_ip l_nfsip l_aznfsctrlfile <<< "$1"
         eecho "Daniewo deleting iptable entry for l_ip = $l_ip l_nfsip = $l_nfsip"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
@@ -652,7 +652,7 @@ update_mountmapv3_entry()
     (
         flock -e 999
 
-        IFS=" " read l_host l_ip l_nfsip_old l_crc32 <<< "$old"
+        IFS=" " read l_host l_ip l_nfsip_old l_aznfsctrlfile <<< "$old"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
                 eecho "[$old] Refusing to remove from ${MOUNTMAPFILE} as old iptable entry could not be deleted!"
@@ -660,7 +660,7 @@ update_mountmapv3_entry()
             fi
         fi
 
-        IFS=" " read l_host l_ip l_nfsip_new l_crc32 <<< "$new"
+        IFS=" " read l_host l_ip l_nfsip_new l_aznfsctrlfile <<< "$new"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
             if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
                 eecho "[$new] Refusing to remove from ${MOUNTMAPFILE} as new iptable entry could not be added!"
