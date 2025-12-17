@@ -308,6 +308,18 @@ static void aznfsc_ll_open(fuse_req_t req,
     AZLogDebug("aznfsc_ll_open(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+
+    // Make sure it's not called for directories.
+    assert(!inode->is_dir());
+
+    /*
+     * Should we require kernel cache for this inode?
+     * We enable kernel cache explicit for tar and zip files.
+     */
+    bool require_kernel_cache = inode->get_require_kernel_cache();
+
     /*
      * We plan to manage our own file cache for better control over writes.
      *
@@ -322,8 +334,8 @@ static void aznfsc_ll_open(fuse_req_t req,
      * doesn't send another write before the prev one completes. We depend
      * on that.
      */
-    fi->direct_io = !aznfsc_cfg.cache.data.kernel.enable;
-    fi->keep_cache = aznfsc_cfg.cache.data.kernel.enable;
+    fi->direct_io = !require_kernel_cache;
+    fi->keep_cache = require_kernel_cache;
     fi->nonseekable = 0;
     fi->parallel_direct_writes = 0;
     fi->noflush = 0;
@@ -333,12 +345,6 @@ static void aznfsc_ll_open(fuse_req_t req,
      *       request is made.
      */
     fi->fh = 12345678;
-
-    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
-    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
-
-    // Make sure it's not called for directories.
-    assert(!inode->is_dir());
 
     /*
      * For cto consistency open should force revalidate the inode by making a
@@ -741,8 +747,10 @@ static void aznfsc_ll_create(fuse_req_t req,
     /*
      * See aznfsc_ll_open().
      */
-    fi->direct_io = !aznfsc_cfg.cache.data.kernel.enable;
-    fi->keep_cache = aznfsc_cfg.cache.data.kernel.enable;
+    bool require_kernel_cache = has_tar_or_zip_extension(name);
+
+    fi->direct_io = !require_kernel_cache;
+    fi->keep_cache = require_kernel_cache;
     fi->nonseekable = 0;
     fi->parallel_direct_writes = 0;
     fi->noflush = 0;

@@ -327,6 +327,8 @@ private:
      */
     bool stable_write = true;
 
+    bool require_kernel_cache = false;
+
     /*
      * XXX This is for debugging.
      *     It's set in truncate_start() and cleared in truncate_end().
@@ -462,7 +464,8 @@ public:
               const struct fattr3 *fattr,
               struct nfs_client *_client,
               uint32_t _file_type,
-              fuse_ino_t _ino = 0);
+              fuse_ino_t _ino = 0,
+              bool require_kernel_cache = false);
 
     ~nfs_inode();
 
@@ -1789,6 +1792,14 @@ public:
     bool is_stable_write() const
     {
         return stable_write;
+    }
+
+    /**
+     * Does this inode require kernel cache?
+     */
+    bool get_require_kernel_cache() const
+    {
+        return require_kernel_cache;
     }
 
     /**
