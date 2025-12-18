@@ -3616,6 +3616,7 @@ void rpc_task::run_read()
                 continue;
             }
 
+            auto dirty_cache_size = filecache_handle->calculate_dirty_cache_size();
             /*
              * Ok, non-uptodate buffer, see if we should read from server or
              * return 0s. We read from server only if at least one byte from
@@ -3625,7 +3626,8 @@ void rpc_task::run_read()
              * with holes aka 0s.
              */
             const bool read_from_server =
-                ((sfsize == -1) || (int64_t) bc_vec[i].offset < sfsize);
+                ((sfsize == -1) || ((int64_t) bc_vec[i].offset < sfsize) ||
+                 ((int64_t) bc_vec[i].offset > dirty_cache_size));
 
             if (!read_from_server) {
                 AZLogDebug("[{}] Hole in cache. offset: {}, length: {}",
@@ -4039,7 +4041,7 @@ static void read_callback(
             AZLogDebug("[{}] Dirty cache size before zero fill: {} bytes",
                        ino, dirty_cache_size);
 
-            if (dirty_cache_size > (bc->offset + bc->pvt)) {
+            if (dirty_cache_size > (int64_t)(bc->offset)) {
                 void *const zb = bc->get_buffer() + bc->pvt;
                 const int64_t zb_len =
                     std::min(csfsize, bc->offset + bc->length) - (bc->offset + bc->pvt);

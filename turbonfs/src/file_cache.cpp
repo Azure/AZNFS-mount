@@ -2045,9 +2045,9 @@ end:
                 ? chunkvec : std::vector<bytes_chunk>();
 }
 
-uint64_t bytes_chunk_cache::calculate_dirty_cache_size()
+int64_t bytes_chunk_cache::calculate_dirty_cache_size()
 {
-    uint64_t dirty_cache_size = 0;
+    int64_t dirty_cache_size = -1;
 
     // Get the chunkmap lock.
     const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
