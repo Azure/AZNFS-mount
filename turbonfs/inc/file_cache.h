@@ -1217,7 +1217,7 @@ public:
      * If dirty cache size is more than the offset+length being read
      * we can fill with zeros.
      */
-    uint64_t calculate_dirty_cache_size();
+    int64_t calculate_dirty_cache_size();
 
     /*
      * Revalidate cache size by recalculatng it.
