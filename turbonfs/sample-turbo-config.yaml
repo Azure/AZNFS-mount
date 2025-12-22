@@ -8,6 +8,9 @@
 # "none" as source in the mount command. In that case account and container
 # are mandatory, cloud_suffix can be guessed and port is default 2048.
 #
+# For accessing the secondary endpoint (RA-GRS), append "-secondary" to the
+# account name, e.g., "myaccount-secondary".
+#
 account: sjc22prdste06hnfsv3acc1
 container: nfsv3test
 
