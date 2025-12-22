@@ -444,11 +444,13 @@ done_cloud_suffix:
     assert(container != nullptr);
 
     // Set aggregates.
-    server = std::string(account) + "." + std::string(cloud_suffix);
-    if (int n = std::string(account).find("-secondary"); n != std::string::npos) {
-        export_path = "/" + account.substr(0, n) + "/" + std::string(container);
+    std::string account_str(account);
+
+    auto n = account_str.find("-secondary");
+    if (n != std::string::npos) {
+        export_path = "/" + account_str.substr(0, n) + "/" + std::string(container);
     } else {
-        export_path = "/" + std::string(account) + "/" + std::string(container);
+        export_path = "/" + account_str + "/" + std::string(container);
     }
 
     // Dump the final config values for debugging.
