@@ -450,6 +450,7 @@ done_cloud_suffix:
 
     // Set aggregates.
     std::string account_str(account);
+    server = account_str + "." + std::string(cloud_suffix);
 
     auto n = account_str.find("-secondary");
     if (n != std::string::npos) {
