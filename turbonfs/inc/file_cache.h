@@ -1203,6 +1203,36 @@ public:
                  uint64_t& bytes_truncated);
 
     /*
+     * Calculate current cache size by scanning chunkmap.
+     * This is called after truncate clears some chunks from chunkmap.
+     *
+     * Note: Caller must hold chunkmap lock while calling this.
+     */
+    void calculate_cache_size();
+
+    /*
+     * Calculate dirty cache size by scanning chunkmap.
+     * This is called after read return eof, we need to know
+     * dirty cache size to decide if we can fill buffer with zeros.
+     * If dirty cache size is more than the offset+length being read
+     * we can fill with zeros.
+     */
+    int64_t calculate_dirty_cache_size();
+
+    /*
+     * Revalidate cache size by recalculatng it.
+     * It is called on open(), as previous inode's cache size may be stale.
+     */
+    void revalidate_cache_size()
+    {
+        if (cache_size != 0)
+        {
+            std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+            calculate_cache_size();
+        }
+    }
+
+    /*
      * Returns all dirty chunks for a given range in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s).
      * Caller will typically sync dirty membuf to Blob and once done must call
