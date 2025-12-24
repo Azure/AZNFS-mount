@@ -965,7 +965,7 @@ create_aznfsclient_mount_args()
 
     # Add account, container and cloud_suffix
     if [ -n "$nfs_dir" ] && [ -n "$nfs_host" ]; then
-        account=$(echo "$nfs_dir" | awk -F'/' '{print $2}')
+        account=$(echo "$nfs_host" | cut -d'.' -f1)
         args="$args --account=$account"
         container=$(echo "$nfs_dir" | awk -F'/' '{print $3}')
         args="$args --container=$container"

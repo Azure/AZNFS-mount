@@ -54,7 +54,7 @@ jobs:
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
         export STG_DIR=$GITHUB_WORKSPACE/amd64
         export SOURCE_DIR=$GITHUB_WORKSPACE/amd64
-        export BUILD_TYPE=${{ github.events.inputs.buildType }}
+        export BUILD_TYPE=${{ github.event.inputs.buildType }}
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
     - name: Create Test Release
@@ -101,7 +101,7 @@ jobs:
         export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
         export STG_DIR=$GITHUB_WORKSPACE/arm64
         export SOURCE_DIR=$GITHUB_WORKSPACE/arm64
-        export BUILD_TYPE=${{ github.events.inputs.buildType }}
+        export BUILD_TYPE=${{ github.event.inputs.buildType }}
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
     - name: Create Test Release

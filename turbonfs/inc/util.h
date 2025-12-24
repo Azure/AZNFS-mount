@@ -57,7 +57,7 @@ uint64_t random_number(uint64_t min, uint64_t max)
 static inline
 bool is_valid_account(const std::string& account)
 {
-    const std::regex rexpr("^[a-z0-9]{3,24}$");
+    const std::regex rexpr("^[a-z0-9]{3,24}(-secondary)?$");
     return std::regex_match(account, rexpr);
 }
 
