@@ -836,7 +836,7 @@ int main(int argc, char *argv[])
         // Set the auth token callback for this connection if auth is enabled.
         set_auth_token_callback(get_auth_token_and_setargs_cb);
     } else {
-        AZLogInfo("We did reach to auth none setting place")
+        AZLogInfo("We did reach to auth none setting place");
         set_auth_token_callback(get_auth_token_and_setargs_cb_none);
     }
 
