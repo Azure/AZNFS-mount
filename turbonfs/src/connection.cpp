@@ -165,6 +165,13 @@ bool nfs_connection::open()
                     client_id.c_str());
         goto destroy_context;
     }
+    AZLogInfo(" Done set auth values in nfs context, "
+                    "exportpath={} authtype={} "
+                    "clientversion={} clientid={}",
+                    mo.export_path.c_str(),
+                    mo.authtype.c_str(),
+                    client_version,
+                    client_id.c_str());
 
     /*
      * Default hash size used for queueing RPC requests is very small.
