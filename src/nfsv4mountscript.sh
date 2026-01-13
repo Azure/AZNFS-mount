@@ -702,7 +702,6 @@ tls_nfsv4_files_share_mount()
     #daniewo do some ip checking
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
 
-
     if [ ! -f $stunnel_conf_file ]; then
         EntryExistinMountMap="false"
     else
@@ -724,7 +723,7 @@ tls_nfsv4_files_share_mount()
                 #
                 # If this echo fails then MOUNTMAPv4 could be truncated.
                 #
-                echo "$out" > $MOUNTMAPv4
+                echo "$out" > $MOUNTMAPv4 
                 ret=$?
                 out=
                 if [ $ret -ne 0 ]; then
@@ -869,7 +868,7 @@ tls_nfsv4_files_share_mount()
         # but as long as one of it tracks I guess? Do we get account name here at all? Problem is that if the first mount is not the one migrating but connected,
         # then there will be a missed migration. But if we do not support multi mount and it is doccumented, then it won't matter because then it will only be the first mount
         # per tenant
-        local mountmap_entry="$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
+        local mountmap_entry="$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout;$crc32"
         chattr -f -i $MOUNTMAPv4
         echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
