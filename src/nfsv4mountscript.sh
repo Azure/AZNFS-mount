@@ -691,7 +691,9 @@ tls_nfsv4_files_share_mount()
     exec {fd2}<$MOUNTMAPv4
     flock -e $fd2
 
-    vecho "nfs_dir=[$nfs_dir], nfs_host_ip=[$storageaccount_ip], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+    crc32=$(get_aznfs_ctrl_filename "$nfs_host")
+
+    vecho "nfs_dir=[$nfs_dir], nfs_host_ip=[$storageaccount_ip], mount_point=[$mount_point], crc_32=[$crc32], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
     IFS=/ read _ storageaccount container extra <<< "$nfs_dir"
 
