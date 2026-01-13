@@ -869,6 +869,7 @@ tls_nfsv4_files_share_mount()
         # then there will be a missed migration. But if we do not support multi mount and it is doccumented, then it won't matter because then it will only be the first mount
         # per tenant
         local mountmap_entry="$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout;$crc32"
+        vecho "Adding mountmap entry: [$mountmap_entry] to $MOUNTMAPv4"
         chattr -f -i $MOUNTMAPv4
         echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
