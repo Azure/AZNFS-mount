@@ -260,19 +260,19 @@ process_nfsv4_mounts()
             #when prt and/or migration has completed, new_ip will be updated. not sure about the lag.
 
             local fslocation_entry=$(grep $l_ip $VIRTUALFSLOCATION)
-            #here it needs to grep for the matching file name AZNFS.txt12345 for the current IP and match against.
-            #here we need to have the file name as part of reading from mountmapv4nontls
-            #probably need to check if it returns empty as well.
-            #we grab the entire lines, for each entry etc. 
-            #only do is fslocation actually returns a nonzero line
-            eecho "daniewo fslocationentry=$fslocation_entry"
+
             if [ -n "$fslocation_entry" ]; then
                 
+                #daniewo loop over entries or only one
                 # for entry in $fslocation_entry; do 
                 #     eecho "daniewo fslocation_entry = $entry"
 
+
+                #daniewo add the same methods for calculating AZNFS.txt file and as part of mountscript for TLS
+                # and track that as part of the files
+
                     #extract fslocation entry
-                    IFS=" " read l_fqdn old_ip new_ip l_prt <<< $fslocation_entry
+                    IFS=" " read l_fqdn old_ip new_ip l_prt <<< $fslocation_entry #this line would change
                     eecho "daniewo $l_fqdn, $old_ip, $new_ip, $l_prt"
                     #if old ip != new ip, then reconfigure files
                     if [ "$l_ip" != "$new_ip" ]; then
@@ -585,7 +585,7 @@ process_nfsv4_nontlsmounts()
         #if ! echo "$findmnt" >/dev/null; then
         if [ -z "$findmnt" ] ; then
             if $do_unmount_gc_nfsv4; then
-                eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
+                eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]." #update to correct file name
 
                 # Delete IFF mountmap is not changed since we read it above.
                 l_mtime=$(ensure_mountmapv3_not_exist "$line" "$mtime_mountmap")

@@ -481,8 +481,7 @@ create_mountmap_file_nontlsv4()
         chattr -f +i ${!mountmap_filename_nontls}
     fi
 
-    local fslocation_filename=VIRTUALFSLOCATION #DANIEWO Dynamically add the name here to be with account name crc
-    #Daniewo todo 12/8/2025, add code during mountscript to add dynamically for each unique account
+    local fslocation_filename=VIRTUALFSLOCATION
 
     if [ ! -f ${!fslocation_filename} ]; then
         touch ${!fslocation_filename}
@@ -494,6 +493,35 @@ create_mountmap_file_nontlsv4()
     fi
 }
 
+#
+# Calculate control file name based on storage account hostname.
+# Returns: AZNFSCtrl.txt<hash> where hash is derived from the account name.
+#
+get_aznfs_ctrl_filename()
+{
+    local hostname="$1"
+    local account_name=${hostname%%.*}
+    local key="abc"
+    local keylen=${#key}
+    local acc=0
+
+    for (( i=0; i<${#account_name}; ++i )); do
+        # Extract single character (byte) from each string
+        local ch="${account_name:i:1}"
+        local kch="${key:i%keylen:1}"
+
+        # Get decimal byte values
+        local b=$(printf '%d' "'$ch")
+        local kb=$(printf '%d' "'$kch")
+
+        local xored=$(( (b ^ kb) & 0xFF ))
+        local shift_amt=$(( (i % 4) * 8 )) 
+        acc=$(( acc ^ (xored << shift_amt ) ))
+    done
+
+    acc=$(( acc & 0xFFFFFFFF ))
+    echo "AZNFSCtrl.txt${acc}"
+}
 
 #
 # MOUNTMAPv3 is accessed by both mount.aznfs and aznfswatchdog service. Update it
@@ -512,41 +540,18 @@ ensure_mountmapv3_exist_nolock()
         eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
         return 1
     fi
-    eecho "Daniewo updated as part of ensure_mountmapv3_exist_nolock()"
-
     line="$1" 
-    wecho "DANIEWO LINE BEFORE ADDED CRC32 IS ${line}"
     if [ "$AZNFS_VERSION" = "4" ]; then
         #calculate crc32 and then append to the line
-        l_account=${l_host%%.*}
-        key="abc"
-        keylen=${#key}
-
-        acc=0
-        for (( i=0; i<${#l_account}; ++i )); do
-            # Extract single character (byte) from each string
-            ch="${l_account:i:1}"
-            kch="${key:i%keylen:1}"
-
-            # Get decimal byte values
-            b=$(printf '%d' "'$ch")
-            kb=$(printf '%d' "'$kch")
-
-            xored=$(( (b ^ kb) & 0xFF ))
-            shift_amt=$(( (i % 4) * 8 )) 
-            acc=$(( acc ^ (xored << shift_amt ) ))
-        done
-
-        acc=$(( acc & 0xFFFFFFFF ))
-        eecho "Test val is $acc"
-            line+=" AZNFSCtrl.txt${acc}" #add CRC32 to line
+        local ctrl_filename=$(get_aznfs_ctrl_filename "$l_host")
+        vecho "Control file for $l_host: $ctrl_filename"
+        line+=" $ctrl_filename"
     fi
 
     egrep -q "^${line}$" $MOUNTMAPFILE
     if [ $? -ne 0 ]; then
         chattr -f -i $MOUNTMAPFILE
         echo "$line" >> $MOUNTMAPFILE 
-        eecho "DANIEWO line= ${line}"
         if [ $? -ne 0 ]; then
             chattr -f +i $MOUNTMAPFILE
             eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
