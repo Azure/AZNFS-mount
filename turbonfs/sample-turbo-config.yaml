@@ -209,16 +209,3 @@ auth: false
 #
 xprtsec: none
 
-
-
-
-# NEW: enable client-side TLS via stunnel for NFSv3 (BlobNFS)
-#stls: true
-# # Optional overrides (leave out to use defaults):
-# stls_local_ports:
-#   rpcbind: 111        # local accept port for rpcbind
-#   nfsd: 2048          # local accept port for nfs service
-# stls_tls_version: "TLSv1.3"   # constrain TLS version, if desired
-# stls_cipher_suite: "DEFAULT@SECLEVEL=2" # example; tune as needed
-
-
