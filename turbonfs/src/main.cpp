@@ -832,14 +832,16 @@ int main(int argc, char *argv[])
         goto err_out4;
     }
 
-    if (aznfsc_cfg.auth) {
+    // Disable AAD based auth for now. We will enable this when we support auth with TLS.
+   /* if (aznfsc_cfg.auth) {
         // Set the auth token callback for this connection if auth is enabled.
         set_auth_token_callback(get_auth_token_and_setargs_cb);
     } else {
         AZLogInfo("We did reach to auth none setting place");
         set_auth_token_callback(get_auth_token_and_setargs_cb_none);
-    }
-
+    }*/
+    set_auth_token_callback(get_auth_token_and_setargs_cb_none);
+	
     /*
      * Initialize nfs_client singleton.
      * This creates the libnfs polling thread(s) and hence it MUST be called
