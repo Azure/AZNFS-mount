@@ -195,6 +195,11 @@ check_turbo_option()
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         export USING_AZNFSCLIENT=true
     fi
+
+    # Inside the case that handles vers=3
+    if echo "$MOUNT_OPTIONS" | grep -q "stls"; then
+    export AZNFS_STLS_V3=1
+    fi
 }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
