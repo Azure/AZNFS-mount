@@ -235,6 +235,7 @@ process_nfsv4_mounts()
         # it around.
         #
         findmnt_output=$(echo "$findmnt" | grep "$accept_port")
+        vecho "findmnt_output: $findmnt_output"
         if [ -z "$findmnt_output" ]; then
             pecho "No mounted shares for host $l_ip with accept port $accept_port, deleting from ${MOUNTMAPv4} [$line]."
 
@@ -265,14 +266,16 @@ process_nfsv4_mounts()
             #now we have the line with the accept port, take that same line but grab the mountpoint
             #mountpoint = 
             local mountpoint=$(echo "$findmnt_output" | awk '{print $1}' | sed 's/^[└├│─]*//g')
+            vecho "daniewo mountpoint = $mountpoint"
             l_fslocation=$(cat "${mountpoint}/${l_crc_32}")
             #read now from the mountpoint
             read_status=$?
+            vecho "daniewo l_fslocation = $l_fslocation"
             IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
             #process the output
             if [ $read_status -ne 0 ]; then
-            eecho "Failed to read from $l_crc32_file"
-            return 1
+                eecho "Failed to read from $l_crc32_file"
+                return 1
             fi
 
             IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
