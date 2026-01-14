@@ -170,7 +170,6 @@ process_nfsv4_mounts()
     findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
     #findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
     #daniewo use this findmnt to check against the fslocation file for the IP
-
     #
     # For no matching mounts also, findmnt exits with a failure return, so check
     # for both exit status and non-empty error o/p.
@@ -235,7 +234,8 @@ process_nfsv4_mounts()
         # As long as we have at least one mount using the MOUNTMAPv4 entry, we leave
         # it around.
         #
-        if ! echo "$findmnt" | grep "$accept_port" >/dev/null; then
+        findmnt_output=$(echo "$findmnt" | grep "$accept_port")
+        if [ -z "$findmnt_output" ]; then
             pecho "No mounted shares for host $l_ip with accept port $accept_port, deleting from ${MOUNTMAPv4} [$line]."
 
             cleanup_mount $l_conf $l_log $l_pid $line
@@ -258,10 +258,25 @@ process_nfsv4_mounts()
             #the format for FSLOCATION is FQDN old_ip new_ip l_prt
             #if no migration is happening, then old_ip and new_ip remains the same. 
             #when prt and/or migration has completed, new_ip will be updated. not sure about the lag.
-
-            local fslocation_entry=$(grep $l_ip $VIRTUALFSLOCATION) #this is going to just read from the file now, fslocationentry is not a file
+            # first calculate based on the crc,we need to create the request based on the mountpoint/aznfsctrl.txt12345
+            #local fslocation_entry=$(grep $l_ip $VIRTUALFSLOCATION) #this is going to just read from the file now, fslocationentry is not a file
             #read l_prt and l_nfsip from the aznfs file using the crc32 file name
 
+            #now we have the line with the accept port, take that same line but grab the mountpoint
+            #mountpoint = 
+            local mountpoint=$(echo "$findmnt_output" | awk '{print $1}' | sed 's/^[└├│─]*//g')
+            l_fslocation=$(cat "${mountpoint}/${l_crc_32}")
+            #read now from the mountpoint
+            read_status=$?
+            IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
+            #process the output
+            if [ $read_status -ne 0 ]; then
+            eecho "Failed to read from $l_crc32_file"
+            return 1
+            fi
+
+            IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
+            vecho "daniewo l_fslocationIP = $l_fslocationIP, l_prt = $l_prt"
             if [ -n "$fslocation_entry" ]; then
                 
                 #daniewo loop over entries or only one
@@ -529,7 +544,7 @@ process_nfsv4_nontlsmounts()
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
         #DANIEWO TODO: again L_ip maybe invalid as it mounted to the previous IP for now, use l_host and grab the account name
-        accname=$(echo $l_host | awk -F'.file' '{print $1}')
+        accname=$(echo $l_host | awk -F'.file' '{print $1}') #can change to l_ip as the fix has been made. whatever is safer.
         eecho "daniewo accname: $accname"
         mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$accname" | head -n1 | awk '{print $1}')
 
@@ -541,6 +556,7 @@ process_nfsv4_nontlsmounts()
         eecho "Line l_fslocation_line: $l_fslocation_line"
         read_status=$?
 
+        #rearrange this, we are not using the status really
         if [ $read_status -ne 0 ]; then
             eecho "Failed to read from $l_crc32_file"
             return 1
@@ -697,7 +713,7 @@ process_nfsv4_nontlsmounts()
 
         #if l_nfsip is not empty and l_prt != 0, then we check. Otherwise, don't check.
         eecho "DAniewo updatmountmapv3entry line: $line l_host: $l_host l_ip: $l_ip l_fslocationIP: $l_fslocationIP l_crc32: $l_crc32"
-        if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_nfsip" -a $l_prt != 0 ]; then
+        if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_nfsip" -a $l_prt != 0 ]; then #change prt to the correct variable, it's probably <5 or something
             eecho "daniewwo IP for $l_host changed [$l_nfsip -> $l_fslocationIP]."
 
             #if IP changed, still update the DNAT Rule but also see if this ends up being a ZRS tenant.
