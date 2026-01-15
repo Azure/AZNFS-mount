@@ -49,6 +49,37 @@ cleanup_stunnel_files()
 }
 
 #
+# Kill Stunnel for Migration and remove pid and log files.
+#
+cleanup_stunnel_files()
+{
+    local l_conf=$1
+    local l_log=$2
+    local l_pid=$3
+    local accept_port
+
+    # Kill stunnel process first.
+    pid=$(cat $l_pid)
+    accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
+    pecho "killing stunnel process with pid: $pid on port: $accept_port"
+    kill -9 $pid
+    if [ $? -ne 0 ]; then
+        eecho "Unable to kill stunnel process $pid!"
+    fi
+
+    # Cleanup stunnel files
+    rm $l_log
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Unable to delete stunnel log file $l_log!"
+    fi
+
+    rm $l_pid
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Unable to delete stunnel pid file $l_pid!"
+    fi
+}
+
+#
 # Delete entry from MOUNTMAPv4.
 #
 ensure_mountmapv4_not_exist()
@@ -250,27 +281,15 @@ process_nfsv4_mounts()
             #grep against the l_conf for the IP
             #if IP is updated, then reconfigure stunnel and probably go to last step and skip this. or move this check
             # above
-
-            # #daniewo get dest ip from mountmap file
-            # ip_address=$(echo $l_conf | awk -F'.file' '{print $1}')
-            # echo "The extracted IP address is: $ip_address"
-
-            #get matching ip address with local ip. 
-            #the format for FSLOCATION is FQDN old_ip new_ip l_prt
-            #if no migration is happening, then old_ip and new_ip remains the same. 
-            #when prt and/or migration has completed, new_ip will be updated. not sure about the lag.
-            # first calculate based on the crc,we need to create the request based on the mountpoint/aznfsctrl.txt12345
-            #local fslocation_entry=$(grep $l_ip $VIRTUALFSLOCATION) #this is going to just read from the file now, fslocationentry is not a file
-            #read l_prt and l_nfsip from the aznfs file using the crc32 file name
-
+           
             #now we have the line with the accept port, take that same line but grab the mountpoint
             #mountpoint = 
             local mountpoint=$(echo "$findmnt_output" | awk '{print $1}' | sed 's/^[└├│─]*//g')
             vecho "daniewo mountpoint = $mountpoint"
-            l_fslocation=$(cat "${mountpoint}/${l_crc_32}")
+            l_fslocation_line=$(cat "${mountpoint}/${l_crc_32}")
             #read now from the mountpoint
             read_status=$?
-            vecho "daniewo l_fslocation = $l_fslocation"
+            vecho "daniewo l_fslocation = $l_fslocation_line"
             IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
             #process the output
             if [ $read_status -ne 0 ]; then
@@ -278,159 +297,86 @@ process_nfsv4_mounts()
                 return 1
             fi
 
-            IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
             vecho "daniewo l_fslocationIP = $l_fslocationIP, l_prt = $l_prt"
-            if [ -n "$fslocation_entry" ]; then
-                
-                #daniewo loop over entries or only one
-                # for entry in $fslocation_entry; do 
-                #     eecho "daniewo fslocation_entry = $entry"
+            #compare the ip from fslocationip and mountmap ip l_ip
 
+            if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_ip" -a $l_prt >= 5 ]; then #change prt to the correct variable, it's probably <5 or something
+                vecho "daniewo IP for $l_host changed [$l_ip -> $l_fslocationIP]."
 
-                #daniewo add the same methods for calculating AZNFS.txt file and as part of mountscript for TLS
-                # and track that as part of the files
+                #reminder to check checksum in the l_checksumhash  variable and update so that mountmap is updated.
+                #mountmap needs to update the l_conf, l_log, l_ip and checksumhash
+                new_ip=$l_fslocationIP
+                eecho "daniewo -------------- IP CHANGED -----------"
+                IP_changed = true
 
-                    #extract fslocation entry
-                    IFS=" " read l_fqdn old_ip new_ip l_prt <<< $fslocation_entry #this line would change
+                #sed command old ip with new ip in l_conf file. then mv after.
+                out=$(sed "s/${l_ip}/${new_ip}/g" $l_conf)
 
-                    # now read the ip address from aznfs.log and if prt is different etc
-                    eecho "daniewo $l_fqdn, $old_ip, $new_ip, $l_prt"
-                    #if old ip != new ip, then reconfigure files
-                    if [ "$l_ip" != "$new_ip" ]; then
-                        eecho "daniewo -------------- IP CHANGED -----------"
-                        IP_changed = true
+                ret=$?
 
-                        #sed command old ip with new ip in l_conf file. then mv after.
-                        out=$(sed "s/${l_ip}/${new_ip}/g" $l_conf)
+                eecho "daniewo before kill l_pid=$l_pid $(cat $l_pid)"
+                #kill old stunnel process and remove old files
+                cleanup_stunnel_files $l_conf $l_log $l_pid
 
-                        ret=$?
-                        if [ $ret -eq 0 ]; then
-                            chattr -f -i $l_conf
-                            #
-                            # If this echo fails then MOUNTMAPv4 could be truncated.
-                            #
-                            echo "$out" > $l_conf
-                            ret=$?
-                            out=
-                            if [ $ret -ne 0 ]; then
-                                eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
-                            fi
-                            chattr -f +i $l_conf
-                        fi
-
-                        #SED to change IP as well in FSLOCATION
-                        outfslocation=$(sed "s/${l_ip}/${new_ip}/g" $VIRTUALFSLOCATION)
-                        #echo into virtualfslocation
-
-                        echo "$outfslocation" > $VIRTUALFSLOCATION
-                        #calculate new PID for file once lines are updated.
-
-                        #daniewo then mv the file? or create new one at this point? 
-                        #daniewo use the paths above for l_conf, l_pid, l_logs and mv.
-                        #$l_conf $l_log $l_pid $line
-
-                        #update filepath for config file
-                        new_file_path=$(echo "$l_conf" | sed "s/${l_ip}/${new_ip}/g")
-                        chattr -f -i $l_conf
-                        mv -vf $l_conf $new_file_path
-                        #chattr -f +i $new_file_path
-
-                        eecho "daneiwo new conf path = $new_file_path"
-                        l_conf=$new_file_path
-                        eecho "~~~~~~~l_conf= $l_conf~~~~~~~~"
-
-                            
-                        if [ $? -ne 0 ]; then
-                            eecho "Failed to get the checksum hash of file: '${stunnel_conf_file}'!"
-                            chattr -i -f $stunnel_conf_file
-                            rm $stunnel_conf_file
-                            exit 1
-                        fi #maybe calculate before moving?
-
-                        #checksumhash is only kept in mountmap, update with SED
-                        chattr -f -i $MOUNTMAPv4
-
-                        #calculate the new checksumhash fom new config file.
-
-                        #update mountmapentry to update checksumhash and ip files
-                        newchecksumhash=`cksum $new_file_path | awk '{print $1}'`
-                        outmountmap=$(sed -e "s/$l_checksumhash/$newchecksumhash/g" -e "s/$l_ip/$new_ip/g" $MOUNTMAPv4)
-                        eecho "daniewo ------ output for outmountmap $outmountmap"
-                        eecho "======daniewo newchecksumhash=$newchecksumhash, l_checksumhash=$l_checksumhash"
-
-                        #lock the mountmap while updating outmountmap and do the same for configuration file.
-                        ret=$?
-                        if [ $ret -eq 0 ]; then
-                            #
-                            # If this echo fails then MOUNTMAPv4 could be truncated.
-                            #
-                            eecho "daniewo content of $outmountmap"
-                            echo "$outmountmap" > $MOUNTMAPv4
-                            ret=$?
-                            out=
-                            if [ $ret -ne 0 ]; then
-                                eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
-                            fi
-                        fi
-
-                        #chattr -f +i $MOUNTMAPv4
-
-                        #update filepath for logs
-                        new_file_path3=$(echo "$l_log" | sed "s/${l_ip}/${new_ip}/g")
-                        eecho "daneiwo new log path = $new_file_path3"
-                        chattr -f -i $l_log
-
-                        rm $l_log
-                        # mv -vf $l_log $new_file_path3
-                        # chattr -f +i $new_file_path3
-
-                        l_log=$new_file_path3
-
-                        #then move and restart stunnel, also calculate new pid, that should probably happen after
-                        new_file_path2=$(echo "$l_pid" | sed "s/${l_ip}/${new_ip}/g")
-                        eecho "daniewo new pid path = $new_file_path2"
-                        chattr -f -i $l_pid
-                        #mv -vf $l_pid $new_file_path2
-                        #chattr -f +i $new_file_path2
-
-                        #l_pid=$new_file_path2 #update l_pid id file so that it reads properly
-
-                        # do the work here daniewo
-
-                        #pid doesn't need to be updated as it should keep the same pid? Ask sepideh.
-
-                        #update checksumhash in mountmapv4 file
-
-                        eecho "daniewo fslocation_entry = $fslocation_entry"
-
-                        #extract fslocation entry
-                        IFS=" " read l_fqdn new_ip l_prt <<< $fslocation_entry
-                        eecho "daniewo $l_fqdn, $new_ip, $l_prt"
-
-                        # check fslocation ip against the old ip that was in mountmap file
-                        if [ "$ip_address" != "$new_ip" ]; then
-                        eecho "daniewwo IP for $l_host changed [$ip_address -> $new_ip]."
-                        fi
-
-                        # start the stunnel process
-                        #daniewo kill 
-                        eecho "daniewo before kill l_pid=$l_pid $(cat $l_pid)"
-                        pid=$(cat $l_pid)
-                        kill -9 $pid
-                        if [ $? -ne 0 ]; then
-                            eecho "Unable to kill stunnel process $pid!"
-                        fi
-
-                        eecho "daniewo cat l_conf $(cat $l_conf)"
-                        stunnel_status_new=$(stunnel $l_conf 2>&1)
-                        #the new PID needs to be updated in the pid file. grab new PID of the stunnel process
-
-                        eecho "Daniewo stunnelstatus = $stunnel_status_new"
-                        eecho "daniewo after kill l_pid=$new_file_path2 $(cat $new_file_path2)"
-
-                        l_pid=$new_file_path2
-
+                #update the contents of the l_conf file with the new ip
+                #changing log file location, and pid. Then recalculate checksum hash
+                if [ $ret -eq 0 ]; then
+                    chattr -f -i $l_conf
+                    #
+                    # If this echo fails then MOUNTMAPv4 could be truncated.
+                    #
+                    echo "$out" > $l_conf
+                    ret=$?
+                    out=
+                    if [ $ret -ne 0 ]; then
+                        eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
                     fi
+                    chattr -f +i $l_conf
+                fi
+
+                #update filepath for config file and move to new path
+                new_conf_file_path=$(echo "$l_conf" | sed "s/${l_ip}/${new_ip}/g") #update new for new_conf_file
+                chattr -f -i $l_conf
+                mv -vf $l_conf $new_conf_file_path
+                chattr -f +i $new_conf_file_path #why not lock?
+
+                eecho "daneiwo new conf path = $new_conf_file_path"
+
+                #update mountmapentry to update checksumhash and ip files
+                newchecksumhash=`cksum $new_conf_file_path | awk '{print $1}'` #make sure nothing else is being updated after this
+                chattr -f -i $MOUNTMAPv4
+                outmountmap=$(sed -e "s/$l_checksumhash/$newchecksumhash/g" -e "s/$l_ip/$new_ip/g" $MOUNTMAPv4)
+                eecho "daniewo ------ output for outmountmap $outmountmap"
+                eecho "======daniewo newchecksumhash=$newchecksumhash, l_checksumhash=$l_checksumhash"
+
+                #Update MOUNTMAPv4 with new IP and new Checksum hash
+                ret=$?
+                if [ $ret -eq 0 ]; then
+                    #
+                    # If this echo fails then MOUNTMAPv4 could be truncated.
+                    #
+                    eecho "daniewo content of $outmountmap"
+                    echo "$outmountmap" > $MOUNTMAPv4
+                    ret=$?
+                    out=
+                    if [ $ret -ne 0 ]; then
+                        eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+                    fi
+                fi
+
+                chattr -f +i $MOUNTMAPv4
+                # start the stunnel process
+
+                eecho "daniewo cat l_conf $(cat $l_conf)"
+                stunnel_status_new=$(stunnel $l_conf 2>&1)
+                #the new PID needs to be updated in the pid file. grab new PID of the stunnel process
+
+                eecho "Daniewo stunnelstatus = $stunnel_status_new"
+                eecho "daniewo after kill l_pid=$new_file_path2 $(cat $new_file_path2)"
+
+                l_pid=$new_file_path2 #this should be a new pid once killed.
+
+               
                 # done
             fi
             
@@ -458,7 +404,7 @@ process_nfsv4_mounts()
             eecho "daniewo before netstat l_pid=$l_pid $(cat $l_pid)"
             
             #daniewo update this nstatcommand so that it checks new_file_path2
-            is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`)
+            is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`) #this pid should be different then and it should restart?
             if [ -z "$is_stunnel_running" ]; then
                 vecho "Watchdog: stunnel is not running! Restarting the stunnel"
 
