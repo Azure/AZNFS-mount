@@ -223,10 +223,10 @@ process_nfsv4_mounts()
         if [ -z "$line" ]; then
             continue
         fi
-
+        eecho "Daniewo iterating line $line"
         #
         # MOUNTMAPv4 line is of the form:
-        # <IP>;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>
+        # <IP>;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>;<crc32>
         #
         #daniewo #stunnel_account here is the destination IP address for the account.
         #FSLOCATION will have FQDN IP1 IP2 or something like that. Look for IP1 and see if it's different than IP2
