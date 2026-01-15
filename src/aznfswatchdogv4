@@ -301,8 +301,8 @@ process_nfsv4_mounts()
             #compare the ip from fslocationip and mountmap ip l_ip
 
             #fake just for this once to see how it will handle killing and starting a new stunnel
-            l_prt=5
-            l_fslocationIP="20.150.93.156" #fake new ip for testing
+            # l_prt=5
+            # l_fslocationIP="20.150.93.156" #fake new ip for testing
 
             if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_ip" -a "$l_prt" -ge 5 ]; then #Migration stage >= 5
                 vecho "daniewo IP for $l_host changed [$l_ip -> $l_fslocationIP]."
