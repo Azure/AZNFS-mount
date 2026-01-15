@@ -365,16 +365,20 @@ process_nfsv4_mounts()
                 fi
 
                 chattr -f +i $MOUNTMAPv4
-                # start the stunnel process
-
-                eecho "daniewo cat l_conf $(cat $l_conf)"
+                
+                # Update all variable paths to reflect new IP
+                l_conf=$new_conf_file_path
+                l_log=$(echo "$l_log" | sed "s/${l_ip}/${new_ip}/g")
+                l_pid=$(echo "$l_pid" | sed "s/${l_ip}/${new_ip}/g")
+                l_ip=$new_ip
+                l_checksumhash=$newchecksumhash
+                
+                # Start the new stunnel process
+                eecho "daniewo starting new stunnel with config: $l_conf"
                 stunnel_status_new=$(stunnel $l_conf 2>&1)
-                #the new PID needs to be updated in the pid file. grab new PID of the stunnel process
 
-                eecho "Daniewo stunnelstatus = $stunnel_status_new"
-                eecho "daniewo after kill l_pid=$new_file_path2 $(cat $new_file_path2)"
-
-                l_pid=$new_file_path2 #this should be a new pid once killed.
+                eecho "Daniewo stunnel status = $stunnel_status_new"
+                eecho "daniewo new l_pid=$l_pid $(cat $l_pid)"
 
                
                 # done
