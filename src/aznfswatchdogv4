@@ -300,6 +300,10 @@ process_nfsv4_mounts()
             vecho "daniewo l_fslocationIP = $l_fslocationIP, l_prt = $l_prt"
             #compare the ip from fslocationip and mountmap ip l_ip
 
+            #fake just for this once to see how it will handle killing and starting a new stunnel
+            l_prt=5
+            l_fslocationIP="20.150.93.156" #fake new ip for testing
+
             if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_ip" -a $l_prt >= 5 ]; then #change prt to the correct variable, it's probably <5 or something
                 vecho "daniewo IP for $l_host changed [$l_ip -> $l_fslocationIP]."
 
