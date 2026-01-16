@@ -2045,6 +2045,70 @@ end:
                 ? chunkvec : std::vector<bytes_chunk>();
 }
 
+int64_t bytes_chunk_cache::calculate_dirty_cache_size()
+{
+    int64_t dirty_cache_size = -1;
+
+    // Get the chunkmap lock.
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+
+    for (auto it = chunkmap.rbegin(); it != chunkmap.rend(); ++it) {
+        struct bytes_chunk *bc = &(it->second);
+        struct membuf *mb = bc->get_membuf();
+        if (mb->is_dirty()) {
+            assert(mb->length > 0);
+
+            dirty_cache_size = mb->offset + mb->length;
+            break;
+        }
+    }
+
+    return dirty_cache_size;
+}
+
+void bytes_chunk_cache::calculate_cache_size()
+{
+    /*
+     * Recalculate cache size.
+     */
+    bool cache_size_updated = false;
+
+    for (auto it = chunkmap.rbegin(); it != chunkmap.rend(); ++it) {
+        struct bytes_chunk *bc = &(it->second);
+        struct membuf *mb = bc->get_membuf();
+        if (mb->is_uptodate()) {
+            assert(mb->length > 0);
+            assert(cache_size >= (mb->offset + mb->length));
+            /*
+             * cache_size is only reduced by truncate() and truncates
+             * are serialized by the VFS inode lock, so only one truncate
+             * can be ongoing, thus we are guaranteed that cache_size
+             * cannot be reduced. Also, since no new writes will be sent
+             * by fuse, no calls to set_uptodate() could be ongoing and
+             * hence cache_size won't be increased either.
+             */
+            uint64_t expected = cache_size;
+            [[maybe_unused]]
+            const bool updated =
+                cache_size.compare_exchange_strong(expected, mb->offset + mb->length);
+            assert(updated);
+            assert(cache_size == (mb->offset + mb->length));
+            assert(cache_size > 0);
+            cache_size_updated = true;
+            break;
+        }
+    }
+
+    if (!cache_size_updated) {
+        uint64_t expected = cache_size;
+        [[maybe_unused]]
+        const bool updated =
+            cache_size.compare_exchange_strong(expected, 0);
+        assert(updated);
+        assert(cache_size == 0);
+    }
+}
+
 int bytes_chunk_cache::truncate(uint64_t trunc_len,
                                 bool post,
                                 uint64_t& bytes_truncated)
@@ -2090,6 +2154,7 @@ int bytes_chunk_cache::truncate(uint64_t trunc_len,
         const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
 
         if (chunkmap.empty()) {
+            calculate_cache_size();
             return 0;
         }
 
@@ -2130,6 +2195,7 @@ int bytes_chunk_cache::truncate(uint64_t trunc_len,
         }
 
         if (it_vec1.empty()) {
+            calculate_cache_size();
             return 0;
         }
     }
@@ -2330,42 +2396,7 @@ int bytes_chunk_cache::truncate(uint64_t trunc_len,
         /*
          * Recalculate cache size.
          */
-        bool cache_size_updated = false;
-
-        for (auto it = chunkmap.rbegin(); it != chunkmap.rend(); ++it) {
-            struct bytes_chunk *bc = &(it->second);
-            struct membuf *mb = bc->get_membuf();
-            if (mb->is_uptodate()) {
-                assert(mb->length > 0);
-                assert(cache_size >= (mb->offset + mb->length));
-                /*
-                 * cache_size is only reduced by truncate() and truncates
-                 * are serialized by the VFS inode lock, so only one truncate
-                 * can be ongoing, thus we are guaranteed that cache_size
-                 * cannot be reduced. Also, since no new writes will be sent
-                 * by fuse, no calls to set_uptodate() could be ongoing and
-                 * hence cache_size won't be increased either.
-                 */
-                uint64_t expected = cache_size;
-                [[maybe_unused]]
-                const bool updated =
-                    cache_size.compare_exchange_strong(expected, mb->offset + mb->length);
-                assert(updated);
-                assert(cache_size == (mb->offset + mb->length));
-                assert(cache_size > 0);
-                cache_size_updated = true;
-                break;
-            }
-        }
-
-        if (!cache_size_updated) {
-            uint64_t expected = cache_size;
-            [[maybe_unused]]
-            const bool updated =
-                cache_size.compare_exchange_strong(expected, 0);
-            assert(updated);
-            assert(cache_size == 0);
-        }
+        calculate_cache_size();
     }
 
     assert(bytes_truncated <= (AZNFSC_MAX_FILE_SIZE-trunc_len));
