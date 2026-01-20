@@ -19,7 +19,7 @@ option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" OFF)
 option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" OFF)
 option(ENABLE_JEMALLOC "Use jemalloc for malloc/free/new/delete" ON)
-option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" OFF)
+option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" ON)
 message(STATUS "ENABLE_INSECURE_AUTH_FOR_DEVTEST: ${ENABLE_INSECURE_AUTH_FOR_DEVTEST}")
 #
 # Builds that make it to customers need to be extra careful about any unnecessary
