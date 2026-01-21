@@ -22,6 +22,21 @@ MOUNTMAPv3="${OPTDIRDATA}/mountmap"
 #
 MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 
+#
+# This stores the map of local IP and share name an external file endpoint IP.
+#
+MOUNTMAPv4NONTLS="${OPTDIRDATA}/mountmapv4nontls"
+VIRTUALFSLOCATION="${OPTDIRDATA}/fslocation" #test file now #Daniewo change this to add CRC
+MOUNTMAPFILE=""
+
+#
+# Point to the correct MOUNTMAP file depending on if it's v3 or v4
+# to refactor V3 code for V4
+# MOUNTMAPFILE will be set during common.sh v3 or v4 mountscript.
+# We will share ensure_mountmapv3_not_exist(), update_mountmapv3_entry(), ensure_mountmapv3_exist(), ensure_mountmapv3_exist_nolock()
+# 
+
+
 RED="\e[2;31m"
 GREEN="\e[2;32m"
 YELLOW="\e[2;33m"
@@ -43,6 +58,12 @@ else
     prefix="[v${AZNFS_VERSION}] "
 fi
 
+if [ "$AZNFS_VERSION" = "3" ]; then
+    MOUNTMAPFILE=$MOUNTMAPv3
+elif [ "$AZNFS_VERSION" = "4" ]; then
+    MOUNTMAPFILE=$MOUNTMAPv4NONTLS
+fi
+
 # Are we running inside the AKS?
 AKS_USER="false"
 
@@ -52,7 +73,82 @@ RELEASE_NUMBER_FOR_AKS=x.y.z
 # How often does the watchdog look for unmounts and/or IP address changes for
 # Blob and nfs file endpoints.
 #
-MONITOR_INTERVAL_SECS=5
+MONITOR_INTERVAL_SECS=30
+
+#
+# ------------------ Common definitions from nfsv3mountscript.sh --------------------
+# 
+
+#
+# Default order in which we try the network prefixes for a free local IP to use.
+# This can be overriden using AZNFS_IP_PREFIXES environment variable.
+#
+DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
+IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
+
+# Aznfs port, defaults to 2048.
+AZNFS_PORT="${AZNFS_PORT:-2048}"
+
+# Default to checking azure nconnect support.
+AZNFS_CHECK_AZURE_NCONNECT="${AZNFS_CHECK_AZURE_NCONNECT:-1}"
+
+# Default to fixing mount options passed in to help the user.
+AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
+
+# Default to fixing dirty bytes config to help the user.
+AZNFS_FIX_DIRTY_BYTES_CONFIG="${AZNFS_FIX_DIRTY_BYTES_CONFIG:-1}"
+
+# Read ahead size in KB defaults to 16384.
+AZNFS_READ_AHEAD_KB="${AZNFS_READ_AHEAD_KB:-16384}"
+
+#
+# Use noresvport mount option to allow using non-reserve ports by client.
+# This allows much higher number of local ports to be used by NFS client and
+# hence may alleviate some issues due to running out of very small resv port range.
+# Blob NFS doesn't require clients to use reserve ports so we can use non-reserve
+# port with Blob NFS but Linux NFS client doesn't reuse source port while reconnecting
+# if noresvport option is used. This does not work will with the DRC cache.
+#
+AZNFS_USE_NORESVPORT="${AZNFS_USE_NORESVPORT:-0}"
+
+# Set the fingerprint GUID as an environment variable with a default value.
+AZNFS_FINGERPRINT="${AZNFS_FINGERPRINT:-80a18d5c-9553-4c64-88dd-d7553c6b3beb}"
+
+#
+# Default to maximum number of mount retries in case of server-side returns failure.
+# Retries make the mount process more robust. Currently, we don't distinguish between 
+# access denied failure due to intermittent issues or genuine mount failures. We retry anyways.
+#
+AZNFS_MAX_MOUNT_RETRIES="${AZNFS_MAX_MOUNT_RETRIES:-3}"
+
+#
+# Maximum number of accounts that can be mounted from the same tenant/cluster.
+# Any number of containers on these many accounts can be mounted.
+# With ~350 reserved ports and 16 connections per mount (with nconnect=16) leaving
+# some room, 20 is a reasonable limit.
+#
+MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT=20
+
+#
+# Local IP that is free to use.
+#
+# LOCAL_IP=""
+
+#
+# Proccess ID of the current process.
+#
+PID=""
+
+#
+# Choose the local IP based on last used IP in MOUNTMAPv3 if this flag is enabled.
+#
+OPTIMIZE_GET_FREE_LOCAL_IP=true
+
+#
+# True if user has asked to use port 2047 using 'port=2047' mount option.
+# This signifies server side nconnect which has some special needs.
+#
+USING_PORT_2047=false
 
 _log()
 {
@@ -348,17 +444,17 @@ is_private_ip()
 #
 touch_mountmapv3()
 {
-    chattr -f -i $MOUNTMAPv3
-    touch $MOUNTMAPv3
+    chattr -f -i $MOUNTMAPFILE
+    touch $MOUNTMAPFILE
     if [ $? -ne 0 ]; then
-        chattr -f +i $MOUNTMAPv3
-        eecho "Failed to touch ${MOUNTMAPv3}!"
+        chattr -f +i $MOUNTMAPFILE
+        eecho "Failed to touch ${MOUNTMAPFILE}!"
         return 1
     fi
-    chattr -f +i $MOUNTMAPv3
+    chattr -f +i $MOUNTMAPFILE
 }
 
-# Create mount map file
+# Create mount map file MOUNTMAPv3 or MOUNTMAPv4
 create_mountmap_file()
 {
     local mountmap_filename=MOUNTMAPv$AZNFS_VERSION
@@ -372,6 +468,61 @@ create_mountmap_file()
     fi
 }
 
+# Create mountmap file MOUNTMAPv4NONTLS
+create_mountmap_file_nontlsv4()
+{
+    local mountmap_filename_nontls=MOUNTMAPv4NONTLS
+    if [ ! -f ${!mountmap_filename_nontls} ]; then
+        touch ${!mountmap_filename_nontls}
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${!mountmap_filename_nontls}'!"
+            return 1
+        fi
+        chattr -f +i ${!mountmap_filename_nontls}
+    fi
+
+    local fslocation_filename=VIRTUALFSLOCATION
+
+    if [ ! -f ${!fslocation_filename} ]; then
+        touch ${!fslocation_filename}
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create '${!fslocation_filename}'!"
+            return 1
+        fi
+        chattr -f +i ${!fslocation_filename}
+    fi
+}
+
+#
+# Calculate control file name based on storage account hostname.
+# Returns: AZNFSCtrl.txt<hash> where hash is derived from the account name.
+#
+get_aznfs_ctrl_filename()
+{
+    local hostname="$1"
+    local account_name=${hostname%%.*}
+    local key="abc"
+    local keylen=${#key}
+    local acc=0
+
+    for (( i=0; i<${#account_name}; ++i )); do
+        # Extract single character (byte) from each string
+        local ch="${account_name:i:1}"
+        local kch="${key:i%keylen:1}"
+
+        # Get decimal byte values
+        local b=$(printf '%d' "'$ch")
+        local kb=$(printf '%d' "'$kch")
+
+        local xored=$(( (b ^ kb) & 0xFF ))
+        local shift_amt=$(( (i % 4) * 8 )) 
+        acc=$(( acc ^ (xored << shift_amt ) ))
+    done
+
+    acc=$(( acc & 0xFFFFFFFF ))
+    echo "AZNFSCtrl.txt${acc}"
+}
+
 #
 # MOUNTMAPv3 is accessed by both mount.aznfs and aznfswatchdog service. Update it
 # only after taking exclusive lock.
@@ -380,29 +531,37 @@ create_mountmap_file()
 #
 # This also ensures that the corresponding DNAT rule is created so that MOUNTMAPv3
 # entry and DNAT rule are always in sync.
+# For Nfsv4 Non TLS, also add CRC32 based on the account name
 #
 ensure_mountmapv3_exist_nolock()
 {
     IFS=" " read l_host l_ip l_nfsip <<< "$1"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
-        eecho "[$1] failed to add to ${MOUNTMAPv3}!"
+        eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
         return 1
     fi
+    line="$1" 
+    if [ "$AZNFS_VERSION" = "4" ]; then
+        #calculate crc32 and then append to the line
+        local ctrl_filename=$(get_aznfs_ctrl_filename "$l_host")
+        vecho "Control file for $l_host: $ctrl_filename"
+        line+=" $ctrl_filename"
+    fi
 
-    egrep -q "^${1}$" $MOUNTMAPv3
+    egrep -q "^${line}$" $MOUNTMAPFILE
     if [ $? -ne 0 ]; then
-        chattr -f -i $MOUNTMAPv3
-        echo "$1" >> $MOUNTMAPv3
+        chattr -f -i $MOUNTMAPFILE
+        echo "$line" >> $MOUNTMAPFILE 
         if [ $? -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
-            eecho "[$1] failed to add to ${MOUNTMAPv3}!"
+            chattr -f +i $MOUNTMAPFILE
+            eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
             # Could not add MOUNTMAPv3 entry, delete the DNAT rule added above.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip
             return 1
         fi
-        chattr -f +i $MOUNTMAPv3
+        chattr -f +i $MOUNTMAPFILE
     else
-        pecho "[$1] already exists in ${MOUNTMAPv3}."
+        pecho "[$1] already exists in ${MOUNTMAPFILE}."
     fi
 }
 
@@ -412,7 +571,7 @@ ensure_mountmapv3_exist()
         flock -e 999
         ensure_mountmapv3_exist_nolock "$1"
         return $?
-    ) 999<$MOUNTMAPv3
+    ) 999<$MOUNTMAPFILE
 }
 
 #
@@ -429,29 +588,30 @@ ensure_mountmapv3_not_exist()
         #
         local ifmatch="$2"
         if [ -n "$ifmatch" ]; then
-            local mtime=$(stat -c%Y $MOUNTMAPv3)
+            local mtime=$(stat -c%Y $MOUNTMAPFILE)
             if [ "$mtime" != "$ifmatch" ]; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as $mtime != $ifmatch!"
+                eecho "[$1] Refusing to remove from ${MOUNTMAPFILE} as $mtime != $ifmatch!"
                 return 1
             fi
         fi
 
         # Delete iptable rule corresponding to the outgoing MOUNTMAPv3 entry.
-        IFS=" " read l_host l_ip l_nfsip <<< "$1"
+        IFS=" " read l_host l_ip l_nfsip l_aznfsctrlfile <<< "$1"
+        eecho "Daniewo deleting iptable entry for l_ip = $l_ip l_nfsip = $l_nfsip"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as iptable entry could not be deleted!"
+                eecho "[$1] Refusing to remove from ${MOUNTMAPFILE} as iptable entry could not be deleted!"
                 return 1
             fi
         fi
 
-        chattr -f -i $MOUNTMAPv3
+        chattr -f -i $MOUNTMAPFILE
         #
         # We do this thing instead of inplace update by sed as that has a
         # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
         # any locking that we dependent on the old file.
         #
-        out=$(sed "\%^${1}$%d" $MOUNTMAPv3)
+        out=$(sed "\%^${1}$%d" $MOUNTMAPFILE)
         ret=$?
         if [ $ret -eq 0 ]; then
             #
@@ -459,7 +619,7 @@ ensure_mountmapv3_not_exist()
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAPv3
+            echo "$out" > $MOUNTMAPFILE # Change from echo to printf to prevent the new line when file becomes empty
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
@@ -468,17 +628,17 @@ ensure_mountmapv3_not_exist()
         fi
 
         if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
-            eecho "[$1] failed to remove from ${MOUNTMAPv3}!"
+            chattr -f +i $MOUNTMAPFILE
+            eecho "[$1] failed to remove from ${MOUNTMAPFILE}!"
             # Reinstate DNAT rule deleted above.
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
         fi
-        chattr -f +i $MOUNTMAPv3
+        chattr -f +i $MOUNTMAPFILE
 
         # Return the mtime after our mods.
-        echo $(stat -c%Y $MOUNTMAPv3)
-    ) 999<$MOUNTMAPv3
+        echo $(stat -c%Y $MOUNTMAPFILE)
+    ) 999<$MOUNTMAPFILE
 }
 
 #
@@ -497,31 +657,33 @@ update_mountmapv3_entry()
     (
         flock -e 999
 
-        IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
+        IFS=" " read l_host l_ip l_nfsip_old l_aznfsctrlfile <<< "$old"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
-                eecho "[$old] Refusing to remove from ${MOUNTMAPv3} as old iptable entry could not be deleted!"
+                eecho "[$old] Refusing to remove from ${MOUNTMAPFILE} as old iptable entry could not be deleted!"
                 return 1
             fi
         fi
 
-        IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
+        IFS=" " read l_host l_ip l_nfsip_new l_aznfsctrlfile <<< "$new"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
             if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
-                eecho "[$new] Refusing to remove from ${MOUNTMAPv3} as new iptable entry could not be added!"
+                eecho "[$new] Refusing to remove from ${MOUNTMAPFILE} as new iptable entry could not be added!"
                 # Roll back.
                 ensure_iptable_entry $l_ip $l_nfsip_old
                 return 1
             fi
         fi
 
-        chattr -f -i $MOUNTMAPv3
+        eecho "Daniewo updated ip table"
+
+        chattr -f -i $MOUNTMAPFILE
         #
         # We do this thing instead of inplace update by sed as that has a
         # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
         # any locking that we dependent on the old file.
         #
-        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAPv3)
+        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAPFILE)
         ret=$?
         if [ $ret -eq 0 ]; then
             #
@@ -529,7 +691,7 @@ update_mountmapv3_entry()
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAPv3
+            echo "$out" > $MOUNTMAPFILE
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
@@ -538,15 +700,15 @@ update_mountmapv3_entry()
         fi
 
         if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
-            eecho "[$old -> $new] failed to update ${MOUNTMAPv3}!"
+            chattr -f +i $MOUNTMAPFILE
+            eecho "[$old -> $new] failed to update ${MOUNTMAPv3}!" #daniewo
             # Roll back.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
             ensure_iptable_entry $l_ip $l_nfsip_old
             return 1
         fi
-        chattr -f +i $MOUNTMAPv3
-    ) 999<$MOUNTMAPv3
+        chattr -f +i $MOUNTMAPFILE
+    ) 999<$MOUNTMAPFILE
 }
 
 #
@@ -574,6 +736,7 @@ ensure_iptable_entry()
             wecho "Deleted undesired conntrack entry [$1 -> $1]!"
         fi
     fi
+    eecho "Daniewo updated Ip Table"
 }
 
 #
@@ -741,6 +904,12 @@ fi
 
 # Create mount map file
 if ! create_mountmap_file; then
+    exit 1
+fi
+
+# Create mount map file nontls v4
+
+if ! create_mountmap_file_nontlsv4; then
     exit 1
 fi
 
