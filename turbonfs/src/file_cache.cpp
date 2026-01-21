@@ -29,7 +29,6 @@
 namespace aznfsc {
 
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_caches = 0;
-
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_chunks_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_get_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_get_g = 0;
@@ -40,6 +39,7 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_allocated_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_cached_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_dirty_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_dirty_membufs_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_flushing_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_commit_pending_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_uptodate_g = 0;
@@ -795,6 +795,8 @@ void membuf::set_dirty()
 
     bcc->bytes_dirty_g += length;
     bcc->bytes_dirty += length;
+    bcc->num_dirty_membufs++;
+    bcc->num_dirty_membufs_g++;
 
     assert(bcc->bytes_dirty <= AZNFSC_MAX_FILE_SIZE);
 
@@ -819,6 +821,10 @@ void membuf::clear_dirty()
 
     assert(bcc->bytes_dirty >= length);
     assert(bcc->bytes_dirty_g >= length);
+    assert(bcc->num_dirty_membufs > 0);
+    assert(bcc->num_dirty_membufs_g > 0);
+    bcc->num_dirty_membufs--;
+    bcc->num_dirty_membufs_g--;
     bcc->bytes_dirty -= length;
     bcc->bytes_dirty_g -= length;
 
