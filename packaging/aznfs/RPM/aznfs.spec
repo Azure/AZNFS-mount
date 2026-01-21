@@ -1,9 +1,16 @@
+AutoReq: no
+
 Name: AZNFS_PACKAGE_NAME
 Version: x.y.z
 Release: 1
 Summary: Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
+
+%global __provides_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
+%global __requires_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
+%global __requires_exclude_from ^/sbin/aznfsclient
+
 %if 0%{?custom_stunnel}
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc, make, wget
 Recommends: build-essential
