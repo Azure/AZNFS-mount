@@ -1499,11 +1499,28 @@ void nfs_inode::truncate_end(size_t size)
      */
     assert(has_filecache());
 
+    /*
+     * Readers may race with truncate and hence truncate() may not be able to
+     * get exclusive ownership (inuse + lockes) of all the membufs, which it
+     * needs for trimming/deleting. So, we may have to try a few times, letting
+     * readers to complete and drop their ownership.
+     */
     uint64_t bytes_truncated;
+    int mb_skipped;
+    do {
+        mb_skipped = filecache_handle->truncate(size, true /* post */, bytes_truncated);
 
-    [[maybe_unused]]
-    const int mb_skipped =
-        filecache_handle->truncate(size, true /* post */, bytes_truncated);
+        AZLogDebug("[{}] <truncate_end> Filecache truncated to size={} "
+                   "(bytes truncated: {}, mb_skipped: {}){}",
+                   ino, size, bytes_truncated, mb_skipped,
+                   is_stable_write() ? " STABLE" : " UNSTABLE");
+
+        if (mb_skipped) {
+            AZLogInfo("[{}] <truncate_end> Still waiting for {} chunks",
+                      ino, mb_skipped);
+            ::usleep(10 * 1000);
+        }
+    } while (mb_skipped);
 
     /*
      * Update the in cache putblock_filesize to reflect the new size.
@@ -1513,11 +1530,6 @@ void nfs_inode::truncate_end(size_t size)
     } else {
         assert(putblock_filesize == (off_t) AZNFSC_BAD_OFFSET);
     }
-
-    AZLogDebug("[{}] <truncate_end> Filecache truncated to size={} "
-               "(bytes truncated: {}, mb_skipped: {}){}",
-               ino, size, bytes_truncated, mb_skipped,
-               is_stable_write() ? " STABLE" : " UNSTABLE");
 
     flush_unlock();
 
