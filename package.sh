@@ -252,8 +252,6 @@ if [ "$(uname -m)" == "aarch64" ]; then
     export VCPKG_FORCE_SYSTEM_BINARIES=1
 fi
 
-
-
 cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DENABLE_PARANOID=${PARANOID} \
       -DENABLE_INSECURE_AUTH_FOR_DEVTEST=${INSECURE_AUTH_FOR_DEVTEST} \
