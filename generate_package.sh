@@ -169,9 +169,10 @@ if [ "${BUILD_TYPE}" == "Debug" ]; then
     RELEASE_BUILD=OFF
 else
     PARANOID=OFF
-    INSECURE_AUTH_FOR_DEVTEST=OFF
+    INSECURE_AUTH_FOR_DEVTEST=ON
     RELEASE_BUILD=ON
 fi
+echo "ENABLE_INSECURE_AUTH_FOR_DEVTEST is set to: ${INSECURE_AUTH_FOR_DEVTEST}"
 
 # vcpkg required env variable VCPKG_FORCE_SYSTEM_BINARIES to be set for arm64.
 if [ "$(uname -m)" == "aarch64" ]; then
