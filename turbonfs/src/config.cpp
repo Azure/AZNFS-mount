@@ -166,8 +166,16 @@ do { \
         _CHECK_INT(fuse_max_threads, AZNFSCFG_FUSE_MAX_THR_MIN, AZNFSCFG_FUSE_MAX_THR_MAX);
         _CHECK_INT(fuse_max_idle_threads, AZNFSCFG_FUSE_MAX_IDLE_THR_MIN, AZNFSCFG_FUSE_MAX_IDLE_THR_MAX);
 
-        _CHECK_STR(xprtsec);
         _CHECK_BOOL(oom_kill_disable);
+
+        /*
+         * EIT (Encryption In Transit) config.
+         */
+        _CHECK_BOOL(eit_stls);
+
+        /*
+         * Note: xprtsec is not read from config, always set to "none".
+         */
 
         _CHECK_BOOL(cache.attr.user.enable);
         _CHECK_BOOL(cache.readdir.kernel.enable);
@@ -437,7 +445,7 @@ done_cloud_suffix:
         ::freeaddrinfo(ai);
     }
 
-    // Set xprtsec to none by default. 
+    // Set xprtsec to none (always, not read from config).
     xprtsec = ::strdup("none");
 
     assert(account != nullptr);
@@ -467,6 +475,7 @@ done_cloud_suffix:
     AZLogDebug("retrans = {}", retrans);
     AZLogDebug("xprtsec = {}", xprtsec);
     AZLogDebug("oom_kill_disable = {}", oom_kill_disable);
+    AZLogDebug("eit_stls = {}", eit_stls);
     AZLogDebug("timeo = {}", timeo);
     AZLogDebug("acregmin = {}", acregmin);
     AZLogDebug("acregmax = {}", acregmax);
