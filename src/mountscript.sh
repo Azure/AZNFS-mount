@@ -11,6 +11,10 @@
 AZNFS_VERSION="unknown"
 . /opt/microsoft/aznfs/common.sh
 
+vecho "[DEBUG] ===== MOUNT HELPER STARTED ====="
+vecho "[DEBUG] mountscript.sh called with arguments: $*"
+vecho "[DEBUG] Mount command line: $0 $@"
+
 #
 # True if user has asked for verbose logs using '-v' or '--verbose' with mount command.
 #
@@ -179,12 +183,14 @@ parse_arguments()
 
 check_turbo_option()
 {
+    vecho "[DEBUG] check_turbo_option: MOUNT_OPTIONS=$MOUNT_OPTIONS"
     #
     # Check if turbo flag is passed.
     #
     matchstr="(^|,)turbo(,|$)"
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         export USING_AZNFSCLIENT=true
+        vecho "[DEBUG] Turbo option detected, USING_AZNFSCLIENT=true"
     fi
     
     #
@@ -194,12 +200,16 @@ check_turbo_option()
     matchstr="(^|,)fuse(,|$)"
     if [[ "$MOUNT_OPTIONS" =~ $matchstr ]]; then
         export USING_AZNFSCLIENT=true
+        vecho "[DEBUG] Fuse option detected, USING_AZNFSCLIENT=true"
     fi
 
     # Inside the case that handles vers=3
     if echo "$MOUNT_OPTIONS" | grep -q "stls"; then
-    export AZNFS_STLS_V3=1
+        export AZNFS_STLS_V3=1
+        vecho "[DEBUG] STLS option detected for NFSv3, AZNFS_STLS_V3=1"
     fi
+    
+    vecho "[DEBUG] check_turbo_option complete: USING_AZNFSCLIENT=$USING_AZNFSCLIENT, AZNFS_STLS_V3=$AZNFS_STLS_V3"
 }
 
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
@@ -291,8 +301,12 @@ if [ "$USING_AZNFSCLIENT" != true ] || [ "$1" != "none" ]; then
     fi
 fi
 
+vecho "[DEBUG] Calling version-specific mount script: nfs_vers=$nfs_vers"
+vecho "[DEBUG] Environment: USING_AZNFSCLIENT=$USING_AZNFSCLIENT, AZNFS_STLS_V3=$AZNFS_STLS_V3"
 if [ "$nfs_vers" == "4.1" ]; then
+    vecho "[DEBUG] Executing: $OPTDIR/nfsv4mountscript.sh"
     $OPTDIR/nfsv4mountscript.sh "$MOUNT_OPTIONS" "$OPTIONS" "$nfs_host" "$nfs_dir" "$mount_point"
 else
+    vecho "[DEBUG] Executing: $OPTDIR/nfsv3mountscript.sh"
     $OPTDIR/nfsv3mountscript.sh "$MOUNT_OPTIONS" "$OPTIONS" "$nfs_host" "$nfs_dir" "$mount_point"
 fi

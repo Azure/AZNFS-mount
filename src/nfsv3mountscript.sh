@@ -16,12 +16,36 @@ STUNNEL_V3_DIR="${STUNNEL_BASE_DIR}/nfsv3_blob"
 STUNNEL_V3_LOG_DIR="${STUNNEL_V3_DIR}/logs"
 mkdir -p "${STUNNEL_V3_LOG_DIR}"
 
+# TLS/stunnel related variables for NFSv3
+isDebian=0
+isRedHat=0
+isSUSE=0
+
+# Certificates related variables.
+CERT_PATH=
+CERT_UPDATE_COMMAND=
+STUNNEL_CAFILE=
+
+# TLS version from mount options (1.2 or 1.3)
+ssl_version=
+
+# TLS timeout settings
+stunnel_timeout_idle=61
+
+# Debug level for stunnel
+DEBUG_LEVEL="info"
+
 
 MOUNT_OPTIONS=$1
 OPTIONS=$2
 nfs_host=$3
 nfs_dir=$4
 mount_point=$5
+
+vecho "[DEBUG] nfsv3mountscript.sh started"
+vecho "[DEBUG] Arguments: MOUNT_OPTIONS=$MOUNT_OPTIONS"
+vecho "[DEBUG] Arguments: nfs_host=$nfs_host, nfs_dir=$nfs_dir, mount_point=$mount_point"
+vecho "[DEBUG] Environment: USING_AZNFSCLIENT=$USING_AZNFSCLIENT, AZNFS_STLS_V3=$AZNFS_STLS_V3"
 
 #
 # Default order in which we try the network prefixes for a free local IP to use.
@@ -566,6 +590,9 @@ check_account_count()
 resolve_ipv4_with_preference_to_mountmapv3()
 {
     local fqdn=$1
+    
+    vecho "[DEBUG] resolve_ipv4_with_preference_to_mountmapv3: fqdn=$fqdn"
+    vecho "[DEBUG] resolve_ipv4_with_preference_to_mountmapv3: Checking MOUNTMAPv3=$MOUNTMAPv3"
 
     exec {fd}<$MOUNTMAPv3
     flock -e $fd
@@ -577,10 +604,12 @@ resolve_ipv4_with_preference_to_mountmapv3()
 
     IFS=" " read _ local_ip old_nfs_ip <<< "$mountmap_entry"
     if [ -n "$old_nfs_ip" ]; then
+        vecho "[DEBUG] resolve_ipv4_with_preference_to_mountmapv3: Found in mountmap: $old_nfs_ip"
         echo "$old_nfs_ip"
         return 2 
     fi
 
+    vecho "[DEBUG] resolve_ipv4_with_preference_to_mountmapv3: Not in mountmap, resolving via DNS"
     #
     # Resolve FQDN to IPv4 using DNS if not found in the mountmap.
     #
@@ -953,8 +982,13 @@ gatepass_mount()
 
 actual_mount()
 {
+    vecho "[DEBUG] ===== actual_mount ====="
+    vecho "[DEBUG] actual_mount: LOCAL_IP=$LOCAL_IP, nfs_dir=$nfs_dir, mount_point=$mount_point"
+    vecho "[DEBUG] actual_mount: MOUNT_OPTIONS=$MOUNT_OPTIONS"
+    vecho "[DEBUG] actual_mount: OPTIONS=$OPTIONS"
     mount_output=$(mount -t nfs $OPTIONS -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
+    vecho "[DEBUG] actual_mount: mount exit status=$mount_status"
 
     if [ -n "$mount_output" ]; then
         pecho "$mount_output"
@@ -968,32 +1002,45 @@ actual_mount()
 #
 create_aznfsclient_mount_args()
 {
+    vecho "[DEBUG] ===== create_aznfsclient_mount_args ====="
+    vecho "[DEBUG] create_aznfsclient_mount_args: CONFIG_FILE_PATH=$CONFIG_FILE_PATH"
+    vecho "[DEBUG] create_aznfsclient_mount_args: nfs_host=$nfs_host, nfs_dir=$nfs_dir"
     args="--config-file=$CONFIG_FILE_PATH"
 
     # Add account, container and cloud_suffix
     if [ -n "$nfs_dir" ] && [ -n "$nfs_host" ]; then
         account=$(echo "$nfs_host" | cut -d'.' -f1)
         args="$args --account=$account"
+        vecho "[DEBUG] create_aznfsclient_mount_args: account=$account"
         container=$(echo "$nfs_dir" | awk -F'/' '{print $3}')
         args="$args --container=$container"
+        vecho "[DEBUG] create_aznfsclient_mount_args: container=$container"
         cloud_suffix="${nfs_host#*.}"
         args="$args --cloud-suffix=$cloud_suffix"
+        vecho "[DEBUG] create_aznfsclient_mount_args: cloud_suffix=$cloud_suffix"
     fi
 
     # Add nconnect value
     nconnect=$(echo "$MOUNT_OPTIONS" | grep -o 'nconnect=[^,]*' | cut -d'=' -f2)
     if [ -n "$nconnect" ]; then
         args="$args --nconnect=$nconnect"
+        vecho "[DEBUG] create_aznfsclient_mount_args: nconnect=$nconnect"
     fi
 
     # Add port value
     port=$(echo "$MOUNT_OPTIONS" | grep -o 'port=[^,]*' | cut -d'=' -f2)
     if [ -n "$port" ]; then
         args="$args --port=$port"
+        vecho "[DEBUG] create_aznfsclient_mount_args: port=$port"
     fi
+
+    # Note: For EIT (Encryption In Transit), the turbo client will read
+    # eit.stls from the config file. The mount script sets up stunnel
+    # infrastructure before calling aznfsclient when AZNFS_STLS_V3=1.
 
     # Finally add the mount point.
     AZNFSCLIENT_MOUNT_ARGS="$args $mount_point"
+    vecho "[DEBUG] create_aznfsclient_mount_args: Final args: $AZNFSCLIENT_MOUNT_ARGS"
 
     turbo_log=$AZNFSC_LOGDIR/turbo$(echo $mount_point | tr -s "/" "_").log
     if [ ! -f $turbo_log ]; then
@@ -1021,6 +1068,8 @@ create_aznfsclient_mount_args()
 #
 aznfsclient_mount()
 {   
+    vecho "[DEBUG] ===== aznfsclient_mount ====="
+    vecho "[DEBUG] aznfsclient_mount: AZNFSCLIENT_BINARY_PATH=$AZNFSCLIENT_BINARY_PATH"
     create_aznfsclient_mount_args
 
     # Create named pipe to hold mount status from aznfsclient.
@@ -1029,6 +1078,7 @@ aznfsclient_mount()
     else
         export MOUNT_STATUS_PIPE="/tmp/mount_status_pipe.$$"
     fi
+    vecho "[DEBUG] aznfsclient_mount: MOUNT_STATUS_PIPE=$MOUNT_STATUS_PIPE"
 
     rm -f $MOUNT_STATUS_PIPE
     mkfifo $MOUNT_STATUS_PIPE
@@ -1041,7 +1091,9 @@ aznfsclient_mount()
     #
     # Get the gatepass before the actual mount.
     #
+    vecho "[DEBUG] aznfsclient_mount: Calling gatepass_mount"
     gatepass_mount
+    vecho "[DEBUG] aznfsclient_mount: Gatepass acquired"
     vecho "fuse command: $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f"
     vvecho "Using log file $LOGFILE"
 
@@ -1050,6 +1102,7 @@ aznfsclient_mount()
     # log rotation. Use copytruncate option in logrotate config.
     # Redirect stderr too for capturing assert/asan failures.
     #
+    vecho "[DEBUG] aznfsclient_mount: Starting aznfsclient process"
     $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f >> $LOGFILE 2>&1 &
 
     vvecho "Waiting for mount to complete (timeout: 30 seconds)..."
@@ -1058,9 +1111,11 @@ aznfsclient_mount()
     # Read from named pipe with timeout.
     # aznfsclient will send an integer status followed by an optional error string.
     #
+    vecho "[DEBUG] aznfsclient_mount: Reading mount status from pipe"
     read -t 30 mount_status mount_str <> $MOUNT_STATUS_PIPE
 
     read_status=$?
+    vecho "[DEBUG] aznfsclient_mount: read_status=$read_status, mount_status=$mount_status"
 
     # Delete the pipe because this is the only reader.
     rm -f $MOUNT_STATUS_PIPE
@@ -1093,18 +1148,231 @@ aznfsclient_mount()
 }
 
 
+# Helper function to get check_host value from hostname
+get_check_host_value() {
+    local hostname="$1"
+    # Extract storage account name from hostname
+    local account_name=$(echo "$hostname" | cut -d'.' -f1)
+    echo "$account_name"
+}
+
+# Get certificate path and update command based on distribution
+get_cert_path_based_and_command()
+{
+    vecho "[DEBUG] get_cert_path_based_and_command: isDebian=$isDebian, isRedHat=$isRedHat, isSUSE=$isSUSE"
+    if [ $isDebian -eq 1 ]; then
+        CERT_PATH="/usr/local/share/ca-certificates"
+        CERT_UPDATE_COMMAND="update-ca-certificates"
+        vecho "[DEBUG] Debian path: CERT_PATH=$CERT_PATH"
+    elif [ $isRedHat -eq 1 ]; then
+        CERT_PATH="/etc/pki/ca-trust/source/anchors"
+        CERT_UPDATE_COMMAND="update-ca-trust extract"
+        vecho "[DEBUG] RedHat path: CERT_PATH=$CERT_PATH"
+        mkdir -p /etc/ssl/certs
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to create /etc/ssl/certs path for certificate!"
+            return 1
+        fi
+    elif [ $isSUSE -eq 1 ]; then
+        CERT_PATH="/etc/pki/trust/anchors"
+        CERT_UPDATE_COMMAND="update-ca-certificates"
+    fi
+
+    STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
+}
+
+# Extract CA certificate for RedHat-based systems
+extract_CA()
+{
+    vecho "[DEBUG] extract_CA: Extracting DigiCert Global Root G2 from /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
+    vecho "[DEBUG] extract_CA: Target file: $STUNNEL_CAFILE"
+    awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print > "'$STUNNEL_CAFILE'"} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Failed to extract DigiCert Global Root G2 certificate from /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem!"
+        return 1
+    fi
+    vecho "[DEBUG] extract_CA: Certificate extracted successfully"
+}
+
+# Compare CA certificate thumbprint
+compare_CA_thumbprint()
+{
+    vecho "[DEBUG] compare_CA_thumbprint: Comparing certificate thumbprints"
+    local thumbprint=$(openssl x509 -in $STUNNEL_CAFILE -noout -fingerprint 2>/dev/null | cut -d'=' -f2)
+    vecho "[DEBUG] compare_CA_thumbprint: Installed thumbprint: $thumbprint"
+    local expected_thumbprint=$(awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem | openssl x509 -noout -fingerprint -sha1 2>/dev/null | cut -d'=' -f2)
+    vecho "[DEBUG] compare_CA_thumbprint: Expected thumbprint: $expected_thumbprint"
+
+    vecho "Comparing the thumbprint of the installed DigiCert Global Root G2 certificate. Expected: ${expected_thumbprint}, Installed: ${thumbprint}."
+
+    if [ "$thumbprint" != "$expected_thumbprint" ]; then
+        vecho "[DEBUG] compare_CA_thumbprint: Thumbprints DO NOT match"
+        return 1
+    fi
+    vecho "[DEBUG] compare_CA_thumbprint: Thumbprints match"
+}
+
+# Install CA certificate
+install_CA_cert()
+{
+    vecho "[DEBUG] ===== install_CA_cert ====="
+    vecho "[DEBUG] install_CA_cert: isRedHat=$isRedHat, isDebian=$isDebian, isSUSE=$isSUSE"
+    vecho "[DEBUG] install_CA_cert: CERT_PATH=$CERT_PATH, STUNNEL_CAFILE=$STUNNEL_CAFILE"
+    # For Debian-based and SUSE-based distributions, if the cert exits, it's in /etc/ssl/certs/DigiCert_Global_Root_G2.pem. For RedHat-based distributions, it's' in /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem.
+    if [ $isRedHat -eq 1 ]; then
+        vecho "[DEBUG] install_CA_cert: RedHat system, checking CA bundle"
+        # If certificate already exists in the system, extract it and return.
+        grep -q "DigiCert Global Root G2" /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+        if [ $? -eq 0 ]; then
+            vecho "[DEBUG] install_CA_cert: Certificate found in CA bundle"
+            vecho "DigiCert Global Root G2 certificate already exists. Extranting it to ${STUNNEL_CAFILE}."
+            if ! extract_CA; then
+                return 1
+            fi
+            return 0
+        fi
+    else
+        vecho "[DEBUG] install_CA_cert: Debian/SUSE system, checking /etc/ssl/certs"
+        if [ -f /etc/ssl/certs/DigiCert_Global_Root_G2.pem ]; then
+            vecho "[DEBUG] install_CA_cert: Certificate already exists in /etc/ssl/certs"
+            vecho "DigiCert Global Root G2 certificate already exists in /etc/ssl/certs. No need to install it again."
+            return 0
+        fi
+    fi
+
+    vecho "[DEBUG] install_CA_cert: Downloading certificate from DigiCert"
+    vecho "[DEBUG] install_CA_cert: URL: https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem"
+    vecho "[DEBUG] install_CA_cert: Destination: ${CERT_PATH}/DigiCert_Global_Root_G2.crt"
+    wget_error=$(wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O ${CERT_PATH}/DigiCert_Global_Root_G2.crt 2>&1)
+    if [ $? -ne 0 ]; then
+        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem! Error: ${wget_error}"
+        return 1
+    fi
+    vecho "[DEBUG] install_CA_cert: Certificate downloaded successfully"
+
+    vecho "[DEBUG] install_CA_cert: Running certificate update command: $CERT_UPDATE_COMMAND"
+    $CERT_UPDATE_COMMAND
+    vecho "[DEBUG] install_CA_cert: Certificate update command completed"
+
+    # In RedHat-based distributions, we need to extract the certificate to /etc/ssl/certs for stunnel to pick it up.
+    if [ $isRedHat -eq 1 ]; then
+        if ! extract_CA; then
+            return 1
+        fi
+    fi
+
+    vecho "Successfully installed DigiCert_Global_Root_G2 certificate to ${CERT_PATH}/DigiCert_Global_Root_G2.crt."
+}
+
+# Helper function to read YAML config values
+get_cfg_for_mount() {
+    local key="$1"
+    local config_file="${CONFIG_FILE_PATH}"
+    
+    vecho "[DEBUG] get_cfg_for_mount: key='$key', config_file='$config_file'"
+    
+    if [ ! -f "$config_file" ]; then
+        vecho "[DEBUG] get_cfg_for_mount: Config file does not exist"
+        echo ""
+        return
+    fi
+    
+    # Try using yq if available
+    if command -v yq >/dev/null 2>&1; then
+        yq eval ".${key}" "$config_file" 2>/dev/null | grep -v "^null$"
+        return
+    fi
+    
+    # Fallback to python if available
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "import yaml; import sys; 
+try:
+    with open('$config_file') as f: 
+        data = yaml.safe_load(f)
+        keys = '$key'.split('.')
+        val = data
+        for k in keys:
+            val = val.get(k, None) if isinstance(val, dict) else None
+            if val is None: break
+        if val is not None: print(val)
+except: pass" 2>/dev/null
+        return
+    fi
+    
+    # Simple grep-based fallback for simple keys
+    grep "^${key}:" "$config_file" 2>/dev/null | head -1 | awk '{print $2}'
+}
+
 make_stunnel_conf_v3() {
   local account_ip="$1"   # resolved BlobNFS endpoint IP
+  local hostname="$2"     # hostname for certificate verification
   local tlsver="${stls_tls_version:-TLSv1.3}"
   local cipher="${stls_cipher_suite:-DEFAULT@SECLEVEL=2}"
   local rpc_local="${stls_rpc_local:-111}"
   local nfs_local="${stls_nfs_local:-2048}"
   local conf="${STUNNEL_V3_DIR}/${account_ip}.conf"
+  
+  vecho "[DEBUG] ===== make_stunnel_conf_v3 ====="
+  vecho "[DEBUG] account_ip=$account_ip, hostname=$hostname"
+  vecho "[DEBUG] TLS version=$tlsver, cipher=$cipher"
+  vecho "[DEBUG] Ports: rpc_local=$rpc_local, nfs_local=$nfs_local"
+  vecho "[DEBUG] Config file: $conf"
 
+  # Get certificate paths and validate
+  vecho "[DEBUG] Getting certificate paths..."
+  if ! get_cert_path_based_and_command; then
+      eecho "[FATAL] Failed to get certificate paths"
+      return 1
+  fi
+  vecho "[DEBUG] Certificate paths: STUNNEL_CAFILE=$STUNNEL_CAFILE, CERT_PATH=$CERT_PATH"
+
+  if [ ! -f $STUNNEL_CAFILE ]; then
+      vecho "[DEBUG] CA root cert missing: $STUNNEL_CAFILE"
+      vecho "CA root cert is missing for stunnel configuration. Install or extract DigiCert_Global_Root_G2 certificate."
+      install_CA_cert
+      if [ $? -ne 0 ]; then
+          eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+          return 1
+      fi
+      vecho "[DEBUG] Certificate installation completed"
+  else
+      vecho "[DEBUG] CA cert exists: $STUNNEL_CAFILE"
+      vecho "DigiCert_Global_Root_G2 certificate already exists in $STUNNEL_CAFILE."
+      # Since the certificate is extracted from the system's CA bundle, we need to compare the thumbprint of the installed certificate with the expected value.
+      if [ $isRedHat -eq 1 ]; then
+          if ! compare_CA_thumbprint; then
+              vecho "Thumbprint of the installed DigiCert Global Root G2 certificate does not match the expected value! Extracting the certificate again."
+              rm -f $STUNNEL_CAFILE
+              install_CA_cert
+              if [ $? -ne 0 ]; then
+                  eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+                  return 1
+              fi
+          fi
+      fi
+  fi
+
+  # Get checkHost value from hostname
+  local stunnel_check_host=$(get_check_host_value "$hostname")
+  vecho "[DEBUG] stunnel checkHost value: $stunnel_check_host"
+
+  # For Mariner linux, we need to add ciphers = DEFAULT
+  local distro_id=
+  if [ -f /etc/os-release ]; then
+      distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+      distro_id=$(canonicalize_distro_id $distro_id)
+  fi
+
+  vecho "[DEBUG] Writing stunnel configuration to $conf..."
   cat > "${conf}" <<EOF
 # Auto-generated by AZNFS nfsv3 script
-debug = 4
+CAFile = $STUNNEL_CAFILE
+verifyChain = yes
+checkHost = $stunnel_check_host
+debug = $DEBUG_LEVEL
 output = ${STUNNEL_V3_LOG_DIR}/${account_ip}.log
+pid = ${STUNNEL_V3_LOG_DIR}/${account_ip}.pid
+TIMEOUTidle = $stunnel_timeout_idle
 
 # rpcbind (111)
 [nfs3-rpcbind]
@@ -1112,7 +1380,15 @@ client = yes
 accept = 127.0.0.1:${rpc_local}
 connect = ${account_ip}:111
 sslVersion = ${tlsver}
-ciphers = ${cipher}
+EOF
+
+  if [ "$distro_id" == "azurelinux" ]; then
+      echo "ciphers = DEFAULT" >> "${conf}"
+  else
+      echo "ciphers = ${cipher}" >> "${conf}"
+  fi
+
+  cat >> "${conf}" <<EOF
 TIMEOUTclose = 0
 
 # nfsd (2048)
@@ -1121,23 +1397,82 @@ client = yes
 accept = 127.0.0.1:${nfs_local}
 connect = ${account_ip}:2048
 sslVersion = ${tlsver}
-ciphers = ${cipher}
-TIMEOUTclose = 0
 EOF
+
+  if [ "$distro_id" == "azurelinux" ]; then
+      echo "ciphers = DEFAULT" >> "${conf}"
+  else
+      echo "ciphers = ${cipher}" >> "${conf}"
+  fi
+
+  echo "TIMEOUTclose = 0" >> "${conf}"
+
+  vecho "[DEBUG] Stunnel configuration written successfully: $conf"
   echo "${conf}"
 }
 
 ensure_stunnel_v3() {
   local account_ip="$1"
-  local conf="$(make_stunnel_conf_v3 "${account_ip}")"
-  # Start/restart stunnel bound to this conf
-  # Prefer per-conf supervisor; fall back to direct
-  if pgrep -f "stunnel .*${conf}" >/dev/null 2>&1; then
-    # reload
-    pkill -HUP -f "stunnel .*${conf}" || true
-  else
-    stunnel "${conf}"
+  local hostname="$2"
+  
+  vecho "[DEBUG] ===== ensure_stunnel_v3 ====="
+  vecho "[DEBUG] account_ip=$account_ip, hostname=$hostname"
+  
+  local conf="$(make_stunnel_conf_v3 "${account_ip}" "${hostname}")"
+  
+  if [ -z "$conf" ] || [ ! -f "$conf" ]; then
+      eecho "[FATAL] Failed to create stunnel configuration file! conf='$conf'"
+      return 1
   fi
+  
+  vecho "[DEBUG] Stunnel config file created: $conf"
+  
+  local pid_file="${STUNNEL_V3_LOG_DIR}/${account_ip}.pid"
+  
+  vecho "[DEBUG] Checking for existing stunnel process: $pid_file"
+  # Check if stunnel is already running for this config
+  if [ -f "$pid_file" ]; then
+      local pid=$(cat "$pid_file")
+      vecho "[DEBUG] Found PID file with PID: $pid"
+      if kill -0 "$pid" 2>/dev/null; then
+          vecho "[DEBUG] Stunnel already running for $account_ip with PID $pid"
+          vecho "Stunnel already running for $account_ip with PID $pid"
+          return 0
+      else
+          vecho "[DEBUG] Stale PID file found, cleaning up"
+          vecho "Stale PID file found, cleaning up"
+          rm -f "$pid_file"
+      fi
+  else
+      vecho "[DEBUG] No existing stunnel process found"
+  fi
+  
+  # Start stunnel
+  vecho "[DEBUG] ===== STARTING STUNNEL PROCESS ====="
+  vecho "[DEBUG] Command: stunnel ${conf}"
+  vecho "Starting stunnel for $account_ip using config $conf"
+  stunnel_status=$(stunnel "${conf}" 2>&1)
+  stunnel_exit=$?
+  if [ $stunnel_exit -ne 0 ]; then
+      eecho "[FATAL] Failed to start stunnel (exit code: $stunnel_exit)"
+      eecho "[FATAL] Stunnel output: $stunnel_status"
+      return 1
+  fi
+  vecho "[DEBUG] Stunnel started successfully"
+  vecho "[DEBUG] Stunnel output: $stunnel_status"
+  
+  # Verify stunnel started successfully
+  sleep 1
+  if [ -f "$pid_file" ]; then
+      local pid=$(cat "$pid_file")
+      if kill -0 "$pid" 2>/dev/null; then
+          vecho "Stunnel started successfully with PID $pid"
+          return 0
+      fi
+  fi
+  
+  eecho "[FATAL] Stunnel failed to start properly"
+  return 1
 }
 
 wire_dnat_to_local_stunnel_v3() {
@@ -1180,19 +1515,131 @@ if [ "$AZNFS_FIX_DIRTY_BYTES_CONFIG" == "1" ]; then
     fix_dirty_bytes_config
 fi
 
+# Check if we're on a Debian-based, RedHat-based, or SUSE-based distribution
+# This must be done before turbo mount as well, in case TLS is enabled
+vecho "[DEBUG] Detecting distribution type..."
+if command -v apt-get &> /dev/null; then
+    isDebian=1
+    vecho "[DEBUG] Distribution: Debian-based (isDebian=1)"
+elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+    isRedHat=1
+    vecho "[DEBUG] Distribution: RedHat-based (isRedHat=1)"
+elif command -v zypper &> /dev/null; then
+    isSUSE=1
+    vecho "[DEBUG] Distribution: SUSE-based (isSUSE=1)"
+else
+    vecho "[DEBUG] Distribution: Unknown"
+    if [ "${AZNFS_STLS_V3}" = "1" ]; then
+        eecho "[FATAL] Unsupported distribution for TLS mount!"
+        exit 1
+    fi
+fi
+
 #
-# If this is a nfs turbo mount, we simply call the binary. 
-# The mount map magic is not needed here because libfuse will handle
-# IP changes. Hence, we form the args string, call the binary and exit.
+# If this is a nfs turbo mount, we need to setup stunnel (if EIT enabled) before calling the binary.
 #
+vecho "[DEBUG] Checking turbo mount: USING_AZNFSCLIENT='$USING_AZNFSCLIENT', AZNFS_STLS_V3='$AZNFS_STLS_V3'"
 if [ "$USING_AZNFSCLIENT" == true ]; then
+    vecho "[DEBUG] ===== ENTERING TURBO MOUNT PATH ====="
+    # Resolve the IP address for the NFS host
+    vecho "[DEBUG] Resolving IP for $nfs_host..."
+    nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")
+    status=$?
+    if [ $status -ne 0 ]; then
+        if [ $status -eq 2 ]; then
+            vecho "[DEBUG] Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
+        else
+            echo "$nfs_ip"
+            eecho "Cannot resolve IP address for ${nfs_host}!"
+            eecho "Mount failed!"
+            exit 1
+        fi
+    else
+        vecho "[DEBUG] Resolved IP: $nfs_host -> $nfs_ip"
+    fi
+
+    # Check for EIT configuration from mount options or config file
+    vecho "[DEBUG] ===== CHECKING EIT CONFIGURATION ====="
+    vecho "[DEBUG] AZNFS_STLS_V3='${AZNFS_STLS_V3}'"
+    if [ "${AZNFS_STLS_V3}" = "1" ]; then
+        vecho "[DEBUG] ===== EIT ENABLED - SETTING UP STUNNEL ====="
+        vecho "NFSv3 turbo mount with EIT (stunnel-based encryption) enabled"
+        
+        # Check for TLS version in mount options
+        vecho "[DEBUG] Checking for TLS version in mount options..."
+        if [[ "$MOUNT_OPTIONS" == *"tls="* ]]; then
+            ssl_version=$(echo "$MOUNT_OPTIONS" | grep -oE 'tls=[^,]+' | awk -F= '{print $2}')
+            vecho "[DEBUG] Found tls option: $ssl_version"
+            
+            # Check if SSL version is either 1.2 or 1.3
+            if [[ "$ssl_version" == "1.2" || "$ssl_version" == "1.3" ]]; then
+                vecho "[DEBUG] Valid TLS version: $ssl_version"
+                stls_tls_version="TLSv${ssl_version}"
+            else
+                eecho "No valid TLS version. Please provide a valid TLS version (1.2 or 1.3)."
+                exit 1
+            fi
+            
+            # Remove the tls option from MOUNT_OPTIONS
+            if [[ "$MOUNT_OPTIONS" == *"tls=${ssl_version},"* ]]; then
+                MOUNT_OPTIONS=${MOUNT_OPTIONS//tls=$ssl_version,/}
+            else
+                MOUNT_OPTIONS=${MOUNT_OPTIONS//,tls=$ssl_version/}
+            fi
+        fi
+        
+        # Derive TLS config from config file if not set via mount options
+        vecho "[DEBUG] Reading TLS config from config file..."
+        if [ -z "$stls_tls_version" ]; then
+            stls_tls_version="$(get_cfg_for_mount 'stls_tls_version')"
+            vecho "[DEBUG] Config file stls_tls_version: '$stls_tls_version'"
+        fi
+        stls_cipher_suite="$(get_cfg_for_mount 'stls_cipher_suite')"
+        vecho "[DEBUG] Config file stls_cipher_suite: '$stls_cipher_suite'"
+        stls_rpc_local="$(get_cfg_for_mount 'stls_local_ports.rpcbind')"
+        vecho "[DEBUG] Config file stls_rpc_local: '$stls_rpc_local'"
+        stls_nfs_local="$(get_cfg_for_mount 'stls_local_ports.nfsd')"
+        vecho "[DEBUG] Config file stls_nfs_local: '$stls_nfs_local'"
+        
+        # Set default TLS version if not specified
+        if [ -z "$stls_tls_version" ]; then
+            stls_tls_version="TLSv1.3"
+            vecho "[DEBUG] Using default TLS version: $stls_tls_version"
+        fi
+        
+        vecho "[DEBUG] Final TLS config: version=$stls_tls_version, cipher=$stls_cipher_suite, rpc_port=$stls_rpc_local, nfs_port=$stls_nfs_local"
+        vecho "Setting up stunnel infrastructure for turbo mount with TLS version: $stls_tls_version"
+        
+        # Setup stunnel for turbo mount
+        vecho "[DEBUG] ===== CALLING ensure_stunnel_v3 ====="
+        vecho "[DEBUG] Arguments: nfs_ip=$nfs_ip, nfs_host=$nfs_host"
+        ensure_stunnel_v3 "${nfs_ip}" "${nfs_host}"
+        stunnel_result=$?
+        if [ $stunnel_result -ne 0 ]; then
+            eecho "[FATAL] Failed to setup stunnel for EIT mount (exit code: $stunnel_result)"
+            exit 1
+        fi
+        
+        vecho "[DEBUG] ===== STUNNEL SETUP COMPLETE ====="
+        vecho "Stunnel infrastructure ready for turbo mount"
+        
+        # Note: For turbo mounts, the aznfsclient will connect to the actual
+        # NFS server IP directly, but the mount script has set up stunnel
+        # which will handle encryption. The aznfsclient reads eit_stls: true
+        # from config and uses the stunnel setup.
+    fi
+    
+    vecho "[DEBUG] ===== CALLING aznfsclient_mount ====="
     aznfsclient_mount
     if [ $? -ne 0 ]; then
         eecho "Aznfsclient mount failed!"
         exit 1
     fi
 
+    vecho "[DEBUG] ===== TURBO MOUNT COMPLETE ====="
     exit 0 # Nothing in this script will run after this point.
+else
+    vecho "[DEBUG] Not a turbo mount, continuing with regular NFSv3 mount"
 fi
 
 # MOUNTMAPv3 file must have been created by aznfswatchdog service.
@@ -1224,18 +1671,81 @@ if [ $status -ne 0 ]; then
 fi
 
 
+# Setup TLS encryption for regular (non-turbo) NFSv3 mounts if enabled
 if [ "${AZNFS_STLS_V3}" = "1" ]; then
-  # derive per-mount overrides from TurboNFS config if present
-  stls_tls_version="$(get_cfg_for_mount 'stls_tls_version')"   # implement get_cfg_for_mount the same way you read other keys
+  vecho "NFSv3 with TLS encryption enabled"
+  
+  # Check for TLS version in mount options
+  if [[ "$MOUNT_OPTIONS" == *"tls="* ]]; then
+      ssl_version=$(echo "$MOUNT_OPTIONS" | grep -oE 'tls=[^,]+' | awk -F= '{print $2}')
+      
+      # Check if SSL version is either 1.2 or 1.3
+      if [[ "$ssl_version" == "1.2" || "$ssl_version" == "1.3" ]]; then
+          vecho "TLS version option: $ssl_version"
+          stls_tls_version="TLSv${ssl_version}"
+      else
+          eecho "No valid TLS version. Please provide a valid TLS version (1.2 or 1.3)."
+          exit 1
+      fi
+      
+      # Remove the tls option from MOUNT_OPTIONS
+      if [[ "$MOUNT_OPTIONS" == *"tls=${ssl_version},"* ]]; then
+          MOUNT_OPTIONS=${MOUNT_OPTIONS//tls=$ssl_version,/}
+      else
+          MOUNT_OPTIONS=${MOUNT_OPTIONS//,tls=$ssl_version/}
+      fi
+  fi
+  
+  # Derive per-mount overrides from TurboNFS config if present
+  if [ -z "$stls_tls_version" ]; then
+      stls_tls_version="$(get_cfg_for_mount 'stls_tls_version')"
+  fi
   stls_cipher_suite="$(get_cfg_for_mount 'stls_cipher_suite')"
   stls_rpc_local="$(get_cfg_for_mount 'stls_local_ports.rpcbind')"
   stls_nfs_local="$(get_cfg_for_mount 'stls_local_ports.nfsd')"
+  
+  # Set default TLS version if not specified
+  if [ -z "$stls_tls_version" ]; then
+      stls_tls_version="TLSv1.3"
+  fi
+  
+  vecho "Using TLS version: $stls_tls_version"
+  
+  # Check for mixed TLS and non-TLS mounts to same endpoint
+  exec {fd_tls}<$MOUNTMAPv3
+  flock -e $fd_tls
+  
+  # Check if there's an existing non-TLS mount to this endpoint
+  if grep -q "^${nfs_ip};" $MOUNTMAPv3; then
+      # Check if it's a TLS mount or not
+      local existing_entry=$(grep "^${nfs_ip};" $MOUNTMAPv3 | head -1)
+      if ! echo "$existing_entry" | grep -q "stls=1"; then
+          eecho "Mount failed!"
+          eecho "Mount to the same endpoint ${nfs_ip} exists without TLS. Cannot mount with TLS to the same endpoint."
+          eecho "Try unmounting the share on ${nfs_host} and run the mount command again."
+          flock -u $fd_tls
+          exec {fd_tls}<&-
+          exit 1
+      fi
+  fi
+  
+  flock -u $fd_tls
+  exec {fd_tls}<&-
 
-  ensure_stunnel_v3 "${BLOB_ENDPOINT_IP}"
-  wire_dnat_to_local_stunnel_v3 "${AZNFS_PROXY_IP}"
+  ensure_stunnel_v3 "${nfs_ip}" "${nfs_host}"
+  if [ $? -ne 0 ]; then
+      eecho "Failed to setup stunnel for TLS mount"
+      exit 1
+  fi
+  
+  wire_dnat_to_local_stunnel_v3 "${LOCAL_IP}"
+  
+  # Mark this mount as TLS in mountmap for conflict detection
+  # This will be added to mountmap along with other mount info
+  export AZNFS_MOUNT_IS_TLS=1
 else
   # current behavior (DNAT from proxy IP to endpoint IP)
-  iptables -t nat -A OUTPUT -p tcp -d "${AZNFS_PROXY_IP}" -j DNAT --to-destination "${BLOB_ENDPOINT_IP}"
+  iptables -t nat -A OUTPUT -p tcp -d "${LOCAL_IP}" -j DNAT --to-destination "${nfs_ip}"
 fi
 
 

@@ -230,6 +230,8 @@ resolve_ipv4()
     local hname="$1"
     local fail_if_present_in_etc_hosts="$2"
     local RETRIES=3
+    
+    vecho "[DEBUG] resolve_ipv4: hostname=$hname, fail_if_in_hosts=$fail_if_present_in_etc_hosts"
 
     # Some retries for resilience.
     for((i=0;i<=$RETRIES;i++)) {
@@ -554,8 +556,10 @@ update_mountmapv3_entry()
 #
 ensure_iptable_entry()
 {
+    vecho "[DEBUG] ensure_iptable_entry: Checking DNAT rule $1 -> $2"
     iptables -w 60 -t nat -C OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
+        vecho "[DEBUG] ensure_iptable_entry: Creating DNAT rule $1 -> $2"
         iptables -w 60 -t nat -I OUTPUT -p tcp -d "$1" -j DNAT --to-destination "$2"
         if [ $? -ne 0 ]; then
             eecho "Failed to add DNAT rule [$1 -> $2]!"
