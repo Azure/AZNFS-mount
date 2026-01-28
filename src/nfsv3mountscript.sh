@@ -32,8 +32,8 @@ ssl_version=
 # TLS timeout settings
 stunnel_timeout_idle=61
 
-# Debug level for stunnel
-DEBUG_LEVEL="info"
+# Debug level for stunnel (7 = debug for detailed packet flow logging)
+DEBUG_LEVEL="7"
 
 
 MOUNT_OPTIONS=$1
@@ -1465,6 +1465,25 @@ ensure_stunnel_v3() {
   # Setup iptables DNAT rules to redirect traffic to stunnel
   vecho "[DEBUG] Setting up iptables DNAT rules"
   wire_dnat_to_local_stunnel_v3 "${account_ip}"
+  dnat_exit=$?
+  if [ $dnat_exit -ne 0 ]; then
+      eecho "[FATAL] Failed to setup DNAT rules (exit code: $dnat_exit)"
+      return 1
+  fi
+  vecho "[DEBUG] DNAT rules setup completed successfully"
+  
+  # Verify stunnel is running
+  sleep 1
+  if [ -f "$pid_file" ]; then
+      local pid=$(cat "$pid_file")
+      if kill -0 "$pid" 2>/dev/null; then
+          vecho "Stunnel running with PID $pid"
+          return 0
+      fi
+  fi
+  
+  eecho "[FATAL] Stunnel failed to start properly (PID file not found)"
+  return 1
 }
 
 wire_dnat_to_local_stunnel_v3() {
@@ -1472,42 +1491,68 @@ wire_dnat_to_local_stunnel_v3() {
   # Must match the ports used in make_stunnel_conf_v3
   local rpc_local="${stls_rpc_local:-50111}"
   local nfs_local="${stls_nfs_local:-52048}"
-  # Start stunnel
-  vecho "[DEBUG] ===== STARTING STUNNEL PROCESS ====="
-  vecho "[DEBUG] Command: stunnel ${conf}"
-  vecho "Starting stunnel for $account_ip using config $conf"
-  stunnel_status=$(stunnel "${conf}" 2>&1)
-  stunnel_exit=$?
-  if [ $stunnel_exit -ne 0 ]; then
-      eecho "[FATAL] Failed to start stunnel (exit code: $stunnel_exit)"
-      eecho "[FATAL] Stunnel output: $stunnel_status"
-      return 1
-  fi
-  vecho "[DEBUG] Stunnel started successfully"
-  vecho "[DEBUG] Stunnel output: $stunnel_status"
   
-  # Verify stunnel started successfully
-  sleep 1
-  if [ -f "$pid_file" ]; then
-      local pid=$(cat "$pid_file")
-      if kill -0 "$pid" 2>/dev/null; then
-          vecho "Stunnel started successfully with PID $pid"
-          return 0
+  vecho "[DEBUG] ===== wire_dnat_to_local_stunnel_v3 ====="
+  vecho "[DEBUG] wire_dnat_to_local_stunnel_v3: account_ip=$account_ip"
+  vecho "[DEBUG] wire_dnat_to_local_stunnel_v3: rpc_local=$rpc_local, nfs_local=$nfs_local"
+  
+  # Add iptables LOG rules to trace packet flow BEFORE DNAT
+  vecho "[DEBUG] Adding iptables LOG rules for packet tracing"
+  
+  # Log packets destined for port 111 (rpcbind)
+  iptables -w 60 -t nat -C OUTPUT -p tcp -d "${account_ip}" --dport 111 -j LOG --log-prefix "[AZNFS-EIT-111-PRE] " --log-level 6 2>/dev/null
+  if [ $? -ne 0 ]; then
+      iptables -w 60 -t nat -I OUTPUT -p tcp -d "${account_ip}" --dport 111 -j LOG --log-prefix "[AZNFS-EIT-111-PRE] " --log-level 6
+      vecho "[DEBUG] Added LOG rule for port 111 (pre-DNAT)"
+  fi
+  
+  # Log packets destined for port 2048 (nfsd)
+  iptables -w 60 -t nat -C OUTPUT -p tcp -d "${account_ip}" --dport 2048 -j LOG --log-prefix "[AZNFS-EIT-2048-PRE] " --log-level 6 2>/dev/null
+  if [ $? -ne 0 ]; then
+      iptables -w 60 -t nat -I OUTPUT -p tcp -d "${account_ip}" --dport 2048 -j LOG --log-prefix "[AZNFS-EIT-2048-PRE] " --log-level 6
+      vecho "[DEBUG] Added LOG rule for port 2048 (pre-DNAT)"
+  fi
+  
+  # Redirect traffic to server IP on standard NFS ports to local stunnel listeners
+  vecho "[DEBUG] Creating DNAT rule: $account_ip:111 -> 127.0.0.1:$rpc_local"
+  iptables -w 60 -t nat -C OUTPUT -p tcp -d "${account_ip}" --dport 111 -j DNAT --to-destination 127.0.0.1:${rpc_local} 2>/dev/null
+  if [ $? -ne 0 ]; then
+      iptables -w 60 -t nat -A OUTPUT -p tcp -d "${account_ip}" --dport 111 -j DNAT --to-destination 127.0.0.1:${rpc_local}
+      if [ $? -eq 0 ]; then
+          vecho "[DEBUG] DNAT rule created for port 111"
+      else
+          eecho "[FATAL] Failed to create DNAT rule for port 111"
+          return 1
       fi
+  else
+      vecho "[DEBUG] DNAT rule already exists for port 111"
   fi
   
-  eecho "[FATAL] Stunnel failed to start properly"
-  return 1
-}
-
-wire_dnat_to_local_stunnel_v3() {
-  local proxy_ip="$1"     # the AZNFS proxy IP picked for BlobNFS
-  local rpc_local="${stls_rpc_local:-111}"
-  local nfs_local="${stls_nfs_local:-2048}"
-
-  # Redirect BlobNFS ports to local stunnel listeners
-  iptables -t nat -A OUTPUT -p tcp -d "${proxy_ip}" --dport 111  -j DNAT --to-destination 127.0.0.1:${rpc_local}
-  iptables -t nat -A OUTPUT -p tcp -d "${proxy_ip}" --dport 2048 -j DNAT --to-destination 127.0.0.1:${nfs_local}
+  vecho "[DEBUG] Creating DNAT rule: $account_ip:2048 -> 127.0.0.1:$nfs_local"
+  iptables -w 60 -t nat -C OUTPUT -p tcp -d "${account_ip}" --dport 2048 -j DNAT --to-destination 127.0.0.1:${nfs_local} 2>/dev/null
+  if [ $? -ne 0 ]; then
+      iptables -w 60 -t nat -A OUTPUT -p tcp -d "${account_ip}" --dport 2048 -j DNAT --to-destination 127.0.0.1:${nfs_local}
+      if [ $? -eq 0 ]; then
+          vecho "[DEBUG] DNAT rule created for port 2048"
+      else
+          eecho "[FATAL] Failed to create DNAT rule for port 2048"
+          return 1
+      fi
+  else
+      vecho "[DEBUG] DNAT rule already exists for port 2048"
+  fi
+  
+  vecho "[DEBUG] DNAT rules setup complete"
+  
+  # Verify iptables rules are in effect
+  vecho "[DEBUG] Verifying iptables NAT rules:"
+  iptables -w 60 -t nat -L OUTPUT -n -v | grep "${account_ip}" | while read line; do
+      vecho "[DEBUG]   $line"
+  done
+  
+  vecho "[DEBUG] Packet flow tracing enabled. Check logs with:"
+  vecho "[DEBUG]   sudo dmesg -T | grep AZNFS-EIT"
+  vecho "[DEBUG]   sudo cat /etc/stunnel/microsoft/aznfs/nfsv3_blob/logs/${account_ip}.log"
 }
 
 
