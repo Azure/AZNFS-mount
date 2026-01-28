@@ -219,8 +219,9 @@ eit_stls: true
 # Cipher suite to use (default: DEFAULT@SECLEVEL=2)
 #stls_cipher_suite: DEFAULT@SECLEVEL=2
 
-# Local ports for stunnel listeners
+# Local ports for stunnel listeners (defaults: 50111 for rpcbind, 52048 for nfsd)
+# These high ports are used to avoid conflicts with system services
 #stls_local_ports:
-#  rpcbind: 111
-#  nfsd: 2048
+#  rpcbind: 50111
+#  nfsd: 52048
 

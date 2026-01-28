@@ -1308,8 +1308,9 @@ make_stunnel_conf_v3() {
   local hostname="$2"     # hostname for certificate verification
   local tlsver="${stls_tls_version:-TLSv1.3}"
   local cipher="${stls_cipher_suite:-DEFAULT@SECLEVEL=2}"
-  local rpc_local="${stls_rpc_local:-111}"
-  local nfs_local="${stls_nfs_local:-2048}"
+  # Use high ports to avoid conflicts with system services (rpcbind on 111, nfsd on 2048)
+  local rpc_local="${stls_rpc_local:-50111}"
+  local nfs_local="${stls_nfs_local:-52048}"
   local conf="${STUNNEL_V3_DIR}/${account_ip}.conf"
   
   vecho "[DEBUG] ===== make_stunnel_conf_v3 ====="
@@ -1447,6 +1448,30 @@ ensure_stunnel_v3() {
       vecho "[DEBUG] No existing stunnel process found"
   fi
   
+  # Start stunnel
+  vecho "[DEBUG] ===== STARTING STUNNEL PROCESS ====="
+  vecho "[DEBUG] Command: stunnel ${conf}"
+  vecho "Starting stunnel for $account_ip using config $conf"
+  stunnel_status=$(stunnel "${conf}" 2>&1)
+  stunnel_exit=$?
+  if [ $stunnel_exit -ne 0 ]; then
+      eecho "[FATAL] Failed to start stunnel (exit code: $stunnel_exit)"
+      eecho "[FATAL] Stunnel output: $stunnel_status"
+      return 1
+  fi
+  vecho "[DEBUG] Stunnel started successfully"
+  vecho "[DEBUG] Stunnel output: $stunnel_status"
+  
+  # Setup iptables DNAT rules to redirect traffic to stunnel
+  vecho "[DEBUG] Setting up iptables DNAT rules"
+  wire_dnat_to_local_stunnel_v3 "${account_ip}"
+}
+
+wire_dnat_to_local_stunnel_v3() {
+  local account_ip="$1"
+  # Must match the ports used in make_stunnel_conf_v3
+  local rpc_local="${stls_rpc_local:-50111}"
+  local nfs_local="${stls_nfs_local:-52048}"
   # Start stunnel
   vecho "[DEBUG] ===== STARTING STUNNEL PROCESS ====="
   vecho "[DEBUG] Command: stunnel ${conf}"
