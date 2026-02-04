@@ -26,7 +26,6 @@ MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 # This stores the map of local IP and share name an external file endpoint IP.
 #
 MOUNTMAPv4NONTLS="${OPTDIRDATA}/mountmapv4nontls"
-VIRTUALFSLOCATION="${OPTDIRDATA}/fslocation" #test file now #Daniewo change this to add CRC
 MOUNTMAPFILE=""
 
 #
@@ -647,12 +646,18 @@ ensure_mountmapv3_not_exist()
 # corresponding to old entry and adding the DNAT rule corresponding to the new
 # entry.
 #
+# Parameters:
+#   $1 - old: The old entry to replace
+#   $2 - new: The new entry to replace with
+#   $3 - mountmap_file: The mountmap file to update
+#
 update_mountmapv3_entry()
 {
     local old=$1
     local new=$2
+    local mountmap_file=$3
 
-    vecho "Updating mountmapv3 entry [$old -> $new]"
+    vecho "Updating mountmap entry [$old -> $new] in $mountmap_file"
 
     (
         flock -e 999
@@ -660,7 +665,7 @@ update_mountmapv3_entry()
         IFS=" " read l_host l_ip l_nfsip_old l_aznfsctrlfile <<< "$old"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
-                eecho "[$old] Refusing to remove from ${MOUNTMAPFILE} as old iptable entry could not be deleted!"
+                eecho "[$old] Refusing to remove from ${mountmap_file} as old iptable entry could not be deleted!"
                 return 1
             fi
         fi
@@ -668,47 +673,45 @@ update_mountmapv3_entry()
         IFS=" " read l_host l_ip l_nfsip_new l_aznfsctrlfile <<< "$new"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
             if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
-                eecho "[$new] Refusing to remove from ${MOUNTMAPFILE} as new iptable entry could not be added!"
+                eecho "[$new] Refusing to remove from ${mountmap_file} as new iptable entry could not be added!"
                 # Roll back.
                 ensure_iptable_entry $l_ip $l_nfsip_old
                 return 1
             fi
         fi
 
-        eecho "Daniewo updated ip table"
-
-        chattr -f -i $MOUNTMAPFILE
+        chattr -f -i $mountmap_file
         #
         # We do this thing instead of inplace update by sed as that has a
-        # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
+        # very bad side-effect of creating a new mountmap file. This breaks
         # any locking that we dependent on the old file.
         #
-        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAPFILE)
+        out=$(sed "s%^${old}$%${new}%g" $mountmap_file)
         ret=$?
         if [ $ret -eq 0 ]; then
             #
-            # If this echo fails then MOUNTMAPv3 could be truncated. In that case we need
+            # If this echo fails then mountmap could be truncated. In that case we need
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAPFILE
+            echo "$out" > $mountmap_file
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
+                eecho "*** [FATAL] $mountmap_file may be in inconsistent state, contact Microsoft support ***"
             fi
         fi
 
         if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPFILE
-            eecho "[$old -> $new] failed to update ${MOUNTMAPv3}!" #daniewo
+            chattr -f +i $mountmap_file
+            eecho "[$old -> $new] failed to update ${mountmap_file}!"
             # Roll back.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
             ensure_iptable_entry $l_ip $l_nfsip_old
             return 1
         fi
-        chattr -f +i $MOUNTMAPFILE
-    ) 999<$MOUNTMAPFILE
+        chattr -f +i $mountmap_file
+    ) 999<$mountmap_file
 }
 
 #

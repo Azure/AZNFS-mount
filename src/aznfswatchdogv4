@@ -200,7 +200,6 @@ process_nfsv4_mounts()
     #
     findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
     #findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
-    #daniewo use this findmnt to check against the fslocation file for the IP
     #
     # For no matching mounts also, findmnt exits with a failure return, so check
     # for both exit status and non-empty error o/p.
@@ -223,17 +222,13 @@ process_nfsv4_mounts()
         if [ -z "$line" ]; then
             continue
         fi
-        eecho "Daniewo iterating line $line"
         #
         # MOUNTMAPv4 line is of the form:
         # <IP>;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>;<crc32>
         #
-        #daniewo #stunnel_account here is the destination IP address for the account.
-        #FSLOCATION will have FQDN IP1 IP2 or something like that. Look for IP1 and see if it's different than IP2
 
         IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout l_crc_32 <<< "$line"  
-        IP_changed=false
-        eecho "l_ip = $l_ip"
+        IP_changed=false #ensure we are not doing the remount stuff if it's ZRS. We can check by REGIONAL ACCOUNT DANIEWO   
 
         if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
@@ -304,13 +299,12 @@ process_nfsv4_mounts()
             # l_prt=5
             # l_fslocationIP="20.150.93.156" #fake new ip for testing
 
-            if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_ip" -a "$l_prt" -ge 5 ]; then #Migration stage >= 5
+            if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_ip" -a "$l_prt" -ne 0 ]; then #Migration stage >= 5
                 vecho "daniewo IP for $l_host changed [$l_ip -> $l_fslocationIP]."
 
                 #reminder to check checksum in the l_checksumhash  variable and update so that mountmap is updated.
                 #mountmap needs to update the l_conf, l_log, l_ip and checksumhash
                 new_ip=$l_fslocationIP
-                eecho "daniewo -------------- IP CHANGED -----------"
                 IP_changed=true
 
                 #sed command old ip with new ip in l_conf file. then mv after.
@@ -318,7 +312,6 @@ process_nfsv4_mounts()
 
                 ret=$?
 
-                eecho "daniewo before kill l_pid=$l_pid $(cat $l_pid)"
                 #kill old stunnel process and remove old files
                 cleanup_stunnel_files $l_conf $l_log $l_pid
 
@@ -339,19 +332,15 @@ process_nfsv4_mounts()
                 fi
 
                 #update filepath for config file and move to new path
-                new_conf_file_path=$(echo "$l_conf" | sed "s/${l_ip}/${new_ip}/g") #update new for new_conf_file
+                new_conf_file_path=$(echo "$l_conf" | sed "s/${l_ip}/${new_ip}/g")
                 chattr -f -i $l_conf
                 mv -vf $l_conf $new_conf_file_path
-                chattr -f +i $new_conf_file_path #why not lock?
-
-                eecho "daneiwo new conf path = $new_conf_file_path"
+                chattr -f +i $new_conf_file_path
 
                 #update mountmapentry to update checksumhash and ip files
                 newchecksumhash=`cksum $new_conf_file_path | awk '{print $1}'` #make sure nothing else is being updated after this
                 chattr -f -i $MOUNTMAPv4
                 outmountmap=$(sed -e "s/$l_checksumhash/$newchecksumhash/g" -e "s/$l_ip/$new_ip/g" $MOUNTMAPv4)
-                eecho "daniewo ------ output for outmountmap $outmountmap"
-                eecho "======daniewo newchecksumhash=$newchecksumhash, l_checksumhash=$l_checksumhash"
 
                 #Update MOUNTMAPv4 with new IP and new Checksum hash
                 ret=$?
@@ -378,19 +367,10 @@ process_nfsv4_mounts()
                 l_checksumhash=$newchecksumhash
                 
                 # Start the new stunnel process
-                eecho "daniewo starting new stunnel with config: $l_conf"
                 stunnel_status_new=$(stunnel $l_conf 2>&1)
 
-                eecho "Daniewo stunnel status = $stunnel_status_new"
-                eecho "daniewo new l_pid=$l_pid $(cat $l_pid)"
-
-               
                 # done
             fi
-            
-            # update_mountmapv3_entry version of TLS which will update the mountmapv4 entry and update stunnel
-
-            #end daniewo section 
 
             # Check if checksumHash for stunnel.conf file has changed.
             # Customers should not modify stunnel.conf files created by aznfs mount helper.
@@ -411,8 +391,7 @@ process_nfsv4_mounts()
             
             eecho "daniewo before netstat l_pid=$l_pid $(cat $l_pid)"
             
-            #daniewo update this nstatcommand so that it checks new_file_path2
-            is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`) #this pid should be different then and it should restart?
+            is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`)
             if [ -z "$is_stunnel_running" ]; then
                 vecho "Watchdog: stunnel is not running! Restarting the stunnel"
 
@@ -490,7 +469,7 @@ process_nfsv4_nontlsmounts()
         fi
         #
         # MOUNTMAPv4nontls line is of the form:
-        # account.blob.preprod.core.windows.net <local ip> <public ip> [<PID>] crc32
+        # account.blob.preprod.core.windows.net <local ip> <public ip> [<PID>] <crc32>
         # compare publicIP and crc32
         #
 
@@ -500,7 +479,6 @@ process_nfsv4_nontlsmounts()
         flock -e $fd4
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
-        #DANIEWO TODO: again L_ip maybe invalid as it mounted to the previous IP for now, use l_host and grab the account name
         accname=$(echo $l_host | awk -F'.file' '{print $1}') #can change to l_ip as the fix has been made. whatever is safer.
         eecho "daniewo accname: $accname"
         mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$accname" | head -n1 | awk '{print $1}')
@@ -551,7 +529,6 @@ process_nfsv4_nontlsmounts()
         # Delete entry from MOUNTMAPv3 if there are no mounted shares on that host.
         # As long as we have at least one mount using the MOUNTMAPv3 entry, we leave
         # it around.
-        # TODO: For demo, use l_host instead of l_ip for now until we fix the l_ip issue.
         #
         eecho "daniewo accountname = $accname"
         findmnt=$(findmnt -m | grep "${accname}") #>/dev/null)# bugged as it gives the output to dev/null
@@ -606,92 +583,27 @@ process_nfsv4_nontlsmounts()
             continue
         fi
 
-        eecho "Daniewo, now to ip change detection"
 
-        #
-        # See if the account is regional account and we need to skip IP change detection for that.
-        #
-        # if should_skip_regional_account "$l_host"; then
-        #     continue
-        # fi
+        #Daniewo we can hide behind PRT change as protection to know if we need to do IP change. So, even if it returns a different IP, prt will remain 
+        # 0 until migration stage 5 is hit. Therefore, we don't need to resolve any DNS until then.
 
-        #
-        # Check if blob endpoint IP address changed.
-        # This is the migration check.
-        # Daniewo (within this migration check here, we can force an update to the previous IP in the file so that it shows as a different IP now
-        # and forces the IP to be different. )
-        #
-        #new_ip=$(resolve_ipv4 "$l_host" "false")
-
-        eecho "daniewo local_host is $l_host"
-
-        # fqdn_to_find=$l_host
-        # local fslocation_entry=$grep -m1 "^${fqdn} " $MOUNTMAPv3
-        
-        #local fslocation_entry=$(grep -m1 $fqdn_to_find $VIRTUALFSLOCATION)
-
-        #eecho "daniewo fslocation_entry = $fslocation_entry" #Now we need to look at the fslocation file. 
-        # FSLOCATION file will have format 
-        #lock FSLOCATION and find the line that has the matching FQDN == L_HOST
-        # FQDN DestinationIP PRT
-        # fqdn_to_find=$l_host
-        # nfs_ip=$(grep -m 1 "^$fqdn_to_find " $VIRTUALFSLOCATION | awk '{print $2}')
-
-        #IFS=" " read l_fqdn new_ip l_prt <<< $fslocation_entry
-        #eecho "daniewo $l_fqdn, $new_ip, $l_prt"
-
-        #daniewo check why this error code is not working
-
-        # # If we fail to resolve the host name, try next time.
-        # if [ $? -ne 0 ]; then
-        #     #
-        #     # If account is deleted then we need to delete the MOUNTMAPv3 entry along
-        #     # with the proxy iptable entry created for that account.
-        #     # Note that we don't delete if the MOUNTMAPv3 was changed recently since
-        #     # the account may have been re-created after the dns lookup failure.
-        #     #
-        #     if [ "$new_ip" == "NXDOMAIN" ]; then
-        #         pecho "Account corresponding to $l_host seems to have been deleted, deleting from ${MOUNTMAPv3} [$line]!"
-
-        #         l_mtime=$(ensure_mountmapv3_not_exist "$line" "$mtime_mountmap")
-        #         [ $? -eq 0 ] && mtime_mountmap=$l_mtime
-        #     else
-        #         eecho "resolve_ipv4($l_host) failed: $new_ip"
-        #     fi
-        #     continue
-        # fi
-
-        #then check IP detection change to see if it updates DNAT rules etc.
-
-        #
-        # If the IP changed for the Blob endpoint, we need to update the DNAT rule.
-        # This will take care of migration/failover causing the Blob endpoint IP to change.
-        #
 
         #if l_nfsip is not empty and l_prt != 0, then we check. Otherwise, don't check.
         eecho "DAniewo updatmountmapv3entry line: $line l_host: $l_host l_ip: $l_ip l_fslocationIP: $l_fslocationIP l_crc32: $l_crc32"
         if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_nfsip" -a $l_prt != 0 ]; then #change prt to the correct variable, it's probably <5 or something
-            eecho "daniewwo IP for $l_host changed [$l_nfsip -> $l_fslocationIP]."
-
-            #if IP changed, still update the DNAT Rule but also see if this ends up being a ZRS tenant.
-            #Not sure what we will do for ZRS though, as we probably should not mount and only detect IP changes from fslocation
-            #but maybe FS location can return some sort of flag that says "hey we are ZRS FYI"
-            check_for_regional_account "$l_host"
-
-            #danniewo, watch out for this as if we are mounting a ZRS account,
-            # this can potentially be noisy.
+            eecho "IP for $l_host changed [$l_nfsip -> $l_fslocationIP]."
 
             # This will update DNAT rule as well.
             eecho "DAniewo updatmountmapv3entry line: $line l_host: $l_host l_ip: $l_ip l_fslocationIP: $l_fslocationIP l_crc32: $l_crc32"
-            if ! update_mountmapv3_entry "$line" "$l_host $l_ip $l_fslocationIP $l_crc32"; then
+            if ! update_mountmapv3_entry "$line" "$l_host $l_ip $l_fslocationIP $l_crc32" "$MOUNTMAPv4NONTLS"; then
                 eecho "Will reattempt the operation in next iteration."
             else
-                eecho "daniewo empty"
-                # mountpoint2048=$(echo "$findmnt" 2>/dev/null | egrep -m1 " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}')
-                # mountpoint2048=$(echo -e "$mountpoint2048")
-                # if [ -n "$mountpoint2048" ]; then
-                #     ping_new_endpoint "$mountpoint2048" &
-                # fi
+                #pings the new endpoint to get a TCP RST
+                mountpoint2048=$(echo "$findmnt" 2>/dev/null | egrep -m1 " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}')
+                mountpoint2048=$(echo -e "$mountpoint2048")
+                if [ -n "$mountpoint2048" ]; then
+                    ping_new_endpoint "$mountpoint2048" &
+                fi
             fi
         fi
     done
