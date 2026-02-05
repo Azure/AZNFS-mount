@@ -516,10 +516,10 @@ process_nfsv4_nontlsmounts()
         #if ! echo "$findmnt" >/dev/null; then
         if [ -z "$findmnt" ] ; then
             if $do_unmount_gc_nfsv4; then
-                eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]." #update to correct file name
+                eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv4NONTLS} [$line]." #update to correct file name
 
                 # Delete IFF mountmap is not changed since we read it above.
-                l_mtime=$(ensure_mountmapv3_not_exist "$line" "$mtime_mountmap")
+                l_mtime=$(ensure_mountmapv3_not_exist "$line") # daniewo do we need this? i don't think so? "$mtime_mountmap")
 
                 #
                 # Update ifmatch time in case of successful updation of MOUNTMAPv3,
