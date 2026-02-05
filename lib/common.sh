@@ -526,20 +526,27 @@ get_aznfs_ctrl_filename()
 # MOUNTMAPv3 is accessed by both mount.aznfs and aznfswatchdog service. Update it
 # only after taking exclusive lock.
 #
-# Add entry to MOUNTMAPv3 in case of a new mount or IP change for blob FQDN.
+# Add entry to mountmap in case of a new mount or IP change for blob/file FQDN.
 #
-# This also ensures that the corresponding DNAT rule is created so that MOUNTMAPv3
+# This also ensures that the corresponding DNAT rule is created so that mountmap
 # entry and DNAT rule are always in sync.
 # For Nfsv4 Non TLS, also add CRC32 based on the account name
 #
+# Parameters:
+#   $1 - entry: The entry to add (format: "host ip nfsip")
+#   $2 - mountmap_file: The mountmap file to update
+#
 ensure_mountmapv3_exist_nolock()
 {
-    IFS=" " read l_host l_ip l_nfsip <<< "$1"
+    local entry=$1
+    local mountmap_file=$2
+
+    IFS=" " read l_host l_ip l_nfsip <<< "$entry"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
-        eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
+        eecho "[$entry] failed to add to ${mountmap_file}!"
         return 1
     fi
-    line="$1" 
+    line="$entry" 
     if [ "$AZNFS_VERSION" = "4" ]; then
         #calculate crc32 and then append to the line
         local ctrl_filename=$(get_aznfs_ctrl_filename "$l_host")
@@ -547,30 +554,40 @@ ensure_mountmapv3_exist_nolock()
         line+=" $ctrl_filename"
     fi
 
-    egrep -q "^${line}$" $MOUNTMAPFILE
+    egrep -q "^${line}$" $mountmap_file
     if [ $? -ne 0 ]; then
-        chattr -f -i $MOUNTMAPFILE
-        echo "$line" >> $MOUNTMAPFILE 
+        chattr -f -i $mountmap_file
+        echo "$line" >> $mountmap_file 
         if [ $? -ne 0 ]; then
-            chattr -f +i $MOUNTMAPFILE
-            eecho "[$1] failed to add to ${MOUNTMAPFILE}!"
-            # Could not add MOUNTMAPv3 entry, delete the DNAT rule added above.
+            chattr -f +i $mountmap_file
+            eecho "[$entry] failed to add to ${mountmap_file}!"
+            # Could not add mountmap entry, delete the DNAT rule added above.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip
             return 1
         fi
-        chattr -f +i $MOUNTMAPFILE
+        chattr -f +i $mountmap_file
     else
-        pecho "[$1] already exists in ${MOUNTMAPFILE}."
+        pecho "[$entry] already exists in ${mountmap_file}."
     fi
 }
 
+#
+# Add entry to mountmap with exclusive lock.
+#
+# Parameters:
+#   $1 - entry: The entry to add (format: "host ip nfsip")
+#   $2 - mountmap_file: The mountmap file to update
+#
 ensure_mountmapv3_exist()
 {
+    local entry=$1
+    local mountmap_file=$2
+
     (
         flock -e 999
-        ensure_mountmapv3_exist_nolock "$1"
+        ensure_mountmapv3_exist_nolock "$entry" "$mountmap_file"
         return $?
-    ) 999<$MOUNTMAPFILE
+    ) 999<$mountmap_file
 }
 
 #

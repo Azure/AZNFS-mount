@@ -299,13 +299,13 @@ search_free_local_ip_with_prefix()
         #
         # Happy path!
         #
-        # Add this entry to MOUNTMAPv3 while we have the MOUNTMAPv3 lock.
+        # Add this entry to MOUNTMAPv4NONTLS while we have the mountmap lock.
         # This is to avoid assigning same local ip to parallel mount requests
         # for different endpoints.
-        # ensure_mountmapv3_exist will also create a matching iptable DNAT rule.
+        # ensure_mountmapv3_exist_nolock will also create a matching iptable DNAT rule.
         #
         LOCAL_IP=$local_ip
-        ensure_mountmapv3_exist_nolock "$nfs_host $LOCAL_IP $nfs_ip"
+        ensure_mountmapv3_exist_nolock "$nfs_host $LOCAL_IP $nfs_ip" "$MOUNTMAPv4NONTLS"
 
         return 0
     done
