@@ -485,29 +485,7 @@ process_nfsv4_nontlsmounts()
 
         eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip mountpoint: $mountpoint"
 
-        #read into the line here to do the ip change detection. this is per Line.
-        l_fslocation_line=$(cat "${mountpoint}/${l_crc32}")
-        eecho "file location ${mountpoint}/${l_crc32}"
-        eecho "Line l_fslocation_line: $l_fslocation_line"
-        read_status=$?
-
-        #rearrange this, we are not using the status really
-        if [ $read_status -ne 0 ]; then
-            eecho "Failed to read from $l_crc32_file"
-            return 1
-        fi
-
-        IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
-        # Release lock
-        flock -u $fd4
-        exec {fd4}<&-
-        # Daniewo look at the IP line in AZNFS.txt12345 for the file using l_crc32
-        if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" -o -z "$l_crc32" ]; then
-            wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NONTLS: [$line]!"
-            l_mtime=$(ensure_mountmapv3_not_exist "$line")
-            [ $? -eq 0 ] && mtime_mountmap=$l_mtime
-            continue
-        fi
+        
 
         # Since we added it to the MOUNTMAPv4 file, it cannot be invalid.
         if ! is_private_ip "$l_ip"; then
@@ -574,6 +552,29 @@ process_nfsv4_nontlsmounts()
 
         fi
 
+        #read into the line here to do the ip change detection. this is per Line.
+        l_fslocation_line=$(cat "${mountpoint}/${l_crc32}")
+        eecho "file location ${mountpoint}/${l_crc32}"
+        eecho "Line l_fslocation_line: $l_fslocation_line"
+        read_status=$?
+
+        #rearrange this, we are not using the status really
+        if [ $read_status -ne 0 ]; then
+            eecho "Failed to read from $l_crc32_file"
+            return 1
+        fi
+
+        IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
+        # Release lock
+        flock -u $fd4
+        exec {fd4}<&-
+        # Daniewo look at the IP line in AZNFS.txt12345 for the file using l_crc32
+        if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" -o -z "$l_crc32" ]; then
+            wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NONTLS: [$line]!"
+            l_mtime=$(ensure_mountmapv3_not_exist "$line")
+            [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+            continue
+        fi
         #
         # We do IP change detection less frequently than unmount detection
         # since it will cause DNS calls on network.
