@@ -475,8 +475,8 @@ process_nfsv4_nontlsmounts()
 
         # lock mountmap so it is not updated while we are doing a grep on the mountpoints
         # otherwise it may not have been fully mounted yet
-        exec {fd4}<"$MOUNTMAPv4NONTLS"
-        flock -e $fd4
+        # exec {fd4}<"$MOUNTMAPv4NONTLS"
+        # flock -e $fd4
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
         accname=$(echo $l_host | awk -F'.file' '{print $1}') #can change to l_ip as the fix has been made. whatever is safer.
@@ -519,7 +519,7 @@ process_nfsv4_nontlsmounts()
                 eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv4NONTLS} [$line]." #update to correct file name
 
                 # Delete IFF mountmap is not changed since we read it above.
-                l_mtime=$(ensure_mountmapv3_not_exist "$line" "$MOUNTMAPv4NONTLS" "$mtime_mountmap")
+                l_mtime=$(ensure_mountmapv3_not_exist "$line" "$MOUNTMAPv4NONTLS") #"$mtime_mountmap")
 
                 #
                 # Update ifmatch time in case of successful updation of MOUNTMAPv4NONTLS,
@@ -566,12 +566,12 @@ process_nfsv4_nontlsmounts()
 
         IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
         # Release lock
-        flock -u $fd4
-        exec {fd4}<&-
+        #flock -u $fd4
+        #exec {fd4}<&-
         # Daniewo look at the IP line in AZNFS.txt12345 for the file using l_crc32
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" -o -z "$l_crc32" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NONTLS: [$line]!"
-            l_mtime=$(ensure_mountmapv3_not_exist "$line" "$MOUNTMAPv4NONTLS")
+            l_mtime=$(ensure_mountmapv3_not_exist "$line" "$MOUNTMAPv4NONTLS") #don't worry if it moves because we need to delete anyway
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         fi
