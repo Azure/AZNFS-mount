@@ -689,7 +689,8 @@ octets_in_ipv4_prefix()
     echo 0
 }
 
-search_free_local_ip_with_prefix()
+#daniewo also move this to common.sh
+search_free_local_ip_with_prefix() 
 {
     initial_ip_prefix=$1
     num_octets=$(octets_in_ipv4_prefix $ip_prefix)
@@ -832,10 +833,10 @@ search_free_local_ip_with_prefix()
         # Add this entry to MOUNTMAPv3 while we have the MOUNTMAPv3 lock.
         # This is to avoid assigning same local ip to parallel mount requests
         # for different endpoints.
-        # ensure_mountmapv3_exist will also create a matching iptable DNAT rule.
+        # ensure_mountmapv3_exist_nolock will also create a matching iptable DNAT rule.
         #
         LOCAL_IP=$local_ip
-        ensure_mountmapv3_exist_nolock "$nfs_host $LOCAL_IP $nfs_ip"
+        ensure_mountmapv3_exist_nolock "$nfs_host $LOCAL_IP $nfs_ip" "$MOUNTMAPv3"
 
         return 0
     done
@@ -846,6 +847,7 @@ search_free_local_ip_with_prefix()
 #
 # Get a local IP that is free to use. Set global variable LOCAL_IP if found.
 #
+# also move this to common
 get_free_local_ip()
 {
     for ip_prefix in $IP_PREFIXES; do
