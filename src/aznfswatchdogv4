@@ -21,6 +21,12 @@ ip_to_hex()
     if [ -z "$o1" -o -z "$o2" -o -z "$o3" -o -z "$o4" ]; then
         return 1
     fi
+    if ! [[ "$o1" =~ ^[0-9]+$ && "$o2" =~ ^[0-9]+$ && "$o3" =~ ^[0-9]+$ && "$o4" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+    if [ "$o1" -gt 255 -o "$o2" -gt 255 -o "$o3" -gt 255 -o "$o4" -gt 255 ]; then
+        return 1
+    fi
     printf "%02x%02x%02x%02x" "$o1" "$o2" "$o3" "$o4"
 }
 
@@ -33,6 +39,14 @@ is_nfs_server_active_for_target()
 
     if [ -z "$target_ip" -o -z "$target_port" ]; then
         vecho "NFSv4 server entry check: missing target ip/port (ip='$target_ip', port='$target_port')."
+        return 1
+    fi
+    if ! [[ "$target_port" =~ ^[0-9]+$ ]]; then
+        vecho "NFSv4 server entry check: invalid target port (port='$target_port')."
+        return 1
+    fi
+    if [ "$target_port" -lt 1 -o "$target_port" -gt 65535 ]; then
+        vecho "NFSv4 server entry check: target port out of range (port='$target_port')."
         return 1
     fi
 
