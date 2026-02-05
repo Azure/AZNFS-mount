@@ -576,68 +576,76 @@ ensure_mountmapv3_exist()
 #
 # Delete entry from MOUNTMAPv3 and also the corresponding iptable rule.
 #
+# Parameters:
+#   $1 - line: The entry to delete
+#   $2 - mountmap_file: The mountmap file to update
+#   $3 - ifmatch (optional): Only delete if mountmap mtime matches this value
+#
 ensure_mountmapv3_not_exist()
 {
+    local line=$1
+    local mountmap_file=$2
+    local ifmatch="$3"
+
     (
         flock -e 999
 
         #
-        # If user wants to delete the entry only if MOUNTMAPv3 has not changed since
+        # If user wants to delete the entry only if mountmap has not changed since
         # he looked up, honour that.
         #
-        local ifmatch="$2"
         if [ -n "$ifmatch" ]; then
-            local mtime=$(stat -c%Y $MOUNTMAPFILE)
+            local mtime=$(stat -c%Y $mountmap_file)
             if [ "$mtime" != "$ifmatch" ]; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPFILE} as $mtime != $ifmatch!"
+                eecho "[$line] Refusing to remove from ${mountmap_file} as $mtime != $ifmatch!"
                 return 1
             fi
         fi
 
-        # Delete iptable rule corresponding to the outgoing MOUNTMAPv3 entry.
-        IFS=" " read l_host l_ip l_nfsip l_aznfsctrlfile <<< "$1"
+        # Delete iptable rule corresponding to the outgoing mountmap entry.
+        IFS=" " read l_host l_ip l_nfsip l_aznfsctrlfile <<< "$line"
         eecho "Daniewo deleting iptable entry for l_ip = $l_ip l_nfsip = $l_nfsip"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPFILE} as iptable entry could not be deleted!"
+                eecho "[$line] Refusing to remove from ${mountmap_file} as iptable entry could not be deleted!"
                 return 1
             fi
         fi
 
-        chattr -f -i $MOUNTMAPFILE
+        chattr -f -i $mountmap_file
         #
         # We do this thing instead of inplace update by sed as that has a
-        # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
+        # very bad side-effect of creating a new mountmap file. This breaks
         # any locking that we dependent on the old file.
         #
-        out=$(sed "\%^${1}$%d" $MOUNTMAPFILE)
+        out=$(sed "\%^${line}$%d" $mountmap_file)
         ret=$?
         if [ $ret -eq 0 ]; then
             #
-            # If this echo fails then MOUNTMAPv3 could be truncated. In that case we need
+            # If this echo fails then mountmap could be truncated. In that case we need
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $MOUNTMAPFILE # Change from echo to printf to prevent the new line when file becomes empty
+            echo "$out" > $mountmap_file # Change from echo to printf to prevent the new line when file becomes empty
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
+                eecho "*** [FATAL] $mountmap_file may be in inconsistent state, contact Microsoft support ***"
             fi
         fi
 
         if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPFILE
-            eecho "[$1] failed to remove from ${MOUNTMAPFILE}!"
+            chattr -f +i $mountmap_file
+            eecho "[$line] failed to remove from ${mountmap_file}!"
             # Reinstate DNAT rule deleted above.
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
         fi
-        chattr -f +i $MOUNTMAPFILE
+        chattr -f +i $mountmap_file
 
         # Return the mtime after our mods.
-        echo $(stat -c%Y $MOUNTMAPFILE)
-    ) 999<$MOUNTMAPFILE
+        echo $(stat -c%Y $mountmap_file)
+    ) 999<$mountmap_file
 }
 
 #

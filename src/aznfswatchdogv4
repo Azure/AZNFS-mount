@@ -490,15 +490,15 @@ process_nfsv4_nontlsmounts()
         # Since we added it to the MOUNTMAPv4 file, it cannot be invalid.
         if ! is_private_ip "$l_ip"; then
             wecho "[FATAL] local ip ($l_ip) is invalid!"
-            l_mtime=$(ensure_mountmapv3_not_exist "$line")
+            l_mtime=$(ensure_mountmapv3_not_exist "$line" "$MOUNTMAPv4NONTLS")
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         fi
 
-        # Since we added it to the MOUNTMAPv3 file, it cannot be invalid.
+        # Since we added it to the MOUNTMAPv4NONTLS file, it cannot be invalid.
         if ! is_valid_ipv4_address "$l_nfsip"; then
-            wecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
-            l_mtime=$(ensure_mountmapv3_not_exist "$line")
+            wecho "[FATAL] File endpoint ip ($l_nfsip) is invalid!"
+            l_mtime=$(ensure_mountmapv3_not_exist "$line" "$MOUNTMAPv4NONTLS")
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         fi
@@ -519,10 +519,10 @@ process_nfsv4_nontlsmounts()
                 eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv4NONTLS} [$line]." #update to correct file name
 
                 # Delete IFF mountmap is not changed since we read it above.
-                l_mtime=$(ensure_mountmapv3_not_exist "$line") # daniewo do we need this? i don't think so? "$mtime_mountmap")
+                l_mtime=$(ensure_mountmapv3_not_exist "$line" "$MOUNTMAPv4NONTLS" "$mtime_mountmap")
 
                 #
-                # Update ifmatch time in case of successful updation of MOUNTMAPv3,
+                # Update ifmatch time in case of successful updation of MOUNTMAPv4NONTLS,
                 # so that we can distinguish between MOUNTMAPv3 mtime changing because
                 # of our action or some mount helper changing it. In the former case
                 # it's safe to update the MOUNTMAPv3, so update mtime_mountmap to the
@@ -571,7 +571,7 @@ process_nfsv4_nontlsmounts()
         # Daniewo look at the IP line in AZNFS.txt12345 for the file using l_crc32
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" -o -z "$l_crc32" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NONTLS: [$line]!"
-            l_mtime=$(ensure_mountmapv3_not_exist "$line")
+            l_mtime=$(ensure_mountmapv3_not_exist "$line" "$MOUNTMAPv4NONTLS")
             [ $? -eq 0 ] && mtime_mountmap=$l_mtime
             continue
         fi
