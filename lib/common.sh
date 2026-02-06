@@ -32,7 +32,7 @@ MOUNTMAPFILE=""
 # Point to the correct MOUNTMAP file depending on if it's v3 or v4
 # to refactor V3 code for V4
 # MOUNTMAPFILE will be set during common.sh v3 or v4 mountscript.
-# We will share ensure_mountmapv3_not_exist(), update_mountmapv3_entry(), ensure_mountmapv3_exist(), ensure_mountmapv3_exist_nolock()
+# We will share ensure_mountmap_not_exist(), update_mountmap_entry(), ensure_mountmap_exist(), ensure_mountmap_exist_nolock()
 # 
 
 
@@ -536,7 +536,7 @@ get_aznfs_ctrl_filename()
 #   $1 - entry: The entry to add (format: "host ip nfsip")
 #   $2 - mountmap_file: The mountmap file to update
 #
-ensure_mountmapv3_exist_nolock()
+ensure_mountmap_exist_nolock()
 {
     local entry=$1
     local mountmap_file=$2
@@ -578,27 +578,27 @@ ensure_mountmapv3_exist_nolock()
 #   $1 - entry: The entry to add (format: "host ip nfsip")
 #   $2 - mountmap_file: The mountmap file to update
 #
-ensure_mountmapv3_exist()
+ensure_mountmap_exist()
 {
     local entry=$1
     local mountmap_file=$2
 
     (
         flock -e 999
-        ensure_mountmapv3_exist_nolock "$entry" "$mountmap_file"
+        ensure_mountmap_exist_nolock "$entry" "$mountmap_file"
         return $?
     ) 999<$mountmap_file
 }
 
 #
-# Delete entry from MOUNTMAPv3 and also the corresponding iptable rule.
+# Delete entry from mountmap and also the corresponding iptable rule.
 #
 # Parameters:
 #   $1 - line: The entry to delete
 #   $2 - mountmap_file: The mountmap file to update
 #   $3 - ifmatch (optional): Only delete if mountmap mtime matches this value
 #
-ensure_mountmapv3_not_exist()
+ensure_mountmap_not_exist()
 {
     local line=$1
     local mountmap_file=$2
@@ -676,7 +676,7 @@ ensure_mountmapv3_not_exist()
 #   $2 - new: The new entry to replace with
 #   $3 - mountmap_file: The mountmap file to update
 #
-update_mountmapv3_entry()
+update_mountmap_entry()
 {
     local old=$1
     local new=$2
