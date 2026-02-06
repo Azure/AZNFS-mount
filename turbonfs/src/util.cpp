@@ -34,6 +34,29 @@ uint64_t get_total_ram()
     return num_pages * page_size;
 }
 
+/*
+ * Check file extension has tar or zip.
+ */
+bool has_tar_or_zip_extension(const char *filename)
+{
+    assert(filename != nullptr);
+
+    const char *ext = ::strrchr(filename, '.');
+    if (ext == nullptr) {
+        return false;
+    }
+
+    if ((::strcasecmp(ext, ".tar") == 0) ||
+        (::strcasecmp(ext, ".zip") == 0) ||
+        (::strcasecmp(ext, ".tar.gz") == 0) ||
+        (::strcasecmp(ext, ".tgz") == 0)) {
+        return true;
+    }
+
+    return false;
+}
+
+
 /**
  * Set readahead_kb for kernel readahead.
  * This sets the kernel readahead value of aznfsc_cfg.readahead_kb iff kernel

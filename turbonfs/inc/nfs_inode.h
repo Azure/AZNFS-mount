@@ -352,6 +352,12 @@ public:
      * IMPORTANT: Need to ensure time is sync'ed and it doesn't go back.
      */
     const fuse_ino_t ino;
+
+    /*
+     * Does this inode require kernel cache?
+     */
+    const bool require_kernel_cache;
+
     const uint64_t generation;
 
     /*
@@ -462,7 +468,8 @@ public:
               const struct fattr3 *fattr,
               struct nfs_client *_client,
               uint32_t _file_type,
-              fuse_ino_t _ino = 0);
+              fuse_ino_t _ino = 0,
+              bool require_kernel_cache = false);
 
     ~nfs_inode();
 
@@ -1789,6 +1796,14 @@ public:
     bool is_stable_write() const
     {
         return stable_write;
+    }
+
+    /**
+     * Does this inode require kernel cache?
+     */
+    bool get_require_kernel_cache() const
+    {
+        return require_kernel_cache;
     }
 
     /**
