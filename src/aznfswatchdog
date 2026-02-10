@@ -6,7 +6,7 @@
 # --------------------------------------------------------------------------------------------
 
 # How often do we check for change in FQDN->IP?
-IP_CHANGE_DETECTION_FREQUENCY=30 #daniewo, changing to 30 seconds for debugging purposes
+IP_CHANGE_DETECTION_FREQUENCY=60
 
 # Determines the frequency at which we check for updates of AZNFS and run the daily function.
 DAILY_CHECK_AFTER_SECONDS=86400
@@ -343,7 +343,7 @@ process_nfsv3_mounts()
     #
     exec {fd}<$MOUNTMAPv3
     flock -e $fd
-    mtime_mountmap=$(stat -c%Y $MOUNTMAPv3)
+    mtime_mountmapv3=$(stat -c%Y $MOUNTMAPv3)
     IFS=$'\n' lines=$(cat $MOUNTMAPv3)
     flock -u $fd
     exec {fd}<&-
@@ -361,7 +361,7 @@ process_nfsv3_mounts()
     #
     do_unmount_gc=false
     if [ "$AZNFS_SKIP_UNMOUNT_CLEANUP" == "0" ]; then
-        if [ $epoch_now -ge $(expr $mtime_mountmap + $MOUNTMAP_INACTIVITY_SECS) ]; then
+        if [ $epoch_now -ge $(expr $mtime_mountmapv3 + $MOUNTMAP_INACTIVITY_SECS) ]; then
             do_unmount_gc=true
         fi
     fi
@@ -400,7 +400,7 @@ process_nfsv3_mounts()
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv3: [$line]!"
             l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv3")
-            [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+            [ $? -eq 0 ] && mtime_mountmapv3=$l_mtime
             continue
         fi
 
@@ -408,7 +408,7 @@ process_nfsv3_mounts()
         if ! is_private_ip "$l_ip"; then
             wecho "[FATAL] local ip ($l_ip) is invalid!"
             l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv3")
-            [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+            [ $? -eq 0 ] && mtime_mountmapv3=$l_mtime
             continue
         fi
 
@@ -416,7 +416,7 @@ process_nfsv3_mounts()
         if ! is_valid_ipv4_address "$l_nfsip"; then
             wecho "[FATAL] Blob endpoint ip ($l_nfsip) is invalid!"
             l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv3")
-            [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+            [ $? -eq 0 ] && mtime_mountmapv3=$l_mtime
             continue
         fi
 
@@ -430,16 +430,16 @@ process_nfsv3_mounts()
                 pecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv3} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
-                l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv3" "$mtime_mountmap")
+                l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv3" "$mtime_mountmapv3")
 
                 #
                 # Update ifmatch time in case of successful updation of MOUNTMAPv3,
                 # so that we can distinguish between MOUNTMAPv3 mtime changing because
                 # of our action or some mount helper changing it. In the former case
-                # it's safe to update the MOUNTMAPv3, so update mtime_mountmap to the
+                # it's safe to update the MOUNTMAPv3, so update mtime_mountmapv3 to the
                 # mtime after this update.
                 #
-                [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+                [ $? -eq 0 ] && mtime_mountmapv3=$l_mtime
                 continue
             fi
         else
@@ -494,8 +494,8 @@ process_nfsv3_mounts()
             if [ "$new_ip" == "NXDOMAIN" ]; then
                 pecho "Account corresponding to $l_host seems to have been deleted, deleting from ${MOUNTMAPv3} [$line]!"
 
-                l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv3" "$mtime_mountmap")
-                [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+                l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv3" "$mtime_mountmapv3")
+                [ $? -eq 0 ] && mtime_mountmapv3=$l_mtime
             else
                 eecho "resolve_ipv4($l_host) failed: $new_ip"
             fi
