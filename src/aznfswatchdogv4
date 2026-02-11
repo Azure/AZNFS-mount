@@ -232,7 +232,7 @@ process_nfsv4_mounts()
         #
 
         IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout l_crc_32 <<< "$line"  
-        IP_changed=false #ensure we are not doing the remount stuff if it's ZRS. We can check by REGIONAL ACCOUNT DANIEWO   
+        IP_changed=false #we don't need to worry abour regional accounts with l_crc32
 
         if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
@@ -277,11 +277,9 @@ process_nfsv4_mounts()
             # The virtual file is at the mountpoint and named with the crc32 value in the mountmap entry.
             #
             local mountpoint=$(echo "$findmnt_output" | awk '{print $1}' | sed 's/^[└├│─]*//g')
-            vecho "daniewo mountpoint = $mountpoint"
             l_fslocation_line=$(cat "${mountpoint}/${l_crc_32}")
             #read now from the mountpoint
             read_status=$?
-            vecho "daniewo l_fslocation = $l_fslocation_line"
             IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
             #process the output
             if [ $read_status -ne 0 ]; then
@@ -380,9 +378,7 @@ process_nfsv4_mounts()
                 cleanup_mount $l_conf $l_log $l_pid $line
                 continue
             fi
-            
-            eecho "daniewo before netstat l_pid=$l_pid $(cat $l_pid)"
-            
+                        
             is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`)
             if [ -z "$is_stunnel_running" ]; then
                 vecho "Watchdog: stunnel is not running! Restarting the stunnel"
@@ -461,7 +457,6 @@ process_nfsv4_nontlsmounts()
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
         accname=$(echo $l_host | awk -F'.file' '{print $1}') #can change to l_ip as the fix has been made. whatever is safer.
-        eecho "daniewo accname: $accname"
         mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$accname" | head -n1 | awk '{print $1}')
 
         eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip mountpoint: $mountpoint"
@@ -495,7 +490,7 @@ process_nfsv4_nontlsmounts()
                 eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv4NONTLS} [$line]." #update to correct file name
 
                 # Delete IFF mountmap is not changed since we read it above.
-                l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv4NONTLS") #"$mtime_mountmapv4nontls")
+                l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv4NONTLS" "$mtime_mountmapv4nontls")
 
                 #
                 # Update ifmatch time in case of successful updation of MOUNTMAPv4NONTLS,
@@ -601,5 +596,4 @@ while :; do
     sleep $MONITOR_INTERVAL_SECS
     process_nfsv4_mounts
     process_nfsv4_nontlsmounts
-
 done

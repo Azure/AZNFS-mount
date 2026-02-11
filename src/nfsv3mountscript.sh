@@ -543,7 +543,6 @@ octets_in_ipv4_prefix()
     echo 0
 }
 
-#daniewo also move this to common.sh
 search_free_local_ip_with_prefix() 
 {
     initial_ip_prefix=$1
@@ -748,7 +747,7 @@ get_local_ip_for_fqdn()
             # This is similar to holding a timed lease, we can safely use this
             # proxy IP w/o worrying about aznfswatchdog deleting it for 5 minutes.
             #
-            touch_mountmapv3
+            touch_mountmap $MOUNTMAPv3
 
             #
             # This is not really needed since iptable entry must also be present,

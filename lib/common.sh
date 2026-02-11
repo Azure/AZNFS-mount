@@ -434,23 +434,28 @@ is_private_ip()
 }
 
 #
-# Mount helper must call this function to grab a timed lease on all MOUNTMAPv3
+# Mount helper must call this function to grab a timed lease on all mountmap
 # entries. It should do this if it decides to use any of the entries. Once
-# this is called aznfswatchdog is guaranteed to not delete any MOUNTMAPv3 till
-# the next 5 minutes.
+# this is called aznfswatchdog is guaranteed to not delete any mountmap entries
+# till the next 5 minutes.
 #
-# Must be called with MOUNTMAPv3 lock held.
+# Must be called with mountmap lock held.
 #
-touch_mountmapv3()
+# Parameters:
+#   $1 - mountmap_file: The mountmap file to touch
+#
+touch_mountmap()
 {
-    chattr -f -i $MOUNTMAPFILE
-    touch $MOUNTMAPFILE
+    local mountmap_file=$1
+
+    chattr -f -i $mountmap_file
+    touch $mountmap_file
     if [ $? -ne 0 ]; then
-        chattr -f +i $MOUNTMAPFILE
-        eecho "Failed to touch ${MOUNTMAPFILE}!"
+        chattr -f +i $mountmap_file
+        eecho "Failed to touch ${mountmap_file}!"
         return 1
     fi
-    chattr -f +i $MOUNTMAPFILE
+    chattr -f +i $mountmap_file
 }
 
 # Create mount map file MOUNTMAPv3 or MOUNTMAPv4
@@ -763,7 +768,6 @@ ensure_iptable_entry()
             wecho "Deleted undesired conntrack entry [$1 -> $1]!"
         fi
     fi
-    eecho "Daniewo updated Ip Table"
 }
 
 #
@@ -940,8 +944,11 @@ fi
 #
 # In case there are inherited fds, close other than 0,1,2.
 #
-pushd /proc/$$/fd  > /dev/null
-for fd in *; do
-    [ $fd -gt 2 ] && exec {fd}<&-
-done
-popd  > /dev/null
+if pushd /proc/$$/fd > /dev/null 2>&1; then
+    for fd in *; do
+        # Skip if glob didn't match (fd would be literal "*")
+        [ "$fd" = "*" ] && continue
+        [ "$fd" -gt 2 ] 2>/dev/null && exec {fd}<&-
+    done
+    popd > /dev/null
+fi

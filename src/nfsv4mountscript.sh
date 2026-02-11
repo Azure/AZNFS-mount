@@ -641,31 +641,32 @@ check_if_notls_mount_exists()
 # For the given AZNFS endpoint FQDN return a local IP that should proxy it.
 # If there is at least one mount to the same FQDN it MUST return the local IP
 # used for that, else assign a new free local IP.
+# ensure that we mount using the same local ip if for the same account then
+# rather than rejecting etc.
 # really consider moving this to common.sh
 get_local_ip_for_fqdn()
 {
         local fqdn=$1
-        local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv3)
+        local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv4NONTLS)
         # One local ip per fqdn, so return existing one if already present.
         IFS=" " read _ local_ip _ <<< "$mountmap_entry"
 
         if [ -n "$local_ip" ]; then
             LOCAL_IP=$local_ip
-
+            eecho "Daniewo Found existing local IP $LOCAL_IP for $fqdn in $MOUNTMAPv4NONTLS, reusing it for the mount."
             #
             # Ask aznfswatchdog to stay away while we are using this proxy IP.
             # This is similar to holding a timed lease, we can safely use this
             # proxy IP w/o worrying about aznfswatchdog deleting it for 5 minutes.
             #
-            # rename this
-            touch_mountmapv3
+            touch_mountmap $MOUNTMAPv4NONTLS
 
             #
             # This is not really needed since iptable entry must also be present,
             # but it's always better to ensure MOUNTMAPv3 and iptable entries are
             # in sync.
             #
-            ensure_iptable_entry $local_ip $nfs_ip
+            ensure_iptable_entry $local_ip $nfs_ip #if we move this into common, then we would want to read from the mountmap file for nfs_ip or something
             return 0
         fi
 
@@ -1120,17 +1121,19 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         exit 1
     fi
 
-     # Check if the mount to the same endpoint exists that is using non-TLS.
-     mountmapnontls_entry=$(grep -m1 "${nfs_host}" $MOUNTMAPv4NONTLS)
-     if [ -n "$mountmapnontls_entry" ]; then
-        # storage_account=$(echo $mountmap_entry | cut -d';' -f1)
-        eecho "Mount failed!"
-        eecho "Mount to the same endpoint ${nfs_host} exists that is using non-TLS. Cannot mount to the same endpoint as they use the same connection."
-        eecho "If there are no mount using non-TLS on $nfs_host, try mounting again with "clean" option. Otherwise, try unmounting the shares on $nfs_host and run the mount command again."
-        flock -u $fd2
-        exec {fd2}<&-
-        exit 1
-    fi
+    #if it is non-tls, it can use the same. Mainly, we want to reuse the same one, using the same local ip and skipping the mountmap entry since we just
+    #go straight to the mountmap and reuse the same local
+    #  # Check if the mount to the same endpoint exists that is using non-TLS.
+    #  mountmapnontls_entry=$(grep -m1 "${nfs_host}" $MOUNTMAPv4NONTLS)
+    #  if [ -n "$mountmapnontls_entry" ]; then
+    #     # storage_account=$(echo $mountmap_entry | cut -d';' -f1)
+    #     eecho "Mount failed!"
+    #     eecho "Mount to the same endpoint ${nfs_host} exists that is using non-TLS. Cannot mount to the same endpoint as they use the same connection."
+    #     eecho "If there are no mount using non-TLS on $nfs_host, try mounting again with "clean" option. Otherwise, try unmounting the shares on $nfs_host and run the mount command again."
+    #     flock -u $fd2
+    #     exec {fd2}<&-
+    #     exit 1
+    # fi
 
     if [[ "$MOUNT_OPTIONS" == *"notls,"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//notls,/}
@@ -1153,39 +1156,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
             eecho "Mount failed!"
             exit 1
         fi
-    fi
-
-
-    # daniewo check if nfs_host here needs to be changed to a local_ip (proxy)
-    # nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv3 "$nfs_host")
-    #nfs_host is the fqdn, we need to mount using l_ip and not nfs_host
-    #if we're doing non TLS mount, find a local IP to mount with, also find out what the nfs_ip will be.
-    #that could be read from a file after mount
-    #potential nconnect checks here too
-
-    #get proxy ip to use for this nfs_ip
-    # exec {fd}<$MOUNTMAPv4NONTLS
-    # flock -e $fd #daniewo - do we need to grab a different fd?
-
-    # #
-    # # With the lock held first check if adding a new mountmap entry for this account will
-    # # cause "accounts mounted on one client" to exceed the limit.
-    # #
-    # if check_account_count; then
-    #     get_local_ip_for_fqdn $nfs_host
-    #     ret=$?
-    #     account_limit_exceeded=0
-    # else
-    #     account_limit_exceeded=1
-    # fi
-    # flock -u $fd
-    # exec {fd}<&-
-
-    # if [ "$account_limit_exceeded" == "1" ]; then
-    # eecho "Mounts to target IP $nfs_ip ($nfs_host) already at max limit ($MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT)!"
-    # eecho "Mount failed!"
-    # exit 1
-    # fi
+    fi   
 
     # get local ip for fqdn, this here maps to target get_local_ip is from the IPTable
     get_local_ip_for_fqdn $nfs_host   #DANIEWO THIS IS THE CALLER THAT ADDS EVERYTHING INCLUDING INTO MOUNTMAPV4NONTLS.
