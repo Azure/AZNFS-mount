@@ -744,6 +744,306 @@ update_mountmap_entry()
 }
 
 #
+# Is the given address one of the host addresses?
+#
+is_host_ip()
+{
+    #
+    # Do not make this local as status gathering does not work well when
+    # collecting command o/p to local variables.
+    #
+    route=$(ip -4 route get fibmatch $1 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    if ! echo "$route" | grep -q "scope host"; then
+        return 1
+    fi
+
+    return 0
+}
+
+#
+# Is the given address one of the addresses directly reachable from the host?
+#
+is_link_ip()
+{
+    #
+    # Do not make this local as status gathering does not work well when
+    # collecting command o/p to local variables.
+    #
+    route=$(ip -4 route get fibmatch $1 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    if ! echo "$route" | grep -q "scope link"; then
+        return 1
+    fi
+
+    return 0
+}
+
+#
+# Check if a given IPv4 address is responding to ICMP pings.
+# Uses a 3 secs timeout to bail out in time if address is not responding.
+#
+is_pinging()
+{
+    #
+    # Unless env var AZNFS_PING_LOCAL_IP_BEFORE_USE is set, pretend IP address
+    # is available.
+    #
+    if [ "$AZNFS_PING_LOCAL_IP_BEFORE_USE" != "1" ]; then
+        return 1
+    fi
+
+    local ip=$1
+
+    # 3 secs timeout should be good.
+    ping -4 -W3 -c1 $ip > /dev/null 2>&1
+}
+
+#
+# Returns number of octets in an IPv4 prefix.
+# If IP prefix is not valid or is not a private IP address prefix, it returns 0.
+#
+# f.e. For 10 it will return 1, for 10.10 it will return 2, for 10.10.10 it will
+# return 3 and for 10.10.10.10, it will return 4.
+#
+octets_in_ipv4_prefix()
+{
+    local ip=$1
+    local octet="[0-9]{1,3}"
+    local octetdot="${octet}\."
+
+    if ! is_valid_ipv4_prefix $ip; then
+        echo 0
+        return
+    fi
+
+    #
+    # Check if the IP prefix belongs to the private IP range (10.0.0.0/8,
+    # 172.16.0.0/12, or 192.168.0.0/16), i.e., will the user provided prefix
+    # result in a private IP address.
+    #
+    [[ $ip =~ ^10(\.${octet})*$ ]] ||
+    [[ $ip =~ ^172\.(1[6-9]|2[0-9]|3[0-1])(\.${octet})*$ ]] ||
+    [[ $ip =~ ^192\.168(\.${octet})*$ ]]
+
+    if [ $? -ne 0 ]; then
+        echo 0
+        return
+    fi
+
+    # 4 octets.
+    [[ $ip =~ ^(${octetdot}){3}${octet}$ ]] && echo 4 && return;
+
+    # 3 octets
+    [[ $ip =~ ^(${octetdot}){2}${octet}$ ]] && echo 3 && return;
+
+    # 2 octets.
+    [[ $ip =~ ^(${octetdot}){1}${octet}$ ]] && echo 2 && return;
+
+    # 1 octet.
+    [[ $ip =~ ^${octet}$ ]] && echo 1 && return;
+
+    echo 0
+}
+
+#
+# Search for a free local IP with the given prefix.
+# Takes the IP prefix and the mountmap file to use.
+#
+search_free_local_ip_with_prefix() 
+{
+    local initial_ip_prefix=$1
+    local mountmap_file=$2
+    local num_octets=$(octets_in_ipv4_prefix $ip_prefix)
+
+    if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
+        eecho "Invalid IPv4 prefix: ${ip_prefix}"
+        eecho "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
+        eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
+        return 1
+    fi
+
+    local local_ip=""
+    local optimize_get_free_local_ip=false
+    local used_local_ips_with_same_prefix=$(cat $mountmap_file | awk '{print $2}' | grep "^${initial_ip_prefix}\." | sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n)
+    local iptable_entries=$(iptables-save -t nat)
+
+    _3rdoctet=100
+    ip_prefix=$initial_ip_prefix
+
+    #
+    # Optimize the process to get free local IP by starting the loop to choose
+    # 3rd and 4th octet from the number which was used last and still exist in
+    # mountmap instead of starting it from 100.
+    #
+    if [ $OPTIMIZE_GET_FREE_LOCAL_IP == true -a -n "$used_local_ips_with_same_prefix" ]; then
+
+        last_used_ip=$(echo "$used_local_ips_with_same_prefix" | tail -n1)
+
+        IFS="." read _ _ last_used_3rd_octet last_used_4th_octet <<< "$last_used_ip"
+
+        if [ $num_octets -eq 2 ]; then
+            if [ "$last_used_3rd_octet" == "254" -a "$last_used_4th_octet" == "254" ]; then
+                return 1
+            fi
+
+            _3rdoctet=$last_used_3rd_octet
+            optimize_get_free_local_ip=true
+        else
+            if [ "$last_used_4th_octet" == "254" ]; then
+                return 1
+            fi
+
+            optimize_get_free_local_ip=true
+        fi
+    fi
+
+    while true; do
+        if [ $num_octets -eq 2 ]; then
+            for ((; _3rdoctet<255; _3rdoctet++)); do
+                ip_prefix="${initial_ip_prefix}.$_3rdoctet"
+
+                if is_link_ip $ip_prefix; then
+                    vecho "Skipping link network ${ip_prefix}!"
+                    continue
+                fi
+
+                break
+            done
+
+            if [ $_3rdoctet -eq 255 ]; then
+                #
+                # If the IP prefix had 2 octets and we exhausted all possible
+                # values of the 3rd and 4th octet, then we have failed the
+                # search for free local IP within the given prefix.
+                #
+                return 1
+            fi
+        fi
+
+        if $optimize_get_free_local_ip; then
+            _4thoctet=$(expr ${last_used_4th_octet} + 1)
+            optimize_get_free_local_ip=false
+        else
+            _4thoctet=100
+        fi
+
+        for ((; _4thoctet<255; _4thoctet++)); do
+            local_ip="${ip_prefix}.$_4thoctet"
+
+            is_ip_used_by_aznfs=$(echo "$used_local_ips_with_same_prefix" | grep "^${local_ip}$")
+            if [ -n "$is_ip_used_by_aznfs" ]; then
+                vecho "$local_ip is in use by aznfs!"
+                continue
+            fi
+
+            if is_host_ip $local_ip; then
+                vecho "Skipping host address ${local_ip}!"
+                continue
+            fi
+
+            if is_link_ip $local_ip; then
+                vecho "Skipping link network ${local_ip}!"
+                continue
+            fi
+
+            if [ "$nfs_ip" == "$local_ip" ]; then
+                vecho "Skipping private endpoint IP ${nfs_ip}!"
+                continue
+            fi
+
+            is_present_in_iptables=$(echo "$iptable_entries" | grep -c "\<${local_ip}\>")
+            if [ $is_present_in_iptables -ne 0 ]; then
+                vecho "$local_ip is already present in iptables!"
+                continue
+            fi
+
+            #
+            # Try pinging the address to be sure it is not in use in the
+            # client network.
+            #
+            # Note: If the address exists but not responding to ICMP ping then
+            #       we will incorrectly treat it as non-exixtent.
+            #
+            if is_pinging $local_ip; then
+                vecho "Skipping $local_ip as it appears to be in use on the network!"
+                continue
+            fi
+
+            vecho "Using local IP ($local_ip) for aznfs."
+            break
+        done
+
+        if [ $_4thoctet -eq 255 ]; then
+            if [ $num_octets -eq 2 ]; then
+                let _3rdoctet++
+                continue
+            else
+                #
+                # If the IP prefix had 3 octets and we exhausted all possible
+                # values of the 4th octet, then we have failed the search for
+                # free local IP within the given prefix.
+                #
+                return 1
+            fi
+        fi
+
+        #
+        # Happy path!
+        #
+        # Add this entry to mountmap while we have the mountmap lock.
+        # This is to avoid assigning same local ip to parallel mount requests
+        # for different endpoints.
+        # ensure_mountmap_exist_nolock will also create a matching iptable DNAT rule.
+        #
+        LOCAL_IP=$local_ip
+        ensure_mountmap_exist_nolock "$nfs_host $LOCAL_IP $nfs_ip" "$mountmap_file"
+
+        return 0
+    done
+
+    # We will never reach here.
+}
+
+#
+# Get a local IP that is free to use. Set global variable LOCAL_IP if found.
+# Takes the mountmap file to use for tracking used IPs.
+#
+get_free_local_ip()
+{
+    local mountmap_file=$1
+
+    for ip_prefix in $IP_PREFIXES; do
+        vecho "Trying IP prefix ${ip_prefix}."
+        if search_free_local_ip_with_prefix "$ip_prefix" "$mountmap_file"; then
+            return 0
+        fi
+    done
+
+    #
+    # If the above loop is not able to find a free local IP using optimized way,
+    # do a linear search to get the free local IP.
+    #
+    vecho "Falling back to linear search for free ip!"
+    OPTIMIZE_GET_FREE_LOCAL_IP=false
+    for ip_prefix in $IP_PREFIXES; do
+        vecho "Trying IP prefix ${ip_prefix}."
+        if search_free_local_ip_with_prefix "$ip_prefix" "$mountmap_file"; then
+            return 0
+        fi
+    done
+
+    # If we come here we did not get a free address to use.
+    return 1
+}
+
+#
 # Ensure given DNAT rule exists, if not it creates it else silently exits.
 #
 ensure_iptable_entry()
@@ -944,11 +1244,8 @@ fi
 #
 # In case there are inherited fds, close other than 0,1,2.
 #
-if pushd /proc/$$/fd > /dev/null 2>&1; then
-    for fd in *; do
-        # Skip if glob didn't match (fd would be literal "*")
-        [ "$fd" = "*" ] && continue
-        [ "$fd" -gt 2 ] 2>/dev/null && exec {fd}<&-
-    done
-    popd > /dev/null
-fi
+pushd /proc/$$/fd  > /dev/null
+for fd in *; do
+    [ $fd -gt 2 ] && exec {fd}<&-
+done
+popd  > /dev/null
