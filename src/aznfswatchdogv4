@@ -416,10 +416,10 @@ process_nfsv4_nontlsmounts()
     #    If yes, update DNAT rule to point to the new address and update entry accordingly.
     #
     # Sample line in MOUNTMAPv4NONTLS.
-    # account.blob.preprod.core.windows.net 10.100.100.100 52.230.170.200
+    # account.file.preprod.core.windows.net 10.100.100.100 52.230.170.200 AZNFSCtrl.txt12345
     #
     # where the format is
-    # blobendpoint_fqdn proxy_ip blobendpoint_ip
+    # fileendpoint_fqdn proxy_ip fileendpoint_ip crc_32
     #
     # We store the mtime of MOUNTMAPv4NONTLS while inside the lock so that if any mount helper process
     # updates it after this we will skip modification for sake of safety. We will come to it
@@ -472,16 +472,29 @@ process_nfsv4_nontlsmounts()
         fi
 
         #
+        # Do unmount GC only if MOUNTMAPv3 file is not modified in the last
+        # MOUNTMAP_INACTIVITY_SECS seconds. We don't want to incorrectly delete an
+        # entry while some aznfs mount is ongoing.
+        #
+        do_unmount_gc_nfsv4=false
+        if [ "$AZNFS_SKIP_UNMOUNT_CLEANUP" == "0" ]; then
+            if [ $epoch_now -ge $(expr $mtime_mountmapv4nontls + $MOUNTMAP_INACTIVITY_SECS) ]; then
+                do_unmount_gc_nfsv4=true
+            fi
+        fi
+
+        #
         # Delete entry from MOUNTMAPv4NONTLS if there are no mounted shares on that host.
         # As long as we have at least one mount using the MOUNTMAPv4NONTLS entry, we leave
         # it around. Can just search for account name as we don't support multi-mount migration scenarios on AZNFS for now.
         #
-        findmnt=$(findmnt -m | grep "${accname}") #>/dev/null)# bugged as it gives the output to dev/null
-        do_unmount_gc_nfsv4=true
+        findmnt=$(findmnt -m | grep "${accname}")
+
+        #do_unmount_gc_nfsv4=true
         #if ! echo "$findmnt" >/dev/null; then
         if [ -z "$findmnt" ] ; then
             if $do_unmount_gc_nfsv4; then
-                eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv4NONTLS} [$line]." #update to correct file name
+                eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv4NONTLS} [$line]."
 
                 # Delete IFF mountmap is not changed since we read it above.
                 l_mtime=$(ensure_mountmap_not_exist "$line" "$MOUNTMAPv4NONTLS" "$mtime_mountmapv4nontls")

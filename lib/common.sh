@@ -26,15 +26,6 @@ MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 # This stores the map of local IP and share name an external file endpoint IP.
 #
 MOUNTMAPv4NONTLS="${OPTDIRDATA}/mountmapv4nontls"
-MOUNTMAPFILE=""
-
-#
-# Point to the correct MOUNTMAP file depending on if it's v3 or v4
-# to refactor V3 code for V4
-# MOUNTMAPFILE will be set during common.sh v3 or v4 mountscript.
-# We will share ensure_mountmap_not_exist(), update_mountmap_entry(), ensure_mountmap_exist(), ensure_mountmap_exist_nolock()
-# 
-
 
 RED="\e[2;31m"
 GREEN="\e[2;32m"
@@ -55,12 +46,6 @@ elif [ "$AZNFS_VERSION" == "unknown" ]; then
     prefix=""
 else
     prefix="[v${AZNFS_VERSION}] "
-fi
-
-if [ "$AZNFS_VERSION" = "3" ]; then
-    MOUNTMAPFILE=$MOUNTMAPv3
-elif [ "$AZNFS_VERSION" = "4" ]; then
-    MOUNTMAPFILE=$MOUNTMAPv4NONTLS
 fi
 
 # Are we running inside the AKS?
@@ -131,12 +116,7 @@ MAX_ACCOUNTS_MOUNTABLE_FROM_SINGLE_TENANT=20
 #
 # Local IP that is free to use.
 #
-# LOCAL_IP=""
-
-#
-# Proccess ID of the current process.
-#
-PID=""
+LOCAL_IP=""
 
 #
 # Choose the local IP based on last used IP in MOUNTMAPv3 if this flag is enabled.
@@ -647,7 +627,7 @@ ensure_mountmap_not_exist()
             # to reconcile it from the mount info and iptable info. That needs to be done
             # out-of-band.
             #
-            echo "$out" > $mountmap_file # Change from echo to printf to prevent the new line when file becomes empty
+            echo "$out" > $mountmap_file
             ret=$?
             out=
             if [ $ret -ne 0 ]; then
