@@ -257,7 +257,7 @@ process_nfsv4_mounts()
         fi
 
         accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
-        vecho "accept_port: $accept_port"
+        #vecho "accept_port: $accept_port"
 
         #
         # Delete entry from MOUNTMAPv4 if there are no mounted shares on that host.
@@ -472,16 +472,18 @@ process_nfsv4_nontlsmounts()
         fi
 
         #
-        # Do unmount GC only if MOUNTMAPv3 file is not modified in the last
+        # Do unmount GC only if MOUNTMAPv4nontls file is not modified in the last
         # MOUNTMAP_INACTIVITY_SECS seconds. We don't want to incorrectly delete an
         # entry while some aznfs mount is ongoing.
+
+        #BUGBUG 300 seconds seems like a long time. Double check what you want to do here.
         #
-        do_unmount_gc_nfsv4=false
-        if [ "$AZNFS_SKIP_UNMOUNT_CLEANUP" == "0" ]; then
-            if [ $epoch_now -ge $(expr $mtime_mountmapv4nontls + $MOUNTMAP_INACTIVITY_SECS) ]; then
-                do_unmount_gc_nfsv4=true
-            fi
-        fi
+        do_unmount_gc_nfsv4=true
+        # if [ "$AZNFS_SKIP_UNMOUNT_CLEANUP" == "0" ]; then
+        #     if [ $epoch_now -ge $(expr $mtime_mountmapv4nontls + $MOUNTMAP_INACTIVITY_SECS) ]; then
+        #         do_unmount_gc_nfsv4=true
+        #     fi
+        # fi
 
         #
         # Delete entry from MOUNTMAPv4NONTLS if there are no mounted shares on that host.
@@ -490,8 +492,6 @@ process_nfsv4_nontlsmounts()
         #
         findmnt=$(findmnt -m | grep "${accname}")
 
-        #do_unmount_gc_nfsv4=true
-        #if ! echo "$findmnt" >/dev/null; then
         if [ -z "$findmnt" ] ; then
             if $do_unmount_gc_nfsv4; then
                 eecho "No mounted shares for host $l_host, deleting from ${MOUNTMAPv4NONTLS} [$line]."
