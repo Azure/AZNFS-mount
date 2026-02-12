@@ -46,39 +46,6 @@ cleanup() {
 #
 LOCAL_IP=""
 
-#
-# To maintain consistency in case of regional account and in general to avoid creating
-# multiple DNAT entries corrosponding to one LOCAL_IP, first check for resolved IP in mountmap.
-# This will help keep mountmap and DNAT entries in sync with each other.
-# If the current resolved IP is different from the one stored in mountmap then it means that the IP has changed
-# since the mountmap entry was created (could be due to migration or more likely due to RAs roundrobin DNS). 
-# In any case this will be properly handled by aznfswatchdog next time it checks for IP change for this fqdn.
-#
-# this method will only be used for non tls in v4.
-resolve_ipv4_with_preference_to_mountmapv4()
-{
-    local fqdn=$1
-
-    exec {fd}<$MOUNTMAPv4NONTLS
-    flock -e $fd
-
-    local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv4NONTLS)
-    
-    flock -u $fd
-    exec {fd}<&-
-
-    IFS=" " read _ local_ip old_nfs_ip <<< "$mountmap_entry"
-    if [ -n "$old_nfs_ip" ]; then
-        echo "$old_nfs_ip"
-        return 2 
-    fi
-
-    #
-    # Resolve FQDN to IPv4 using DNS if not found in the mountmap.
-    #
-    resolve_ipv4 "$fqdn" "true"
-}
-
 
 get_next_available_port()
 {
@@ -339,44 +306,6 @@ check_if_notls_mount_exists()
     done
 }
 
-
-# For the given AZNFS endpoint FQDN return a local IP that should proxy it.
-# If there is at least one mount to the same FQDN it MUST return the local IP
-# used for that, else assign a new free local IP.
-# ensure that we mount using the same local ip if for the same account then
-# rather than rejecting etc.
-# really consider moving this to common.sh
-get_local_ip_for_fqdn()
-{
-        local fqdn=$1
-        local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv4NONTLS)
-        # One local ip per fqdn, so return existing one if already present.
-        IFS=" " read _ local_ip _ <<< "$mountmap_entry"
-
-        if [ -n "$local_ip" ]; then
-            LOCAL_IP=$local_ip
-            eecho "Daniewo Found existing local IP $LOCAL_IP for $fqdn in $MOUNTMAPv4NONTLS, reusing it for the mount."
-            #
-            # Ask aznfswatchdog to stay away while we are using this proxy IP.
-            # This is similar to holding a timed lease, we can safely use this
-            # proxy IP w/o worrying about aznfswatchdog deleting it for 5 minutes.
-            #
-            touch_mountmap $MOUNTMAPv4NONTLS
-
-            #
-            # This is not really needed since iptable entry must also be present,
-            # but it's always better to ensure MOUNTMAPv3 and iptable entries are
-            # in sync.
-            #
-            ensure_iptable_entry $local_ip $nfs_ip #if we move this into common, then we would want to read from the mountmap file for nfs_ip or something
-            return 0
-        fi
-
-        #
-        # First mount of an account on this client.
-        #
-        get_free_local_ip $MOUNTMAPv4NONTLS
-}
 
 #
 # Mount nfsv4 files share with TLS encryption.
@@ -823,30 +752,14 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         exit 1
     fi
 
-    #if it is non-tls, it can use the same. Mainly, we want to reuse the same one, using the same local ip and skipping the mountmap entry since we just
-    #go straight to the mountmap and reuse the same local
-    #  # Check if the mount to the same endpoint exists that is using non-TLS.
-    #  mountmapnontls_entry=$(grep -m1 "${nfs_host}" $MOUNTMAPv4NONTLS)
-    #  if [ -n "$mountmapnontls_entry" ]; then
-    #     # storage_account=$(echo $mountmap_entry | cut -d';' -f1)
-    #     eecho "Mount failed!"
-    #     eecho "Mount to the same endpoint ${nfs_host} exists that is using non-TLS. Cannot mount to the same endpoint as they use the same connection."
-    #     eecho "If there are no mount using non-TLS on $nfs_host, try mounting again with "clean" option. Otherwise, try unmounting the shares on $nfs_host and run the mount command again."
-    #     flock -u $fd2
-    #     exec {fd2}<&-
-    #     exit 1
-    # fi
-
     if [[ "$MOUNT_OPTIONS" == *"notls,"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//notls,/}
     else
         MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
     fi
 
-    #after checking if the endpoint is mounted with TLS in mountmapv4, check for nontls mountmap file
-
     # Resolve the IP address for the NFS host
-    nfs_ip=$(resolve_ipv4_with_preference_to_mountmapv4 "$nfs_host")
+    nfs_ip=$(resolve_ipv4_with_preference_to_mountmap "$nfs_host" $MOUNTMAPv4NONTLS)
     vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
     status=$?
     if [ $status -ne 0 ]; then
@@ -861,7 +774,8 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     fi   
 
     # get local ip for fqdn, this here maps to target get_local_ip is from the IPTable
-    get_local_ip_for_fqdn $nfs_host   #DANIEWO THIS IS THE CALLER THAT ADDS EVERYTHING INCLUDING INTO MOUNTMAPV4NONTLS.
+    # this also creates the mountmap entries etc if they do not exist, so it has to be after the TLS and non-TLS mountmap checking
+    get_local_ip_for_fqdn $nfs_host $MOUNTMAPv4NONTLS
     ret=$? 
 
     vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
@@ -883,29 +797,6 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         exit 1
     else
         vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
-
-        #TODO: grep nfs_host and nfs_dir and mount_point because it's possible the l_ip may used from a previous connection
-        # and mismatch. So you would have to update localip in the mountmapv4nontls file
-
-
-        #daniewo add to mountmapv4nontls for the fqdn, local_ip, nfs_ip, AZNFS.txt12345
-        # Acquire lock on the non-TLS mountmap file
-        exec {fd3}<"$MOUNTMAPv4NONTLS"
-        flock -e $fd3
-
-        # Ensure file is writable (remove immutable)
-        chattr -f -i "$MOUNTMAPv4NONTLS"
-
-        # Format: "<FQDN> <LOCAL_IP> <NFS_IP> <AZNFS.txt12345>"
-        new_entry="$nfs_host $LOCAL_IP $nfs_ip"
-        eecho "nfsIP = $nfs_ip aznfsFileName"
-        eecho "New entry to add to MOUNTMAPv4NONTLS: $new_entry"
-        # Reinstate immutability if used
-        chattr -f +i "$MOUNTMAPv4NONTLS"
-
-        # Release lock
-        flock -u $fd3
-        exec {fd3}<&-
     fi
 else
     vecho "Mount nfs share with TLS."

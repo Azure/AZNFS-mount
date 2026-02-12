@@ -1044,6 +1044,85 @@ get_free_local_ip()
 }
 
 #
+# To maintain consistency in case of regional account and in general to avoid creating
+# multiple DNAT entries corresponding to one LOCAL_IP, first check for resolved IP in mountmap.
+# This will help keep mountmap and DNAT entries in sync with each other.
+# If the current resolved IP is different from the one stored in mountmap then it means that the IP has changed
+# since the mountmap entry was created (could be due to migration or more likely due to RAs roundrobin DNS). 
+# In any case this will be properly handled by aznfswatchdog next time it checks for IP change for this fqdn.
+#
+# Parameters:
+#   $1 - fqdn: The FQDN to resolve
+#   $2 - mountmap_file: The mountmap file to check for existing IP
+#
+resolve_ipv4_with_preference_to_mountmap()
+{
+    local fqdn=$1
+    local mountmap_file=$2
+
+    exec {fd}<$mountmap_file
+    flock -e $fd
+
+    local mountmap_entry=$(grep -m1 "^${fqdn} " $mountmap_file)
+    
+    flock -u $fd
+    exec {fd}<&-
+
+    IFS=" " read _ local_ip old_nfs_ip <<< "$mountmap_entry"
+    if [ -n "$old_nfs_ip" ]; then
+        echo "$old_nfs_ip"
+        return 2 
+    fi
+
+    #
+    # Resolve FQDN to IPv4 using DNS if not found in the mountmap.
+    #
+    resolve_ipv4 "$fqdn" "true"
+}
+
+#
+# For the given AZNFS endpoint FQDN return a local IP that should proxy it.
+# If there is at least one mount to the same FQDN it MUST return the local IP
+# used for that, else assign a new free local IP.
+#
+# Parameters:
+#   $1 - fqdn: The FQDN to get a local IP for
+#   $2 - mountmap_file: The mountmap file to use
+#
+get_local_ip_for_fqdn()
+{
+    local fqdn=$1
+    local mountmap_file=$2
+    local mountmap_entry=$(grep -m1 "^${fqdn} " $mountmap_file)
+    # One local ip per fqdn, so return existing one if already present.
+    IFS=" " read _ local_ip _ <<< "$mountmap_entry"
+
+    if [ -n "$local_ip" ]; then
+        LOCAL_IP=$local_ip
+
+        #
+        # Ask aznfswatchdog to stay away while we are using this proxy IP.
+        # This is similar to holding a timed lease, we can safely use this
+        # proxy IP w/o worrying about aznfswatchdog deleting it for 5 minutes.
+        #
+        touch_mountmap $mountmap_file
+
+        #
+        # This is not really needed since iptable entry must also be present,
+        # but it's always better to ensure mountmap and iptable entries are
+        # in sync.
+        #
+        ensure_iptable_entry $local_ip $nfs_ip
+        return 0
+    fi
+
+    #
+    # First mount of an account on this client.
+    #
+    get_free_local_ip $mountmap_file
+}
+
+#
 # Ensure given DNAT rule exists, if not it creates it else silently exits.
 #
 ensure_iptable_entry()
