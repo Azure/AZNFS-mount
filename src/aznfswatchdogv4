@@ -272,6 +272,7 @@ process_nfsv4_mounts()
             cleanup_mount $l_conf $l_log $l_pid $line
             continue
         else
+            vecho "Mounted shares found for host $l_ip with accept port $accept_port."
             #
             # Fetch FSLocationIP from the virtual file and check if it's updated for migration scenario. 
             # The virtual file is at the mountpoint and named with the crc32 value in the mountmap entry.
@@ -290,6 +291,7 @@ process_nfsv4_mounts()
             #
             # If FSLocationIP is not empty, and updated from the IP stored in MountMap and PRT is in migration stage, update.
             # Mountmap, config, log, and checksumhash need to be updtaed accordingly. Then restart stunnel with new config file.
+            # If it's empty, it will skip this logic as ip will not be changed. - before server upgrade
             #
             if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_ip" -a "$l_prt" -ne 0 ]; then 
                 vecho " IP for $l_host changed [$l_ip -> $l_fslocationIP]."
@@ -551,7 +553,7 @@ process_nfsv4_nontlsmounts()
 
         #
         # We probably don't need this as we are not making any DNS calls but instead reading from fslocation
-        #
+        # BUGBUG for reviewer and Dan - look to remove this from v4
         if ! $do_ip_change_detection; then
             continue
         fi
