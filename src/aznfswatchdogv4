@@ -450,16 +450,10 @@ process_nfsv4_nontlsmounts()
         # compare publicIP and crc32
         #
 
-        # lock mountmap so it is not updated while we are doing a grep on the mountpoints
-        # otherwise it may not have been fully mounted yet
-        # exec {fd4}<"$MOUNTMAPv4NONTLS"
-        # flock -e $fd4
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
         accname=$(echo $l_host | awk -F'.file' '{print $1}') #can change to l_ip as the fix has been made. whatever is safer.
         mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$accname" | head -n1 | awk '{print $1}')
-
-        eecho "l_host: $l_host l_crc32: $l_crc32 l_ip: $l_ip l_nfsip: $l_nfsip mountpoint: $mountpoint"
 
         # Since we added it to the MOUNTMAPv4 file, it cannot be invalid.
         if ! is_private_ip "$l_ip"; then
@@ -523,8 +517,6 @@ process_nfsv4_nontlsmounts()
 
         #read into the line here to do the ip change detection. this is per Line.
         l_fslocation_line=$(cat "${mountpoint}/${l_crc32}")
-        eecho "file location ${mountpoint}/${l_crc32}"
-        eecho "Line l_fslocation_line: $l_fslocation_line"
         read_status=$?
 
         #rearrange this, we are not using the status really

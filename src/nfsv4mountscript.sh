@@ -237,7 +237,6 @@ add_stunnel_configuration()
         return 1
     fi
     
-    #daniewo,  update the stunnel_conf_file 
     echo "accept = $LOCALHOST:$available_port" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -331,7 +330,6 @@ tls_nfsv4_files_share_mount()
 
     EntryExistinMountMap="true"
 
-    #daniewo do some ip checking
     stunnel_conf_file="$STUNNELDIR/stunnel_$storageaccount_ip.conf"
 
     if [ ! -f $stunnel_conf_file ]; then
@@ -495,11 +493,9 @@ tls_nfsv4_files_share_mount()
         # Waiting: mountmap entry is added but mount command is not executed yet. Watchdog can ignore this entry.
         # Mounted: mount command is executed successfully. If the mount is unmounted, watchdog can remove this entry.
         # Failed: mount command failed. Watchdog can remove this entry.
+        # NOTE: Since multi-mount scenario is not officially supported, if multiple accounts are mounted to the same server IP during a migration, 
+        # if some accounts are not migrated, this may cause an issue for that leftover account.
 
-        #daniewo add the AZNFS FSLocation file name, but it's different per mount right? since it's not based on account name here
-        # but as long as one of it tracks I guess? Do we get account name here at all? Problem is that if the first mount is not the one migrating but connected,
-        # then there will be a missed migration. But if we do not support multi mount and it is doccumented, then it won't matter because then it will only be the first mount
-        # per tenant
         local mountmap_entry="$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout;$crc32"
         vecho "Adding mountmap entry: [$mountmap_entry] to $MOUNTMAPv4"
         chattr -f -i $MOUNTMAPv4
