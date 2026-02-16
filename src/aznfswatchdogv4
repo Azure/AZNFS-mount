@@ -320,9 +320,15 @@ process_nfsv4_mounts()
         #
         if ! echo "$findmnt" | grep "$accept_port" >/dev/null; then
             vecho "findmnt shows no mount for accept_port=$accept_port (line=[$line])"
-            if is_nfs_server_active_for_target "$LOCALHOST" "$accept_port"; then
-                pecho "NFS server entry still active for $LOCALHOST:$accept_port; skipping cleanup for [$line]."
-                continue
+
+            # Some k8s pods may still hold mount namespace refs even after the
+            # host mount is gone. Skip cleanup if kernel NFS server refs are
+            # still active. For waiting/failed entries, cleanup to kill stunnel.
+            if [ "$l_status" == "mounted" ]; then
+                if is_nfs_server_active_for_target "$LOCALHOST" "$accept_port"; then
+                    pecho "NFS server entry still active for $LOCALHOST:$accept_port; skipping cleanup for [$line]."
+                    continue
+                fi
             fi
 
             pecho "No mounted shares for host $l_ip with accept port $accept_port, deleting from ${MOUNTMAPv4} [$line]."
