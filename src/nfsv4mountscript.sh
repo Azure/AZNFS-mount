@@ -49,6 +49,12 @@ cleanup() {
     exec {fd2}<&-
 }
 
+#
+# Local IP that is free to use.
+#
+LOCAL_IP=""
+
+
 get_next_available_port()
 {
     for ((port=NFSV4_PORT_RANGE_START; port<=NFSV4_PORT_RANGE_END; port++))
@@ -303,7 +309,7 @@ add_stunnel_configuration()
         eecho "Failed to 'client = yes' to $stunnel_conf_file!"
         return 1
     fi
-
+    
     echo "accept = $LOCALHOST:$available_port" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -339,6 +345,7 @@ add_stunnel_configuration()
 
     chattr -f +i $stunnel_conf_file
 }
+
 
 check_if_notls_mount_exists()
 {
@@ -421,7 +428,9 @@ tls_nfsv4_files_share_mount()
     exec {fd2}<$MOUNTMAPv4
     flock -e $fd2
 
-    vecho "nfs_dir=[$nfs_dir], nfs_host_ip=[$storageaccount_ip], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
+    crc32=$(get_aznfs_ctrl_filename "$nfs_host")
+
+    vecho "nfs_dir=[$nfs_dir], nfs_host_ip=[$storageaccount_ip], mount_point=[$mount_point], crc_32=[$crc32], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS]."
 
     IFS=/ read _ storageaccount container extra <<< "$nfs_dir"
 
@@ -450,7 +459,7 @@ tls_nfsv4_files_share_mount()
                 #
                 # If this echo fails then MOUNTMAPv4 could be truncated.
                 #
-                echo "$out" > $MOUNTMAPv4
+                echo "$out" > $MOUNTMAPv4 
                 ret=$?
                 out=
                 if [ $ret -ne 0 ]; then
@@ -590,8 +599,11 @@ tls_nfsv4_files_share_mount()
         # Waiting: mountmap entry is added but mount command is not executed yet. Watchdog can ignore this entry.
         # Mounted: mount command is executed successfully. If the mount is unmounted, watchdog can remove this entry.
         # Failed: mount command failed. Watchdog can remove this entry.
+        # NOTE: Since multi-mount scenario is not officially supported, if multiple accounts are mounted to the same server IP during a migration, 
+        # if some accounts are not migrated, this may cause an issue for that leftover account.
 
-        local mountmap_entry="$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
+        local mountmap_entry="$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout;$crc32"
+        vecho "Adding mountmap entry: [$mountmap_entry] to $MOUNTMAPv4"
         chattr -f -i $MOUNTMAPv4
         echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
@@ -855,8 +867,30 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
     fi
 
-    # Do the actual mount.
-    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
+    # Resolve the IP address for the NFS host
+    nfs_ip=$(resolve_ipv4_with_preference_to_mountmap "$nfs_host" $MOUNTMAPv4NONTLS)
+    vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
+    status=$?
+    if [ $status -ne 0 ]; then
+        if [ $status -eq 2 ]; then
+            vecho "Resolved IP address for FQDN from mountmap [$nfs_host -> $nfs_ip]"
+        else
+            echo "$nfs_ip"
+            eecho "Cannot resolve IP address for ${nfs_host}!"
+            eecho "Mount failed!"
+            exit 1
+        fi
+    fi   
+
+    # get local ip for fqdn, this here maps to target get_local_ip is from the IPTable
+    # this also creates the mountmap entries etc if they do not exist, so it has to be after the TLS and non-TLS mountmap checking
+    get_local_ip_for_fqdn $nfs_host $MOUNTMAPv4NONTLS
+    ret=$? 
+
+    vecho "nfs_host=[$nfs_host], nfs_ip=[$nfs_ip], nfs_dir=[$nfs_dir], mount_point=[$mount_point], options=[$OPTIONS], mount_options=[$MOUNT_OPTIONS], local_ip=[$LOCAL_IP]."
+
+    # Do the actual non tls mount.
+    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
 
     flock -u $fd2
