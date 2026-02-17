@@ -3,6 +3,12 @@
 #
 # NfSv4 logic for mount helper
 #
+# PATCHED VERSION: Dynamic Root CA Detection
+# This version has been patched to dynamically determine the root CA
+# certificate name instead of hardcoding "DigiCert Global Root G2".
+# This allows the script to work with different root CAs that may be used
+# by Azure Storage in different environments (e.g., sovereign clouds).
+#
 
 #
 # Load common aznfs helpers.
@@ -37,6 +43,42 @@ ssl_version=
 
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
 CONNECT_PORT=2049
+
+# Dynamic Root CA Detection
+# Determines the root CA name by querying the storage account's TLS certificate chain
+# Uses the global $storageaccount_ip variable that is derived and set by the main script
+ROOT_CA_NAME=""
+ROOT_CA_FILE_NAME=""
+
+detect_root_ca()
+{
+    if [ -z "$storageaccount_ip" ]; then
+        eecho "Cannot detect root CA: storageaccount_ip is not set"
+        # Fallback to DigiCert defaults
+        vecho "Falling back to DigiCert Global Root G2 defaults..."
+        ROOT_CA_NAME="DigiCert Global Root G2"
+        ROOT_CA_FILE_NAME="DigiCert_Global_Root_G2"
+        return 0
+    fi
+
+    # Extract the root CA name from the certificate chain
+    ROOT_CA_NAME=$(openssl s_client -showcerts -connect ${storageaccount_ip}:2049 </dev/null 2>/dev/null | \
+        awk '/BEGIN CERT/,/END CERT/{if(/BEGIN/)n++;c[n]=c[n]$0"\n"}END{print c[n]}' | \
+        openssl x509 -noout -issuer 2>/dev/null | sed 's/.*CN *= *//; s/,.*//')
+
+    if [ -z "$ROOT_CA_NAME" ]; then
+        vecho "Failed to detect root CA name from ${storageaccount_ip}:2049, falling back to DigiCert Global Root G2 defaults..."
+        ROOT_CA_NAME="DigiCert Global Root G2"
+        ROOT_CA_FILE_NAME="DigiCert_Global_Root_G2"
+        return 0
+    fi
+
+    # Convert CA name to filename format (replace spaces with underscores, add .pem extension)
+    ROOT_CA_FILE_NAME=$(echo "$ROOT_CA_NAME" | tr ' ' '_')
+
+    vecho "Detected root CA: ${ROOT_CA_NAME} (file: ${ROOT_CA_FILE_NAME})"
+    return 0
+}
 
 # Default timeout for mount command to complete in seconds.
 # If the mount command does not complete within this time, the mount is considered failed.
@@ -108,8 +150,8 @@ find_next_available_port_and_start_stunnel()
                 return 1
             fi
         else
-	        vecho "Found new port '$new_used_port' and restarted stunnel."
-	        break
+                vecho "Found new port '$new_used_port' and restarted stunnel."
+                break
         fi
     done
 }
@@ -132,14 +174,14 @@ get_cert_path_based_and_command()
         CERT_UPDATE_COMMAND="update-ca-certificates"
     fi
 
-    STUNNEL_CAFILE="/etc/ssl/certs/DigiCert_Global_Root_G2.pem"
+    STUNNEL_CAFILE="/etc/ssl/certs/${ROOT_CA_FILE_NAME}.pem"
 }
 
 extract_CA()
 {
-    awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print > "'$STUNNEL_CAFILE'"} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+    awk -v ca_name="$ROOT_CA_NAME" -v outfile="$STUNNEL_CAFILE" '$0 ~ ca_name {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print > outfile} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Failed to extract DigiCert Global Root G2 certificate from /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem!"
+        eecho "[FATAL] Failed to extract ${ROOT_CA_NAME} certificate from /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem!"
         return 1
     fi
 }
@@ -147,9 +189,9 @@ extract_CA()
 compare_CA_thumbprint()
 {
     local thumbprint=$(openssl x509 -in $STUNNEL_CAFILE -noout -fingerprint 2>/dev/null | cut -d'=' -f2)
-    local expected_thumbprint=$(awk '/DigiCert Global Root G2/ {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem | openssl x509 -noout -fingerprint -sha1 2>/dev/null | cut -d'=' -f2)
+    local expected_thumbprint=$(awk -v ca_name="$ROOT_CA_NAME" '$0 ~ ca_name {found=1} found && /BEGIN CERTIFICATE/,/END CERTIFICATE/ {print} found && /END CERTIFICATE/ {exit}' /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem | openssl x509 -noout -fingerprint -sha1 2>/dev/null | cut -d'=' -f2)
 
-    vecho "Comparing the thumbprint of the installed DigiCert Global Root G2 certificate. Expected: ${expected_thumbprint}, Installed: ${thumbprint}."
+    vecho "Comparing the thumbprint of the installed ${ROOT_CA_NAME} certificate. Expected: ${expected_thumbprint}, Installed: ${thumbprint}."
 
     if [ "$thumbprint" != "$expected_thumbprint" ]; then
         return 1
@@ -158,28 +200,52 @@ compare_CA_thumbprint()
 
 install_CA_cert()
 {
-    # For Debian-based and SUSE-based distributions, if the cert exits, it's in /etc/ssl/certs/DigiCert_Global_Root_G2.pem. For RedHat-based distributions, it's' in /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem.
+    # For Debian-based and SUSE-based distributions, if the cert exists, it's in /etc/ssl/certs/${ROOT_CA_FILE_NAME}.pem. For RedHat-based distributions, it's in /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem.
     if [ $isRedHat -eq 1 ]; then
         # If certificate already exists in the system, extract it and return.
-        grep -q "DigiCert Global Root G2" /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+        grep -q "$ROOT_CA_NAME" /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
         if [ $? -eq 0 ]; then
-            vecho "DigiCert Global Root G2 certificate already exists. Extranting it to ${STUNNEL_CAFILE}."
+            vecho "${ROOT_CA_NAME} certificate already exists. Extracting it to ${STUNNEL_CAFILE}."
             if ! extract_CA; then
                 return 1
             fi
             return 0
         fi
     else
-        if [ -f /etc/ssl/certs/DigiCert_Global_Root_G2.pem ]; then
-            vecho "DigiCert Global Root G2 certificate already exists in /etc/ssl/certs. No need to install it again."
+        if [ -f /etc/ssl/certs/${ROOT_CA_FILE_NAME}.pem ]; then
+            vecho "${ROOT_CA_NAME} certificate already exists in /etc/ssl/certs. No need to install it again."
             return 0
         fi
     fi
 
-    wget_error=$(wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O ${CERT_PATH}/DigiCert_Global_Root_G2.crt 2>&1)
-    if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem! Error: ${wget_error}"
-        return 1
+    # Try to extract root CA from the TLS connection first
+    vecho "Attempting to extract root CA certificate from TLS connection to ${storageaccount_ip}:2049..."
+    root_ca_cert=$(openssl s_client -showcerts -connect ${storageaccount_ip}:2049 </dev/null 2>/dev/null | \
+        awk '/BEGIN CERT/,/END CERT/{if(/BEGIN/)n++;c[n]=c[n]$0"\n"}END{print c[n]}')
+    
+    if [ -n "$root_ca_cert" ]; then
+        # Successfully extracted from TLS connection
+        echo "$root_ca_cert" > ${CERT_PATH}/${ROOT_CA_FILE_NAME}.crt
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to write root CA certificate to ${CERT_PATH}/${ROOT_CA_FILE_NAME}.crt!"
+            return 1
+        fi
+        vecho "Successfully extracted root CA certificate from TLS connection."
+    else
+        # Fallback: TLS extraction failed, try wget from DigiCert (original behavior)
+        vecho "TLS extraction failed. Falling back to downloading DigiCert Global Root G2 certificate..."
+        
+        # Reset to DigiCert defaults for fallback
+        ROOT_CA_NAME="DigiCert Global Root G2"
+        ROOT_CA_FILE_NAME="DigiCert_Global_Root_G2"
+        STUNNEL_CAFILE="/etc/ssl/certs/${ROOT_CA_FILE_NAME}.pem"
+        
+        wget_error=$(wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem --no-check-certificate -O ${CERT_PATH}/${ROOT_CA_FILE_NAME}.crt 2>&1)
+        if [ $? -ne 0 ]; then
+            eecho "[FATAL] Not able to download DigiCert_Global_Root_G2 certificate from https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem! Error: ${wget_error}"
+            return 1
+        fi
+        vecho "Successfully downloaded DigiCert Global Root G2 certificate as fallback."
     fi
 
     $CERT_UPDATE_COMMAND
@@ -191,7 +257,7 @@ install_CA_cert()
         fi
     fi
 
-    vecho "Successfully installed DigiCert_Global_Root_G2 certificate to ${CERT_PATH}/DigiCert_Global_Root_G2.crt."
+    vecho "Successfully installed ${ROOT_CA_FILE_NAME} certificate to ${CERT_PATH}/${ROOT_CA_FILE_NAME}.crt."
 }
 
 #
@@ -207,24 +273,24 @@ add_stunnel_configuration()
     fi
 
     if [ ! -f $STUNNEL_CAFILE ]; then
-        vecho "CA root cert is missing for stunnel configuration. Install or extract DigiCert_Global_Root_G2 certificate."
+        vecho "CA root cert is missing for stunnel configuration. Install or extract ${ROOT_CA_FILE_NAME} certificate."
         install_CA_cert
         if [ $? -ne 0 ]; then
             chattr -f +i $stunnel_conf_file
-            eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+            eecho "[FATAL] Not able to install ${ROOT_CA_FILE_NAME} certificate!"
             return 1
         fi
     else
-        vecho "DigiCert_Global_Root_G2 certificate already exists in $STUNNEL_CAFILE."
+        vecho "${ROOT_CA_FILE_NAME} certificate already exists in $STUNNEL_CAFILE."
         # Since the certificate is extracted from the system's CA bundle, we need to compare the thumbprint of the installed certificate with the expected value.
         if [ $isRedHat -eq 1 ]; then
             if ! compare_CA_thumbprint; then
-                vecho "Thumbprint of the installed DigiCert Global Root G2 certificate does not match the expected value! Extracting the certificate again."
+                vecho "Thumbprint of the installed ${ROOT_CA_NAME} certificate does not match the expected value! Extracting the certificate again."
                 rm -f $STUNNEL_CAFILE
                 install_CA_cert
                 if [ $? -ne 0 ]; then
                     chattr -f +i $stunnel_conf_file
-                    eecho "[FATAL] Not able to install DigiCert_Global_Root_G2 certificate!"
+                    eecho "[FATAL] Not able to install ${ROOT_CA_FILE_NAME} certificate!"
                     return 1
                 fi
             fi
@@ -368,7 +434,6 @@ check_if_notls_mount_exists()
         fi
     done
 }
-
 
 #
 # Mount nfsv4 files share with TLS encryption.
@@ -536,6 +601,14 @@ tls_nfsv4_files_share_mount()
         stunnel_log_file=
         stunnel_pid_file=
 
+        # Detect root CA before configuring stunnel
+        if ! detect_root_ca; then
+            eecho "[FATAL] Failed to detect root CA for stunnel configuration!"
+            chattr -i -f $stunnel_conf_file
+            rm $stunnel_conf_file
+            exit 1
+        fi
+
         add_stunnel_configuration $storageaccount_ip
         add_stunnel_configuration_status=$?
 
@@ -605,6 +678,12 @@ tls_nfsv4_files_share_mount()
     else
         # EntryExistinMountMap is true. That means stunnel_conf_file already exist for the storageaccount IP.
         vecho "Stunnel config file already exist for $storageaccount with IP $storageaccount_ip: $stunnel_conf_file"
+
+        # Detect root CA for existing mount (needed for certificate operations)
+        if ! detect_root_ca; then
+            eecho "[FATAL] Failed to detect root CA for stunnel configuration!"
+            exit 1
+        fi
 
         # It's possible that the stunnel process is not running for the storageaccount.
         is_stunnel_running=
@@ -804,7 +883,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
             chattr -i -f $stunnel_conf_file
             rm $stunnel_conf_file
         fi
-        
+
         chattr -f -i $MOUNTMAPv4
         #
         # We overwrite the file instead of inplace update by sed as that has a
