@@ -501,28 +501,6 @@ int get_authinfo_data(struct auth_info& auth_info)
     return 0;
 }
 
-auth_token_cb_res *get_auth_token_and_setargs_cb_none(struct auth_context *auth) 
-{
-    if (!auth) {
-        AZLogError("Null auth_context received");
-        assert(0);
-        return nullptr;
-    }
-
-    // Allocate response structure
-    auth_token_cb_res *cb_res = (auth_token_cb_res *) malloc(sizeof(auth_token_cb_res));    
-    if (!cb_res) {
-        AZLogError("Failed to allocate memory for auth_token_cb_res");
-        return nullptr;
-    }
-
-    cb_res->azauth_data = strdup("None");
-    // It is unused and we set it to a value to please the caller.
-    cb_res->expiry_time = static_cast<uint64_t>(time(NULL));
-
-    return cb_res;
-}
-
 /*
  *  Generates an authentication token, sets the necessary arguments, 
  *  and returns a response structure.
@@ -832,16 +810,11 @@ int main(int argc, char *argv[])
         goto err_out4;
     }
 
-    // Disable AAD based auth for now. We will enable this when we support auth with TLS.
-   /* if (aznfsc_cfg.auth) {
+    if (aznfsc_cfg.auth) {
         // Set the auth token callback for this connection if auth is enabled.
         set_auth_token_callback(get_auth_token_and_setargs_cb);
-    } else {
-        AZLogInfo("We did reach to auth none setting place");
-        set_auth_token_callback(get_auth_token_and_setargs_cb_none);
-    }*/
-    set_auth_token_callback(get_auth_token_and_setargs_cb_none);
-	
+    }
+
     /*
      * Initialize nfs_client singleton.
      * This creates the libnfs polling thread(s) and hence it MUST be called

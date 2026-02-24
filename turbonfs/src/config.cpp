@@ -442,8 +442,8 @@ done_cloud_suffix:
         ::freeaddrinfo(ai);
     }
 
-    // Set xprtsec to none for now, by default. 
-    xprtsec = ::strdup("none");
+    if (xprtsec == nullptr)
+        xprtsec = ::strdup("none");
 
     assert(account != nullptr);
     assert(container != nullptr);
