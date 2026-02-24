@@ -19,7 +19,7 @@ option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" OFF)
 option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" OFF)
 option(ENABLE_JEMALLOC "Use jemalloc for malloc/free/new/delete" ON)
-option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" ON)
+option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" OFF)
 #
 # Builds that make it to customers need to be extra careful about any unnecessary
 # logging. Some warning logs we have in our code are to attract developer
@@ -268,24 +268,6 @@ message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a
 endif()
 
 #
-# Find uuid library if not, try to install.
-#
-pkg_search_module(UUID QUIET uuid)
-if(NOT UUID_FOUND)
-    message(STATUS "uuid not found, trying to install uuid-dev!")
-    execute_process(COMMAND sudo apt install -y uuid-dev
-            RESULT_VARIABLE UUID_INSTALL_RESULT)
-    if(NOT UUID_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install uuid-dev failed with ${UUID_INSTALL_RESULT}, try installing uuid-dev manually and then run cmake again")
-    else()
-        pkg_search_module(UUID REQUIRED uuid)
-    endif()
-endif()
-
-message(STATUS "Using uuid lib ${UUID_LIBRARIES}")
-message(STATUS "Using uuid include dir ${UUID_INCLUDE_DIRS}")
-
-#
 # Install zlib for crc32.
 #
 find_package(ZLIB QUIET)
@@ -430,8 +412,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       spdlog
                       Azure::azure-identity
                       Azure::azure-storage-blobs
-                      nlohmann_json::nlohmann_json
-                      uuid)
+                      nlohmann_json::nlohmann_json)
 
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}

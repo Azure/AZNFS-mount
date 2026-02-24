@@ -243,7 +243,7 @@ if [ "${BUILD_TYPE}" == "Debug" ]; then
     INSECURE_AUTH_FOR_DEVTEST=ON
 else
     PARANOID=OFF
-    INSECURE_AUTH_FOR_DEVTEST=ON
+    INSECURE_AUTH_FOR_DEVTEST=OFF
 fi
 
 # vcpkg required env variable VCPKG_FORCE_SYSTEM_BINARIES to be set for arm64.
