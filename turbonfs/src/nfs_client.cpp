@@ -67,7 +67,8 @@ bool nfs_client::init()
      */
     root_fh = get_nfs_inode(nfs_get_rootfh(transport.get_nfs_context()),
                             &fattr,
-                            true /* is_root_inode */);
+                            true /* is_root_inode */,
+                            false /* require_kernel_cache */);
     assert(root_fh->lookupcnt == 1);
     assert(root_fh->dircachecnt == 0);
 
@@ -740,7 +741,8 @@ struct nfs_inode *nfs_client::__inode_from_inode_map(const nfs_fh3 *fh,
 struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
                                               const nfs_fh3 *fh,
                                               const struct fattr3 *fattr,
-                                              bool is_root_inode)
+                                              bool is_root_inode,
+                                              bool require_kernel_cache)
 {
     assert(fh);
     assert(fattr);
@@ -864,7 +866,8 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
 
     struct nfs_inode *new_inode =
         new nfs_inode(fh, fattr, this, file_type,
-                      is_root_inode ? FUSE_ROOT_ID : 0);
+                      is_root_inode ? FUSE_ROOT_ID : 0,
+                      require_kernel_cache);
 
     {
         std::unique_lock<std::shared_mutex> lock(inode_map_lock_0);
@@ -1205,10 +1208,13 @@ static void lookup_sync_callback(
         if (status == 0) {
             assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
 
+            bool require_kernel_cache = has_tar_or_zip_extension(
+                task->rpc_api->lookup_task.get_file_name());
             const nfs_fh3 *fh = (const nfs_fh3 *) &res->LOOKUP3res_u.resok.object;
             const struct fattr3 *fattr =
                 (const struct fattr3 *) &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes;
-            const struct nfs_inode *inode = task->get_client()->get_nfs_inode(fh, fattr);
+            const struct nfs_inode *inode = task->get_client()->get_nfs_inode(fh, fattr, false /* is_root_inode */,
+                                                                            require_kernel_cache);
             (*child_ino_p) = inode->get_fuse_ino();
             if (ctx->fattr) {
                 *(ctx->fattr) = *fattr;
@@ -1997,6 +2003,11 @@ void nfs_client::reply_entry(
     enum fuse_opcode optype = task->get_op_type();
     struct nfs_inode *inode = nullptr;
     fuse_entry_param entry;
+    bool require_kernel_cache = false;
+    if (file) {
+        require_kernel_cache = file->keep_cache;
+    }
+
     /*
      * Kernel must cache lookup result.
      */
@@ -2013,7 +2024,7 @@ void nfs_client::reply_entry(
          * This will grab a lookupcnt ref on the inode, which will be freed
          * from fuse forget callback.
          */
-        inode = get_nfs_inode(fh, fattr);
+        inode = get_nfs_inode(fh, fattr, false, require_kernel_cache);
 
         entry.ino = inode->get_fuse_ino();
         entry.generation = inode->get_generation();
