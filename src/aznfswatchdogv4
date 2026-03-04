@@ -550,7 +550,7 @@ process_nfsv4_nontlsmounts()
 
         IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
-        accname=$(echo $l_host | awk -F'.file' '{print $1}') #can change to l_ip as the fix has been made. whatever is safer.
+        accname=$(echo $l_host | cut -d'.' -f1) #grab everything before the first dot to handle .z3.file, .blob, etc.
         mountpoint=$(findmnt -r -n | grep 'nfs4' | grep -F -- "$accname" | head -n1 | awk '{print $1}')
 
         # Since we added it to the MOUNTMAPv4 file, it cannot be invalid.
