@@ -49,9 +49,6 @@ AZNFS_FIX_MOUNT_OPTIONS="${AZNFS_FIX_MOUNT_OPTIONS:-1}"
 # Default to fixing dirty bytes config to help the user.
 AZNFS_FIX_DIRTY_BYTES_CONFIG="${AZNFS_FIX_DIRTY_BYTES_CONFIG:-1}"
 
-# Read ahead size in KB defaults to 16384.
-AZNFS_READ_AHEAD_KB="${AZNFS_READ_AHEAD_KB:-16384}"
-
 #
 # Use noresvport mount option to allow using non-reserve ports by client.
 # This allows much higher number of local ports to be used by NFS client and
@@ -307,60 +304,6 @@ fix_dirty_bytes_config()
 
         vvecho "Setting /proc/sys/vm/dirty_background_bytes to $desired_dirty_background_bytes bytes"
         echo $desired_dirty_background_bytes > /proc/sys/vm/dirty_background_bytes
-    fi
-}
-
-# Function to extract minor number from combined device ID.
-get_minor()
-{
-    local dev_id=$1
-    echo $(( (dev_id & 0xff) | ((dev_id >> 12) & ~0xff) ))
-}
-
-# Function to extract major number from combined device ID.
-get_major()
-{
-    local dev_id=$1
-    echo $(( ((dev_id >> 8) & 0xfff) | ((dev_id >> 32) & ~0xfff) ))
-}
-
-#
-# To Improve read ahead size to increase large file read throughput.
-#
-fix_read_ahead_config() 
-{
-    # Get the block device identifier of the mount point.
-    block_device_id=$(stat -c "%d" "$mount_point" 2>/dev/null)
-    if [ $? -ne 0 ]; then
-        wecho "Failed to get device ID for mount point $mount_point. Cannot set read ahead."
-        return
-    fi
-
-    # Path to the read_ahead_kb file.
-    major=$(get_major $block_device_id)
-    minor=$(get_minor $block_device_id)
-    read_ahead_path="/sys/class/bdi/$major:$minor/read_ahead_kb"
-    if [ ! -e "$read_ahead_path" ]; then
-        wecho "The path $read_ahead_path does not exist. Cannot set read ahead."
-        return
-    fi
-
-    current_read_ahead_value_kb=$(cat "$read_ahead_path")
-    if [ $? -ne 0 ]; then
-        wecho "Failed to read current read ahead value. Cannot set read ahead."
-        return
-    fi
-
-    # Compare and update the read ahead value if the desired value is greater.
-    if [ "$current_read_ahead_value_kb" -lt "$AZNFS_READ_AHEAD_KB" ]; then
-        echo "$AZNFS_READ_AHEAD_KB" > "$read_ahead_path"
-        if [ $? -ne 0 ]; then
-            wecho "Failed to set read ahead size for $mount_point."
-            return
-        fi
-        vvecho "Read ahead size for $mount_point set to $AZNFS_READ_AHEAD_KB KB!"
-    else
-        vvecho "Current read ahead size ($current_read_ahead_value_kb KB) for $mount_point is already greater than or equal to the desired value ($AZNFS_READ_AHEAD_KB KB), no update needed!"
     fi
 }
 

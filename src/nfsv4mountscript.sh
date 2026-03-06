@@ -728,6 +728,11 @@ tls_nfsv4_files_share_mount()
 
         chattr -f +i $MOUNTMAPv4
         vecho "Mount completed: ${LOCALHOST}:${nfs_dir} on $mount_point with port:${stunnel_port}"
+        
+        #
+        # Fix read ahead config if needed.
+        #
+        fix_read_ahead_config
     fi
 }
 
@@ -872,6 +877,11 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         exit 1
     else
         vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
+        
+        #
+        # Fix read ahead config if needed.
+        #
+        fix_read_ahead_config
     fi
 else
     vecho "Mount nfs share with TLS."

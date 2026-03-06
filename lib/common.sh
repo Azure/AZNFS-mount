@@ -22,6 +22,11 @@ MOUNTMAPv3="${OPTDIRDATA}/mountmap"
 #
 MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 
+#
+# Read ahead size in KB defaults to 16384 (16 MB).
+#
+AZNFS_READ_AHEAD_KB="${AZNFS_READ_AHEAD_KB:-16384}"
+
 RED="\e[2;31m"
 GREEN="\e[2;32m"
 YELLOW="\e[2;33m"
@@ -715,6 +720,64 @@ get_check_host_value()
     fi
 
     echo "$check_host_value"
+}
+
+#
+# Function to extract minor number from combined device ID.
+#
+get_minor()
+{
+    local dev_id=$1
+    echo $(( (dev_id & 0xff) | ((dev_id >> 12) & ~0xff) ))
+}
+
+#
+# Function to extract major number from combined device ID.
+#
+get_major()
+{
+    local dev_id=$1
+    echo $(( ((dev_id >> 8) & 0xfff) | ((dev_id >> 32) & ~0xfff) ))
+}
+
+#
+# To Improve read ahead size to increase large file read throughput.
+#
+fix_read_ahead_config() 
+{
+    # Get the block device identifier of the mount point.
+    block_device_id=$(stat -c "%d" "$mount_point" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        wecho "Failed to get device ID for mount point $mount_point. Cannot set read ahead."
+        return
+    fi
+
+    # Path to the read_ahead_kb file.
+    major=$(get_major $block_device_id)
+    minor=$(get_minor $block_device_id)
+    read_ahead_path="/sys/class/bdi/$major:$minor/read_ahead_kb"
+    if [ ! -e "$read_ahead_path" ]; then
+        wecho "The path $read_ahead_path does not exist. Cannot set read ahead."
+        return
+    fi
+
+    current_read_ahead_value_kb=$(cat "$read_ahead_path")
+    if [ $? -ne 0 ]; then
+        wecho "Failed to read current read ahead value. Cannot set read ahead."
+        return
+    fi
+
+    # Compare and update the read ahead value if the desired value is greater.
+    if [ "$current_read_ahead_value_kb" -lt "$AZNFS_READ_AHEAD_KB" ]; then
+        echo "$AZNFS_READ_AHEAD_KB" > "$read_ahead_path"
+        if [ $? -ne 0 ]; then
+            wecho "Failed to set read ahead size for $mount_point."
+            return
+        fi
+        vvecho "Read ahead size for $mount_point set to $AZNFS_READ_AHEAD_KB KB!"
+    else
+        vvecho "Current read ahead size ($current_read_ahead_value_kb KB) for $mount_point is already greater than or equal to the desired value ($AZNFS_READ_AHEAD_KB KB), no update needed!"
+    fi
 }
 
 # On some distros mount program doesn't pass correct PATH variable.
