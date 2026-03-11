@@ -48,7 +48,7 @@ AZNFS is supported on following Linux distros:
 
 - Ubuntu (18.04 LTS, 20.04 LTS, 22.04 LTS)
 - Centos7, Centos8
-- RedHat7, RedHat8, RedHat9
+- RHEL7, RHEL8, RHEL9
 - Rocky8, Rocky9
 - SUSE (SLES 15)
 
