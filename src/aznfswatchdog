@@ -152,12 +152,12 @@ reconcile_conntrack_synsent()
 
     #
     # How long has this entry been around?
-    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
+    # If it's around for more than 8 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
     # be created, and help make progress.
     #
     age_seconds=$(expr ${cthash_synsent[$key]} - $seconds_remaining)
 
-    if [ $age_seconds -ge 25 ]; then
+    if [ $age_seconds -ge 8 ]; then
         cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
         wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
 
