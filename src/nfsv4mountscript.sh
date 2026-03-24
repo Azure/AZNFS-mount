@@ -304,12 +304,12 @@ add_stunnel_configuration()
     fi
 
     echo "client = yes" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
+    if [ $? -ne 0 ]; then   
         chattr -f +i $stunnel_conf_file
         eecho "Failed to 'client = yes' to $stunnel_conf_file!"
         return 1
     fi
-    
+
     echo "accept = $LOCALHOST:$available_port" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file

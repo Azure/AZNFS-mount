@@ -1212,6 +1212,144 @@ ensure_iptable_entry_not_exist()
 }
 
 #
+# Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
+# Used for finding if some entry is stuck in SYN_SENT state due to a bug in older
+# kernels. If we find an entry stuck for more than a certain time in SYN_SENT state
+# we delete the entry so that kernel looks up fresh NAT rules and creates a new entry.
+#
+declare -A cthash_synsent
+
+reconcile_conntrack_synsent()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_nfsip=$4
+    local seconds_remaining=$5
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
+
+    # First time we are seeing this conntrack entry.
+    if [[ ! -v cthash_synsent[$key] ]]; then
+        cthash_synsent[$key]=$seconds_remaining
+        return
+    fi
+
+    #
+    # How long has this entry been around?
+    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
+    # be created, and help make progress.
+    #
+    age_seconds=$(expr ${cthash_synsent[$key]} - $seconds_remaining)
+
+    if [ $age_seconds -ge 25 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
+
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_synsent[$key]
+        fi
+    fi
+}
+
+#
+# Hash for storing how many times we have seen a conntrack entry in UNREPLIED state.
+# Used for finding if some entry is stuck in UNREPLIED state due to no response from
+# NFS server or some n/w issue. We want to delete the entry as it prevents creation of
+# a new conntrack entry, if the IP were to change again soon.
+#
+declare -A cthash_unreplied
+
+reconcile_conntrack_unreplied()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_reply_srcip=$4
+    local seconds_remaining=$5
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
+
+    # First time we are seeing this conntrack entry.
+    if [[ ! -v cthash_unreplied[$key] ]]; then
+        cthash_unreplied[$key]=$seconds_remaining
+        return
+    fi
+
+    #
+    # How long has this entry been around?
+    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
+    # be created, and help make progress.
+    #
+    age_seconds=$(expr ${cthash_unreplied[$key]} - $seconds_remaining)
+
+    if [ $age_seconds -ge 25 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
+
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_unreplied[$key]
+        fi
+    fi
+}
+
+reconcile_conntrack()
+{
+    local l_ip=$1
+    local l_nfsip=$2
+
+    #
+    # For mounts with nconnect, there could be more than one conntrack entries to the same
+    # proxy IP, but with different local ports. We must track them separately.
+    #
+    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 111 --state SYN_SENT 2>/dev/null)
+    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 2048 --state SYN_SENT 2>/dev/null)
+    output="$output111"$'\n'"$output2048"
+
+    if [ -n "$output" ]; then
+        for entry in $output; do
+            vecho "$entry"
+
+            # Sample conntrack entry.
+            # tcp      6 114 SYN_SENT src=10.20.0.17 dst=10.161.100.101 sport=819 dport=2048 [UNREPLIED] src=20.150.35.196 dst=10.20.0.17 sport=2048 dport=819 mark=0 use=1
+            matchstr="tcp\s+[0-9]+\s+([0-9]+)\s+SYN_SENT\s+src=[0-9]+.[0-9]+.[0-9]+.[0-9]+\s+dst=${l_ip}\s+sport=([0-9]+)\s+dport=([0-9]+).*"
+            if [[ "$entry" =~ $matchstr ]]; then
+                l_seconds_remaining=${BASH_REMATCH[1]}
+                l_sport=${BASH_REMATCH[2]}
+                l_dport=${BASH_REMATCH[3]}
+                reconcile_conntrack_synsent $l_ip $l_sport $l_dport $l_nfsip $l_seconds_remaining
+            fi
+        done
+    fi
+
+    IFS=$'\n' output111=$(conntrack -L -p tcp -d $l_ip --dport 111 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
+    IFS=$'\n' output2048=$(conntrack -L -p tcp -d $l_ip --dport 2048 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
+    output="$output111"$'\n'"$output2048"
+    if [ -n "$output" ]; then
+        for entry in $output; do
+            vecho "$entry"
+
+            # Sample conntrack entry.
+            # tcp      6 299 ESTABLISHED src=10.2.4.4 dst=10.161.100.100 sport=1015 dport=2048 [UNREPLIED] src=20.60.236.11 dst=10.2.4.4 sport=2048 dport=1015 mark=0 use=1
+            matchstr="tcp\s+[0-9]+\s+([0-9]+) .* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
+            if [[ "$entry" =~ $matchstr ]]; then
+                l_seconds_remaining=${BASH_REMATCH[1]}
+                l_sport=${BASH_REMATCH[2]}
+                l_dport=${BASH_REMATCH[3]}
+                l_reply_srcip=${BASH_REMATCH[4]}
+                reconcile_conntrack_unreplied $l_ip $l_sport $l_dport $l_reply_srcip $l_seconds_remaining
+            fi
+        done
+    fi
+}
+
+#
 # Verify if the mountmapv3 entry is present but corresponding DNAT rule does not
 # exist. Add it to avoid IOps failure.
 #

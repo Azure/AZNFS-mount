@@ -374,15 +374,18 @@ process_nfsv4_mounts()
             # The virtual file is at the mountpoint and named with the crc32 value in the mountmap entry.
             #
             local mountpoint=$(echo "$findmnt_output" | awk '{print $1}' | sed 's/^[└├│─]*//g')
-            l_fslocation_line=$(cat "${mountpoint}/${l_crc_32}")
-            #read now from the mountpoint
-            read_status=$?
-            IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
-            #process the output
-            if [ $read_status -ne 0 ]; then
-                eecho "Failed to read from $l_crc32_file"
-                return 1
+            local vfile="${mountpoint}/${l_crc_32}"
+            if [ ! -f "$vfile" ]; then
+                vecho "Virtual file $vfile does not exist yet, skipping IP change detection for this entry."
+                continue
             fi
+            l_fslocation_line=$(cat "$vfile")
+            read_status=$?
+            if [ $read_status -ne 0 ]; then
+                wecho "Failed to read from $vfile, skipping this entry."
+                continue
+            fi
+            IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
 
             #
             # If FSLocationIP is not empty, and updated from the IP stored in MountMap and PRT is in migration stage, update.
@@ -627,13 +630,16 @@ process_nfsv4_nontlsmounts()
         fi
 
         #read into the line here to do the ip change detection. this is per Line.
-        l_fslocation_line=$(cat "${mountpoint}/${l_crc32}")
+        local vfile="${mountpoint}/${l_crc32}"
+        if [ ! -f "$vfile" ]; then
+            vecho "Virtual file $vfile does not exist yet, skipping IP change detection for this entry."
+            continue
+        fi
+        l_fslocation_line=$(cat "$vfile")
         read_status=$?
-
-        #rearrange this, we are not using the status really
         if [ $read_status -ne 0 ]; then
-            eecho "Failed to read from $l_crc32_file"
-            return 1
+            wecho "Failed to read from $vfile, skipping this entry."
+            continue
         fi
 
         # Ingest l_prt and l_fslocationIP from fslocation line. The format of the line is <migration stage>;<fslocationIP>
