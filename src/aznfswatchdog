@@ -116,28 +116,6 @@ check_for_regional_account()
     fi
 }
 
-#
-# Function for running stat for mountpoint so that everytime DNAT rule is updated, it is
-# used to make sure to send atleast one packet that matches the DNAT rule.
-# This will make sure that the connection gets a TCP reset and outstanding NFS RPC requests
-# are retransmitted right away w/o waiting for the 1 min timeout.
-#
-ping_new_endpoint()
-{
-    local target="$1"
-
-    vecho "[$BASHPID] stat($target) #1 start"
-    stat "$target"
-    vecho "[$BASHPID] stat($target) #1 done"
-
-    sleep 35
-
-    # One more stat after 30 sec sleep to let dir attributes timeout.
-    vecho "[$BASHPID] stat($target) #2 start"
-    stat "$target"
-    vecho "[$BASHPID] stat($target) #2 done"
-}
-
 run_daily_once()
 {
     next_daily_run_epoch=$(expr $(date +%s) + $DAILY_CHECK_AFTER_SECONDS)

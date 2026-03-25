@@ -218,6 +218,28 @@ vvecho()
 }
 
 #
+# Function for running stat for mountpoint so that everytime DNAT rule is updated, it is
+# used to make sure to send atleast one packet that matches the DNAT rule.
+# This will make sure that the connection gets a TCP reset and outstanding NFS RPC requests
+# are retransmitted right away w/o waiting for the 1 min timeout.
+#
+ping_new_endpoint()
+{
+    local target="$1"
+
+    vecho "[$BASHPID] stat($target) #1 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #1 done"
+
+    sleep 35
+
+    # One more stat after 30 sec sleep to let dir attributes timeout.
+    vecho "[$BASHPID] stat($target) #2 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #2 done"
+}
+
+#
 # Check if system is booted with systemd as init.
 #
 systemd_is_init()
@@ -463,17 +485,6 @@ create_mountmap_file_nontlsv4()
             return 1
         fi
         chattr -f +i ${!mountmap_filename_nontls}
-    fi
-
-    local fslocation_filename=VIRTUALFSLOCATION
-
-    if [ ! -f ${!fslocation_filename} ]; then
-        touch ${!fslocation_filename}
-        if [ $? -ne 0 ]; then
-            eecho "[FATAL] Not able to create '${!fslocation_filename}'!"
-            return 1
-        fi
-        chattr -f +i ${!fslocation_filename}
     fi
 }
 
@@ -836,6 +847,10 @@ octets_in_ipv4_prefix()
 # Search for a free local IP with the given prefix.
 # Takes the IP prefix and the mountmap file to use.
 #
+# Expects the following globals set by the calling mount script:
+#   nfs_host - The FQDN of the NFS endpoint (used in mountmap entry)
+#   nfs_ip   - The resolved IP of the NFS endpoint (used for DNAT and to avoid collision)
+#
 search_free_local_ip_with_prefix() 
 {
     local initial_ip_prefix=$1
@@ -995,6 +1010,10 @@ search_free_local_ip_with_prefix()
 # Get a local IP that is free to use. Set global variable LOCAL_IP if found.
 # Takes the mountmap file to use for tracking used IPs.
 #
+# Expects the following globals set by the calling mount script:
+#   nfs_host - The FQDN of the NFS endpoint
+#   nfs_ip   - The resolved IP of the NFS endpoint
+#
 get_free_local_ip()
 {
     local mountmap_file=$1
@@ -1064,6 +1083,9 @@ resolve_ipv4_with_preference_to_mountmap()
 # For the given AZNFS endpoint FQDN return a local IP that should proxy it.
 # If there is at least one mount to the same FQDN it MUST return the local IP
 # used for that, else assign a new free local IP.
+#
+# Expects the following globals set by the calling mount script:
+#   nfs_ip   - The resolved IP of the NFS endpoint (used for DNAT)
 #
 # Parameters:
 #   $1 - fqdn: The FQDN to get a local IP for

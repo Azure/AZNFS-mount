@@ -459,7 +459,7 @@ tls_nfsv4_files_share_mount()
                 #
                 # If this echo fails then MOUNTMAPv4 could be truncated.
                 #
-                echo "$out" > $MOUNTMAPv4 
+                echo "$out" > $MOUNTMAPv4
                 ret=$?
                 out=
                 if [ $ret -ne 0 ]; then
