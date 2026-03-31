@@ -797,7 +797,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
 
         if [ -f "$stunnel_conf_file" ]; then
             accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
-            findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
+            findmnt=$(findmnt | grep "nfs4\|$LOCALHOST" 2>&1)
 
             if echo "$findmnt" | grep "$accept_port" >/dev/null; then
                 eecho "There is a share mounted on $storageaccount_ip using TLS. Cannot unmount the share without TLS."
