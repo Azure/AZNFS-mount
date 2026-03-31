@@ -9,7 +9,6 @@
 # Watchdog for monitoring unmounts and stunnel processes
 #
 
-mtime_mountmap=0
 NFSFS_SERVERS_FILE="/proc/fs/nfsfs/servers"
 
 ip_to_hex()
@@ -263,7 +262,7 @@ process_nfsv4_mounts()
     # MOUNTMAPv4 entry whose all nfs file shares are unmounted, we know
     # for sure that it's not in use by any mount and can be removed.
     #
-    findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
+    findmnt=$(findmnt | grep "nfs4\|$LOCALHOST" 2>&1)
     #findmnt=$(findmnt --raw --noheading -o MAJ:MIN,FSTYPE,SOURCE,TARGET,OPTIONS -t nfs 2>&1)
     #
     # For no matching mounts also, findmnt exits with a failure return, so check
@@ -293,7 +292,7 @@ process_nfsv4_mounts()
         #
 
         IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout l_crc_32 <<< "$line"  
-        IP_changed=false #we don't need to worry abour regional accounts with l_crc32
+        IP_changed=false #we don't need to worry about regional accounts with l_crc32
 
         if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
@@ -360,7 +359,7 @@ process_nfsv4_mounts()
 
             #
             # If FSLocationIP is not empty, and updated from the IP stored in MountMap and PRT is in migration stage, update.
-            # Mountmap, config, log, and checksumhash need to be updtaed accordingly. Then restart stunnel with new config file.
+            # Mountmap, config, log, and checksumhash need to be updated accordingly. Then restart stunnel with new config file.
             # If it's empty, it will skip this logic as ip will not be changed. - before server upgrade
             #
             if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_ip" -a "$l_prt" -ne 0 ]; then 
