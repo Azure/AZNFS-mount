@@ -10,7 +10,139 @@
 #
 
 mtime_mountmap=0
+mtime_mountmap_notls=0
 NFSFS_SERVERS_FILE="/proc/fs/nfsfs/servers"
+
+# How often to probe the storage IP for reachability (seconds).
+HEALTH_CHECK_FREQUENCY=60
+
+#
+# Conntrack tracking hashes for NFSv4 non-TLS DNAT mounts.
+#
+declare -A cthash_synsent_v4
+declare -A cthash_unreplied_v4
+
+reconcile_conntrack_synsent_v4()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_nfsip=$4
+    local seconds_remaining=$5
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
+
+    if [[ ! -v cthash_synsent_v4[$key] ]]; then
+        cthash_synsent_v4[$key]=$seconds_remaining
+        return
+    fi
+
+    age_seconds=$(expr ${cthash_synsent_v4[$key]} - $seconds_remaining)
+
+    if [ $age_seconds -ge 25 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_synsent_v4[$key]
+        fi
+    fi
+}
+
+reconcile_conntrack_unreplied_v4()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_reply_srcip=$4
+    local seconds_remaining=$5
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
+
+    if [[ ! -v cthash_unreplied_v4[$key] ]]; then
+        cthash_unreplied_v4[$key]=$seconds_remaining
+        return
+    fi
+
+    age_seconds=$(expr ${cthash_unreplied_v4[$key]} - $seconds_remaining)
+
+    if [ $age_seconds -ge 25 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_unreplied_v4[$key]
+        fi
+    fi
+}
+
+#
+# Check conntrack entries for NFSv4 non-TLS DNAT mounts (port 2049).
+# Returns 0 if stuck entries were found and cleaned (failure signal).
+#
+reconcile_conntrack_v4()
+{
+    local l_ip=$1
+    local l_nfsip=$2
+    local found_stuck=1
+
+    IFS=$'\n' output2049=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 2049 --state SYN_SENT 2>/dev/null)
+
+    if [ -n "$output2049" ]; then
+        for entry in $output2049; do
+            vecho "$entry"
+            matchstr="tcp\s+[0-9]+\s+([0-9]+)\s+SYN_SENT\s+src=[0-9]+.[0-9]+.[0-9]+.[0-9]+\s+dst=${l_ip}\s+sport=([0-9]+)\s+dport=([0-9]+).*"
+            if [[ "$entry" =~ $matchstr ]]; then
+                l_seconds_remaining=${BASH_REMATCH[1]}
+                l_sport=${BASH_REMATCH[2]}
+                l_dport=${BASH_REMATCH[3]}
+                reconcile_conntrack_synsent_v4 $l_ip $l_sport $l_dport $l_nfsip $l_seconds_remaining
+                found_stuck=0
+            fi
+        done
+    fi
+
+    IFS=$'\n' output2049=$(conntrack -L -p tcp -d $l_ip --dport 2049 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
+    if [ -n "$output2049" ]; then
+        for entry in $output2049; do
+            vecho "$entry"
+            matchstr="tcp\s+[0-9]+\s+([0-9]+) .* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
+            if [[ "$entry" =~ $matchstr ]]; then
+                l_seconds_remaining=${BASH_REMATCH[1]}
+                l_sport=${BASH_REMATCH[2]}
+                l_dport=${BASH_REMATCH[3]}
+                l_reply_srcip=${BASH_REMATCH[4]}
+                reconcile_conntrack_unreplied_v4 $l_ip $l_sport $l_dport $l_reply_srcip $l_seconds_remaining
+                found_stuck=0
+            fi
+        done
+    fi
+
+    return $found_stuck
+}
+
+#
+# Force NFS client to send traffic through the updated DNAT rule
+# by issuing stat on the mount point.
+#
+ping_new_endpoint()
+{
+    local target="$1"
+
+    vecho "[$BASHPID] stat($target) #1 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #1 done"
+
+    sleep 35
+
+    vecho "[$BASHPID] stat($target) #2 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #2 done"
+}
 
 ip_to_hex()
 {
@@ -227,6 +359,136 @@ cleanup_mount()
     return 0
 }
 
+#
+# Process NFSv4 non-TLS DNAT-based mounts.
+# Monitors MOUNTMAPv4NOTLS entries for:
+#   1. Unmounted shares → cleanup DNAT rules and mountmap entries.
+#   2. Missing DNAT rules → recreate them.
+#   3. Backend failure → failover to another ZRS IP.
+#
+process_nfsv4_notls_mounts()
+{
+    if [ ! -f "$MOUNTMAPv4NOTLS" ]; then
+        return
+    fi
+
+    # Read mountmap under lock.
+    exec {fd_notls}<$MOUNTMAPv4NOTLS
+    flock -e $fd_notls
+    mtime_mountmap_notls=$(stat -c%Y $MOUNTMAPv4NOTLS)
+    IFS=$'\n' notls_lines=$(cat $MOUNTMAPv4NOTLS)
+    flock -u $fd_notls
+    exec {fd_notls}<&-
+
+    if [ -z "$notls_lines" ]; then
+        return
+    fi
+
+    # Get current NFS mounts (done after reading mountmap for consistency).
+    local findmnt_notls=$(findmnt --raw --noheading -o SOURCE,TARGET -t nfs,nfs4 2>/dev/null)
+
+    for line in $notls_lines; do
+        if [ -z "$line" ]; then
+            continue
+        fi
+
+        # MOUNTMAPv4NOTLS format: hostname localip storageip
+        IFS=" " read l_host l_ip l_nfsip <<< "$line"
+
+        if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
+            wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NOTLS: [$line]!"
+            l_mtime=$(ensure_mountmap_not_exist "$MOUNTMAPv4NOTLS" "$line" "$mtime_mountmap_notls")
+            [ $? -eq 0 ] && mtime_mountmap_notls=$l_mtime
+            continue
+        fi
+
+        #
+        # Check 1: Is the mount still active?
+        # If no mount references this proxy IP, clean up.
+        #
+        if ! echo "$findmnt_notls" | grep "$l_ip" > /dev/null 2>&1; then
+            # Check kernel NFS server entries before cleanup (k8s namespace refs).
+            if is_nfs_server_active_for_target "$l_ip" "2049"; then
+                vecho "NFS server entry still active for $l_ip:2049; skipping cleanup for [$line]."
+                continue
+            fi
+
+            pecho "No mounted shares for host $l_host with proxy IP $l_ip, cleaning up [$line]."
+            l_mtime=$(ensure_mountmap_not_exist "$MOUNTMAPv4NOTLS" "$line" "$mtime_mountmap_notls")
+            [ $? -eq 0 ] && mtime_mountmap_notls=$l_mtime
+            continue
+        fi
+
+        #
+        # Check 2: Verify DNAT rule still exists (safety net).
+        #
+        verify_iptable_entry "$l_ip" "$l_nfsip"
+
+        #
+        # Layer 1: Conntrack monitoring (passive, every 5s).
+        # Detects stuck SYN_SENT or UNREPLIED entries on port 2049.
+        #
+        local failure_detected=false
+        if reconcile_conntrack_v4 "$l_ip" "$l_nfsip"; then
+            failure_detected=true
+            wecho "Conntrack stuck entries detected for $l_host [$l_ip -> $l_nfsip]"
+        fi
+
+        #
+        # Layer 2: Active TCP probe (every HEALTH_CHECK_FREQUENCY seconds).
+        # Sends one SYN packet to the real storage IP on port 2049.
+        #
+        if [ $epoch_now -ge ${next_health_check_epoch:-0} ]; then
+            if ! is_ip_port_reachable $l_nfsip 2049; then
+                failure_detected=true
+                wecho "Storage IP $l_nfsip is unreachable on port 2049 for $l_host"
+            fi
+        fi
+
+        #
+        # Layer 3: On failure, resolve DNS and failover to a healthy IP.
+        #
+        if [ "$failure_detected" == "true" ]; then
+            pecho "Failure detected for $l_host [$l_ip -> $l_nfsip], attempting failover..."
+
+            new_ip=$(resolve_ipv4 "$l_host" "false")
+
+            if [ $? -ne 0 ]; then
+                eecho "Failed to resolve $l_host during failover: $new_ip"
+                continue
+            fi
+
+            if [ "$new_ip" == "$l_nfsip" ]; then
+                # DNS still returns the same (dead) IP, or it's the only one reachable.
+                wecho "No alternative IP found for $l_host (DNS returned same IP $l_nfsip)."
+                continue
+            fi
+
+            pecho "IP for $l_host changed [$l_nfsip -> $new_ip], updating DNAT."
+
+            if update_mountmap_entry "$MOUNTMAPv4NOTLS" "$line" "$l_host $l_ip $new_ip"; then
+                pecho "Failover complete for $l_host [$l_nfsip -> $new_ip]"
+
+                # Update mtime since we modified the file.
+                mtime_mountmap_notls=$(stat -c%Y $MOUNTMAPv4NOTLS)
+
+                # Force NFS client to reconnect through new DNAT rule.
+                local mount_target=$(echo "$findmnt_notls" | grep "$l_ip" | awk '{print $2}' | head -1)
+                if [ -n "$mount_target" ]; then
+                    ping_new_endpoint "$mount_target" &
+                fi
+            else
+                eecho "Failed to update DNAT for $l_host [$l_nfsip -> $new_ip]!"
+            fi
+        fi
+    done
+
+    # Update health check timer (shared across all entries).
+    if [ $epoch_now -ge ${next_health_check_epoch:-0} ]; then
+        next_health_check_epoch=$(expr $epoch_now + $HEALTH_CHECK_FREQUENCY)
+    fi
+}
+
 process_nfsv4_mounts()
 {
     local l_conf
@@ -395,7 +657,13 @@ if ! chattr -f +i $MOUNTMAPv4; then
     wecho "chattr does not work for ${MOUNTMAPv4}!"
 fi
 
+if ! chattr -f +i $MOUNTMAPv4NOTLS; then
+    wecho "chattr does not work for ${MOUNTMAPv4NOTLS}!"
+fi
+
 while :; do
     sleep $MONITOR_INTERVAL_SECS
+    epoch_now=$(date +%s)
     process_nfsv4_mounts
+    process_nfsv4_notls_mounts
 done

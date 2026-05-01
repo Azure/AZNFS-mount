@@ -43,6 +43,48 @@ CONNECT_PORT=2049
 # https://linux.die.net/man/5/nfs
 MOUNT_TIMEOUT_IN_SECONDS=180
 
+#
+# Variables for non-TLS proxy IP allocation (reuses NFSv3 IP allocation infrastructure).
+#
+DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
+IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
+OPTIMIZE_GET_FREE_LOCAL_IP=true
+
+#
+# Write function for non-TLS mountmap entries.
+# Called by search_free_local_ip_with_prefix via $MOUNTMAP_WRITE_FN.
+#
+ensure_mountmapv4notls_exist_nolock()
+{
+    ensure_mountmap_exist_nolock "$MOUNTMAPv4NOTLS" "$1"
+}
+
+#
+# For the given AZNFS endpoint FQDN return a local IP that should proxy it.
+# Checks MOUNTMAPv4NOTLS for existing proxy IP, else allocates a new one.
+#
+get_local_ip_for_fqdn_notls()
+{
+    local fqdn=$1
+    local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv4NOTLS)
+    IFS=" " read _ local_ip _ <<< "$mountmap_entry"
+
+    if [ -n "$local_ip" ]; then
+        LOCAL_IP=$local_ip
+        ensure_iptable_entry $local_ip $storageaccount_ip
+        return 0
+    fi
+
+    # First mount of this account on this client — allocate a new proxy IP.
+    # Set MOUNTMAP_WRITE_FN so search_free_local_ip_with_prefix writes to
+    # MOUNTMAPv4NOTLS instead of MOUNTMAPv3.
+    MOUNTMAP_WRITE_FN=ensure_mountmapv4notls_exist_nolock
+    nfs_ip=$storageaccount_ip get_free_local_ip
+    local ret=$?
+    unset MOUNTMAP_WRITE_FN
+    return $ret
+}
+
 # Cleanup function to release the lock on mountmap file.
 cleanup() {
     flock -u $fd2
@@ -742,10 +784,10 @@ if ! ensure_aznfswatchdog "aznfswatchdogv4"; then
 fi
 
 # Mount helper creates a stunnel process per storage account IP address.
-storageaccount_ip=$(getent hosts "$nfs_host" | awk 'NR==1 {print $1}')
-
-if [ -z "$storageaccount_ip" ]; then
-    eecho "Failed to resolve the IP address for $nfs_host!"
+# For non-TLS mounts, resolve_ipv4 returns the best reachable IP (ZRS-aware).
+storageaccount_ip=$(resolve_ipv4 "$nfs_host" "true")
+if [ $? -ne 0 ]; then
+    eecho "Failed to resolve the IP address for $nfs_host: $storageaccount_ip"
     exit 1
 fi
 
@@ -754,6 +796,20 @@ vecho "nfs_host=[$nfs_host], nfs_host_ip=[$storageaccount_ip], nfs_dir=[$nfs_dir
 # MOUNTMAPv4 file must have been created by aznfswatchdog service. It's created in common.sh.
 if [ ! -f "$MOUNTMAPv4" ]; then
     eecho "[FATAL] ${MOUNTMAPv4} not found!"
+
+    if systemd_is_init; then
+        pecho "Try restarting the aznfswatchdogv4 service using 'systemctl start aznfswatchdogv4' and then retry the mount command."
+    else
+        eecho "aznfswatchdogv4 service not running, please make sure it's running and try again!"
+    fi
+
+    pecho "If the problem persists, contact Microsoft support."
+    exit 1
+fi
+
+# MOUNTMAPv4NOTLS file must also exist for non-TLS DNAT-based mounts.
+if [ ! -f "$MOUNTMAPv4NOTLS" ]; then
+    eecho "[FATAL] ${MOUNTMAPv4NOTLS} not found!"
 
     if systemd_is_init; then
         pecho "Try restarting the aznfswatchdogv4 service using 'systemctl start aznfswatchdogv4' and then retry the mount command."
@@ -860,8 +916,23 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
         MOUNT_OPTIONS=${MOUNT_OPTIONS//,notls/}
     fi
 
-    # Do the actual mount.
-    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${nfs_host}:${nfs_dir}" "$mount_point" 2>&1)
+    # Allocate a local proxy IP and create DNAT rule for ZRS failover support.
+    # get_local_ip_for_fqdn_notls checks MOUNTMAPv4NOTLS for an existing proxy IP
+    # for this hostname, or allocates a new one via get_free_local_ip.
+    nfs_ip=$storageaccount_ip
+    get_local_ip_for_fqdn_notls "$nfs_host"
+    if [ $? -ne 0 ]; then
+        eecho "Could not find a free local IP to use for aznfs!"
+        eecho "Set AZNFS_IP_PREFIXES env variable correctly to provide free addresses for use by aznfs!"
+        flock -u $fd2
+        exec {fd2}<&-
+        exit 1
+    fi
+
+    vecho "nfs_host=[$nfs_host], nfs_ip=[$storageaccount_ip], local_ip=[$LOCAL_IP], nfs_dir=[$nfs_dir], mount_point=[$mount_point]"
+
+    # Do the actual mount against the proxy IP (DNAT redirects to the real storage IP).
+    mount_output=$(mount -t nfs -o "$MOUNT_OPTIONS" "${LOCAL_IP}:${nfs_dir}" "$mount_point" 2>&1)
     mount_status=$?
 
     flock -u $fd2
@@ -869,14 +940,16 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
 
     if [ -n "$mount_output" ]; then
         pecho "$mount_output"
-        vecho "Mount: ${nfs_host}:${nfs_dir} on $mount_point"
+        vecho "Mount: ${LOCAL_IP}:${nfs_dir} on $mount_point (DNAT to $storageaccount_ip)"
     fi
 
     if [ $mount_status -ne 0 ]; then
         eecho "Mount failed!"
+        # Clean up the mountmap entry and DNAT rule on failure.
+        ensure_mountmap_not_exist "$MOUNTMAPv4NOTLS" "$nfs_host $LOCAL_IP $storageaccount_ip"
         exit 1
     else
-        vecho "Mount completed: ${nfs_host}:${nfs_dir} on $mount_point"
+        vecho "Mount completed: ${LOCAL_IP}:${nfs_dir} on $mount_point (DNAT to $storageaccount_ip)"
         
         #
         # Fix read ahead config if needed.
