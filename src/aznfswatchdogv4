@@ -144,6 +144,112 @@ ping_new_endpoint()
     vecho "[$BASHPID] stat($target) #2 done"
 }
 
+#
+# Failover a TLS stunnel connection to a new backend IP.
+# Updates stunnel.conf, restarts stunnel on the same port, and updates MOUNTMAPv4.
+# Must be called with MOUNTMAPv4 NOT locked (this function acquires the lock).
+#
+failover_stunnel()
+{
+    local l_host=$1
+    local l_ip=$2
+    local l_conf=$3
+    local l_log=$4
+    local l_pid=$5
+    local l_checksumhash=$6
+    local old_line=$7
+    local new_ip=$8
+
+    local old_ip=$l_ip
+    local accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
+
+    pecho "Stunnel failover for $l_host: $old_ip -> $new_ip (port $accept_port)"
+
+    # Lock MOUNTMAPv4 for the entire failover operation so the watchdog's
+    # checksum tamper detection doesn't race with our config update.
+    exec {fd_fo}<$MOUNTMAPv4
+    flock -e $fd_fo
+
+    # Step 1: Update stunnel.conf — change connect target to new IP.
+    chattr -f -i $l_conf
+    sed -i "s/connect = ${old_ip}:2049/connect = ${new_ip}:2049/" $l_conf
+    if [ $? -ne 0 ]; then
+        eecho "Failed to update connect IP in $l_conf!"
+        chattr -f +i $l_conf
+        flock -u $fd_fo
+        exec {fd_fo}<&-
+        return 1
+    fi
+    chattr -f +i $l_conf
+
+    # Step 2: Kill old stunnel process.
+    if [ -f "$l_pid" ]; then
+        local pid=$(cat $l_pid)
+        pecho "Killing stunnel process $pid for failover"
+        kill -9 $pid 2>/dev/null
+    fi
+
+    # Step 3: Start new stunnel on the same port.
+    local stunnel_status=$(stunnel $l_conf 2>&1)
+    if [ -n "$stunnel_status" ]; then
+        local is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$accept_port: Address already in use")
+        if [ -n "$is_binding_error" ]; then
+            # Port still held by old process briefly — retry after a moment.
+            sleep 1
+            stunnel_status=$(stunnel $l_conf 2>&1)
+            if [ -n "$stunnel_status" ]; then
+                eecho "Failed to restart stunnel on port $accept_port after failover: $stunnel_status"
+                # Roll back config change.
+                chattr -f -i $l_conf
+                sed -i "s/connect = ${new_ip}:2049/connect = ${old_ip}:2049/" $l_conf
+                chattr -f +i $l_conf
+                flock -u $fd_fo
+                exec {fd_fo}<&-
+                return 1
+            fi
+        else
+            eecho "Failed to start stunnel after failover: $stunnel_status"
+            chattr -f -i $l_conf
+            sed -i "s/connect = ${new_ip}:2049/connect = ${old_ip}:2049/" $l_conf
+            chattr -f +i $l_conf
+            flock -u $fd_fo
+            exec {fd_fo}<&-
+            return 1
+        fi
+    fi
+
+    # Step 4: Recompute checksum and update MOUNTMAPv4.
+    local new_checksum=$(cksum $l_conf | awk '{print $1}')
+
+    chattr -f -i $MOUNTMAPv4
+    # Replace old IP and old checksum with new values in the matching entry.
+    out=$(sed "\#$l_conf;#s#${old_ip};#${new_ip};#;s#;${l_checksumhash};#;${new_checksum};#" $MOUNTMAPv4)
+    ret=$?
+    if [ $ret -eq 0 ]; then
+        echo "$out" > $MOUNTMAPv4
+        ret=$?
+        out=
+        if [ $ret -ne 0 ]; then
+            eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+        fi
+    fi
+    chattr -f +i $MOUNTMAPv4
+
+    # Update mtime so the main loop knows we changed it.
+    mtime_mountmap=$(stat -c%Y $MOUNTMAPv4)
+
+    flock -u $fd_fo
+    exec {fd_fo}<&-
+
+    if [ $ret -ne 0 ]; then
+        eecho "Failed to update MOUNTMAPv4 after stunnel failover!"
+        return 1
+    fi
+
+    pecho "Stunnel failover complete for $l_host: $old_ip -> $new_ip"
+    return 0
+}
+
 ip_to_hex()
 {
     local ip=$1
@@ -451,7 +557,7 @@ process_nfsv4_notls_mounts()
         if [ "$failure_detected" == "true" ]; then
             pecho "Failure detected for $l_host [$l_ip -> $l_nfsip], attempting failover..."
 
-            new_ip=$(resolve_ipv4 "$l_host" "false")
+            new_ip=$(resolve_ipv4 "$l_host" "false" 2049 "$l_nfsip")
 
             if [ $? -ne 0 ]; then
                 eecho "Failed to resolve $l_host during failover: $new_ip"
@@ -546,11 +652,11 @@ process_nfsv4_mounts()
 
         #
         # MOUNTMAPv4 line is of the form:
-        # <IP>;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>
+        # <hostname>;<IP>;<stunnel.conf path>;<stunnel.log path>;<stunnel.pid path>;<checksumHash>;<status>;<timeout>
         #
-        IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        IFS=";" read l_host l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
 
-        if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
+        if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
             exec {fd2}<$MOUNTMAPv4
             flock -e $fd2
@@ -640,8 +746,49 @@ process_nfsv4_mounts()
                     fi
                 fi
             fi
+
+            #
+            # ZRS failover detection for public endpoint TLS mounts.
+            # Skip for private endpoints — Azure handles failover internally.
+            #
+            if ! is_private_ip "$l_ip"; then
+                local tls_failure_detected=false
+
+                # TCP probe the real storage IP (every HEALTH_CHECK_FREQUENCY seconds).
+                if [ $epoch_now -ge ${next_tls_health_check_epoch:-0} ]; then
+                    if ! is_ip_port_reachable $l_ip 2049; then
+                        tls_failure_detected=true
+                        wecho "Storage IP $l_ip is unreachable on port 2049 for TLS mount $l_host"
+                    fi
+                fi
+
+                if [ "$tls_failure_detected" == "true" ]; then
+                    pecho "TLS failure detected for $l_host [$l_ip], attempting stunnel failover..."
+
+                    new_ip=$(resolve_ipv4 "$l_host" "false" 2049 "$l_ip")
+
+                    if [ $? -ne 0 ]; then
+                        eecho "Failed to resolve $l_host during TLS failover: $new_ip"
+                    elif [ "$new_ip" == "$l_ip" ]; then
+                        wecho "No alternative IP found for $l_host (DNS returned same IP $l_ip)."
+                    else
+                        if failover_stunnel "$l_host" "$l_ip" "$l_conf" "$l_log" "$l_pid" "$l_checksumhash" "$line" "$new_ip"; then
+                            # Force NFS client to reconnect through restarted stunnel.
+                            local tls_mount_target=$(echo "$findmnt" | grep "$accept_port" | awk '{print $NF}' | head -1)
+                            if [ -n "$tls_mount_target" ]; then
+                                ping_new_endpoint "$tls_mount_target" &
+                            fi
+                        fi
+                    fi
+                fi
+            fi
         fi
     done
+
+    # Update TLS health check timer.
+    if [ $epoch_now -ge ${next_tls_health_check_epoch:-0} ]; then
+        next_tls_health_check_epoch=$(expr $epoch_now + $HEALTH_CHECK_FREQUENCY)
+    fi
 }
 
 # Load common aznfs helpers.

@@ -240,6 +240,8 @@ resolve_ipv4()
 {
     local hname="$1"
     local fail_if_present_in_etc_hosts="$2"
+    local probe_port="${3:-2048}"
+    local exclude_ip="$4"
     local RETRIES=3
 
     # Some retries for resilience.
@@ -298,7 +300,11 @@ resolve_ipv4()
     if [ $cnt_ip -ne 1 ]; then
         for((i=1;i<=$cnt_ip;i++)) {
             ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
-            if is_ip_port_reachable $ipv4_addr 2048; then
+            # Skip the excluded IP (used during failover to avoid the known-dead IP).
+            if [ -n "$exclude_ip" ] && [ "$ipv4_addr" == "$exclude_ip" ]; then
+                continue
+            fi
+            if is_ip_port_reachable $ipv4_addr $probe_port; then
                 break
             fi
         }

@@ -633,7 +633,7 @@ tls_nfsv4_files_share_mount()
         # Mounted: mount command is executed successfully. If the mount is unmounted, watchdog can remove this entry.
         # Failed: mount command failed. Watchdog can remove this entry.
 
-        local mountmap_entry="$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
+        local mountmap_entry="$nfs_host;$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
         chattr -f -i $MOUNTMAPv4
         echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
@@ -785,7 +785,7 @@ fi
 
 # Mount helper creates a stunnel process per storage account IP address.
 # For non-TLS mounts, resolve_ipv4 returns the best reachable IP (ZRS-aware).
-storageaccount_ip=$(resolve_ipv4 "$nfs_host" "true")
+storageaccount_ip=$(resolve_ipv4 "$nfs_host" "true" 2049)
 if [ $? -ne 0 ]; then
     eecho "Failed to resolve the IP address for $nfs_host: $storageaccount_ip"
     exit 1
@@ -855,7 +855,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
                 exit 1
             fi
 
-            stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f4 | awk 'NR==1 {print $1}'`
+            stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f5 | awk 'NR==1 {print $1}'`
             pid=$(cat $stunnel_pid_file)
             vecho "killing stunnel process with pid: $pid on port: $accept_port"
             kill -9 $pid
