@@ -146,7 +146,8 @@ ping_new_endpoint()
 
 #
 # Failover a TLS stunnel connection to a new backend IP.
-# Updates stunnel.conf, restarts stunnel on the same port, and updates MOUNTMAPv4.
+# Creates new stunnel conf/log/pid files with the new IP, restarts stunnel
+# on the same port, cleans up old files, and updates MOUNTMAPv4.
 # Must be called with MOUNTMAPv4 NOT locked (this function acquires the lock).
 #
 failover_stunnel()
@@ -163,6 +164,13 @@ failover_stunnel()
     local old_ip=$l_ip
     local accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
 
+    # Derive directories and new file paths from the old paths.
+    local stunnel_dir=$(dirname $l_conf)
+    local stunnel_log_dir=$(dirname $l_log)
+    local new_conf="$stunnel_dir/stunnel_${new_ip}.conf"
+    local new_log="$stunnel_log_dir/stunnel_${new_ip}.log"
+    local new_pid="$stunnel_log_dir/stunnel_${new_ip}.pid"
+
     pecho "Stunnel failover for $l_host: $old_ip -> $new_ip (port $accept_port)"
 
     # Lock MOUNTMAPv4 for the entire failover operation so the watchdog's
@@ -170,60 +178,70 @@ failover_stunnel()
     exec {fd_fo}<$MOUNTMAPv4
     flock -e $fd_fo
 
-    # Step 1: Update stunnel.conf — change connect target to new IP.
+    # Step 1: Create new stunnel conf with updated connect, pid, and output paths.
     chattr -f -i $l_conf
-    sed -i "s/connect = ${old_ip}:2049/connect = ${new_ip}:2049/" $l_conf
+    cp $l_conf $new_conf
     if [ $? -ne 0 ]; then
-        eecho "Failed to update connect IP in $l_conf!"
+        eecho "Failed to create new stunnel conf $new_conf!"
         chattr -f +i $l_conf
         flock -u $fd_fo
         exec {fd_fo}<&-
         return 1
     fi
-    chattr -f +i $l_conf
 
-    # Step 2: Kill old stunnel process.
+    # Update connect IP, pid path, log output path, and service section name in new conf.
+    sed -i "s/connect = ${old_ip}:2049/connect = ${new_ip}:2049/" $new_conf
+    sed -i "s#pid = ${l_pid}#pid = ${new_pid}#" $new_conf
+    sed -i "s#output = ${l_log}#output = ${new_log}#" $new_conf
+    sed -i "s/\[${old_ip}\]/[${new_ip}]/" $new_conf
+    chattr -f +i $new_conf
+
+    # Step 2: Kill old stunnel process and clean up old files.
     if [ -f "$l_pid" ]; then
         local pid=$(cat $l_pid)
         pecho "Killing stunnel process $pid for failover"
         kill -9 $pid 2>/dev/null
     fi
 
-    # Step 3: Start new stunnel on the same port.
-    local stunnel_status=$(stunnel $l_conf 2>&1)
+    # Delete old stunnel files.
+    if [ -f "$l_log" ]; then
+        rm -f $l_log
+    fi
+    if [ -f "$l_pid" ]; then
+        rm -f $l_pid
+    fi
+    rm -f $l_conf
+
+    # Step 3: Start new stunnel (creates new pid and log files automatically).
+    local stunnel_status=$(stunnel $new_conf 2>&1)
     if [ -n "$stunnel_status" ]; then
         local is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$accept_port: Address already in use")
         if [ -n "$is_binding_error" ]; then
-            # Port still held by old process briefly — retry after a moment.
             sleep 1
-            stunnel_status=$(stunnel $l_conf 2>&1)
+            stunnel_status=$(stunnel $new_conf 2>&1)
             if [ -n "$stunnel_status" ]; then
                 eecho "Failed to restart stunnel on port $accept_port after failover: $stunnel_status"
-                # Roll back config change.
-                chattr -f -i $l_conf
-                sed -i "s/connect = ${new_ip}:2049/connect = ${old_ip}:2049/" $l_conf
-                chattr -f +i $l_conf
                 flock -u $fd_fo
                 exec {fd_fo}<&-
                 return 1
             fi
         else
             eecho "Failed to start stunnel after failover: $stunnel_status"
-            chattr -f -i $l_conf
-            sed -i "s/connect = ${new_ip}:2049/connect = ${old_ip}:2049/" $l_conf
-            chattr -f +i $l_conf
             flock -u $fd_fo
             exec {fd_fo}<&-
             return 1
         fi
     fi
 
-    # Step 4: Recompute checksum and update MOUNTMAPv4.
-    local new_checksum=$(cksum $l_conf | awk '{print $1}')
+    # Step 4: Recompute checksum and update MOUNTMAPv4 with new IP, new file paths, and new checksum.
+    local new_checksum=$(cksum $new_conf | awk '{print $1}')
+
+    # Build the new mountmap entry.
+    local new_entry="${l_host};${new_ip};${new_conf};${new_log};${new_pid};${new_checksum};mounted;0"
 
     chattr -f -i $MOUNTMAPv4
-    # Replace old IP and old checksum with new values in the matching entry.
-    out=$(sed "\#$l_conf;#s#${old_ip};#${new_ip};#;s#;${l_checksumhash};#;${new_checksum};#" $MOUNTMAPv4)
+    # Replace the entire old entry line (matched by old conf path) with the new entry.
+    out=$(sed "\#${l_conf};#c\\${new_entry}" $MOUNTMAPv4)
     ret=$?
     if [ $ret -eq 0 ]; then
         echo "$out" > $MOUNTMAPv4
