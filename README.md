@@ -55,35 +55,11 @@ AZNFS is supported on following Linux distros:
 
 ## Install Instructions
 
-### For NFSv4 (Recommended)
-
-Install via the Microsoft packages repository to get the latest version (3.x) with full NFSv4 support:
-
-- **Debian/Ubuntu:**
-	```
-	curl -sSL -O https://packages.microsoft.com/config/$(source /etc/os-release && echo "$ID/$VERSION_ID")/packages-microsoft-prod.deb
-	sudo dpkg -i packages-microsoft-prod.deb
-	rm packages-microsoft-prod.deb
-	sudo apt-get update
-	sudo apt-get install aznfs
-	```
-
-- **RHEL/CentOS:**
-	```
-	sudo rpm -Uvh https://packages.microsoft.com/config/$(source /etc/os-release && echo "$ID/$VERSION_ID")/packages-microsoft-prod.rpm
-	sudo yum install aznfs
-	```
-
-### For NFSv3
-
 - Run the following command to download and install **AZNFS**:
 	```
 	wget -O - -q https://github.com/Azure/AZNFS-mount/releases/latest/download/aznfs_install.sh | bash
 	```
 	It will install the aznfs mount helper program and the aznfswatchdog service.
-
-> [!IMPORTANT]
-> The `wget` install script installs version 2.x which supports NFSv3. For NFSv4 support, use the Microsoft packages repository method above.
 
 ## Auto Update
 
