@@ -29,6 +29,13 @@ MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 MOUNTMAPv4NOTLS="${OPTDIRDATA}/mountmapv4notls"
 
 #
+# Default order in which we try the network prefixes for a free local IP to use.
+# This can be overridden using AZNFS_IP_PREFIXES environment variable.
+#
+DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
+IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
+
+#
 # Read ahead size in KB defaults to 16384 (16 MB).
 #
 AZNFS_READ_AHEAD_KB="${AZNFS_READ_AHEAD_KB:-16384}"
@@ -353,6 +360,101 @@ is_private_ip()
     [[ $ip =~ ^10\..* ]] ||
     [[ $ip =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\..* ]] ||
     [[ $ip =~ ^192\.168\..* ]]
+}
+
+#
+# Force NFS client to send traffic through an updated DNAT rule or restarted
+# stunnel by issuing stat on the mount point. The first stat triggers a
+# reconnect attempt; after a 35-second sleep (to let the kernel's dir
+# attribute cache expire), a second stat confirms the new path.
+#
+ping_new_endpoint()
+{
+    local target="$1"
+
+    vecho "[$BASHPID] stat($target) #1 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #1 done"
+
+    sleep 35
+
+    vecho "[$BASHPID] stat($target) #2 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #2 done"
+}
+
+#
+# Conntrack tracking hashes for DNAT-based mounts.
+# Used by both NFSv3 and NFSv4 watchdogs (separate processes, separate state).
+#
+declare -A cthash_synsent
+declare -A cthash_unreplied
+
+#
+# Track conntrack entries in SYN_SENT state. If an entry is stuck for more
+# than 25 seconds, delete it so the kernel creates a fresh entry using
+# current NAT rules.
+#
+reconcile_conntrack_synsent()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_nfsip=$4
+    local seconds_remaining=$5
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
+
+    if [[ ! -v cthash_synsent[$key] ]]; then
+        cthash_synsent[$key]=$seconds_remaining
+        return
+    fi
+
+    age_seconds=$(expr ${cthash_synsent[$key]} - $seconds_remaining)
+
+    if [ $age_seconds -ge 25 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_synsent[$key]
+        fi
+    fi
+}
+
+#
+# Track conntrack entries in UNREPLIED state. If an entry is stuck for more
+# than 25 seconds, delete it to allow fresh conntrack entries to be created.
+#
+reconcile_conntrack_unreplied()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_reply_srcip=$4
+    local seconds_remaining=$5
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
+
+    if [[ ! -v cthash_unreplied[$key] ]]; then
+        cthash_unreplied[$key]=$seconds_remaining
+        return
+    fi
+
+    age_seconds=$(expr ${cthash_unreplied[$key]} - $seconds_remaining)
+
+    if [ $age_seconds -ge 25 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_unreplied[$key]
+        fi
+    fi
 }
 
 #

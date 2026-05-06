@@ -17,70 +17,6 @@ NFSFS_SERVERS_FILE="/proc/fs/nfsfs/servers"
 HEALTH_CHECK_FREQUENCY=60
 
 #
-# Conntrack tracking hashes for NFSv4 non-TLS DNAT mounts.
-#
-declare -A cthash_synsent_v4
-declare -A cthash_unreplied_v4
-
-reconcile_conntrack_synsent_v4()
-{
-    local l_ip=$1
-    local l_sport=$2
-    local l_dport=$3
-    local l_nfsip=$4
-    local seconds_remaining=$5
-
-    key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
-
-    if [[ ! -v cthash_synsent_v4[$key] ]]; then
-        cthash_synsent_v4[$key]=$seconds_remaining
-        return
-    fi
-
-    age_seconds=$(expr ${cthash_synsent_v4[$key]} - $seconds_remaining)
-
-    if [ $age_seconds -ge 25 ]; then
-        cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
-        eval $cmd
-        if [ $? -ne 0 ]; then
-            eecho "Failed to delete conntrack entry [$cmd]!"
-        else
-            unset cthash_synsent_v4[$key]
-        fi
-    fi
-}
-
-reconcile_conntrack_unreplied_v4()
-{
-    local l_ip=$1
-    local l_sport=$2
-    local l_dport=$3
-    local l_reply_srcip=$4
-    local seconds_remaining=$5
-
-    key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
-
-    if [[ ! -v cthash_unreplied_v4[$key] ]]; then
-        cthash_unreplied_v4[$key]=$seconds_remaining
-        return
-    fi
-
-    age_seconds=$(expr ${cthash_unreplied_v4[$key]} - $seconds_remaining)
-
-    if [ $age_seconds -ge 25 ]; then
-        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
-        eval $cmd
-        if [ $? -ne 0 ]; then
-            eecho "Failed to delete conntrack entry [$cmd]!"
-        else
-            unset cthash_unreplied_v4[$key]
-        fi
-    fi
-}
-
-#
 # Check conntrack entries for NFSv4 non-TLS DNAT mounts (port 2049).
 # Returns 0 if stuck entries were found and cleaned (failure signal).
 #
@@ -100,7 +36,7 @@ reconcile_conntrack_v4()
                 l_seconds_remaining=${BASH_REMATCH[1]}
                 l_sport=${BASH_REMATCH[2]}
                 l_dport=${BASH_REMATCH[3]}
-                reconcile_conntrack_synsent_v4 $l_ip $l_sport $l_dport $l_nfsip $l_seconds_remaining
+                reconcile_conntrack_synsent $l_ip $l_sport $l_dport $l_nfsip $l_seconds_remaining
                 found_stuck=0
             fi
         done
@@ -116,32 +52,13 @@ reconcile_conntrack_v4()
                 l_sport=${BASH_REMATCH[2]}
                 l_dport=${BASH_REMATCH[3]}
                 l_reply_srcip=${BASH_REMATCH[4]}
-                reconcile_conntrack_unreplied_v4 $l_ip $l_sport $l_dport $l_reply_srcip $l_seconds_remaining
+                reconcile_conntrack_unreplied $l_ip $l_sport $l_dport $l_reply_srcip $l_seconds_remaining
                 found_stuck=0
             fi
         done
     fi
 
     return $found_stuck
-}
-
-#
-# Force NFS client to send traffic through the updated DNAT rule
-# by issuing stat on the mount point.
-#
-ping_new_endpoint()
-{
-    local target="$1"
-
-    vecho "[$BASHPID] stat($target) #1 start"
-    stat "$target"
-    vecho "[$BASHPID] stat($target) #1 done"
-
-    sleep 35
-
-    vecho "[$BASHPID] stat($target) #2 start"
-    stat "$target"
-    vecho "[$BASHPID] stat($target) #2 done"
 }
 
 #
@@ -669,12 +586,21 @@ process_nfsv4_mounts()
         fi
 
         #
-        # MOUNTMAPv4 line is of the form:
-        # <hostname>;<IP>;<stunnel.conf path>;<stunnel.log path>;<stunnel.pid path>;<checksumHash>;<status>;<timeout>
+        # MOUNTMAPv4 line format:
+        #   New (8 fields): <hostname>;<IP>;<stunnel.conf>;<stunnel.log>;<stunnel.pid>;<checksum>;<status>;<timeout>
+        #   Old (7 fields): <IP>;<stunnel.conf>;<stunnel.log>;<stunnel.pid>;<checksum>;<status>;<timeout>
+        # Detect by field count to maintain backward compatibility with pre-existing mounts.
         #
-        IFS=";" read l_host l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        local field_count=$(echo "$line" | awk -F';' '{print NF}')
+        if [ "$field_count" -ge 8 ]; then
+            IFS=";" read l_host l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        else
+            # Old format (7 fields): no hostname, failover not possible.
+            l_host=""
+            IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        fi
 
-        if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
+        if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
             exec {fd2}<$MOUNTMAPv4
             flock -e $fd2
@@ -769,7 +695,7 @@ process_nfsv4_mounts()
             # ZRS failover detection for public endpoint TLS mounts.
             # Skip for private endpoints — Azure handles failover internally.
             #
-            if ! is_private_ip "$l_ip"; then
+            if ! is_private_ip "$l_ip" && [ -n "$l_host" ]; then
                 local tls_failure_detected=false
 
                 # TCP probe the real storage IP (every HEALTH_CHECK_FREQUENCY seconds).

@@ -17,13 +17,6 @@ nfs_dir=$4
 mount_point=$5
 
 #
-# Default order in which we try the network prefixes for a free local IP to use.
-# This can be overriden using AZNFS_IP_PREFIXES environment variable.
-#
-DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
-IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
-
-#
 # Directory where the turbo log file will be created.
 # User can override it with AZNFSC_LOGDIR env variable.
 #

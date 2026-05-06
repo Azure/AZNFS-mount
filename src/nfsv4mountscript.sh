@@ -43,11 +43,6 @@ CONNECT_PORT=2049
 # https://linux.die.net/man/5/nfs
 MOUNT_TIMEOUT_IN_SECONDS=180
 
-#
-# Variables for non-TLS proxy IP allocation (reuses NFSv3 IP allocation infrastructure).
-#
-DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
-IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
 OPTIMIZE_GET_FREE_LOCAL_IP=true
 
 #
@@ -855,7 +850,14 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
                 exit 1
             fi
 
-            stunnel_pid_file=`cat $MOUNTMAPv4 | grep "stunnel_$storageaccount_ip.pid" | cut -d ";" -f5 | awk 'NR==1 {print $1}'`
+            # Extract pid file path from mountmap (field 5 in new 8-field format, field 4 in old 7-field format).
+            local _mm_line=$(grep -m1 "stunnel_$storageaccount_ip.pid" $MOUNTMAPv4)
+            local _mm_fields=$(echo "$_mm_line" | awk -F';' '{print NF}')
+            if [ "$_mm_fields" -ge 8 ]; then
+                stunnel_pid_file=$(echo "$_mm_line" | cut -d ';' -f5)
+            else
+                stunnel_pid_file=$(echo "$_mm_line" | cut -d ';' -f4)
+            fi
             pid=$(cat $stunnel_pid_file)
             vecho "killing stunnel process with pid: $pid on port: $accept_port"
             kill -9 $pid
