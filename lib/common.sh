@@ -158,7 +158,7 @@ systemd_is_init()
 ensure_aznfswatchdog()
 {
     local process_name="$1"
-    pidof -x "$process_name" > /dev/null 2>&1
+    pgrep -x "$process_name" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         if systemd_is_init; then
             eecho "$process_name service not running!"
