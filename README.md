@@ -50,7 +50,7 @@ AZNFS is supported on following Linux distros:
 - Centos7, Centos8
 - RedHat7, RedHat8, RedHat9, RedHat10
 - Rocky8, Rocky9
-- SUSE (SLES 15)
+- SUSE (SLES 15, SLES 16)
 
 
 ## Install Instructions
