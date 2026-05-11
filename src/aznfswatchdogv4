@@ -114,20 +114,7 @@ failover_stunnel()
     chattr -f +i $new_conf
 
     # Step 2: Kill old stunnel process and clean up old files.
-    if [ -f "$l_pid" ]; then
-        local pid=$(cat $l_pid)
-        pecho "Killing stunnel process $pid for failover"
-        kill -9 $pid 2>/dev/null
-    fi
-
-    # Delete old stunnel files.
-    if [ -f "$l_log" ]; then
-        rm -f $l_log
-    fi
-    if [ -f "$l_pid" ]; then
-        rm -f $l_pid
-    fi
-    rm -f $l_conf
+    cleanup_stunnel_files $l_conf $l_log $l_pid
 
     # Step 3: Start new stunnel (creates new pid and log files automatically).
     local stunnel_status=$(stunnel $new_conf 2>&1)
@@ -536,8 +523,6 @@ process_nfsv4_mounts()
     local l_log
     local l_pid
     local l_checksumhash
-
-    epoch_now=$(date +%s)
 
     #
     # Go over all lines in MOUNTMAPv4 and check them for two things:
