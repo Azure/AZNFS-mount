@@ -46,7 +46,7 @@ the watchdog process restarts it.
 
 AZNFS is supported on following Linux distros:
 
-- Ubuntu (18.04 LTS, 20.04 LTS, 22.04, 24.04 LTS)
+- Ubuntu (18.04 LTS, 20.04 LTS, 22.04, 24.04 LTS, 26.04 LTS)
 - Centos7, Centos8
 - RedHat7, RedHat8, RedHat9, RedHat10
 - Rocky8, Rocky9
