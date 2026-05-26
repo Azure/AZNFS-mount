@@ -8,6 +8,8 @@ Ubuntu-22.04,aznfsDeb,microsoft-ubuntu-jammy-prod-apt,jammy
 Ubuntu-22.04,aznfsArm,microsoft-ubuntu-jammy-prod-apt,jammy
 Ubuntu-24.04,aznfsDeb,microsoft-ubuntu-noble-prod-apt,noble
 Ubuntu-24.04,aznfsArm,microsoft-ubuntu-noble-prod-apt,noble
+Ubuntu-26.04,aznfsDeb,microsoft-ubuntu-resolute-prod-apt,resolute
+Ubuntu-26.04,aznfsArm,microsoft-ubuntu-resolute-prod-apt,resolute
 RHEL-7.3,aznfsRpmStunnel,microsoft-rhel7.3-prod-yum,
 RHEL-7.3,aznfsArcRpmStunnel,microsoft-rhel7.3-prod-yum,
 RHEL-7.0,aznfsRpmStunnel,microsoft-rhel7.0-prod-yum,
