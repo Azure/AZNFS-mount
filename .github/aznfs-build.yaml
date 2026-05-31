@@ -12,6 +12,17 @@ parameters:
     - Release
     - Debug
 
+  # PMC publish target. 'tuxdev' is the safe default (publishes to PMC tux-dev,
+  # consumed by automated validation only). Set to 'prod' for an actual
+  # customer-facing release that publishes to packages.microsoft.com.
+  - name: targetEnv
+    displayName: 'PMC publish target'
+    type: string
+    default: 'tuxdev'
+    values:
+    - prod
+    - tuxdev
+
 # Do not trigger this pipeline automatically
 trigger:
   - none
@@ -23,6 +34,22 @@ pr:
 # The ADO variable group that keeps the code sign secrets
 variables:
 - group: AZNFS
+# Per-target PMC config. ESRP signing is identical for both targets and stays
+# hard-coded in the ReleaseArtifacts stage below.
+- ${{ if eq(parameters.targetEnv, 'prod') }}:
+  - name: pmcBaseUrl
+    value: 'https://pmc-ingest.trafficmanager.net/api/v4'
+  - name: pmcServiceConnection
+    value: 'Azure AZNFS'
+  - name: packagesCsv
+    value: 'packages.csv'
+- ${{ if eq(parameters.targetEnv, 'tuxdev') }}:
+  - name: pmcBaseUrl
+    value: 'https://tux-ingest.trafficmanager.net/api/v4'
+  - name: pmcServiceConnection
+    value: 'Azure AZNFS TuxDev'
+  - name: packagesCsv
+    value: 'packages.tux.csv'
 
 # ADO pipelines documentation:
 # https://learn.microsoft.com/en-us/azure/devops/pipelines/repos/azure-repos-git?view=azure-devops&tabs=yaml
@@ -70,7 +97,9 @@ stages:
               for dir in rpm suse stunnel; do
                 cp -f $(System.DefaultWorkingDirectory)/$dir/root/rpmbuild/RPMS/x86_64/aznfs-${{ parameters.versionName }}-1.x86_64.rpm $(Build.ArtifactStagingDirectory)/artifacts/$dir
               done
-              cp -avf $(System.DefaultWorkingDirectory)/packages.csv $(Build.ArtifactStagingDirectory)
+              # Copy the target-specific CSV, but always under the canonical name
+              # 'packages.csv' so the publish stage reads from a stable path.
+              cp -avf $(System.DefaultWorkingDirectory)/$(packagesCsv) $(Build.ArtifactStagingDirectory)/packages.csv
               echo "Listing Built Files..."
               ls -R $(Build.ArtifactStagingDirectory)
             displayName: "List Build Outputs"
@@ -392,54 +421,59 @@ stages:
           - task: AzureCLI@2
             inputs:
               addSpnToEnvironment: true
-              azureSubscription: 'Azure AZNFS'
+              # Switches between 'Azure AZNFS' (prod, AME tenant) and
+              # 'Azure AZNFS TuxDev' (tux-dev, Corp tenant via WIF/UAMI).
+              azureSubscription: $(pmcServiceConnection)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                  # pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
+                  # PMC endpoint is resolved from the targetEnv pipeline parameter
+                  # (see top-of-file conditional variables).
+                  PMC_URL="$(pmcBaseUrl)"
+                  echo "Publishing to PMC: $PMC_URL"
 
-                  aznfsids=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name aznfs`
+                  aznfsids=`pmc --base-url "$PMC_URL" package rpm list --name aznfs`
                   echo "AZNFS rpm list ==========: $aznfsids"
 
                   # upload packages
-                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts
+                  pmc --base-url "$PMC_URL" package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts
 
                   #################################### get package ids #####################################
 
-                  aznfsDeb=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_amd64.deb`
+                  aznfsDeb=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_amd64.deb`
                   echo "AZNFS DEB Package ID: $aznfsDeb"
 
-                  aznfsArm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_arm64.deb`
+                  aznfsArm=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/deb/aznfs*-1_arm64.deb`
                   echo "AZNFS ARM DEB Package ID: $aznfsArm"
 
-                  aznfsRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.x86_64.rpm`
+                  aznfsRpm=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.x86_64.rpm`
                   echo "AZNFS RPM Package ID: $aznfsRpm"
                   
-                  aznfsArcRpm=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.aarch64.rpm`
+                  aznfsArcRpm=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpm/aznfs*-1.aarch64.rpm`
                   echo "AZNFS ARC RPM Package ID: $aznfsArcRpm"
 
-                  aznfsRpmNewKey=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpmnewkey/aznfs*-1.x86_64.rpm`
+                  aznfsRpmNewKey=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpmnewkey/aznfs*-1.x86_64.rpm`
                   echo "AZNFS RPM Package ID: $aznfsRpmNewKey"
                   
-                  aznfsArcRpmNewKey=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpmnewkey/aznfs*-1.aarch64.rpm`
+                  aznfsArcRpmNewKey=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpmnewkey/aznfs*-1.aarch64.rpm`
                   echo "AZNFS ARC RPM Package ID: $aznfsArcRpmNewKey"
 
-                  aznfsRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.x86_64.rpm`
+                  aznfsRpmSles=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.x86_64.rpm`
                   echo "AZNFS Sles RPM Package ID: $aznfsRpmSles"
 
-                  aznfsArcRpmSles=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.aarch64.rpm`
+                  aznfsArcRpmSles=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/suse/aznfs*-1.aarch64.rpm`
                   echo "AZNFS ARC Sles RPM Package ID: $aznfsArcRpmSles"
 
-                  aznfsRpmSlesNewKey=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/susenewkey/aznfs*-1.x86_64.rpm`
+                  aznfsRpmSlesNewKey=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/susenewkey/aznfs*-1.x86_64.rpm`
                   echo "AZNFS Sles RPM Package ID: $aznfsRpmSlesNewKey"
 
-                  aznfsArcRpmSlesNewKey=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/susenewkey/aznfs*-1.aarch64.rpm`
+                  aznfsArcRpmSlesNewKey=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/susenewkey/aznfs*-1.aarch64.rpm`
                   echo "AZNFS ARC Sles RPM Package ID: $aznfsArcRpmSlesNewKey"
 
-                  aznfsRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.x86_64.rpm`
+                  aznfsRpmStunnel=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.x86_64.rpm`
                   echo "AZNFS Stunnel RPM Package ID: $aznfsRpmStunnel"
                   
-                  aznfsArcRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.aarch64.rpm`
+                  aznfsArcRpmStunnel=`pmc --base-url "$PMC_URL" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.aarch64.rpm`
                   echo "AZNFS ARC Stunnel RPM Package ID: $aznfsRpmStunnel"
 
                   ################################### Add uploaded packages to its repository ######################################
@@ -448,7 +482,7 @@ stages:
                   while IFS=, read -r distro PackageArchType repoName releaseName; do
                     if [ -n "$repoName" ]; then
                       echo "Uploading packages for $distro"
-                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!PackageArchType} $repoName $releaseName
+                      pmc --base-url "$PMC_URL" repo package update --add-packages ${!PackageArchType} $repoName $releaseName
                     fi
                   done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/aznfs-signed/packages.csv; echo)
 
@@ -457,6 +491,6 @@ stages:
                   while IFS=, read -r distro PackageArchType repoName releaseName; do
                     if [ -n "$repoName" ]; then
                       echo "Publishing for $distro to $repoName"
-                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
+                      pmc --base-url "$PMC_URL" repo publish $repoName
                     fi
                   done < <(tail -n +3 $(Build.ArtifactStagingDirectory)/aznfs-signed/packages.csv; echo)

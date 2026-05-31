@@ -1,0 +1,25 @@
+# Do not remove these comments - the list should start at line #3
+# Format of the file : <Distro Name>,<Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
+#
+# tux-dev publishing strategy:
+#   All distros publish to the two PMC tux-dev "test" catch-all repos:
+#     deb-test-apt  (release: testing)
+#     rpm-test-yum  (yum, no release)
+#   This avoids per-distro tux-dev repo onboarding (which would otherwise need a
+#   Compute-PMC.Onboarding PR per new marketplace distro) and keeps the publish
+#   pipeline distro-agnostic. Per-distro install validation is done by LISA
+#   against packages.microsoft.com (prod), not against tux-dev.
+#
+# Prod counterpart: packages.csv
+all-deb-x64,aznfsDeb,deb-test-apt,testing
+all-deb-arm,aznfsArm,deb-test-apt,testing
+all-rpm-x64,aznfsRpm,rpm-test-yum,
+all-rpm-arm,aznfsArcRpm,rpm-test-yum,
+all-rpm-newkey-x64,aznfsRpmNewKey,rpm-test-yum,
+all-rpm-newkey-arm,aznfsArcRpmNewKey,rpm-test-yum,
+all-rpm-sles-x64,aznfsRpmSles,rpm-test-yum,
+all-rpm-sles-arm,aznfsArcRpmSles,rpm-test-yum,
+all-rpm-sles-newkey-x64,aznfsRpmSlesNewKey,rpm-test-yum,
+all-rpm-sles-newkey-arm,aznfsArcRpmSlesNewKey,rpm-test-yum,
+all-rpm-stunnel-x64,aznfsRpmStunnel,rpm-test-yum,
+all-rpm-stunnel-arm,aznfsArcRpmStunnel,rpm-test-yum,
