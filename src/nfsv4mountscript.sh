@@ -33,6 +33,14 @@ CERT_PATH=
 CERT_UPDATE_COMMAND=
 STUNNEL_CAFILE=
 
+#
+# User-supplied CA certificate path (passed via the cafile=<path> mount option).
+# When set, stunnel will be configured to trust this CA file instead of the
+# default DigiCert Global Root G2 certificate, and we will NOT attempt to
+# download/install/extract any certificate ourselves.
+#
+USER_CAFILE=
+
 ssl_version=
 
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
@@ -116,6 +124,16 @@ find_next_available_port_and_start_stunnel()
 
 get_cert_path_based_and_command()
 {
+    #
+    # If user provided their own CA file via cafile= mount option,
+    # use it directly and skip default cert path discovery.
+    #
+    if [ -n "$USER_CAFILE" ]; then
+        STUNNEL_CAFILE="$USER_CAFILE"
+        vecho "Using user-provided CA file: $STUNNEL_CAFILE"
+        return 0
+    fi
+
     if [ $isDebian -eq 1 ]; then
         CERT_PATH="/usr/local/share/ca-certificates"
         CERT_UPDATE_COMMAND="update-ca-certificates"
@@ -206,7 +224,14 @@ add_stunnel_configuration()
         return 1
     fi
 
-    if [ ! -f $STUNNEL_CAFILE ]; then
+    if [ -n "$USER_CAFILE" ]; then
+        if [ ! -f "$STUNNEL_CAFILE" ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "[FATAL] User-provided CA file not found: $STUNNEL_CAFILE"
+            return 1
+        fi
+        vecho "Using user-provided CA file for stunnel: $STUNNEL_CAFILE"
+    elif [ ! -f $STUNNEL_CAFILE ]; then
         vecho "CA root cert is missing for stunnel configuration. Install or extract DigiCert_Global_Root_G2 certificate."
         install_CA_cert
         if [ $? -ne 0 ]; then
@@ -411,6 +436,36 @@ tls_nfsv4_files_share_mount()
             MOUNT_OPTIONS=${MOUNT_OPTIONS//tls=$ssl_version,/}
         else
             MOUNT_OPTIONS=${MOUNT_OPTIONS//,tls=$ssl_version/}
+        fi
+    fi
+
+    #
+    # Check if user has provided a custom CA certificate via cafile=<path>
+    # mount option. This lets users supply their own private/internal CA
+    # without us having to know about it. The path must be an absolute path
+    # to an existing PEM file readable by stunnel.
+    #
+    if [[ "$MOUNT_OPTIONS" =~ (^|,)cafile=([^,]+) ]]; then
+        USER_CAFILE="${BASH_REMATCH[2]}"
+
+        if [[ "$USER_CAFILE" != /* ]]; then
+            eecho "cafile must be an absolute path: $USER_CAFILE"
+            exit 1
+        fi
+
+        if [ ! -f "$USER_CAFILE" ]; then
+            eecho "cafile not found or not a regular file: $USER_CAFILE"
+            exit 1
+        fi
+
+        vecho "User-provided CA file option: $USER_CAFILE"
+
+        # Remove the cafile option from MOUNT_OPTIONS so it isn't passed to mount(8).
+        if [[ "$MOUNT_OPTIONS" == *"cafile=${USER_CAFILE},"* ]]; then
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//cafile=$USER_CAFILE,/}
+        else
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//,cafile=$USER_CAFILE/}
+            MOUNT_OPTIONS=${MOUNT_OPTIONS//cafile=$USER_CAFILE/}
         fi
     fi
 
