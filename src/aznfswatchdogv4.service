@@ -5,9 +5,11 @@
 
 [Unit]
 Description= aznfs watchdog for NFSv4 mounts
-  
-Before=
-After=
+DefaultDependencies=no
+Wants=network-online.target remote-fs-pre.target
+After=local-fs.target network-online.target umount.target
+Before=remote-fs-pre.target shutdown.target
+Conflicts=shutdown.target
 
 [Service]
 User=root
@@ -18,3 +20,4 @@ RestartSec=5
 
 [Install]
 WantedBy=nfs-client.target
+WantedBy=remote-fs-pre.target
