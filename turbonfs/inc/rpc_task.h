@@ -2120,6 +2120,29 @@ public:
         return nfs_get_rpc_context(get_nfs_context());
     }
 
+    /**
+     * Set RPC AUTH_UNIX credentials to match the FUSE caller's uid/gid.
+     *
+     * The FUSE daemon runs as root, so libnfs defaults to uid=0/gid=0
+     * in the RPC AUTH_UNIX header. With root_squash enabled on the
+     * server, this causes ALL operations to be squashed to nobody.
+     *
+     * This must be called before the rpc_nfs3_*_task() call so that
+     * rpc_allocate_pdu() picks up the correct AUTH credentials.
+     * Thread safety: nfs_set_uid/gid internally calls rpc_set_uid_gid
+     * which replaces rpc->auth. The rpc_mutex inside libnfs protects
+     * the auth update and PDU allocation atomically.
+     */
+    void set_caller_credentials()
+    {
+        const fuse_ctx *ctx = fuse_req_ctx(get_fuse_req());
+        if (ctx) {
+            struct nfs_context *nfs = get_nfs_context();
+            nfs_set_uid(nfs, ctx->uid);
+            nfs_set_gid(nfs, ctx->gid);
+        }
+    }
+
     nfs_client *get_client() const
     {
         assert (client != nullptr);
