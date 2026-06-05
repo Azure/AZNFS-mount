@@ -297,6 +297,24 @@ run_daily_once()
 }
 
 #
+# Returns success if systemd is in shutdown/stopping state.
+#
+is_system_stopping()
+{
+    # If systemd is not PID1, treat as not stopping.
+    if [ ! -d /run/systemd/system ]; then
+        return 1
+    fi
+
+    system_state=$(systemctl is-system-running 2>/dev/null)
+    if [ "$system_state" == "stopping" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
+#
 # Watchdog for monitoring unmounts and more importantly change in blob endpoint
 # addresses possibly as a result of migration.
 #
@@ -313,6 +331,13 @@ process_nfsv3_mounts()
     check_for_latest_update=false
     if [ $epoch_now -ge $next_daily_run_epoch ]; then
         run_daily_once
+    fi
+
+    if $check_for_latest_update; then
+        if is_system_stopping; then
+            pecho "Skipping AZNFS auto-update as system is shutting down."
+            check_for_latest_update=false
+        fi
     fi
 
     if $check_for_latest_update; then
