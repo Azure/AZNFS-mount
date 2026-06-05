@@ -4,6 +4,9 @@
 # Also note that only a subset of Linux mount options are supported.
 #
 
+# Disable Azure AD authentication (use AUTH_UNIX only).
+auth: false
+
 # valid range: [1, 256]
 nconnect: 96
 
