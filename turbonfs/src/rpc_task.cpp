@@ -2970,6 +2970,7 @@ void rpc_task::run_create_file()
             rpc_api->create_task.get_gid();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
                                  this) == NULL) {
@@ -3015,6 +3016,7 @@ void rpc_task::run_mknod()
             rpc_api->mknod_task.get_gid();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_create_task(get_rpc_ctx(), mknod_callback, &args,
                                  this) == NULL) {
@@ -3054,6 +3056,7 @@ void rpc_task::run_mkdir()
         args.attributes.gid.set_gid3_u.gid = rpc_api->mkdir_task.get_gid();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
                                 this) == NULL) {
@@ -3085,6 +3088,7 @@ void rpc_task::run_unlink()
         args.object.name = (char*) rpc_api->unlink_task.get_file_name();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_remove_task(get_rpc_ctx(),
                                  unlink_callback, &args, this) == NULL) {
@@ -3117,6 +3121,7 @@ void rpc_task::run_rmdir()
         args.object.name = (char*) rpc_api->rmdir_task.get_dir_name();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_rmdir_task(get_rpc_ctx(),
                                 rmdir_callback, &args, this) == NULL) {
@@ -3157,6 +3162,7 @@ void rpc_task::run_symlink()
             rpc_api->symlink_task.get_gid();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_symlink_task(get_rpc_ctx(),
                                          symlink_callback,
@@ -3193,6 +3199,7 @@ void rpc_task::run_rename()
         args.to.name = (char*) rpc_api->rename_task.get_newname();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_rename_task(get_rpc_ctx(),
                                         rename_callback,
@@ -3348,6 +3355,7 @@ void rpc_task::run_setattr()
         }
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
                                   this) == NULL) {
