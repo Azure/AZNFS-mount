@@ -363,10 +363,10 @@ is_private_ip()
 }
 
 #
-# Force NFS client to send traffic through an updated DNAT rule or restarted
-# stunnel by issuing stat on the mount point. The first stat triggers a
-# reconnect attempt; after a 35-second sleep (to let the kernel's dir
-# attribute cache expire), a second stat confirms the new path.
+# Function for running stat for mountpoint so that everytime DNAT rule is updated, it is
+# used to make sure to send atleast one packet that matches the DNAT rule.
+# This will make sure that the connection gets a TCP reset and outstanding NFS RPC requests
+# are retransmitted right away w/o waiting for the 1 min timeout.
 #
 ping_new_endpoint()
 {
@@ -385,8 +385,10 @@ ping_new_endpoint()
 }
 
 #
-# Conntrack tracking hashes for DNAT-based mounts.
-# Used by both NFSv3 and NFSv4 watchdogs (separate processes, separate state).
+# Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
+# Used for finding if some entry is stuck in SYN_SENT state due to a bug in older
+# kernels. If we find an entry stuck for more than a certain time in SYN_SENT state
+# we delete the entry so that kernel looks up fresh NAT rules and creates a new entry.
 #
 declare -A cthash_synsent
 declare -A cthash_unreplied
@@ -544,6 +546,7 @@ ensure_mountmap_exist_nolock()
         if [ $? -ne 0 ]; then
             chattr -f +i $mountmap_file
             eecho "[$entry] failed to add to ${mountmap_file}!"
+            # Could not add mountmap entry, delete the DNAT rule added above.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip
             return 1
         fi
@@ -582,6 +585,7 @@ ensure_mountmap_not_exist()
     (
         flock -e 999
 
+        # Honour the mtime check if the caller looked up the entry earlier.
         if [ -n "$ifmatch" ]; then
             local mtime=$(stat -c%Y $mountmap_file)
             if [ "$mtime" != "$ifmatch" ]; then
@@ -590,6 +594,7 @@ ensure_mountmap_not_exist()
             fi
         fi
 
+        # Delete the iptable rule corresponding to the outgoing mountmap entry.
         IFS=" " read l_host l_ip l_nfsip <<< "$entry"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
@@ -599,9 +604,15 @@ ensure_mountmap_not_exist()
         fi
 
         chattr -f -i $mountmap_file
+        # Avoid in-place sed updates that would replace the file and break our lock.
         out=$(sed "\%^${entry}$%d" $mountmap_file)
         ret=$?
         if [ $ret -eq 0 ]; then
+            #
+            # If this echo fails then the mountmap file could be truncated. In that case we need
+            # to reconcile it from the mount info and iptable info. That needs to be done
+            # out-of-band.
+            #
             echo "$out" > $mountmap_file
             ret=$?
             out=
@@ -613,11 +624,13 @@ ensure_mountmap_not_exist()
         if [ $ret -ne 0 ]; then
             chattr -f +i $mountmap_file
             eecho "[$entry] failed to remove from ${mountmap_file}!"
+            # Reinstate the DNAT rule deleted above.
             ensure_iptable_entry $l_ip $l_nfsip
             return 1
         fi
         chattr -f +i $mountmap_file
 
+        # Return the mtime after our mods.
         echo $(stat -c%Y $mountmap_file)
     ) 999<$mountmap_file
 }
@@ -650,15 +663,22 @@ update_mountmap_entry()
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
             if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
                 eecho "[$new] Refusing to update ${mountmap_file} as new iptable entry could not be added!"
+                # Roll back.
                 ensure_iptable_entry $l_ip $l_nfsip_old
                 return 1
             fi
         fi
 
         chattr -f -i $mountmap_file
+        # Avoid in-place sed updates that would replace the file and break our lock.
         out=$(sed "s%^${old}$%${new}%g" $mountmap_file)
         ret=$?
         if [ $ret -eq 0 ]; then
+            #
+            # If this echo fails then the mountmap file could be truncated. In that case we need
+            # to reconcile it from the mount info and iptable info. That needs to be done
+            # out-of-band.
+            #
             echo "$out" > $mountmap_file
             ret=$?
             out=
@@ -670,6 +690,7 @@ update_mountmap_entry()
         if [ $ret -ne 0 ]; then
             chattr -f +i $mountmap_file
             eecho "[$old -> $new] failed to update ${mountmap_file}!"
+            # Roll back.
             ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
             ensure_iptable_entry $l_ip $l_nfsip_old
             return 1
@@ -847,7 +868,7 @@ search_free_local_ip_with_prefix()
     #
     # Optimize the process to get free local IP by starting the loop to choose
     # 3rd and 4th octet from the number which was used last and still exist in
-    # MOUNTMAPv3 instead of starting it from 100.
+    # mountmap files instead of starting it from 100.
     #
     if [ $OPTIMIZE_GET_FREE_LOCAL_IP == true -a -n "$used_local_ips_with_same_prefix" ]; then
 
