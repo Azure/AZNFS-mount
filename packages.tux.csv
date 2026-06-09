@@ -1,25 +1,34 @@
 # Do not remove these comments - the list should start at line #3
 # Format of the file : <Distro Name>,<Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
-#
-# tux-dev publishing strategy:
-#   All distros publish to the two PMC tux-dev "test" catch-all repos:
-#     deb-test-apt  (release: testing)
-#     rpm-test-yum  (yum, no release)
-#   This avoids per-distro tux-dev repo onboarding (which would otherwise need a
-#   Compute-PMC.Onboarding PR per new marketplace distro) and keeps the publish
-#   pipeline distro-agnostic. Per-distro install validation is done by LISA
-#   against packages.microsoft.com (prod), not against tux-dev.
-#
-# Prod counterpart: packages.csv
-all-deb-x64,aznfsDeb,deb-test-apt,testing
-all-deb-arm,aznfsArm,deb-test-apt,testing
-all-rpm-x64,aznfsRpm,rpm-test-yum,
-all-rpm-arm,aznfsArcRpm,rpm-test-yum,
-all-rpm-newkey-x64,aznfsRpmNewKey,rpm-test-yum,
-all-rpm-newkey-arm,aznfsArcRpmNewKey,rpm-test-yum,
-all-rpm-sles-x64,aznfsRpmSles,rpm-test-yum,
-all-rpm-sles-arm,aznfsArcRpmSles,rpm-test-yum,
-all-rpm-sles-newkey-x64,aznfsRpmSlesNewKey,rpm-test-yum,
-all-rpm-sles-newkey-arm,aznfsArcRpmSlesNewKey,rpm-test-yum,
-all-rpm-stunnel-x64,aznfsRpmStunnel,rpm-test-yum,
-all-rpm-stunnel-arm,aznfsArcRpmStunnel,rpm-test-yum,
+Ubuntu-18.04,aznfsDeb,microsoft-ubuntu-1804-bionic-apt,bionic
+Ubuntu-18.04,aznfsArm,microsoft-ubuntu-1804-bionic-apt,bionic
+Ubuntu-20.04,aznfsDeb,microsoft-ubuntu-2004-focal-apt,focal
+Ubuntu-20.04,aznfsArm,microsoft-ubuntu-2004-focal-apt,focal
+Ubuntu-22.04,aznfsDeb,microsoft-ubuntu-jammy-tux-apt,jammy
+Ubuntu-22.04,aznfsArm,microsoft-ubuntu-jammy-tux-apt,jammy
+Ubuntu-24.04,aznfsDeb,microsoft-ubuntu-noble-tux-apt,noble
+Ubuntu-24.04,aznfsArm,microsoft-ubuntu-noble-tux-apt,noble
+Ubuntu-26.04,aznfsDeb,microsoft-ubuntu-resolute-tux-apt,resolute
+Ubuntu-26.04,aznfsArm,microsoft-ubuntu-resolute-tux-apt,resolute
+RHEL-7.3,aznfsRpmStunnel,microsoft-rhel7.3-yum,
+RHEL-7.3,aznfsArcRpmStunnel,microsoft-rhel7.3-yum,
+RHEL-7.0,aznfsRpmStunnel,microsoft-rhel7.0-yum,
+RHEL-7.0,aznfsArcRpmStunnel,microsoft-rhel7.0-yum,
+RHEL-8.0,aznfsRpm,microsoft-rhel8.0-yum,
+RHEL-8.0,aznfsArcRpm,microsoft-rhel8.0-yum,
+RHEL-9.0,aznfsRpm,microsoft-rhel9.0-yum,
+RHEL-9.0,aznfsArcRpm,microsoft-rhel9.0-yum,
+RHEL-10.0,aznfsRpmNewKey,microsoft-rhel10-yum,
+RHEL-10.0,aznfsArcRpmNewKey,microsoft-rhel10-yum,
+CentOS-7.0,aznfsRpmStunnel,microsoft-centos7.0-yum,
+CentOS-7.0,aznfsArcRpmStunnel,microsoft-centos7.0-yum,
+CentOS-8.0,aznfsRpm,microsoft-centos8-yum,
+CentOS-8.0,aznfsArcRpm,microsoft-centos8-yum,
+SUSE-15,aznfsRpmSles,microsoft-sles15-yum,
+SUSE-15,aznfsArcRpmSles,microsoft-sles15-yum,
+SUSE-16,aznfsRpmSlesNewKey,microsoft-sles16-yum,
+SUSE-16,aznfsArcRpmSlesNewKey,microsoft-sles16-yum,
+Rocky-8.0,aznfsRpm,microsoft-el8-yum,
+Rocky-8.0,aznfsArcRpm,microsoft-el8-yum,
+Rocky-9.0,aznfsRpm,microsoft-el9-yum,
+Rocky-9.0,aznfsArcRpm,microsoft-el9-yum,
