@@ -62,6 +62,7 @@ get_local_ip_for_fqdn_notls()
 {
     local fqdn=$1
     local mountmap_entry=$(grep -m1 "^${fqdn} " $MOUNTMAPv4NOTLS)
+    # One local ip per fqdn, so return existing one if already present.
     IFS=" " read _ local_ip _ <<< "$mountmap_entry"
 
     if [ -n "$local_ip" ]; then

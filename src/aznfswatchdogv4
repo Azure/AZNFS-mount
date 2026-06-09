@@ -28,9 +28,16 @@ reconcile_conntrack_v4()
 
     IFS=$'\n' output2049=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 2049 --state SYN_SENT 2>/dev/null)
 
+    #
+    # For mounts with nconnect, there could be more than one conntrack entries to the same
+    # proxy IP, but with different local ports. We must track them separately.
+    #
     if [ -n "$output2049" ]; then
         for entry in $output2049; do
+            # XXX Remove this log after running for few days (not too noisy!)
             vecho "$entry"
+            # Sample conntrack entry.
+            # tcp      6 114 SYN_SENT src=10.20.0.17 dst=10.161.100.101 sport=819 dport=2048 [UNREPLIED] src=20.150.35.196 dst=10.20.0.17 sport=2048 dport=819 mark=0 use=1
             matchstr="tcp\s+[0-9]+\s+([0-9]+)\s+SYN_SENT\s+src=[0-9]+.[0-9]+.[0-9]+.[0-9]+\s+dst=${l_ip}\s+sport=([0-9]+)\s+dport=([0-9]+).*"
             if [[ "$entry" =~ $matchstr ]]; then
                 l_seconds_remaining=${BASH_REMATCH[1]}
@@ -45,7 +52,10 @@ reconcile_conntrack_v4()
     IFS=$'\n' output2049=$(conntrack -L -p tcp -d $l_ip --dport 2049 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
     if [ -n "$output2049" ]; then
         for entry in $output2049; do
+            # XXX Remove this log after running for few days (too noisy!)
             vecho "$entry"
+           # Sample conntrack entry.
+            # tcp      6 299 ESTABLISHED src=10.2.4.4 dst=10.161.100.100 sport=1015 dport=2048 [UNREPLIED] src=20.60.236.11 dst=10.2.4.4 sport=2048 dport=1015 mark=0 use=1
             matchstr="tcp\s+[0-9]+\s+([0-9]+) .* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
             if [[ "$entry" =~ $matchstr ]]; then
                 l_seconds_remaining=${BASH_REMATCH[1]}
