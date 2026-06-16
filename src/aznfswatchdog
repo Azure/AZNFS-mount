@@ -115,94 +115,6 @@ check_for_regional_account()
     fi
 }
 
-#
-# Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
-# Used for finding if some entry is stuck in SYN_SENT state due to a bug in older
-# kernels. If we find an entry stuck for more than a certain time in SYN_SENT state
-# we delete the entry so that kernel looks up fresh NAT rules and creates a new entry.
-#
-declare -A cthash_synsent
-
-reconcile_conntrack_synsent()
-{
-    local l_ip=$1
-    local l_sport=$2
-    local l_dport=$3
-    local l_nfsip=$4
-    local seconds_remaining=$5
-
-    key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
-
-    # First time we are seeing this conntrack entry.
-    if [[ ! -v cthash_synsent[$key] ]]; then
-        cthash_synsent[$key]=$seconds_remaining
-        return
-    fi
-
-    #
-    # How long has this entry been around?
-    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
-    # be created, and help make progress.
-    #
-    age_seconds=$(expr ${cthash_synsent[$key]} - $seconds_remaining)
-
-    if [ $age_seconds -ge 25 ]; then
-        cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
-
-        eval $cmd
-        if [ $? -ne 0 ]; then
-            eecho "Failed to delete conntrack entry [$cmd]!"
-        else
-            unset cthash_synsent[$key]
-        fi
-    fi
-}
-
-#
-# Hash for storing how many times we have seen a conntrack entry in UNREPLIED state.
-# Used for finding if some entry is stuck in UNREPLIED state due to no response from
-# NFS server or some n/w issue. We want to delete the entry as it prevents creation of
-# a new conntrack entry, if the IP were to change again soon.
-#
-declare -A cthash_unreplied
-
-reconcile_conntrack_unreplied()
-{
-    local l_ip=$1
-    local l_sport=$2
-    local l_dport=$3
-    local l_reply_srcip=$4
-    local seconds_remaining=$5
-
-    key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
-
-    # First time we are seeing this conntrack entry.
-    if [[ ! -v cthash_unreplied[$key] ]]; then
-        cthash_unreplied[$key]=$seconds_remaining
-        return
-    fi
-
-    #
-    # How long has this entry been around?
-    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
-    # be created, and help make progress.
-    #
-    age_seconds=$(expr ${cthash_unreplied[$key]} - $seconds_remaining)
-
-    if [ $age_seconds -ge 25 ]; then
-        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
-        wecho "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
-
-        eval $cmd
-        if [ $? -ne 0 ]; then
-            eecho "Failed to delete conntrack entry [$cmd]!"
-        else
-            unset cthash_unreplied[$key]
-        fi
-    fi
-}
-
 reconcile_conntrack()
 {
     local l_ip=$1
@@ -253,28 +165,6 @@ reconcile_conntrack()
             fi
         done
     fi
-}
-
-#
-# Function for running stat for mountpoint so that everytime DNAT rule is updated, it is
-# used to make sure to send atleast one packet that matches the DNAT rule.
-# This will make sure that the connection gets a TCP reset and outstanding NFS RPC requests
-# are retransmitted right away w/o waiting for the 1 min timeout.
-#
-ping_new_endpoint()
-{
-    local target="$1"
-
-    vecho "[$BASHPID] stat($target) #1 start"
-    stat "$target"
-    vecho "[$BASHPID] stat($target) #1 done"
-
-    sleep 35
-
-    # One more stat after 30 sec sleep to let dir attributes timeout.
-    vecho "[$BASHPID] stat($target) #2 start"
-    stat "$target"
-    vecho "[$BASHPID] stat($target) #2 done"
 }
 
 run_daily_once()

@@ -23,6 +23,19 @@ MOUNTMAPv3="${OPTDIRDATA}/mountmap"
 MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 
 #
+# This stores the map of hostname, local proxy IP and storage endpoint IP for NFSv4 non-TLS mounts.
+# Format: hostname localip storageip (same as MOUNTMAPv3)
+#
+MOUNTMAPv4NOTLS="${OPTDIRDATA}/mountmapv4notls"
+
+#
+# Default order in which we try the network prefixes for a free local IP to use.
+# This can be overridden using AZNFS_IP_PREFIXES environment variable.
+#
+DEFAULT_AZNFS_IP_PREFIXES="10.161 192.168 172.16"
+IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
+
+#
 # Read ahead size in KB defaults to 16384 (16 MB).
 #
 AZNFS_READ_AHEAD_KB="${AZNFS_READ_AHEAD_KB:-16384}"
@@ -234,6 +247,8 @@ resolve_ipv4()
 {
     local hname="$1"
     local fail_if_present_in_etc_hosts="$2"
+    local probe_port="${3:-2048}"
+    local exclude_ip="$4"
     local RETRIES=3
 
     # Some retries for resilience.
@@ -292,7 +307,11 @@ resolve_ipv4()
     if [ $cnt_ip -ne 1 ]; then
         for((i=1;i<=$cnt_ip;i++)) {
             ipv4_addr=$(echo "$ipv4_addr_all" | tail -n +$i | head -n1)
-            if is_ip_port_reachable $ipv4_addr 2048; then
+            # Skip the excluded IP (used during failover to avoid the known-dead IP).
+            if [ -n "$exclude_ip" ] && [ "$ipv4_addr" == "$exclude_ip" ]; then
+                continue
+            fi
+            if is_ip_port_reachable $ipv4_addr $probe_port; then
                 break
             fi
         }
@@ -344,6 +363,116 @@ is_private_ip()
 }
 
 #
+# Function for running stat for mountpoint so that everytime DNAT rule is updated, it is
+# used to make sure to send atleast one packet that matches the DNAT rule.
+# This will make sure that the connection gets a TCP reset and outstanding NFS RPC requests
+# are retransmitted right away w/o waiting for the 1 min timeout.
+#
+ping_new_endpoint()
+{
+    local target="$1"
+
+    vecho "[$BASHPID] stat($target) #1 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #1 done"
+
+    sleep 35
+
+    # One more stat after 30 sec sleep to let dir attributes timeout.
+    vecho "[$BASHPID] stat($target) #2 start"
+    stat "$target"
+    vecho "[$BASHPID] stat($target) #2 done"
+}
+
+#
+# Hash for storing how many times we have seen a conntrack entry in SYN_SENT state.
+# Used for finding if some entry is stuck in SYN_SENT state due to a bug in older
+# kernels. If we find an entry stuck for more than a certain time in SYN_SENT state
+# we delete the entry so that kernel looks up fresh NAT rules and creates a new entry.
+#
+declare -A cthash_synsent
+declare -A cthash_unreplied
+
+#
+# Track conntrack entries in SYN_SENT state. If an entry is stuck for more
+# than 25 seconds, delete it so the kernel creates a fresh entry using
+# current NAT rules.
+#
+reconcile_conntrack_synsent()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_nfsip=$4
+    local seconds_remaining=$5
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_nfsip}"
+
+    # First time we are seeing this conntrack entry.
+    if [[ ! -v cthash_synsent[$key] ]]; then
+        cthash_synsent[$key]=$seconds_remaining
+        return
+    fi
+
+    #
+    # How long has this entry been around?
+    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
+    # be created, and help make progress.
+    #
+    age_seconds=$(expr ${cthash_synsent[$key]} - $seconds_remaining)
+
+    if [ $age_seconds -ge 25 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_nfsip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in SYN_SENT state for $age_seconds seconds [$cmd]"
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_synsent[$key]
+        fi
+    fi
+}
+
+#
+# Track conntrack entries in UNREPLIED state. If an entry is stuck for more
+# than 25 seconds, delete it to allow fresh conntrack entries to be created.
+#
+reconcile_conntrack_unreplied()
+{
+    local l_ip=$1
+    local l_sport=$2
+    local l_dport=$3
+    local l_reply_srcip=$4
+    local seconds_remaining=$5
+
+    key="${l_ip}:${l_sport}:${l_dport}:${l_reply_srcip}"
+
+    # First time we are seeing this conntrack entry.
+    if [[ ! -v cthash_unreplied[$key] ]]; then
+        cthash_unreplied[$key]=$seconds_remaining
+        return
+    fi
+
+    #
+    # How long has this entry been around?
+    # If it's around for more than 25-30 secs, we consider the entry as "stuck" and delete it to cause fresh entry to
+    # be created, and help make progress.
+    #
+    age_seconds=$(expr ${cthash_unreplied[$key]} - $seconds_remaining)
+
+    if [ $age_seconds -ge 25 ]; then
+        cmd="conntrack -D -p tcp -d $l_ip -r $l_reply_srcip --sport $l_sport --dport $l_dport"
+        wecho "Deleting conntrack entry stuck in UNREPLIED state for $age_seconds seconds [$cmd]"
+        eval $cmd
+        if [ $? -ne 0 ]; then
+            eecho "Failed to delete conntrack entry [$cmd]!"
+        else
+            unset cthash_unreplied[$key]
+        fi
+    fi
+}
+
+#
 # Mount helper must call this function to grab a timed lease on all MOUNTMAPv3
 # entries. It should do this if it decides to use any of the entries. Once
 # this is called aznfswatchdog is guaranteed to not delete any MOUNTMAPv3 till
@@ -375,6 +504,199 @@ create_mountmap_file()
         fi
         chattr -f +i ${!mountmap_filename}
     fi
+
+    # For NFSv4, also create the non-TLS mountmap file.
+    if [ "$AZNFS_VERSION" == "4" ]; then
+        if [ ! -f $MOUNTMAPv4NOTLS ]; then
+            touch $MOUNTMAPv4NOTLS
+            if [ $? -ne 0 ]; then
+                eecho "[FATAL] Not able to create '${MOUNTMAPv4NOTLS}'!"
+                return 1
+            fi
+            chattr -f +i $MOUNTMAPv4NOTLS
+        fi
+    fi
+}
+
+#
+# Generic mountmap functions that work with any space-delimited mountmap file.
+# Format: "hostname localip storageip"
+# Used by both MOUNTMAPv3 (NFSv3) and MOUNTMAPv4NOTLS (NFSv4 non-TLS).
+#
+
+#
+# Add entry to a mountmap file and create the corresponding DNAT rule.
+# Usage: ensure_mountmap_exist_nolock <mountmap_file> <entry>
+#
+ensure_mountmap_exist_nolock()
+{
+    local mountmap_file=$1
+    local entry=$2
+
+    IFS=" " read l_host l_ip l_nfsip <<< "$entry"
+    if ! ensure_iptable_entry $l_ip $l_nfsip; then
+        eecho "[$entry] failed to add to ${mountmap_file}!"
+        return 1
+    fi
+
+    egrep -q "^${entry}$" $mountmap_file
+    if [ $? -ne 0 ]; then
+        chattr -f -i $mountmap_file
+        echo "$entry" >> $mountmap_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $mountmap_file
+            eecho "[$entry] failed to add to ${mountmap_file}!"
+            # Could not add mountmap entry, delete the DNAT rule added above.
+            ensure_iptable_entry_not_exist $l_ip $l_nfsip
+            return 1
+        fi
+        chattr -f +i $mountmap_file
+    else
+        pecho "[$entry] already exists in ${mountmap_file}."
+    fi
+}
+
+#
+# Add entry to a mountmap file with file locking.
+# Usage: ensure_mountmap_exist <mountmap_file> <entry>
+#
+ensure_mountmap_exist()
+{
+    local mountmap_file=$1
+    local entry=$2
+
+    (
+        flock -e 999
+        ensure_mountmap_exist_nolock "$mountmap_file" "$entry"
+        return $?
+    ) 999<$mountmap_file
+}
+
+#
+# Delete entry from a mountmap file and the corresponding iptable rule.
+# Usage: ensure_mountmap_not_exist <mountmap_file> <entry> [<ifmatch_mtime>]
+#
+ensure_mountmap_not_exist()
+{
+    local mountmap_file=$1
+    local entry=$2
+    local ifmatch=$3
+
+    (
+        flock -e 999
+
+        # Honour the mtime check if the caller looked up the entry earlier.
+        if [ -n "$ifmatch" ]; then
+            local mtime=$(stat -c%Y $mountmap_file)
+            if [ "$mtime" != "$ifmatch" ]; then
+                eecho "[$entry] Refusing to remove from ${mountmap_file} as $mtime != $ifmatch!"
+                return 1
+            fi
+        fi
+
+        # Delete the iptable rule corresponding to the outgoing mountmap entry.
+        IFS=" " read l_host l_ip l_nfsip <<< "$entry"
+        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
+            if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
+                eecho "[$entry] Refusing to remove from ${mountmap_file} as iptable entry could not be deleted!"
+                return 1
+            fi
+        fi
+
+        chattr -f -i $mountmap_file
+        # Avoid in-place sed updates that would replace the file and break our lock.
+        out=$(sed "\%^${entry}$%d" $mountmap_file)
+        ret=$?
+        if [ $ret -eq 0 ]; then
+            #
+            # If this echo fails then the mountmap file could be truncated. In that case we need
+            # to reconcile it from the mount info and iptable info. That needs to be done
+            # out-of-band.
+            #
+            echo "$out" > $mountmap_file
+            ret=$?
+            out=
+            if [ $ret -ne 0 ]; then
+                eecho "*** [FATAL] ${mountmap_file} may be in inconsistent state, contact Microsoft support ***"
+            fi
+        fi
+
+        if [ $ret -ne 0 ]; then
+            chattr -f +i $mountmap_file
+            eecho "[$entry] failed to remove from ${mountmap_file}!"
+            # Reinstate the DNAT rule deleted above.
+            ensure_iptable_entry $l_ip $l_nfsip
+            return 1
+        fi
+        chattr -f +i $mountmap_file
+
+        # Return the mtime after our mods.
+        echo $(stat -c%Y $mountmap_file)
+    ) 999<$mountmap_file
+}
+
+#
+# Replace an entry in a mountmap file with a new one.
+# Updates the iptable DNAT rules accordingly.
+# Usage: update_mountmap_entry <mountmap_file> <old_entry> <new_entry>
+#
+update_mountmap_entry()
+{
+    local mountmap_file=$1
+    local old=$2
+    local new=$3
+
+    vecho "Updating mountmap entry [$old -> $new] in ${mountmap_file}"
+
+    (
+        flock -e 999
+
+        IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
+        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
+            if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
+                eecho "[$old] Refusing to update ${mountmap_file} as old iptable entry could not be deleted!"
+                return 1
+            fi
+        fi
+
+        IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
+        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
+            if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
+                eecho "[$new] Refusing to update ${mountmap_file} as new iptable entry could not be added!"
+                # Roll back.
+                ensure_iptable_entry $l_ip $l_nfsip_old
+                return 1
+            fi
+        fi
+
+        chattr -f -i $mountmap_file
+        # Avoid in-place sed updates that would replace the file and break our lock.
+        out=$(sed "s%^${old}$%${new}%g" $mountmap_file)
+        ret=$?
+        if [ $ret -eq 0 ]; then
+            #
+            # If this echo fails then the mountmap file could be truncated. In that case we need
+            # to reconcile it from the mount info and iptable info. That needs to be done
+            # out-of-band.
+            #
+            echo "$out" > $mountmap_file
+            ret=$?
+            out=
+            if [ $ret -ne 0 ]; then
+                eecho "*** [FATAL] ${mountmap_file} may be in inconsistent state, contact Microsoft support ***"
+            fi
+        fi
+
+        if [ $ret -ne 0 ]; then
+            chattr -f +i $mountmap_file
+            eecho "[$old -> $new] failed to update ${mountmap_file}!"
+            # Roll back.
+            ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
+            ensure_iptable_entry $l_ip $l_nfsip_old
+            return 1
+        fi
+        chattr -f +i $mountmap_file
+    ) 999<$mountmap_file
 }
 
 #
@@ -388,36 +710,12 @@ create_mountmap_file()
 #
 ensure_mountmapv3_exist_nolock()
 {
-    IFS=" " read l_host l_ip l_nfsip <<< "$1"
-    if ! ensure_iptable_entry $l_ip $l_nfsip; then
-        eecho "[$1] failed to add to ${MOUNTMAPv3}!"
-        return 1
-    fi
-
-    egrep -q "^${1}$" $MOUNTMAPv3
-    if [ $? -ne 0 ]; then
-        chattr -f -i $MOUNTMAPv3
-        echo "$1" >> $MOUNTMAPv3
-        if [ $? -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
-            eecho "[$1] failed to add to ${MOUNTMAPv3}!"
-            # Could not add MOUNTMAPv3 entry, delete the DNAT rule added above.
-            ensure_iptable_entry_not_exist $l_ip $l_nfsip
-            return 1
-        fi
-        chattr -f +i $MOUNTMAPv3
-    else
-        pecho "[$1] already exists in ${MOUNTMAPv3}."
-    fi
+    ensure_mountmap_exist_nolock "$MOUNTMAPv3" "$1"
 }
 
 ensure_mountmapv3_exist()
 {
-    (
-        flock -e 999
-        ensure_mountmapv3_exist_nolock "$1"
-        return $?
-    ) 999<$MOUNTMAPv3
+    ensure_mountmap_exist "$MOUNTMAPv3" "$1"
 }
 
 #
@@ -425,65 +723,7 @@ ensure_mountmapv3_exist()
 #
 ensure_mountmapv3_not_exist()
 {
-    (
-        flock -e 999
-
-        #
-        # If user wants to delete the entry only if MOUNTMAPv3 has not changed since
-        # he looked up, honour that.
-        #
-        local ifmatch="$2"
-        if [ -n "$ifmatch" ]; then
-            local mtime=$(stat -c%Y $MOUNTMAPv3)
-            if [ "$mtime" != "$ifmatch" ]; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as $mtime != $ifmatch!"
-                return 1
-            fi
-        fi
-
-        # Delete iptable rule corresponding to the outgoing MOUNTMAPv3 entry.
-        IFS=" " read l_host l_ip l_nfsip <<< "$1"
-        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
-            if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
-                eecho "[$1] Refusing to remove from ${MOUNTMAPv3} as iptable entry could not be deleted!"
-                return 1
-            fi
-        fi
-
-        chattr -f -i $MOUNTMAPv3
-        #
-        # We do this thing instead of inplace update by sed as that has a
-        # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
-        # any locking that we dependent on the old file.
-        #
-        out=$(sed "\%^${1}$%d" $MOUNTMAPv3)
-        ret=$?
-        if [ $ret -eq 0 ]; then
-            #
-            # If this echo fails then MOUNTMAPv3 could be truncated. In that case we need
-            # to reconcile it from the mount info and iptable info. That needs to be done
-            # out-of-band.
-            #
-            echo "$out" > $MOUNTMAPv3
-            ret=$?
-            out=
-            if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
-            fi
-        fi
-
-        if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
-            eecho "[$1] failed to remove from ${MOUNTMAPv3}!"
-            # Reinstate DNAT rule deleted above.
-            ensure_iptable_entry $l_ip $l_nfsip
-            return 1
-        fi
-        chattr -f +i $MOUNTMAPv3
-
-        # Return the mtime after our mods.
-        echo $(stat -c%Y $MOUNTMAPv3)
-    ) 999<$MOUNTMAPv3
+    ensure_mountmap_not_exist "$MOUNTMAPv3" "$1" "$2"
 }
 
 #
@@ -494,64 +734,298 @@ ensure_mountmapv3_not_exist()
 #
 update_mountmapv3_entry()
 {
-    local old=$1
-    local new=$2
+    update_mountmap_entry "$MOUNTMAPv3" "$1" "$2"
+}
 
-    vecho "Updating mountmapv3 entry [$old -> $new]"
+#
+# Is the given address one of the host addresses?
+#
+is_host_ip()
+{
+    #
+    # Do not make this local as status gathering does not work well when
+    # collecting command o/p to local variables.
+    #
+    route=$(ip -4 route get fibmatch $1 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
 
-    (
-        flock -e 999
+    if ! echo "$route" | grep -q "scope host"; then
+        return 1
+    fi
 
-        IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
-        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
-            if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
-                eecho "[$old] Refusing to remove from ${MOUNTMAPv3} as old iptable entry could not be deleted!"
+    return 0
+}
+
+#
+# Is the given address one of the addresses directly reachable from the host?
+#
+is_link_ip()
+{
+    #
+    # Do not make this local as status gathering does not work well when
+    # collecting command o/p to local variables.
+    #
+    route=$(ip -4 route get fibmatch $1 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    if ! echo "$route" | grep -q "scope link"; then
+        return 1
+    fi
+
+    return 0
+}
+
+#
+# Check if a given IPv4 address is responding to ICMP pings.
+# Uses a 3 secs timeout to bail out in time if address is not responding.
+#
+is_pinging()
+{
+    #
+    # Unless env var AZNFS_PING_LOCAL_IP_BEFORE_USE is set, pretend IP address
+    # is available.
+    #
+    if [ "$AZNFS_PING_LOCAL_IP_BEFORE_USE" != "1" ]; then
+        return 1
+    fi
+
+    local ip=$1
+    # 3 secs timeout should be good.
+    ping -4 -W3 -c1 $ip > /dev/null 2>&1
+}
+
+#
+# Returns number of octets in an IPv4 prefix.
+# If IP prefix is not valid or is not a private IP address prefix, it returns 0.
+#
+# f.e. For 10 it will return 1, for 10.10 it will return 2, for 10.10.10 it will
+# return 3 and for 10.10.10.10, it will return 4.
+#
+octets_in_ipv4_prefix()
+{
+    local ip=$1
+    local octet="[0-9]{1,3}"
+    local octetdot="${octet}\."
+
+    if ! is_valid_ipv4_prefix $ip; then
+        echo 0
+        return
+    fi
+
+    #
+    # Check if the IP prefix belongs to the private IP range (10.0.0.0/8,
+    # 172.16.0.0/12, or 192.168.0.0/16), i.e., will the user provided prefix
+    # result in a private IP address.
+    #
+    [[ $ip =~ ^10(\.${octet})*$ ]] ||
+    [[ $ip =~ ^172\.(1[6-9]|2[0-9]|3[0-1])(\.${octet})*$ ]] ||
+    [[ $ip =~ ^192\.168(\.${octet})*$ ]]
+
+    if [ $? -ne 0 ]; then
+        echo 0
+        return
+    fi
+
+    # 4 octets.
+    [[ $ip =~ ^(${octetdot}){3}${octet}$ ]] && echo 4 && return;
+
+    # 3 octets
+    [[ $ip =~ ^(${octetdot}){2}${octet}$ ]] && echo 3 && return;
+
+    # 2 octets.
+    [[ $ip =~ ^(${octetdot}){1}${octet}$ ]] && echo 2 && return;
+
+    # 1 octet.
+    [[ $ip =~ ^${octet}$ ]] && echo 1 && return;
+
+    echo 0
+}
+
+search_free_local_ip_with_prefix()
+{
+    initial_ip_prefix=$1
+    num_octets=$(octets_in_ipv4_prefix $ip_prefix)
+
+    if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
+        eecho "Invalid IPv4 prefix: ${ip_prefix}"
+        eecho "Valid prefix must have either 2 or 3 octets and must be a valid private IPv4 address prefix."
+        eecho "Examples of valid private IPv4 prefixes are 10.10, 10.10.10, 192.168, 192.168.10 etc."
+        return 1
+    fi
+
+    local local_ip=""
+    local optimize_get_free_local_ip=false
+    local used_local_ips_with_same_prefix=$(cat $MOUNTMAPv3 $MOUNTMAPv4NOTLS 2>/dev/null | awk '{print $2}' | grep "^${initial_ip_prefix}\." | sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n)
+    local iptable_entries=$(iptables-save -t nat)
+
+    _3rdoctet=100
+    ip_prefix=$initial_ip_prefix
+
+    #
+    # Optimize the process to get free local IP by starting the loop to choose
+    # 3rd and 4th octet from the number which was used last and still exist in
+    # mountmap files instead of starting it from 100.
+    #
+    if [ $OPTIMIZE_GET_FREE_LOCAL_IP == true -a -n "$used_local_ips_with_same_prefix" ]; then
+
+        last_used_ip=$(echo "$used_local_ips_with_same_prefix" | tail -n1)
+
+        IFS="." read _ _ last_used_3rd_octet last_used_4th_octet <<< "$last_used_ip"
+
+        if [ $num_octets -eq 2 ]; then
+            if [ "$last_used_3rd_octet" == "254" -a "$last_used_4th_octet" == "254" ]; then
+                return 1
+            fi
+
+            _3rdoctet=$last_used_3rd_octet
+            optimize_get_free_local_ip=true
+        else
+            if [ "$last_used_4th_octet" == "254" ]; then
+                return 1
+            fi
+
+            optimize_get_free_local_ip=true
+        fi
+    fi
+
+    while true; do
+        if [ $num_octets -eq 2 ]; then
+            for ((; _3rdoctet<255; _3rdoctet++)); do
+                ip_prefix="${initial_ip_prefix}.$_3rdoctet"
+
+                if is_link_ip $ip_prefix; then
+                    vecho "Skipping link network ${ip_prefix}!"
+                    continue
+                fi
+
+                break
+            done
+
+            if [ $_3rdoctet -eq 255 ]; then
+                #
+                # If the IP prefix had 2 octets and we exhausted all possible
+                # values of the 3rd and 4th octet, then we have failed the
+                # search for free local IP within the given prefix.
+                #
                 return 1
             fi
         fi
 
-        IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
-        if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
-            if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
-                eecho "[$new] Refusing to remove from ${MOUNTMAPv3} as new iptable entry could not be added!"
-                # Roll back.
-                ensure_iptable_entry $l_ip $l_nfsip_old
+        if $optimize_get_free_local_ip; then
+            _4thoctet=$(expr ${last_used_4th_octet} + 1)
+            optimize_get_free_local_ip=false
+        else
+            _4thoctet=100
+        fi
+
+        for ((; _4thoctet<255; _4thoctet++)); do
+            local_ip="${ip_prefix}.$_4thoctet"
+
+            is_ip_used_by_aznfs=$(echo "$used_local_ips_with_same_prefix" | grep "^${local_ip}$")
+            if [ -n "$is_ip_used_by_aznfs" ]; then
+                vecho "$local_ip is in use by aznfs!"
+                continue
+            fi
+
+            if is_host_ip $local_ip; then
+                vecho "Skipping host address ${local_ip}!"
+                continue
+            fi
+
+            if is_link_ip $local_ip; then
+                vecho "Skipping link network ${local_ip}!"
+                continue
+            fi
+
+            if [ "$nfs_ip" == "$local_ip" ]; then
+                vecho "Skipping private endpoint IP ${nfs_ip}!"
+                continue
+            fi
+
+            is_present_in_iptables=$(echo "$iptable_entries" | grep -c "\<${local_ip}\>")
+            if [ $is_present_in_iptables -ne 0 ]; then
+                vecho "$local_ip is already present in iptables!"
+                continue
+            fi
+
+            #
+            # Try pinging the address to be sure it is not in use in the
+            # client network.
+            #
+            # Note: If the address exists but not responding to ICMP ping then
+            #       we will incorrectly treat it as non-exixtent.
+            #
+            if is_pinging $local_ip; then
+                vecho "Skipping $local_ip as it appears to be in use on the network!"
+                continue
+            fi
+
+            vecho "Using local IP ($local_ip) for aznfs."
+            break
+        done
+
+        if [ $_4thoctet -eq 255 ]; then
+            if [ $num_octets -eq 2 ]; then
+                let _3rdoctet++
+                continue
+            else
+                #
+                # If the IP prefix had 3 octets and we exhausted all possible
+                # values of the 4th octet, then we have failed the search for
+                # free local IP within the given prefix.
+                #
                 return 1
             fi
         fi
 
-        chattr -f -i $MOUNTMAPv3
         #
-        # We do this thing instead of inplace update by sed as that has a
-        # very bad side-effect of creating a new MOUNTMAPv3 file. This breaks
-        # any locking that we dependent on the old file.
+        # Happy path!
         #
-        out=$(sed "s%^${old}$%${new}%g" $MOUNTMAPv3)
-        ret=$?
-        if [ $ret -eq 0 ]; then
-            #
-            # If this echo fails then MOUNTMAPv3 could be truncated. In that case we need
-            # to reconcile it from the mount info and iptable info. That needs to be done
-            # out-of-band.
-            #
-            echo "$out" > $MOUNTMAPv3
-            ret=$?
-            out=
-            if [ $ret -ne 0 ]; then
-                eecho "*** [FATAL] MOUNTMAPv3 may be in inconsistent state, contact Microsoft support ***"
-            fi
-        fi
+        # Add this entry to MOUNTMAPv3 while we have the MOUNTMAPv3 lock.
+        # This is to avoid assigning same local ip to parallel mount requests
+        # for different endpoints.
+        # ensure_mountmapv3_exist will also create a matching iptable DNAT rule.
+        #
+        LOCAL_IP=$local_ip
+        ${MOUNTMAP_WRITE_FN:-ensure_mountmapv3_exist_nolock} "$nfs_host $LOCAL_IP $nfs_ip"
 
-        if [ $ret -ne 0 ]; then
-            chattr -f +i $MOUNTMAPv3
-            eecho "[$old -> $new] failed to update ${MOUNTMAPv3}!"
-            # Roll back.
-            ensure_iptable_entry_not_exist $l_ip $l_nfsip_new
-            ensure_iptable_entry $l_ip $l_nfsip_old
-            return 1
+        return 0
+    done
+
+    # We will never reach here.
+}
+
+#
+# Get a local IP that is free to use. Set global variable LOCAL_IP if found.
+#
+get_free_local_ip()
+{
+    for ip_prefix in $IP_PREFIXES; do
+        vecho "Trying IP prefix ${ip_prefix}."
+        if search_free_local_ip_with_prefix "$ip_prefix"; then
+            return 0
         fi
-        chattr -f +i $MOUNTMAPv3
-    ) 999<$MOUNTMAPv3
+    done
+
+    #
+    # If the above loop is not able to find a free local IP using optimized way,
+    # do a linear search to get the free local IP.
+    #
+    vecho "Falling back to linear search for free ip!"
+    OPTIMIZE_GET_FREE_LOCAL_IP=false
+    for ip_prefix in $IP_PREFIXES; do
+        vecho "Trying IP prefix ${ip_prefix}."
+        if search_free_local_ip_with_prefix "$ip_prefix"; then
+            return 0
+        fi
+    done
+
+    # If we come here we did not get a free address to use.
+    return 1
 }
 
 #

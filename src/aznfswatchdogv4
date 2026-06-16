@@ -10,7 +10,177 @@
 #
 
 mtime_mountmap=0
+mtime_mountmap_notls=0
 NFSFS_SERVERS_FILE="/proc/fs/nfsfs/servers"
+
+# How often to probe the storage IP for reachability (seconds).
+HEALTH_CHECK_FREQUENCY=60
+
+#
+# Check conntrack entries for NFSv4 non-TLS DNAT mounts (port 2049).
+# Returns 0 if stuck entries were found and cleaned (failure signal).
+#
+reconcile_conntrack_v4()
+{
+    local l_ip=$1
+    local l_nfsip=$2
+    local found_stuck=1
+
+    IFS=$'\n' output2049=$(conntrack -L -p tcp -d $l_ip -r $l_nfsip --dport 2049 --state SYN_SENT 2>/dev/null)
+
+    #
+    # For mounts with nconnect, there could be more than one conntrack entries to the same
+    # proxy IP, but with different local ports. We must track them separately.
+    #
+    if [ -n "$output2049" ]; then
+        for entry in $output2049; do
+            # XXX Remove this log after running for few days (not too noisy!)
+            vecho "$entry"
+            # Sample conntrack entry.
+            # tcp      6 114 SYN_SENT src=10.20.0.17 dst=10.161.100.101 sport=819 dport=2048 [UNREPLIED] src=20.150.35.196 dst=10.20.0.17 sport=2048 dport=819 mark=0 use=1
+            matchstr="tcp\s+[0-9]+\s+([0-9]+)\s+SYN_SENT\s+src=[0-9]+.[0-9]+.[0-9]+.[0-9]+\s+dst=${l_ip}\s+sport=([0-9]+)\s+dport=([0-9]+).*"
+            if [[ "$entry" =~ $matchstr ]]; then
+                l_seconds_remaining=${BASH_REMATCH[1]}
+                l_sport=${BASH_REMATCH[2]}
+                l_dport=${BASH_REMATCH[3]}
+                reconcile_conntrack_synsent $l_ip $l_sport $l_dport $l_nfsip $l_seconds_remaining
+                found_stuck=0
+            fi
+        done
+    fi
+
+    IFS=$'\n' output2049=$(conntrack -L -p tcp -d $l_ip --dport 2049 2>/dev/null | grep -v "SYN_SENT" | grep "\[UNREPLIED\]")
+    if [ -n "$output2049" ]; then
+        for entry in $output2049; do
+            # XXX Remove this log after running for few days (too noisy!)
+            vecho "$entry"
+           # Sample conntrack entry.
+            # tcp      6 299 ESTABLISHED src=10.2.4.4 dst=10.161.100.100 sport=1015 dport=2048 [UNREPLIED] src=20.60.236.11 dst=10.2.4.4 sport=2048 dport=1015 mark=0 use=1
+            matchstr="tcp\s+[0-9]+\s+([0-9]+) .* dst=$l_ip sport=([0-9]+) dport=([0-9]+) \[UNREPLIED\] src=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*"
+            if [[ "$entry" =~ $matchstr ]]; then
+                l_seconds_remaining=${BASH_REMATCH[1]}
+                l_sport=${BASH_REMATCH[2]}
+                l_dport=${BASH_REMATCH[3]}
+                l_reply_srcip=${BASH_REMATCH[4]}
+                reconcile_conntrack_unreplied $l_ip $l_sport $l_dport $l_reply_srcip $l_seconds_remaining
+                found_stuck=0
+            fi
+        done
+    fi
+
+    return $found_stuck
+}
+
+#
+# Failover a TLS stunnel connection to a new backend IP.
+# Creates new stunnel conf/log/pid files with the new IP, restarts stunnel
+# on the same port, cleans up old files, and updates MOUNTMAPv4.
+# Must be called with MOUNTMAPv4 NOT locked (this function acquires the lock).
+#
+failover_stunnel()
+{
+    local l_host=$1
+    local l_ip=$2
+    local l_conf=$3
+    local l_log=$4
+    local l_pid=$5
+    local l_checksumhash=$6
+    local old_line=$7
+    local new_ip=$8
+
+    local old_ip=$l_ip
+    local accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
+
+    # Derive directories and new file paths from the old paths.
+    local stunnel_dir=$(dirname $l_conf)
+    local stunnel_log_dir=$(dirname $l_log)
+    local new_conf="$stunnel_dir/stunnel_${new_ip}.conf"
+    local new_log="$stunnel_log_dir/stunnel_${new_ip}.log"
+    local new_pid="$stunnel_log_dir/stunnel_${new_ip}.pid"
+
+    pecho "Stunnel failover for $l_host: $old_ip -> $new_ip (port $accept_port)"
+
+    # Lock MOUNTMAPv4 for the entire failover operation so the watchdog's
+    # checksum tamper detection doesn't race with our config update.
+    exec {fd_fo}<$MOUNTMAPv4
+    flock -e $fd_fo
+
+    # Step 1: Create new stunnel conf with updated connect, pid, and output paths.
+    chattr -f -i $l_conf
+    cp $l_conf $new_conf
+    if [ $? -ne 0 ]; then
+        eecho "Failed to create new stunnel conf $new_conf!"
+        chattr -f +i $l_conf
+        flock -u $fd_fo
+        exec {fd_fo}<&-
+        return 1
+    fi
+
+    # Update connect IP, pid path, log output path, and service section name in new conf.
+    sed -i "s/connect = ${old_ip}:2049/connect = ${new_ip}:2049/" $new_conf
+    sed -i "s#pid = ${l_pid}#pid = ${new_pid}#" $new_conf
+    sed -i "s#output = ${l_log}#output = ${new_log}#" $new_conf
+    sed -i "s/\[${old_ip}\]/[${new_ip}]/" $new_conf
+    chattr -f +i $new_conf
+
+    # Step 2: Kill old stunnel process and clean up old files.
+    cleanup_stunnel_files $l_conf $l_log $l_pid
+
+    # Step 3: Start new stunnel (creates new pid and log files automatically).
+    local stunnel_status=$(stunnel $new_conf 2>&1)
+    if [ -n "$stunnel_status" ]; then
+        local is_binding_error=$(echo $stunnel_status | grep "$LOCALHOST:$accept_port: Address already in use")
+        if [ -n "$is_binding_error" ]; then
+            sleep 1
+            stunnel_status=$(stunnel $new_conf 2>&1)
+            if [ -n "$stunnel_status" ]; then
+                eecho "Failed to restart stunnel on port $accept_port after failover: $stunnel_status"
+                flock -u $fd_fo
+                exec {fd_fo}<&-
+                return 1
+            fi
+        else
+            eecho "Failed to start stunnel after failover: $stunnel_status"
+            flock -u $fd_fo
+            exec {fd_fo}<&-
+            return 1
+        fi
+    fi
+
+    # Step 4: Recompute checksum and update MOUNTMAPv4 with new IP, new file paths, and new checksum.
+    local new_checksum=$(cksum $new_conf | awk '{print $1}')
+
+    # Build the new mountmap entry.
+    local new_entry="${l_host};${new_ip};${new_conf};${new_log};${new_pid};${new_checksum};mounted;0"
+
+    chattr -f -i $MOUNTMAPv4
+    # Replace the entire old entry line (matched by old conf path) with the new entry.
+    out=$(sed "\#${l_conf};#c\\${new_entry}" $MOUNTMAPv4)
+    ret=$?
+    if [ $ret -eq 0 ]; then
+        echo "$out" > $MOUNTMAPv4
+        ret=$?
+        out=
+        if [ $ret -ne 0 ]; then
+            eecho "*** [FATAL] MOUNTMAPv4 may be in inconsistent state, contact Microsoft support ***"
+        fi
+    fi
+    chattr -f +i $MOUNTMAPv4
+
+    # Update mtime so the main loop knows we changed it.
+    mtime_mountmap=$(stat -c%Y $MOUNTMAPv4)
+
+    flock -u $fd_fo
+    exec {fd_fo}<&-
+
+    if [ $ret -ne 0 ]; then
+        eecho "Failed to update MOUNTMAPv4 after stunnel failover!"
+        return 1
+    fi
+
+    pecho "Stunnel failover complete for $l_host: $old_ip -> $new_ip"
+    return 0
+}
 
 ip_to_hex()
 {
@@ -227,14 +397,142 @@ cleanup_mount()
     return 0
 }
 
+#
+# Process NFSv4 non-TLS DNAT-based mounts.
+# Monitors MOUNTMAPv4NOTLS entries for:
+#   1. Unmounted shares → cleanup DNAT rules and mountmap entries.
+#   2. Missing DNAT rules → recreate them.
+#   3. Backend failure → failover to another ZRS IP.
+#
+process_nfsv4_notls_mounts()
+{
+    if [ ! -f "$MOUNTMAPv4NOTLS" ]; then
+        return
+    fi
+
+    # Read mountmap under lock.
+    exec {fd_notls}<$MOUNTMAPv4NOTLS
+    flock -e $fd_notls
+    mtime_mountmap_notls=$(stat -c%Y $MOUNTMAPv4NOTLS)
+    IFS=$'\n' notls_lines=$(cat $MOUNTMAPv4NOTLS)
+    flock -u $fd_notls
+    exec {fd_notls}<&-
+
+    if [ -z "$notls_lines" ]; then
+        return
+    fi
+
+    # Get current NFS mounts (done after reading mountmap for consistency).
+    local findmnt_notls=$(findmnt --raw --noheading -o SOURCE,TARGET -t nfs,nfs4 2>/dev/null)
+
+    for line in $notls_lines; do
+        if [ -z "$line" ]; then
+            continue
+        fi
+
+        # MOUNTMAPv4NOTLS format: hostname localip storageip
+        IFS=" " read l_host l_ip l_nfsip <<< "$line"
+
+        if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
+            wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NOTLS: [$line]!"
+            l_mtime=$(ensure_mountmap_not_exist "$MOUNTMAPv4NOTLS" "$line" "$mtime_mountmap_notls")
+            [ $? -eq 0 ] && mtime_mountmap_notls=$l_mtime
+            continue
+        fi
+
+        #
+        # Check 1: Is the mount still active?
+        # If no mount references this proxy IP, clean up.
+        #
+        if ! echo "$findmnt_notls" | grep "$l_ip" > /dev/null 2>&1; then
+            # Check kernel NFS server entries before cleanup (k8s namespace refs).
+            if is_nfs_server_active_for_target "$l_ip" "2049"; then
+                vecho "NFS server entry still active for $l_ip:2049; skipping cleanup for [$line]."
+                continue
+            fi
+
+            pecho "No mounted shares for host $l_host with proxy IP $l_ip, cleaning up [$line]."
+            l_mtime=$(ensure_mountmap_not_exist "$MOUNTMAPv4NOTLS" "$line" "$mtime_mountmap_notls")
+            [ $? -eq 0 ] && mtime_mountmap_notls=$l_mtime
+            continue
+        fi
+
+        #
+        # Check 2: Verify DNAT rule still exists (safety net).
+        #
+        verify_iptable_entry "$l_ip" "$l_nfsip"
+
+        #
+        # Layer 1: Conntrack monitoring (passive, every 5s).
+        # Detects stuck SYN_SENT or UNREPLIED entries on port 2049.
+        #
+        local failure_detected=false
+        if reconcile_conntrack_v4 "$l_ip" "$l_nfsip"; then
+            failure_detected=true
+            wecho "Conntrack stuck entries detected for $l_host [$l_ip -> $l_nfsip]"
+        fi
+
+        #
+        # Layer 2: Active TCP probe (every HEALTH_CHECK_FREQUENCY seconds).
+        # Sends one SYN packet to the real storage IP on port 2049.
+        #
+        if [ $epoch_now -ge ${next_health_check_epoch:-0} ]; then
+            if ! is_ip_port_reachable $l_nfsip 2049; then
+                failure_detected=true
+                wecho "Storage IP $l_nfsip is unreachable on port 2049 for $l_host"
+            fi
+        fi
+
+        #
+        # Layer 3: On failure, resolve DNS and failover to a healthy IP.
+        #
+        if [ "$failure_detected" == "true" ]; then
+            pecho "Failure detected for $l_host [$l_ip -> $l_nfsip], attempting failover..."
+
+            new_ip=$(resolve_ipv4 "$l_host" "false" 2049 "$l_nfsip")
+
+            if [ $? -ne 0 ]; then
+                eecho "Failed to resolve $l_host during failover: $new_ip"
+                continue
+            fi
+
+            if [ "$new_ip" == "$l_nfsip" ]; then
+                # DNS still returns the same (dead) IP, or it's the only one reachable.
+                wecho "No alternative IP found for $l_host (DNS returned same IP $l_nfsip)."
+                continue
+            fi
+
+            pecho "IP for $l_host changed [$l_nfsip -> $new_ip], updating DNAT."
+
+            if update_mountmap_entry "$MOUNTMAPv4NOTLS" "$line" "$l_host $l_ip $new_ip"; then
+                pecho "Failover complete for $l_host [$l_nfsip -> $new_ip]"
+
+                # Update mtime since we modified the file.
+                mtime_mountmap_notls=$(stat -c%Y $MOUNTMAPv4NOTLS)
+
+                # Force NFS client to reconnect through new DNAT rule.
+                local mount_target=$(echo "$findmnt_notls" | grep "$l_ip" | awk '{print $2}' | head -1)
+                if [ -n "$mount_target" ]; then
+                    ping_new_endpoint "$mount_target" &
+                fi
+            else
+                eecho "Failed to update DNAT for $l_host [$l_nfsip -> $new_ip]!"
+            fi
+        fi
+    done
+
+    # Update health check timer (shared across all entries).
+    if [ $epoch_now -ge ${next_health_check_epoch:-0} ]; then
+        next_health_check_epoch=$(expr $epoch_now + $HEALTH_CHECK_FREQUENCY)
+    fi
+}
+
 process_nfsv4_mounts()
 {
     local l_conf
     local l_log
     local l_pid
     local l_checksumhash
-
-    epoch_now=$(date +%s)
 
     #
     # Go over all lines in MOUNTMAPv4 and check them for two things:
@@ -283,10 +581,19 @@ process_nfsv4_mounts()
         fi
 
         #
-        # MOUNTMAPv4 line is of the form:
-        # <IP>;<stunnel_account.file.preprod.core.windows.net.conf path>;<stunnel_account.file.preprod.core.windows.net.log path>;<stunnel_account.file.preprod.core.windows.net.pid path>;<checksumHash>;<status>;<timeout>
+        # MOUNTMAPv4 line format:
+        #   New (8 fields): <hostname>;<IP>;<stunnel.conf>;<stunnel.log>;<stunnel.pid>;<checksum>;<status>;<timeout>
+        #   Old (7 fields): <IP>;<stunnel.conf>;<stunnel.log>;<stunnel.pid>;<checksum>;<status>;<timeout>
+        # Detect by field count to maintain backward compatibility with pre-existing mounts.
         #
-        IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        local field_count=$(echo "$line" | awk -F';' '{print NF}')
+        if [ "$field_count" -ge 8 ]; then
+            IFS=";" read l_host l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        else
+            # Old format (7 fields): no hostname, failover not possible.
+            l_host=""
+            IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+        fi
 
         if [ -z "$l_ip" -o -z "$l_conf" -o -z "$l_pid" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4: [$line]!"
@@ -378,8 +685,49 @@ process_nfsv4_mounts()
                     fi
                 fi
             fi
+
+            #
+            # ZRS failover detection for public endpoint TLS mounts.
+            # Skip for private endpoints — Azure handles failover internally.
+            #
+            if ! is_private_ip "$l_ip" && [ -n "$l_host" ]; then
+                local tls_failure_detected=false
+
+                # TCP probe the real storage IP (every HEALTH_CHECK_FREQUENCY seconds).
+                if [ $epoch_now -ge ${next_tls_health_check_epoch:-0} ]; then
+                    if ! is_ip_port_reachable $l_ip 2049; then
+                        tls_failure_detected=true
+                        wecho "Storage IP $l_ip is unreachable on port 2049 for TLS mount $l_host"
+                    fi
+                fi
+
+                if [ "$tls_failure_detected" == "true" ]; then
+                    pecho "TLS failure detected for $l_host [$l_ip], attempting stunnel failover..."
+
+                    new_ip=$(resolve_ipv4 "$l_host" "false" 2049 "$l_ip")
+
+                    if [ $? -ne 0 ]; then
+                        eecho "Failed to resolve $l_host during TLS failover: $new_ip"
+                    elif [ "$new_ip" == "$l_ip" ]; then
+                        wecho "No alternative IP found for $l_host (DNS returned same IP $l_ip)."
+                    else
+                        if failover_stunnel "$l_host" "$l_ip" "$l_conf" "$l_log" "$l_pid" "$l_checksumhash" "$line" "$new_ip"; then
+                            # Force NFS client to reconnect through restarted stunnel.
+                            local tls_mount_target=$(echo "$findmnt" | grep "$accept_port" | awk '{print $NF}' | head -1)
+                            if [ -n "$tls_mount_target" ]; then
+                                ping_new_endpoint "$tls_mount_target" &
+                            fi
+                        fi
+                    fi
+                fi
+            fi
         fi
     done
+
+    # Update TLS health check timer.
+    if [ $epoch_now -ge ${next_tls_health_check_epoch:-0} ]; then
+        next_tls_health_check_epoch=$(expr $epoch_now + $HEALTH_CHECK_FREQUENCY)
+    fi
 }
 
 # Load common aznfs helpers.
@@ -395,7 +743,13 @@ if ! chattr -f +i $MOUNTMAPv4; then
     wecho "chattr does not work for ${MOUNTMAPv4}!"
 fi
 
+if ! chattr -f +i $MOUNTMAPv4NOTLS; then
+    wecho "chattr does not work for ${MOUNTMAPv4NOTLS}!"
+fi
+
 while :; do
     sleep $MONITOR_INTERVAL_SECS
+    epoch_now=$(date +%s)
     process_nfsv4_mounts
+    process_nfsv4_notls_mounts
 done
