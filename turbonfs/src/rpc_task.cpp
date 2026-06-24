@@ -1568,6 +1568,7 @@ void rpc_task::issue_write_rpc()
 
     do {
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
 
         if (rpc_nfs3_writev_task(get_rpc_ctx(),
@@ -4136,6 +4137,7 @@ static void read_callback(
                  *       as we are holding all the needed locks and refs.
                  */
                 rpc_retry = false;
+                child_tsk->set_caller_credentials();
                 child_tsk->get_stats().on_rpc_issue();
                 if (rpc_nfs3_read_task(
                         child_tsk->get_rpc_ctx(),
@@ -4414,6 +4416,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                    inode->get_fuse_ino(), args.offset, args.count);
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
