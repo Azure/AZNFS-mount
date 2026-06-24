@@ -2129,13 +2129,27 @@ public:
      *
      * This must be called before the rpc_nfs3_*_task() call so that
      * rpc_allocate_pdu() picks up the correct AUTH credentials.
+     *
+     * For child/backend tasks where get_fuse_req() is null (for example
+     * READ/WRITE backend tasks), we inherit the request context from the
+     * parent task so each RPC still carries the correct caller identity.
      * Thread safety: nfs_set_uid/gid internally calls rpc_set_uid_gid
      * which replaces rpc->auth. The rpc_mutex inside libnfs protects
      * the auth update and PDU allocation atomically.
      */
     void set_caller_credentials()
     {
-        const fuse_ctx *ctx = fuse_req_ctx(get_fuse_req());
+        fuse_req *req = get_fuse_req();
+
+        if ((req == nullptr) && rpc_api && rpc_api->parent_task) {
+            req = rpc_api->parent_task->get_fuse_req();
+        }
+
+        if (req == nullptr) {
+            return;
+        }
+
+        const fuse_ctx *ctx = fuse_req_ctx(req);
         if (ctx) {
             struct nfs_context *nfs = get_nfs_context();
             nfs_set_uid(nfs, ctx->uid);
