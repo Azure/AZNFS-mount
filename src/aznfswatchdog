@@ -42,11 +42,14 @@ next_ip_change_detection_epoch=0
 #
 next_daily_run_epoch=$(expr $(date +%s) + 60)
 
+APPNAME="${APPNAME:-aznfs}"
+OPTDIR="${OPTDIR:-/opt/microsoft/${APPNAME}}"
+
 # Load common aznfs helpers.
 AZNFS_VERSION=3
-. /opt/microsoft/aznfs/common.sh
+. ${OPTDIR}/common.sh
 
-# Create /opt/microsoft/aznfs/data/randbytes if not already created.
+# Create ${OPTDIR}/data/randbytes if not already created.
 if [ ! -s $RANDBYTES ]; then
         dd if=/dev/urandom of=$RANDBYTES bs=256 count=1
 fi

@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# --------------------------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See License.txt in the project root for license information.
+# --------------------------------------------------------------------------------------------
+
+# Exit on error.
+set -e
+
+init="$(ps -q 1 -o comm=)"
+if [ "$init" != "systemd" ]; then
+	echo "Cannot install this package on a non-systemd system!"
+	exit 1
+fi
+
+if dpkg-query -W -f='${Status}' aznfs 2>/dev/null | grep -Eq "install ok (installed|unpacked|half-configured|half-installed|triggers-awaited|triggers-pending)"; then
+	if dpkg-query -L aznfs 2>/dev/null | grep -Eqx '/usr/sbin/aznfswatchdogv4|/opt/microsoft/aznfs/common.sh|/lib/systemd/system/aznfswatchdogv4.service'; then
+		echo "Legacy aznfs detected with moved files. Proceeding with transition to azfiles-nfs ownership."
+	fi
+fi

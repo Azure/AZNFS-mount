@@ -4,7 +4,12 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-APPNAME="aznfs"
+APPNAME="${APPNAME:-aznfs}"
+PKG_NAME="${PKG_NAME:-aznfs}"
+AUTO_UPDATE_KEY="${AUTO_UPDATE_KEY:-AUTO_UPDATE_AZNFS}"
+WATCHDOG_PROC="${WATCHDOG_PROC:-aznfswatchdog}"
+WATCHDOG_SERVICE="${WATCHDOG_SERVICE:-aznfswatchdog}"
+WATCHDOG_SERVICE_V4="${WATCHDOG_SERVICE_V4:-aznfswatchdogv4}"
 OPTDIR="/opt/microsoft/${APPNAME}"
 OPTDIRDATA="${OPTDIR}/data"
 LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
@@ -175,7 +180,7 @@ ensure_pkg()
         fi
     else
         eecho "[FATAL] Unsupported linux distro <$distro>"
-        eecho "Cannot install aznfs package updates."
+        eecho "Cannot install ${PKG_NAME} package updates."
         pecho "Check 'https://github.com/Azure/AZNFS-mount/blob/main/README.md#supported-distros' to see the list of supported distros"
         exit 1
     fi
@@ -196,17 +201,17 @@ parse_user_config()
         exit 1
     fi
 
-    # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
-    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
+    # Read the auto-update key from the configuration file.
+    AUTO_UPDATE_AZNFS=$(egrep -o "^${AUTO_UPDATE_KEY}[[:space:]]*=[[:space:]]*[^[:space:]]*" "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
     if [ -z "$AUTO_UPDATE_AZNFS" ]; then
-        eecho "AUTO_UPDATE_AZNFS is missing in '$CONFIG_FILE'."
+        eecho "${AUTO_UPDATE_KEY} is missing in '$CONFIG_FILE'."
         exit 1
     fi
 
     # Convert to lowercase for easy comparison later.
     AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
     if [ "$AUTO_UPDATE_AZNFS" != "true" ] && [ "$AUTO_UPDATE_AZNFS" != "false" ]; then
-        eecho "Invalid value for AUTO_UPDATE_AZNFS: '$AUTO_UPDATE_AZNFS'."
+        eecho "Invalid value for ${AUTO_UPDATE_KEY}: '$AUTO_UPDATE_AZNFS'."
         exit 1
     fi
 
@@ -214,22 +219,22 @@ parse_user_config()
     if [ "$AUTO_UPDATE_AZNFS" == "false" ]; then
         exit 0
     fi
-    pecho "AUTO_UPDATE_AZNFS is set to: '$AUTO_UPDATE_AZNFS'"
+    pecho "${AUTO_UPDATE_KEY} is set to: '$AUTO_UPDATE_AZNFS'"
 }
 
 create_flag_file()
 {
-     # Get the PID of aznfswatchdog.
-    pid_aznfswatchdog=$(pgrep -x aznfswatchdog)
-    if [ -n "$pid_aznfswatchdog" ]; then
+     # Get the PID of the caller watchdog process.
+    pid_watchdog=$(pgrep -x "$WATCHDOG_PROC")
+    if [ -n "$pid_watchdog" ]; then
         # Create a flag file with the PID to indicate that an update is in progress.
-        echo "$pid_aznfswatchdog" > "$FLAG_FILE"
+        echo "$pid_watchdog" > "$FLAG_FILE"
         if [ $? -ne 0 ]; then
             eecho "Failed to create the flag file to indicate update in progress, exiting!"
             exit 1
         fi
     else
-        eecho "AZNFS auto-update can only be invoked by aznfswatchdog!"
+        eecho "${PKG_NAME} auto-update can only be invoked by ${WATCHDOG_PROC}!"
         exit 1
     fi
 }
@@ -242,7 +247,7 @@ parse_user_config
 pecho "Running auto-update..."
 
 #
-# Only super user can install aznfs.
+# Only super user can install packages.
 #
 verify_super_user
 
@@ -267,14 +272,14 @@ case "${__m}:${__s}" in
             distro_id=$(canonicalize_distro_id $distro_id)
         else
             eecho "[FATAL] Unknown linux distro, /etc/os-release not found!"
-            eecho "Cannot install aznfs package updates."
+            eecho "Cannot install ${PKG_NAME} package updates."
             pecho "Please contact Microsoft support."
             exit 1
         fi
         ;;
     *)
         eecho "[FATAL] Unsupported platform: ${__m}:${__s}."
-        eecho "[FATAL] AZNFS package update aborted."
+        eecho "[FATAL] ${PKG_NAME} package update aborted."
         exit 1
         ;;
 esac
@@ -282,15 +287,17 @@ esac
 ensure_pkg
 
 if [ $apt -eq 1 ]; then
-    current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
-    available_upgrade_version=$(apt list --upgradable 2>/dev/null | grep '\<aznfs\>' | awk '{print $2}')
+    current_version=$(dpkg-query -W -f='${Version}\n' "$PKG_NAME" 2>/dev/null)
+    available_upgrade_version=$(apt list --upgradable 2>/dev/null | grep "\\<${PKG_NAME}\\>" | awk '{print $2}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
         secho "Updating AZNFS from '$current_version' to '$available_upgrade_version'..."
-        apt install --only-upgrade -y aznfs
+        # Do not use --only-upgrade here: it blocks newly introduced dependencies
+        # (for example aznfs -> azfiles-nfs during split-package transition).
+        apt install -y "$PKG_NAME"
         if [ $? -ne 0 ]; then
-            eecho "[ERROR] Failed to update aznfs package to '$available_upgrade_version'."
+            eecho "[ERROR] Failed to update ${PKG_NAME} package to '$available_upgrade_version'."
             exit 1
         else
             package_updated=1
@@ -301,15 +308,15 @@ if [ $apt -eq 1 ]; then
 # Check package updates from microsoft respository
 #
 elif [ $zypper -eq 1 ]; then
-    current_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $7}')
-    available_upgrade_version=$(zypper list-updates | grep "\<aznfs\>" | awk '{print $9}')
+    current_version=$(zypper list-updates | grep "\\<${PKG_NAME}\\>" | awk '{print $7}')
+    available_upgrade_version=$(zypper list-updates | grep "\\<${PKG_NAME}\\>" | awk '{print $9}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
         secho "Updating AZNFS from '$current_version' to '$available_upgrade_version'..."
-        zypper update -y aznfs
+        zypper update -y "$PKG_NAME"
         if [ $? -ne 0 ]; then
-            eecho "[ERROR] Failed to update aznfs package to '$available_upgrade_version'."
+            eecho "[ERROR] Failed to update ${PKG_NAME} package to '$available_upgrade_version'."
             exit 1
         else
             package_updated=1
@@ -317,16 +324,16 @@ elif [ $zypper -eq 1 ]; then
     fi
 
 else
-    current_pkg_name=$(rpm -q aznfs)
-    current_version=$(echo "$current_pkg_name" | sed -E 's/^aznfs-(.+)\.[^.]+$/\1/')
-    available_upgrade_version=$($yum list available aznfs.${__m} |& grep "\<aznfs\>" | awk '{print $2}')
+    current_pkg_name=$(rpm -q "$PKG_NAME")
+    current_version=$(echo "$current_pkg_name" | sed -E "s/^${PKG_NAME}-(.+)\\.[^.]+$/\\1/")
+    available_upgrade_version=$($yum list available ${PKG_NAME}.${__m} |& grep "\\<${PKG_NAME}\\>" | awk '{print $2}')
 
     if [ -n "$available_upgrade_version" ]; then
         create_flag_file
         secho "Updating AZNFS from '$current_version' to '$available_upgrade_version'..."
-        $yum upgrade -y aznfs
+        $yum upgrade -y "$PKG_NAME"
         if [ $? -ne 0 ]; then
-            eecho "[ERROR] Failed to update aznfs package to '$available_upgrade_version'."
+            eecho "[ERROR] Failed to update ${PKG_NAME} package to '$available_upgrade_version'."
             exit 1
         else
             package_updated=1
@@ -335,11 +342,13 @@ else
 fi
 
 if [ $package_updated -eq 1 ]; then
-    secho "Successfully updated AZNFS version '$current_version' to '$available_upgrade_version'."
-    pecho "Restarting aznfs watchdog service to apply changes..."
+    secho "Successfully updated ${PKG_NAME} version '$current_version' to '$available_upgrade_version'."
+    pecho "Restarting watchdog services to apply changes..."
     systemctl daemon-reload
-    systemctl restart aznfswatchdog
-    systemctl restart aznfswatchdogv4
+    systemctl restart "$WATCHDOG_SERVICE"
+    if [ "$WATCHDOG_SERVICE_V4" != "$WATCHDOG_SERVICE" ]; then
+        systemctl restart "$WATCHDOG_SERVICE_V4"
+    fi
 else
-    pecho "aznfs is already up-to-date."
+    pecho "${PKG_NAME} is already up-to-date."
 fi

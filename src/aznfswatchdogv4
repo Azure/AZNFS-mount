@@ -731,8 +731,10 @@ process_nfsv4_mounts()
 }
 
 # Load common aznfs helpers.
+APPNAME="${APPNAME:-aznfs}"
+OPTDIR="${OPTDIR:-/opt/microsoft/${APPNAME}}"
 AZNFS_VERSION=4
-. /opt/microsoft/aznfs/common.sh
+. ${OPTDIR}/common.sh
 
 vecho "Starting aznfswatchdog for NFSv4..."
 

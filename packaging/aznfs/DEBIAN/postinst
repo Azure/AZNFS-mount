@@ -61,15 +61,11 @@ EOF
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
-chmod 0755 /usr/sbin/aznfswatchdogv4
-chmod 0755 /opt/microsoft/aznfs/mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/nfsv3mountscript.sh
-chmod 0755 /opt/microsoft/aznfs/nfsv4mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
-chmod 0644 /opt/microsoft/aznfs/common.sh
 
-# Set suid bit for mount.aznfs to allow mount for non-super user.
-chmod 4755 /sbin/mount.aznfs
+# common.sh is owned by azfiles-nfs; keep the legacy aznfs path for compatibility.
+ln -sfn /opt/microsoft/azfiles-nfs/common.sh /opt/microsoft/aznfs/common.sh
 
 # Create data directory for holding mountmap and log file. 
 mkdir -p /opt/microsoft/aznfs/data
@@ -114,6 +110,13 @@ if [ ! -f "$CONFIG_FILE" ]; then
         chmod 0644 "$CONFIG_FILE"
 fi
 
+    # When aznfs is installed, azfiles-nfs is expected to follow aznfs dependency updates.
+    AZFILES_CONFIG_FILE="/opt/microsoft/azfiles-nfs/data/config"
+    if [ -f "$AZFILES_CONFIG_FILE" ]; then
+        sed -i '/AUTO_UPDATE_AZFILES_NFS/d' "$AZFILES_CONFIG_FILE"
+        echo "AUTO_UPDATE_AZFILES_NFS=false" >> "$AZFILES_CONFIG_FILE"
+    fi
+
 #
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
 # Additionally, ask user about auto update configuration.
@@ -128,10 +131,6 @@ if [ ! -f "$FLAG_FILE" ]; then
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
-
-        # Start the watchdog service for NFSv4
-        systemctl enable aznfswatchdogv4
-        systemctl start aznfswatchdogv4
 else
         # Clean up the update in progress flag file.
         rm -f "$FLAG_FILE"

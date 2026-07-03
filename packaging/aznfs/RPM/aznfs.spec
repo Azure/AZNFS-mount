@@ -5,10 +5,10 @@ Summary: Mount helper program for Azure Blob NFS mounts, providing a secure comm
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
 %if 0%{?custom_stunnel}
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc, make, wget
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, net-tools, binutils, kernel-headers, openssl, openssl-devel, gcc, make, wget, AZFILES_NFS_PACKAGE_NAME = %{version}-%{release}
 Recommends: build-essential
 %else
-Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
+Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools, AZFILES_NFS_PACKAGE_NAME = %{version}-%{release}
 %endif
 
 #
@@ -32,15 +32,9 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.BUILD_ARCH.tar.gz -C
 
 %files
 /usr/sbin/aznfswatchdog
-/usr/sbin/aznfswatchdogv4
-/sbin/mount.aznfs
-/opt/microsoft/aznfs/common.sh
-/opt/microsoft/aznfs/mountscript.sh
 /opt/microsoft/aznfs/nfsv3mountscript.sh
-/opt/microsoft/aznfs/nfsv4mountscript.sh
 /opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
-/lib/systemd/system/aznfswatchdogv4.service
 OPT_LIBS
 /opt/microsoft/aznfs/sample-turbo-config.yaml
 /sbin/aznfsclient
@@ -172,9 +166,6 @@ if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
         systemctl stop aznfswatchdog
         systemctl disable aznfswatchdog
 
-        systemctl stop aznfswatchdogv4
-        systemctl disable aznfswatchdogv4
-
         echo "Stopped aznfs watchdog service"
 fi
 
@@ -234,15 +225,11 @@ EOF
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
-chmod 0755 /usr/sbin/aznfswatchdogv4
-chmod 0755 /opt/microsoft/aznfs/mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/nfsv3mountscript.sh
-chmod 0755 /opt/microsoft/aznfs/nfsv4mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
-chmod 0644 /opt/microsoft/aznfs/common.sh
 
-# Set suid bit for mount.aznfs to allow mount for non-super user.
-chmod 4755 /sbin/mount.aznfs
+# common.sh is owned by azfiles-nfs; keep the legacy aznfs path for compatibility.
+ln -sfn /opt/microsoft/azfiles-nfs/common.sh /opt/microsoft/aznfs/common.sh
 
 # Create data directory for holding mountmap and log file. 
 mkdir -p /opt/microsoft/aznfs/data
@@ -291,6 +278,13 @@ if [ ! -f "$CONFIG_FILE" ]; then
         chmod 0644 "$CONFIG_FILE"
 fi
 
+	# When aznfs is installed, azfiles-nfs is expected to follow aznfs dependency updates.
+	AZFILES_CONFIG_FILE="/opt/microsoft/azfiles-nfs/data/config"
+	if [ -f "$AZFILES_CONFIG_FILE" ]; then
+		sed -i '/AUTO_UPDATE_AZFILES_NFS/d' "$AZFILES_CONFIG_FILE"
+		echo "AUTO_UPDATE_AZFILES_NFS=false" >> "$AZFILES_CONFIG_FILE"
+	fi
+
 #
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
 # Additionally, ask user about auto update configuration.
@@ -305,10 +299,6 @@ if [ ! -f "$FLAG_FILE" ]; then
         systemctl daemon-reload
         systemctl enable aznfswatchdog
         systemctl start aznfswatchdog
-
-        # Start watchdog service for NFSv4
-        systemctl enable aznfswatchdogv4
-        systemctl start aznfswatchdogv4
 else
         # Clean up the update in progress flag file.
         rm -f "$FLAG_FILE"
@@ -335,9 +325,15 @@ if [ $1 == 0 ]; then
 	existing_mounts_v4=$(cat /opt/microsoft/aznfs/data/mountmapv4 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts_v3 -ne 0 -o $existing_mounts_v4 -ne 0 ]; then
 		echo
-		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
-		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
-		read -n 1 result < /dev/tty
+		if [ -t 0 ] && [ -e /dev/tty ]; then
+			echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
+			echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
+			read -n 1 result < /dev/tty
+		else
+			echo "Cannot remove AZNFS with active mounts in non-interactive mode." >&2
+			echo "Please unmount shares first, then retry uninstall." >&2
+			exit 1
+		fi
 		echo
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
@@ -358,9 +354,6 @@ if [ $1 == 0 ]; then
 	# Stop aznfswatchdog in case of removing the package.
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
-
-	systemctl stop aznfswatchdogv4
-	systemctl disable aznfswatchdogv4
 
 	echo "Stopped aznfswatchdog service"
 

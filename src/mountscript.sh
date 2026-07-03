@@ -9,7 +9,7 @@
 # Load common aznfs helpers.
 #
 AZNFS_VERSION="unknown"
-. /opt/microsoft/aznfs/common.sh
+. /opt/microsoft/azfiles-nfs/common.sh
 
 #
 # True if user has asked for verbose logs using '-v' or '--verbose' with mount command.
@@ -197,6 +197,28 @@ check_turbo_option()
     fi
 }
 
+is_package_installed()
+{
+    local package_name="$1"
+
+    if command -v dpkg-query >/dev/null 2>&1; then
+        dpkg-query -W -f='${Status}' "$package_name" 2>/dev/null | grep -q 'install ok installed'
+    elif command -v rpm >/dev/null 2>&1; then
+        rpm -q "$package_name" >/dev/null 2>&1
+    else
+        return 1
+    fi
+}
+
+is_azfiles_only_install()
+{
+    if is_package_installed azfiles-nfs && ! is_package_installed aznfs; then
+        return 0
+    fi
+
+    return 1
+}
+
 # [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
 vecho "Got arguments: [$*]"
 
@@ -235,6 +257,12 @@ if [ "$nfs_vers" == "4.1" ]; then
     fi
     AZ_PREFIX="file"
 elif [ "$nfs_vers" == "3" ]; then
+    if is_azfiles_only_install; then
+        eecho "Blob NFS mounts are not supported when only azfiles-nfs is installed."
+        eecho "Install aznfs to mount Blob NFS shares."
+        eecho "Mount failed!"
+        exit 1
+    fi
     AZ_PREFIX="blob"
 else
     eecho "NFS version is not supported by mount helper: $nfs_vers!"
