@@ -848,7 +848,7 @@ octets_in_ipv4_prefix()
 search_free_local_ip_with_prefix()
 {
     initial_ip_prefix=$1
-    num_octets=$(octets_in_ipv4_prefix $ip_prefix)
+    num_octets=$(octets_in_ipv4_prefix $initial_ip_prefix)
 
     if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
         eecho "Invalid IPv4 prefix: ${ip_prefix}"
