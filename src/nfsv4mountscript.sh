@@ -41,6 +41,9 @@ STUNNEL_CAFILE=
 #
 USER_CAFILE=
 
+# Default curves to use when FIPS mode is enabled
+AZNFS_FIPS_CURVES="${AZNFS_FIPS_CURVES:-${FIPS_CURVES:-P-256:P-384:P-521}}"
+
 ssl_version=
 
 # TODO: Might have to use portmap entry in future to determine the CONNECT_PORT for nfsv3.
@@ -319,6 +322,15 @@ add_stunnel_configuration()
     # Set sslVersion if specified in the mount options.
     if [ -n "$ssl_version" ]; then
         echo "sslVersion = TLSv${ssl_version}" >> $stunnel_conf_file
+    fi
+
+    if [ -r /proc/sys/crypto/fips_enabled ] && [ "$(</proc/sys/crypto/fips_enabled)" = "1" ]; then
+        echo "curves = $AZNFS_FIPS_CURVES" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add curves option to $stunnel_conf_file!"
+            return 1
+        fi
     fi
 
     echo "debug = $DEBUG_LEVEL" >> $stunnel_conf_file
