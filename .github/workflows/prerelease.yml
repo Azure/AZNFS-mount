@@ -57,6 +57,18 @@ jobs:
         export BUILD_TYPE=${{ github.event.inputs.buildType }}
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
+    # POC: reuse the existing Ubuntu runner for the Turbo-free Azure Linux RPM.
+    - name: Run Package.sh for Azure Linux
+      shell: bash
+      run: |
+        export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+        export STG_DIR=$GITHUB_WORKSPACE/azurelinux-amd64
+        export SOURCE_DIR=$GITHUB_WORKSPACE/amd64
+        export AZNFS_PACKAGE_TARGET=azurelinux
+        chmod +x $SOURCE_DIR/package.sh
+        $SOURCE_DIR/package.sh
+        cp $STG_DIR/azurelinux/root/rpmbuild/RPMS/x86_64/aznfs-${RELEASE_NUMBER}-1.x86_64.rpm \
+          $STG_DIR/aznfs-azurelinux-${RELEASE_NUMBER}-1.x86_64.rpm
     - name: Create Test Release
       uses: softprops/action-gh-release@v1
       with:
@@ -71,6 +83,7 @@ jobs:
           ${{ github.workspace }}/amd64/stunnel/root/rpmbuild/RPMS/x86_64/aznfs_stunnel_custom-${{ github.event.inputs.versionName }}-1.x86_64.rpm
           ${{ github.workspace }}/amd64/scripts/aznfs_install.sh
           ${{ github.workspace }}/amd64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.x86_64.tar.gz
+          ${{ github.workspace }}/azurelinux-amd64/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1.x86_64.rpm
         body: |
           New Test Release ${{ github.event.inputs.versionName }}
 
@@ -104,6 +117,18 @@ jobs:
         export BUILD_TYPE=${{ github.event.inputs.buildType }}
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
+    # POC: reuse the existing Ubuntu runner for the Turbo-free Azure Linux RPM.
+    - name: Run Package.sh for Azure Linux
+      shell: bash
+      run: |
+        export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+        export STG_DIR=$GITHUB_WORKSPACE/azurelinux-arm64
+        export SOURCE_DIR=$GITHUB_WORKSPACE/arm64
+        export AZNFS_PACKAGE_TARGET=azurelinux
+        chmod +x $SOURCE_DIR/package.sh
+        $SOURCE_DIR/package.sh
+        cp $STG_DIR/azurelinux/root/rpmbuild/RPMS/aarch64/aznfs-${RELEASE_NUMBER}-1.aarch64.rpm \
+          $STG_DIR/aznfs-azurelinux-${RELEASE_NUMBER}-1.aarch64.rpm
     - name: Create Test Release
       uses: softprops/action-gh-release@v1
       with:
@@ -117,5 +142,6 @@ jobs:
           ${{ github.workspace }}/arm64/suse/root/rpmbuild/RPMS/aarch64/aznfs_sles-${{ github.event.inputs.versionName }}-1.aarch64.rpm
           ${{ github.workspace }}/arm64/stunnel/root/rpmbuild/RPMS/aarch64/aznfs_stunnel_custom-${{ github.event.inputs.versionName }}-1.aarch64.rpm
           ${{ github.workspace }}/arm64/tarball/aznfs-${{ github.event.inputs.versionName }}-1.aarch64.tar.gz
+          ${{ github.workspace }}/azurelinux-arm64/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1.aarch64.rpm
         body: |
           New Test Release ${{ github.event.inputs.versionName }}

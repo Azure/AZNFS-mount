@@ -1,7 +1,11 @@
 Name: AZNFS_PACKAGE_NAME
 Version: x.y.z
 Release: 1
+%if 0%{?exclude_turbonfs}
+Summary: Mount helper program for Azure Blob and Azure File NFS mounts; TurboNFS is not supported on Azure Linux
+%else
 Summary: Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
+%endif
 License: MIT
 URL: https://github.com/Azure/AZNFS-mount/blob/main/README.md
 %if 0%{?custom_stunnel}
@@ -11,20 +15,18 @@ Recommends: build-essential
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
 %endif
 
-#
-# We bundle some libs under /opt/microsoft/aznfs/libs/ which are to be used by /sbin/aznfsclient.
-# This allows us to not have dependency on the libs provided by the distro thus making us agnostic of the distro and the
-# same binary correctly works on all distros regardless of the glibc version (and/or other libs) used by the distro.
-# We do this as some of the libs that we use do not have a static version.
-# With the __provides_exclude_from directive we tell the RPM package manager to leave these libs alone for our use
-# and not confuse other packages with those. Since we are self sufficient and we don't need any libs from the system,
-# we use the __requires_exclude_from directive to tell the package manager.
-#
+%if !0%{?exclude_turbonfs}
+# These exclusions apply only to the bundled TurboNFS libraries and binary.
 %global __provides_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
 %global __requires_exclude_from ^(/opt/microsoft/aznfs/libs/.*\.so.*|/sbin/aznfsclient)$
+%endif
 
 %description
+%if 0%{?exclude_turbonfs}
+Mount helper program for Azure Blob and Azure File NFS mounts. The Turbo NFS client is not included and is not supported on Azure Linux.
+%else
 Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
+%endif
 
 %prep
 mkdir -p ${STG_DIR}/RPM_DIR/root/rpmbuild/SOURCES/
@@ -41,9 +43,11 @@ tar -xzvf ${STG_DIR}/AZNFS_PACKAGE_NAME-${RELEASE_NUMBER}-1.BUILD_ARCH.tar.gz -C
 /opt/microsoft/aznfs/aznfs_install.sh
 /lib/systemd/system/aznfswatchdog.service
 /lib/systemd/system/aznfswatchdogv4.service
+%if !0%{?exclude_turbonfs}
 OPT_LIBS
 /opt/microsoft/aznfs/sample-turbo-config.yaml
 /sbin/aznfsclient
+%endif
 
 %pre
 init="$(ps -q 1 -o comm=)"

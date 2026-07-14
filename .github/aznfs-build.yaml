@@ -80,6 +80,25 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
+          # POC: reuse the existing Ubuntu runner for the Turbo-free Azure Linux RPM.
+          - script: |
+              export RELEASE_NUMBER=${{ parameters.versionName }}
+              export STG_DIR=$(System.DefaultWorkingDirectory)/azurelinux-amd64
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
+              export AZNFS_PACKAGE_TARGET=azurelinux
+              chmod +x $SOURCE_DIR/generate_package.sh
+              $SOURCE_DIR/generate_package.sh
+              mkdir -p $STG_DIR/artifacts
+              cp $STG_DIR/azurelinux/root/rpmbuild/RPMS/x86_64/aznfs-${RELEASE_NUMBER}-1.x86_64.rpm \
+                $STG_DIR/artifacts/aznfs-azurelinux-${RELEASE_NUMBER}-1.x86_64.rpm
+            displayName: "Build Azure Linux RPM"
+
+          - task: PublishBuildArtifacts@1
+            displayName: "Publish Azure Linux RPM"
+            inputs:
+              PathtoPublish: $(System.DefaultWorkingDirectory)/azurelinux-amd64/artifacts
+              artifactName: 'aznfs-azurelinux-amd64'
+
       - job: package_aznfs_arm64
         displayName: Package and Release ${{ parameters.versionName }} for arm64
         pool:
@@ -128,6 +147,26 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
+          # POC: reuse the existing Ubuntu runner for the Turbo-free Azure Linux RPM.
+          - script: |
+              export RELEASE_NUMBER=${{ parameters.versionName }}
+              export STG_DIR=$(System.DefaultWorkingDirectory)/azurelinux-arm64
+              export SOURCE_DIR=$(System.DefaultWorkingDirectory)
+              export AZNFS_PACKAGE_TARGET=azurelinux
+              chmod +x $SOURCE_DIR/generate_package.sh
+              $SOURCE_DIR/generate_package.sh
+              mkdir -p $STG_DIR/artifacts
+              cp $STG_DIR/azurelinux/root/rpmbuild/RPMS/aarch64/aznfs-${RELEASE_NUMBER}-1.aarch64.rpm \
+                $STG_DIR/artifacts/aznfs-azurelinux-${RELEASE_NUMBER}-1.aarch64.rpm
+            displayName: "Build Azure Linux RPM"
+
+          - task: PublishBuildArtifacts@1
+            displayName: "Publish Azure Linux RPM"
+            inputs:
+              PathtoPublish: $(System.DefaultWorkingDirectory)/azurelinux-arm64/artifacts
+              artifactName: 'aznfs-azurelinux-arm64'
+
+  # TODO: add azurelinux later to release and publish stages post approvals.
   - stage: ReleaseArtifacts
     displayName: "Sign and Release Artifacts"
     jobs:
