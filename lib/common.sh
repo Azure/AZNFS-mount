@@ -533,7 +533,9 @@ ensure_mountmap_exist_nolock()
     local mountmap_file=$1
     local entry=$2
 
-    IFS=" " read l_host l_ip l_nfsip <<< "$entry"
+    # A v4 non-TLS entry carries a trailing crc32 field; read it into l_crc32 so
+    # l_nfsip stays clean for the iptable rule. v3 entries have no 4th field.
+    IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$entry"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
         eecho "[$entry] failed to add to ${mountmap_file}!"
         return 1
@@ -595,7 +597,9 @@ ensure_mountmap_not_exist()
         fi
 
         # Delete the iptable rule corresponding to the outgoing mountmap entry.
-        IFS=" " read l_host l_ip l_nfsip <<< "$entry"
+        # A v4 non-TLS entry carries a trailing crc32 field; read it into l_crc32
+        # so l_nfsip stays clean for the iptable rule.
+        IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$entry"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
                 eecho "[$entry] Refusing to remove from ${mountmap_file} as iptable entry could not be deleted!"
