@@ -468,6 +468,18 @@ process_nfsv4_notls_mounts()
         verify_iptable_entry "$l_ip" "$l_nfsip"
 
         #
+        # Private endpoints (VNet) have no client-side ZRS failover and no
+        # account-migration handling: Azure manages failover internally and the
+        # endpoint IP is stable. Skip both migration polling and ZRS detection
+        # for them — this entry is a no-op past the cleanup/iptable checks.
+        # Note: for non-TLS, the real storage IP is $l_nfsip ($l_ip is the local
+        # DNAT proxy IP, which is always in the private range).
+        #
+        if is_private_ip "$l_nfsip"; then
+            continue
+        fi
+
+        #
         # Account migration (server-signalled), checked BEFORE ZRS failover.
         # The server publishes migration state to a virtual file named after the
         # crc32 field at the share root: "<PRT_stage>;<FSLocationIP>". If the
@@ -740,7 +752,10 @@ process_nfsv4_mounts()
             # via a normal stunnel failover to the new IP and skip the reactive
             # ZRS path this iteration.
             #
-            if [ -n "$l_crc32" ] && [ -n "$l_host" ]; then
+            # Skip migration polling for private endpoints — Azure handles
+            # failover internally and the endpoint IP is stable (mirrors the
+            # ZRS guard below).
+            if [ -n "$l_crc32" ] && [ -n "$l_host" ] && ! is_private_ip "$l_ip"; then
                 local tls_mp=$(echo "$findmnt" | grep "$accept_port" | awk '{print $1}' | sed 's/^[^/]*//' | head -1)
                 if [ -n "$tls_mp" ]; then
                     local vfile="${tls_mp}/${l_crc32}"

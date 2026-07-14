@@ -12,6 +12,11 @@ On each entry, the **migration poll runs first**; if it acts it `continue`s and 
 that pass (the server signal is authoritative). The `crc32` field is preserved through a ZRS
 failover, so migration keeps working afterward — and migration preserves everything ZRS needs.
 
+**Private endpoints (VNet) are a no-op for BOTH mechanisms.** Azure handles failover internally
+and the endpoint IP is stable, so neither ZRS probing nor migration polling runs for a private
+storage IP. (TLS keys off `l_ip`; non-TLS keys off `l_nfsip`, since its `l_ip` is the local DNAT
+proxy and always private.)
+
 The diagrams below are [Mermaid](https://mermaid.js.org/); GitHub and VS Code render them inline.
 
 ## 1. The pulse: one watchdog tick
@@ -44,7 +49,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    S["Entry parsed"] --> C1{"l_crc32 present?\n(TLS also needs l_host)"}
+    S["Entry parsed + cleanup/iptable checks"] --> P{"storage IP private?\n(TLS: l_ip / non-TLS: l_nfsip)"}
+    P -- yes --> NOOP["no-op: skip BOTH migration and ZRS\n(private endpoint → Azure handles it)"]
+    P -- no --> C1{"l_crc32 present?\n(TLS also needs l_host)"}
     C1 -- no --> Z["skip migration → fall through to ZRS"]
     C1 -- yes --> C2["derive mountpoint from findmnt\nvfile = mountpoint/crc32\n(crc32 = AZNFSCtrl.txt<hash>)"]
     C2 --> C3{"vfile exists?"}
