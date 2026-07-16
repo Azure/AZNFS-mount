@@ -14,7 +14,12 @@ mtime_mountmap_notls=0
 NFSFS_SERVERS_FILE="/proc/fs/nfsfs/servers"
 
 # How often to probe the storage IP for reachability (seconds).
-HEALTH_CHECK_FREQUENCY=60
+# This is the ZRS-failover detection cadence: worst-case detection latency for a
+# tenant failure is roughly this value (plus the ~3s probe timeout), before any
+# recovery/reconnect. Customers with tight HA monitors (e.g. Pacemaker resource
+# timeouts) can lower it via AZNFS_HEALTH_CHECK_FREQUENCY to shrink worst-case
+# detection time. Default 60s preserves prior behaviour.
+HEALTH_CHECK_FREQUENCY=${AZNFS_HEALTH_CHECK_FREQUENCY:-60}
 
 #
 # Check conntrack entries for NFSv4 non-TLS DNAT mounts (port 2049).

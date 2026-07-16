@@ -200,6 +200,49 @@ sequenceDiagram
 4. **Private endpoints excluded** — `is_private_ip()` gate ensures failover only runs for public endpoints (Azure networking handles private endpoint failover internally)
 5. **Separate mountmap file** (`mountmapv4notls`) for non-TLS — avoids mixing with TLS semicolon-delimited entries in `mountmapv4`
 
+## Timing, Detection vs. Recovery, and Pacemaker Guidance
+
+**Important distinction:** the `60s` figure is the *detection cadence*, **not** the total client-visible failover time. Plan HA timeouts against the worst-case end-to-end recovery, not the probe interval.
+
+### Two-layer detection
+
+| Layer | Mechanism | Cadence | Tunable |
+|-------|-----------|---------|---------|
+| L1 — Conntrack (passive) | Kernel `conntrack` scan for stuck `SYN_SENT`/`UNREPLIED` entries to port 2049 | every **5s** (`MONITOR_INTERVAL_SECS`) | not currently exposed |
+| L2 — Active TCP probe | `nc -w 3 -z <storage_ip> 2049` (single SYN, 3s timeout) | every **60s** (`HEALTH_CHECK_FREQUENCY`) | **`AZNFS_HEALTH_CHECK_FREQUENCY`** |
+
+L1 depends on kernel conntrack/TCP retransmit timing (only fires once an entry is actually stuck). L2 is independent of the mount's TCP stack.
+
+### End-to-end client-visible failover budget
+
+```
+total ≈ detection latency  +  recovery actions  +  NFS client reconnect
+```
+
+| Phase | Typical cost |
+|-------|--------------|
+| Detection latency (L2) | **0–60s** (depends where in the probe cycle the failure lands) + up to 3s probe timeout |
+| Detection latency (L1, stuck-SYN case) | ~5s cycles, but gated by kernel conntrack/TCP retransmit timing |
+| Recovery — non-TLS | DNAT swap, **sub-second** |
+| Recovery — TLS | stunnel kill + restart, **~1–3s** |
+| NFS client reconnect | TCP re-handshake + NFS retransmit, governed by mount `timeo`/`retrans` |
+
+**Worst case can exceed 60s** (≈ up to 60s detection + a few seconds recovery + client reconnect).
+
+### Pacemaker / clustered-HA guidance
+
+Azure's published Pacemaker guidance often uses a **60s** monitor/timeout for the storage resource. Because *detection alone* can take up to ~60s here, a failure landing early in the probe window plus recovery can overrun a 60s monitor and trigger an unnecessary fence/failover. Recommended options:
+
+1. **Raise the Pacemaker resource monitor timeout** to cover worst case — e.g. `timeout ≥ 120s` (safest, no AZNFS change needed).
+2. **Shorten AZNFS detection** by lowering the probe cadence. Create `/opt/microsoft/aznfs/data/config` with, for example:
+   ```
+   AZNFS_HEALTH_CHECK_FREQUENCY=15
+   ```
+   then `systemctl restart aznfswatchdogv4`. This reduces worst-case detection from ~60s to ~15s. (The watchdog unit reads this file via an optional `EnvironmentFile`; the default remains 60s if the file is absent.)
+3. **Combine both** — a lower probe cadence *and* a monitor timeout with headroom.
+
+> Trade-off: a lower `AZNFS_HEALTH_CHECK_FREQUENCY` means more frequent `nc` probes per mount. The cost is one lightweight SYN per mount per interval; keep it in the 10–20s range rather than very low single-digit values.
+
 ## Testing Method
 
 ### Simulation Approach

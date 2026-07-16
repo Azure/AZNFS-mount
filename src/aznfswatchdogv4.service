@@ -12,6 +12,11 @@ After=
 [Service]
 User=root
 
+# Optional operator config for tunables such as AZNFS_HEALTH_CHECK_FREQUENCY
+# (ZRS-failover detection cadence). The leading '-' makes it optional, so the
+# service still starts if the file is absent (default behaviour is unchanged).
+EnvironmentFile=-/opt/microsoft/aznfs/data/config
+
 ExecStart=/usr/sbin/aznfswatchdogv4
 Restart=always
 RestartSec=5
