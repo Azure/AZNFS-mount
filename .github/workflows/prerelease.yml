@@ -57,7 +57,8 @@ jobs:
         export BUILD_TYPE=${{ github.event.inputs.buildType }}
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
-    # POC: reuse the existing Ubuntu runner for the Turbo-free Azure Linux RPM.
+    # Build on the existing architecture-matched Ubuntu runner because the Azure
+    # Linux target creates only an RPM and does not compile or package TurboNFS.
     - name: Run Package.sh for Azure Linux
       shell: bash
       run: |
@@ -117,7 +118,8 @@ jobs:
         export BUILD_TYPE=${{ github.event.inputs.buildType }}
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
-    # POC: reuse the existing Ubuntu runner for the Turbo-free Azure Linux RPM.
+    # Build on the existing architecture-matched Ubuntu runner because the Azure
+    # Linux target creates only an RPM and does not compile or package TurboNFS.
     - name: Run Package.sh for Azure Linux
       shell: bash
       run: |

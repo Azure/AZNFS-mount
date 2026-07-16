@@ -80,7 +80,9 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
-          # POC: reuse the existing Ubuntu runner for the Turbo-free Azure Linux RPM.
+          # Build on the existing architecture-matched Ubuntu runner. The Azure
+          # Linux target omits TurboNFS and uses a separate staging directory so
+          # the RPM can be published.
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
               export STG_DIR=$(System.DefaultWorkingDirectory)/azurelinux-amd64
@@ -147,7 +149,9 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
-          # POC: reuse the existing Ubuntu runner for the Turbo-free Azure Linux RPM.
+          # Build on the existing architecture-matched Ubuntu runner. The Azure
+          # Linux target omits TurboNFS and uses a separate staging directory so
+          # the RPM can be published.
           - script: |
               export RELEASE_NUMBER=${{ parameters.versionName }}
               export STG_DIR=$(System.DefaultWorkingDirectory)/azurelinux-arm64
@@ -166,7 +170,8 @@ stages:
               PathtoPublish: $(System.DefaultWorkingDirectory)/azurelinux-arm64/artifacts
               artifactName: 'aznfs-azurelinux-arm64'
 
-  # TODO: add azurelinux later to release and publish stages post approvals.
+  # TODO: Add Azure Linux artifacts to release signing and publication after approval.
+  # Until then, keep them isolated from the artifacts downloaded by later stages.
   - stage: ReleaseArtifacts
     displayName: "Sign and Release Artifacts"
     jobs:

@@ -118,6 +118,9 @@ AZNFSCLIENT_BINARY_PATH="/sbin/aznfsclient"
 #
 AZNFSCLIENT_MOUNT_ARGS=
 
+#
+# Return success only when the operating system identifies itself as Azure Linux.
+#
 is_azure_linux()
 {
     local distro_id=""
@@ -748,8 +751,9 @@ aznfsclient_mount()
 }
 
 #
-# TurboNFS is intentionally not packaged on Azure Linux. Fail before trying
-# to start the missing client binary and waiting for its mount status.
+# Azure Linux packages intentionally omit /sbin/aznfsclient. Reject the current
+# "turbo" option and legacy "fuse" alias before watchdog validation or TurboNFS
+# setup; otherwise the client launch fails and the mount status wait times out.
 #
 turbo_option_regex="(^|,)(turbo|fuse)(,|$)"
 if [[ "$MOUNT_OPTIONS" =~ $turbo_option_regex ]] && is_azure_linux; then

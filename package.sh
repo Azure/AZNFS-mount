@@ -219,8 +219,9 @@ rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 # Insert release number to aznfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
 
-# POC: build only the standard mount helper RPM for Azure Linux.
-# Returning here ensures TurboNFS is neither compiled nor added to this package.
+# Azure Linux packages contain only the standard AZNFS mount helper.
+# Generate that RPM and exit before the shared packaging path compiles TurboNFS
+# or creates package formats that are not produced for Azure Linux.
 if [ "$package_target" == "azurelinux" ]; then
 	generate_rpm_package azurelinux
 	exit 0
