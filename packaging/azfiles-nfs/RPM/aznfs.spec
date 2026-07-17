@@ -10,7 +10,14 @@ Recommends: build-essential
 %else
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools
 %endif
-Obsoletes: aznfs < x.y.z
+
+# One-time migration bridge from the monolithic pre-split aznfs package.
+%global legacy_aznfs_last_monolithic 3.0.19-1
+Obsoletes: AZNFS_PACKAGE_NAME <= %{legacy_aznfs_last_monolithic}
+
+# Allow co-install only when aznfs and azfiles-nfs versions match exactly.
+Conflicts: AZNFS_PACKAGE_NAME < %{version}-%{release}
+Conflicts: AZNFS_PACKAGE_NAME > %{version}-%{release}
 
 %description
 Mount helper program for Azure Files NFS mounts.

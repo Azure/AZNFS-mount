@@ -11,6 +11,10 @@ Recommends: build-essential
 Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, iproute, util-linux, nfs-utils, NETCAT_PACKAGE_NAME, newt, stunnel, net-tools, AZFILES_NFS_PACKAGE_NAME = %{version}-%{release}
 %endif
 
+# Allow co-install only when aznfs and azfiles-nfs versions match exactly.
+Conflicts: AZFILES_NFS_PACKAGE_NAME < %{version}-%{release}
+Conflicts: AZFILES_NFS_PACKAGE_NAME > %{version}-%{release}
+
 #
 # We bundle some libs under /opt/microsoft/aznfs/libs/ which are to be used by /sbin/aznfsclient.
 # This allows us to not have dependency on the libs provided by the distro thus making us agnostic of the distro and the

@@ -769,20 +769,32 @@ run_transition_scenarios()
     local storage_account="$3"
     local files_storage_account="${FILES_STORAGE_ACCOUNT:-$storage_account}"
     local install_mode="${INSTALL_MODE:-release}"
+    local use_preseeded_legacy_aznfs="${USE_PRESEEDED_LEGACY_AZNFS:-0}"
 
     # Matrix runs execute multiple remove/install cycles; avoid long sleeps unless explicitly requested.
     AZNFS_REMOVE_SLEEP_SECONDS="${AZNFS_REMOVE_SLEEP_SECONDS:-0}"
 
     log_step "Scenario 1: Install azfiles-nfs (V+1) when aznfs (V) is present"
-    remove_aznfs_and_azfiles_if_present
 
-    if [ "$install_mode" == "local" ]; then
-        AZNFS_LOCAL_PACKAGE="$LEGACY_AZNFS_LOCAL_PACKAGE"
-        # Legacy aznfs is pre-split and must install standalone.
-        unset AZFILES_LOCAL_PACKAGE
+    if [ "$use_preseeded_legacy_aznfs" == "1" ]; then
+        if ! is_aznfs_installed; then
+            fail "Scenario 1 precondition failed: expected pre-seeded aznfs to already be installed"
+        fi
+
+        if is_azfiles_installed; then
+            fail "Scenario 1 precondition failed: azfiles-nfs must not be preinstalled when USE_PRESEEDED_LEGACY_AZNFS=1"
+        fi
+    else
+        remove_aznfs_and_azfiles_if_present
+
+        if [ "$install_mode" == "local" ]; then
+            AZNFS_LOCAL_PACKAGE="$LEGACY_AZNFS_LOCAL_PACKAGE"
+            # Legacy aznfs is pre-split and must install standalone.
+            unset AZFILES_LOCAL_PACKAGE
+        fi
+
+        install_aznfs "$legacy_release_number"
     fi
-
-    install_aznfs "$legacy_release_number"
 
     if [ "$install_mode" == "local" ]; then
         AZFILES_LOCAL_PACKAGE="$CURRENT_AZFILES_LOCAL_PACKAGE"
