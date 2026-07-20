@@ -11,11 +11,11 @@
 # For accessing the secondary endpoint (RA-GRS), append "-secondary" to the
 # account name, e.g., "myaccount-secondary".
 #
-account: sjc22prdste06hnfsv3acc1
-container: nfsv3test
+account: nfsv3acc1bl2prdev13a
+container: testcont
 
 #cloud_suffix: blob.core.windows.net
-#cloud_suffix: blob.preprod.core.windows.net
+cloud_suffix: blob.preprod.core.windows.net
 #port: 2048
 
 #
