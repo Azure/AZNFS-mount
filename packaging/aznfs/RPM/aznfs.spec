@@ -24,8 +24,10 @@ Requires: bash, PROCPS_PACKAGE_NAME, conntrack-tools, iptables, bind-utils, ipro
 # and not confuse other packages with those. Since we are self sufficient and we don't need any libs from the system,
 # we use the __requires_exclude_from directive to tell the package manager.
 #
+%if !0%{?azurelinux_build}
 %global __provides_exclude_from ^/opt/microsoft/aznfs/libs/.*\.so.*$
 %global __requires_exclude_from ^(/opt/microsoft/aznfs/libs/.*\.so.*|/sbin/aznfsclient)$
+%endif
 
 %description
 Mount helper program for Azure Blob NFS mounts, providing a secure communication channel for Azure File NFS mounts, and supporting the Turbo NFS client
