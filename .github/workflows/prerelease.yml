@@ -75,11 +75,60 @@ jobs:
         body: |
           New Test Release ${{ github.event.inputs.versionName }}
 
-  # NOTE: COMMENT THIS JOB IF AZURE LINUX RUNNER IS NOT CONNECTED  
-  package_mount_helper_azurelinux_amd64:
-    name: Package and Release ${{ github.event.inputs.versionName }} for azurelinux
+  # NOTE: UNCOMMENT THIS JOB IF THE AZURE LINUX AMD64 RUNNER IS CONNECTED
+  # package_mount_helper_azurelinux_amd64:
+  #   name: Package and Release ${{ github.event.inputs.versionName }} for azurelinux
+  #   runs-on: self-hosted
+  #   steps:
+  #   - name: Checkout repository
+  #     uses: actions/checkout@v3
+  #     with:
+  #       path: azurelinux
+  #
+  #   - name: Install prerequisites on Azure Linux
+  #     run: |
+  #       sudo tdnf update -y
+  #       sudo tdnf install -y glibc-static rpm-build perl perl-IPC-Cmd \
+  #         gcc gcc-c++ make git curl unzip zip tar cmake autoconf automake libtool \
+  #         zlib zlib-devel libuuid-devel gnutls gnutls-devel nfs-utils \
+  #         libyaml-devel spdlog-devel nlohmann-json-devel jemalloc jemalloc-devel \
+  #         fuse3 fuse3-devel pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build \
+  #         binutils kernel-headers kernel-devel procps-ng conntrack-tools iptables \
+  #         bind-utils iproute util-linux nmap-ncat newt stunnel net-tools libasan
+  #
+  #   - name: Run Package.sh for azurelinux
+  #     run: |
+  #       export RELEASE_NUMBER=${{ github.event.inputs.versionName }}
+  #       export STG_DIR=$GITHUB_WORKSPACE
+  #       export SOURCE_DIR=$GITHUB_WORKSPACE/azurelinux
+  #       export BUILD_TYPE=${{ github.event.inputs.buildType }}
+  #       export BUILD_MACHINE=azurelinux
+  #       chmod +x $SOURCE_DIR/package.sh
+  #       $SOURCE_DIR/package.sh
+  #
+  #   - name: Create Release (azurelinux)
+  #     uses: softprops/action-gh-release@v1
+  #     with:
+  #       name: Release ${{ github.event.inputs.versionName }}
+  #       tag_name: ${{ github.event.inputs.versionName }}
+  #       target_commitish: ${{ github.sha }}
+  #       files: |
+  #         ${{ github.workspace }}/azurelinux/root/rpmbuild/RPMS/x86_64/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+  #       body: |
+  #         New Release ${{ github.event.inputs.versionName }}
+
+  # NOTE: COMMENT THIS JOB IF THE AZURE LINUX ARM64 RUNNER IS NOT CONNECTED
+  package_mount_helper_azurelinux_arm64:
+    name: Package and Release ${{ github.event.inputs.versionName }} for azurelinux arm64
     runs-on: self-hosted
     steps:
+    - name: Verify ARM64 runner
+      run: |
+        if [ "$(uname -m)" != "aarch64" ]; then
+          echo "Expected an aarch64 runner, but found $(uname -m)"
+          exit 1
+        fi
+
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
@@ -89,11 +138,12 @@ jobs:
       run: |
         sudo tdnf update -y
         sudo tdnf install -y glibc-static rpm-build perl perl-IPC-Cmd \
-          gcc gcc-c++ make git curl unzip zip tar cmake \
+          gcc gcc-c++ make git curl unzip zip tar cmake autoconf automake libtool \
           zlib zlib-devel libuuid-devel gnutls gnutls-devel nfs-utils \
-          libyaml-devel spdlog-devel nlohmann-json-devel cmake make \
-          pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build binutils \
-          kernel-headers kernel-devel autoconf automake libtool jemalloc-devel fuse3-devel
+          libyaml-devel spdlog-devel nlohmann-json-devel jemalloc jemalloc-devel \
+          fuse3 fuse3-devel pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build \
+          binutils kernel-headers kernel-devel procps-ng conntrack-tools iptables \
+          bind-utils iproute util-linux nmap-ncat newt stunnel net-tools libasan
 
     - name: Run Package.sh for azurelinux
       run: |
@@ -105,14 +155,14 @@ jobs:
         chmod +x $SOURCE_DIR/package.sh
         $SOURCE_DIR/package.sh
 
-    - name: Create Release (azurelinux)
+    - name: Create Release (azurelinux arm64)
       uses: softprops/action-gh-release@v1
       with:
         name: Release ${{ github.event.inputs.versionName }}
         tag_name: ${{ github.event.inputs.versionName }}
         target_commitish: ${{ github.sha }}
         files: |
-          ${{ github.workspace }}/azurelinux/root/rpmbuild/RPMS/x86_64/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1.x86_64.rpm
+          ${{ github.workspace }}/azurelinux/root/rpmbuild/RPMS/aarch64/aznfs-azurelinux-${{ github.event.inputs.versionName }}-1.aarch64.rpm
         body: |
           New Release ${{ github.event.inputs.versionName }}
 
