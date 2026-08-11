@@ -1076,6 +1076,7 @@ void rpc_task::issue_commit_rpc()
 
     do {
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
 
         if (rpc_nfs3_commit_task(get_rpc_ctx(),
@@ -2654,6 +2655,7 @@ void rpc_task::run_lookup()
          *       caller. Since callback can free the task, it's not safe to
          *       access the task object after making the libnfs call.
          */
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
                                  this) == NULL) {
@@ -2685,6 +2687,7 @@ void rpc_task::run_access()
         args.access = rpc_api->access_task.get_mask();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_access_task(get_rpc_ctx(), access_callback, &args,
                                         this) == NULL) {
@@ -2898,6 +2901,7 @@ void rpc_task::run_getattr()
         args.object = inode->get_fh();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
                                   this) == NULL) {
@@ -2928,6 +2932,7 @@ void rpc_task::run_statfs()
         args.fsroot = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_fsstat_task(get_rpc_ctx(), statfs_callback, &args,
                                  this) == NULL) {
@@ -3233,6 +3238,7 @@ void rpc_task::run_readlink()
         args.symlink = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_readlink_task(get_rpc_ctx(),
                                           readlink_callback,
@@ -5519,6 +5525,7 @@ void rpc_task::fetch_readdir_entries_from_server()
         assert((args.cookie == 0) || (*(uint64_t *) args.cookieverf != 0));
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
@@ -5585,6 +5592,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
         assert((args.cookie == 0) || (*(uint64_t *) args.cookieverf != 0));
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_readdirplus_task(get_rpc_ctx(),
                                       readdirplus_callback,
