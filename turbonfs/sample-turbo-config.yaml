@@ -12,7 +12,7 @@
 # account name, e.g., "myaccount-secondary".
 #
 account: nfsv3acc1bl2prdev13a
-container: testcont
+container: nfsv3test
 
 #cloud_suffix: blob.core.windows.net
 cloud_suffix: blob.preprod.core.windows.net
@@ -62,7 +62,7 @@ sys.nodrc.create_exist_as_success: true
 #
 
 # valid range: [1, 256]
-nconnect: 96
+nconnect: 1
 
 # valid range: [100, 6000]
 timeo: 600
@@ -203,9 +203,10 @@ oom_kill_disable: true
 auth: false
 
 #
-# Option controlling transport security, takes following values:
+# Option controlling transport security. Only "none" is supported.
+# RPC-with-TLS support (and its GnuTLS dependency) has been removed, so the
+# transport is always non-TLS.
 # none: do not use TLS encryption.
-# tls: use TLS encryption, as defined in RPC-with-TLS RFC 9289.
 #
 xprtsec: none
 
