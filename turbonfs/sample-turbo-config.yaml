@@ -62,7 +62,7 @@ sys.nodrc.create_exist_as_success: true
 #
 
 # valid range: [1, 256]
-nconnect: 1
+nconnect: 96
 
 # valid range: [100, 6000]
 timeo: 600
