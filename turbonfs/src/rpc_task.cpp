@@ -1076,6 +1076,7 @@ void rpc_task::issue_commit_rpc()
 
     do {
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
 
         if (rpc_nfs3_commit_task(get_rpc_ctx(),
@@ -1568,6 +1569,7 @@ void rpc_task::issue_write_rpc()
 
     do {
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
 
         if (rpc_nfs3_writev_task(get_rpc_ctx(),
@@ -2653,6 +2655,7 @@ void rpc_task::run_lookup()
          *       caller. Since callback can free the task, it's not safe to
          *       access the task object after making the libnfs call.
          */
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
                                  this) == NULL) {
@@ -2684,6 +2687,7 @@ void rpc_task::run_access()
         args.access = rpc_api->access_task.get_mask();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_access_task(get_rpc_ctx(), access_callback, &args,
                                         this) == NULL) {
@@ -2897,6 +2901,7 @@ void rpc_task::run_getattr()
         args.object = inode->get_fh();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
                                   this) == NULL) {
@@ -2927,6 +2932,7 @@ void rpc_task::run_statfs()
         args.fsroot = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_fsstat_task(get_rpc_ctx(), statfs_callback, &args,
                                  this) == NULL) {
@@ -2970,6 +2976,7 @@ void rpc_task::run_create_file()
             rpc_api->create_task.get_gid();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
                                  this) == NULL) {
@@ -3015,6 +3022,7 @@ void rpc_task::run_mknod()
             rpc_api->mknod_task.get_gid();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_create_task(get_rpc_ctx(), mknod_callback, &args,
                                  this) == NULL) {
@@ -3054,6 +3062,7 @@ void rpc_task::run_mkdir()
         args.attributes.gid.set_gid3_u.gid = rpc_api->mkdir_task.get_gid();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
                                 this) == NULL) {
@@ -3085,6 +3094,7 @@ void rpc_task::run_unlink()
         args.object.name = (char*) rpc_api->unlink_task.get_file_name();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_remove_task(get_rpc_ctx(),
                                  unlink_callback, &args, this) == NULL) {
@@ -3117,6 +3127,7 @@ void rpc_task::run_rmdir()
         args.object.name = (char*) rpc_api->rmdir_task.get_dir_name();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_rmdir_task(get_rpc_ctx(),
                                 rmdir_callback, &args, this) == NULL) {
@@ -3157,6 +3168,7 @@ void rpc_task::run_symlink()
             rpc_api->symlink_task.get_gid();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_symlink_task(get_rpc_ctx(),
                                          symlink_callback,
@@ -3193,6 +3205,7 @@ void rpc_task::run_rename()
         args.to.name = (char*) rpc_api->rename_task.get_newname();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_rename_task(get_rpc_ctx(),
                                         rename_callback,
@@ -3225,6 +3238,7 @@ void rpc_task::run_readlink()
         args.symlink = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_readlink_task(get_rpc_ctx(),
                                           readlink_callback,
@@ -3348,6 +3362,7 @@ void rpc_task::run_setattr()
         }
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
                                   this) == NULL) {
@@ -4128,6 +4143,7 @@ static void read_callback(
                  *       as we are holding all the needed locks and refs.
                  */
                 rpc_retry = false;
+                child_tsk->set_caller_credentials();
                 child_tsk->get_stats().on_rpc_issue();
                 if (rpc_nfs3_read_task(
                         child_tsk->get_rpc_ctx(),
@@ -4406,6 +4422,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                    inode->get_fuse_ino(), args.offset, args.count);
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
@@ -5508,6 +5525,7 @@ void rpc_task::fetch_readdir_entries_from_server()
         assert((args.cookie == 0) || (*(uint64_t *) args.cookieverf != 0));
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
@@ -5574,6 +5592,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
         assert((args.cookie == 0) || (*(uint64_t *) args.cookieverf != 0));
 
         rpc_retry = false;
+        set_caller_credentials();
         stats.on_rpc_issue();
         if (rpc_nfs3_readdirplus_task(get_rpc_ctx(),
                                       readdirplus_callback,
