@@ -1057,7 +1057,7 @@ ensure_iptable_entry()
 
 #
 # We only use lowercase single word names for distro id:
-# ubuntu, centos, redhat, sles.
+# debian, ubuntu, centos, redhat, sles.
 #
 canonicalize_distro_id()
 {
@@ -1100,7 +1100,7 @@ log_version_info()
     #
     sleep 2
 
-    if [ "$distro_id" == "ubuntu" ]; then
+    if [ "$distro_id" == "ubuntu" -o "$distro_id" == "debian" ]; then
         current_version=$(dpkg-query -W -f='${Version}\n' aznfs 2>/dev/null)
     elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" -o "$distro_id" == "ol" -o "$distro_id" == "azurelinux" ]; then
         current_pkg_name=$(rpm -q aznfs)
