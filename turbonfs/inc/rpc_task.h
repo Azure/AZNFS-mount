@@ -2154,16 +2154,6 @@ public:
             struct nfs_context *nfs = get_nfs_context();
             nfs_set_uid(nfs, ctx->uid);
             nfs_set_gid(nfs, ctx->gid);
-
-            /*
-             * Always set group vector to avoid stale supplementary groups
-             * leaking across requests sharing the same nfs context.
-             */
-            if (ctx->ngroups > 0 && ctx->groups) {
-                nfs_set_groups(nfs, ctx->ngroups, ctx->groups);
-            } else {
-                nfs_set_groups(nfs, 0, nullptr);
-            }
         }
     }
 
