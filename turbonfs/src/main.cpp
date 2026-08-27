@@ -37,6 +37,12 @@ std::atomic<bool> client_started = false;
 bool is_azlogin_required = false; 
 
 /*
+ * Should fetch a new token?
+ * A token should be fetched only once per mount.
+ */
+static bool shouldFetchToken = true;
+
+/*
  * Stores the error string to be returned to the mount program over the status pipe.
  */
 std::string status_pipe_error_string;
@@ -632,6 +638,8 @@ auth_token_cb_res *get_auth_token_and_setargs_cb(struct auth_context *auth)
     assert(expirytime >= static_cast<uint64_t>(time(NULL)));
     cb_res->expiry_time = expirytime;
 
+    shouldFetchToken = false;
+
     return cb_res;
 }
 
@@ -833,8 +841,10 @@ int main(int argc, char *argv[])
     }
 
     if (aznfsc_cfg.auth) {
-        // Set the auth token callback for this connection if auth is enabled.
-        set_auth_token_callback(get_auth_token_and_setargs_cb);
+        // Set the auth token callback to fetch a new token.
+        if (shouldFetchToken) {
+            set_auth_token_callback(get_auth_token_and_setargs_cb);
+        }
     } else {
         set_auth_token_callback(get_auth_token_and_setargs_cb_none);
     }
