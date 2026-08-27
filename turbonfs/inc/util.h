@@ -28,6 +28,11 @@ namespace aznfsc {
  */
 uint64_t get_total_ram();
 
+/*
+ * Check file extension has tar or zip.
+ */
+bool has_tar_or_zip_extension(const char *filename);
+
 /**
  * Set readahead_kb for kernel readahead.
  * This sets the kernel readahead value of aznfsc_cfg.readahead_kb iff kernel
