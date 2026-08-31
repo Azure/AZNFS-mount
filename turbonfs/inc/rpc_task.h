@@ -1,6 +1,8 @@
 #ifndef __RPC_TASK_H__
 #define __RPC_TASK_H__
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <string>
 #include <mutex>
@@ -2121,7 +2123,7 @@ public:
     }
 
     /**
-        * Set RPC AUTH_UNIX credentials to match the FUSE caller's uid/gid.
+     * Set RPC AUTH_UNIX credentials to match the FUSE caller's uid/gid/groups.
      *
      * The FUSE daemon runs as root, so libnfs defaults to uid=0/gid=0
      * in the RPC AUTH_UNIX header. With root_squash enabled on the
@@ -2153,6 +2155,21 @@ public:
             struct nfs_context *nfs = get_nfs_context();
             nfs_set_uid(nfs, ctx->uid);
             nfs_set_gid(nfs, ctx->gid);
+
+            constexpr int AUTH_UNIX_MAX_AUXILIARY_GIDS = 16;
+            std::array<gid_t, AUTH_UNIX_MAX_AUXILIARY_GIDS> fuse_gids{};
+            const int group_count = fuse_req_getgroups(
+                req, static_cast<int>(fuse_gids.size()), fuse_gids.data());
+            const int gids_to_copy = std::clamp(
+                group_count, 0, AUTH_UNIX_MAX_AUXILIARY_GIDS);
+            std::array<uint32_t, AUTH_UNIX_MAX_AUXILIARY_GIDS>
+                auxiliary_gids{};
+            for (int i = 0; i < gids_to_copy; i++) {
+                auxiliary_gids[i] = static_cast<uint32_t>(fuse_gids[i]);
+            }
+            nfs_set_auxiliary_gids(nfs,
+                                   static_cast<uint32_t>(gids_to_copy),
+                                   auxiliary_gids.data());
         }
     }
 
