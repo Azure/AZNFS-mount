@@ -20,10 +20,22 @@ else
 	exit 1
 fi
 
+package_target="${AZNFS_PACKAGE_TARGET:-all}"
+if [ "$package_target" != "all" ] && [ "$package_target" != "azurelinux" ]; then
+	echo "Unsupported package target: $package_target"
+	exit 1
+fi
+
 generate_rpm_package()
 {
 	rpm_dir=$1
 	custom_stunnel_required=0
+	exclude_turbonfs=0
+
+	# Azure Linux currently supports only the standard AZNFS mount helper.
+	if [ "$rpm_dir" == "azurelinux" ]; then
+		exclude_turbonfs=1
+	fi
 
 	# Overwrite rpm_pkg_dir in case of RedHat7 and Centos7.
 	if [ "$rpm_dir" == "stunnel" ]; then
@@ -53,24 +65,26 @@ generate_rpm_package()
 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
 	cp -avf ${SOURCE_DIR}/src/aznfswatchdogv4.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
 
-	###########################################
-	# Bundle aznfsclient and its dependencies #
-	###########################################
+	if [ "$exclude_turbonfs" -eq 0 ]; then
+		###########################################
+		# Bundle aznfsclient and its dependencies #
+		###########################################
 
-	# copy the aznfsclient config file.
-	cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
+		# copy the aznfsclient config file.
+		cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 
-	# copy the aznfsclient binary.
-	cp -avf ${aznfsclient} ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient
+		# copy the aznfsclient binary.
+		cp -avf ${aznfsclient} ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}/sbin/aznfsclient
 
-	#
-	# Package aznfsclient dependencies in opt_dir/libs.
-	# libs_dir must already be populated with the required dependencies from
-	# the debian packaging step. Simply copy all those to rpm_libs_dir.
-	#
-	rpm_libs_dir=${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/libs
-	mkdir -p ${rpm_libs_dir}
-	cp -avfH ${libs_dir}/* ${rpm_libs_dir}
+		#
+		# Package aznfsclient dependencies in opt_dir/libs.
+		# libs_dir must already be populated with the required dependencies from
+		# the debian packaging step. Simply copy all those to rpm_libs_dir.
+		#
+		rpm_libs_dir=${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/libs
+		mkdir -p ${rpm_libs_dir}
+		cp -avfH ${libs_dir}/* ${rpm_libs_dir}
+	fi
 
 	# Create the archive for the package.
 	tar -cvzf ${STG_DIR}/${rpm_pkg_dir}.tar.gz -C ${STG_DIR}/${rpm_dir}/tmp root
@@ -78,14 +92,16 @@ generate_rpm_package()
 	# Copy the SPEC file to change the placeholders depending upon the RPM distro.
 	cp -avf ${SOURCE_DIR}/packaging/${pkg_name}/RPM/aznfs.spec ${STG_DIR}/${rpm_dir}/tmp/
 
-	#
-	# Insert the contents of ${rpm_libs_dir}.
-	# This is variable due to the shared library versions.
-	# sed doesn't (easily) support replace target to be multi-line, so we use
-	# awk for this one.
-	#
-	opt_libs=$(for lib in ${rpm_libs_dir}/*; do echo ${opt_dir}/libs/$(basename $lib); done)
-	awk -i inplace -v r="$opt_libs" '{gsub(/OPT_LIBS/,r)}1' ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	if [ "$exclude_turbonfs" -eq 0 ]; then
+		#
+		# Insert the contents of ${rpm_libs_dir}.
+		# This is variable due to the shared library versions.
+		# sed doesn't (easily) support replace target to be multi-line, so we use
+		# awk for this one.
+		#
+		opt_libs=$(for lib in ${rpm_libs_dir}/*; do echo ${opt_dir}/libs/$(basename $lib); done)
+		awk -i inplace -v r="$opt_libs" '{gsub(/OPT_LIBS/,r)}1' ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	fi
 
 	# Insert current release number and RPM_DIR value.
 	sed -i -e "s/Version: x.y.z/Version: ${RELEASE_NUMBER}/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
@@ -108,7 +124,7 @@ generate_rpm_package()
 	fi
 
 	# Create the rpm package.
-	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "exclude_turbonfs $exclude_turbonfs" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 
 	# Remove the temporary files.
 	rm ${STG_DIR}/${rpm_pkg_dir}.tar.gz
@@ -126,6 +142,14 @@ rpm_buildroot_dir="${rpmbuild_dir}/BUILDROOT"
 
 # Insert release number to aznfs_install.sh
 sed -i -e "s/RELEASE_NUMBER=x.y.z/RELEASE_NUMBER=${RELEASE_NUMBER}/g" ${SOURCE_DIR}/scripts/aznfs_install.sh
+
+# Azure Linux packages contain only the standard AZNFS mount helper.
+# Generate that RPM and exit before the shared packaging path compiles TurboNFS
+# or creates package formats that are not produced for Azure Linux.
+if [ "$package_target" == "azurelinux" ]; then
+	generate_rpm_package azurelinux
+	exit 0
+fi
 
 #########################
 # Generate .deb package #
@@ -243,5 +267,4 @@ generate_rpm_package rpm
 generate_rpm_package suse
 # Generate rpm package with custom stunnel installation for RedHat7 and Centos7.
 generate_rpm_package stunnel
-
 

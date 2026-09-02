@@ -119,6 +119,21 @@ AZNFSCLIENT_BINARY_PATH="/sbin/aznfsclient"
 AZNFSCLIENT_MOUNT_ARGS=
 
 #
+# Return success only when the operating system identifies itself as Azure Linux.
+#
+is_azure_linux()
+{
+    local distro_id=""
+
+    if [ -f /etc/os-release ]; then
+        distro_id=$(grep "^ID=" /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+        distro_id=$(canonicalize_distro_id "$distro_id")
+    fi
+
+    [ "$distro_id" == "azurelinux" ]
+}
+
+#
 # Check if any nconnect mount exists for port 2048.
 #
 has_2048_nconnect_mounts()
@@ -734,6 +749,19 @@ aznfsclient_mount()
         vvecho "Mounted successfully."
     fi
 }
+
+#
+# Azure Linux packages intentionally omit /sbin/aznfsclient. Reject the current
+# "turbo" option and legacy "fuse" alias before watchdog validation or TurboNFS
+# setup; otherwise the client launch fails and the mount status wait times out.
+#
+turbo_option_regex="(^|,)(turbo|fuse)(,|$)"
+if [[ "$MOUNT_OPTIONS" =~ $turbo_option_regex ]] && is_azure_linux; then
+    eecho "[FATAL] TurboNFS is not supported on Azure Linux."
+    pecho "Remove the 'turbo' or 'fuse' mount option and retry with the standard AZNFS mount helper."
+    pecho "Please contact Microsoft support for assistance."
+    exit 1
+fi
 
 # Check if aznfswatchdog service is running.
 if ! ensure_aznfswatchdog "aznfswatchdog"; then
