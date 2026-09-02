@@ -438,6 +438,7 @@ stages:
               chmod 755 $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/*/*.rpm
               rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/*.md
               rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/*/*.md
+              rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpmazurelinux $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpmazurelinuxarm64
               mv $(Build.ArtifactStagingDirectory)/aznfs-temp/* $(Build.ArtifactStagingDirectory)/
               rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/
             displayName: 'Make Artifacts executable'
