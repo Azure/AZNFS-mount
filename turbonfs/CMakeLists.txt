@@ -19,7 +19,7 @@ option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" OFF)
 option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" OFF)
 option(ENABLE_JEMALLOC "Use jemalloc for malloc/free/new/delete" ON)
-option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" OFF)
+option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" ON)
 #
 # Builds that make it to customers need to be extra careful about any unnecessary
 # logging. Some warning logs we have in our code are to attract developer
@@ -200,21 +200,6 @@ add_custom_command(
 add_custom_target(libfuse ALL DEPENDS ${fuse3_LIBRARY})
 
 #
-# We need GnuTLS for secure libnfs transport.
-#
-find_package(GnuTLS "3.4.6" QUIET)
-if(NOT GNUTLS_FOUND)
-    message(STATUS "GnuTLS not found, trying to install gnutls-dev!")
-    execute_process(COMMAND sudo apt install -y gnutls-dev
-                    RESULT_VARIABLE GNUTLS_INSTALL_RESULT)
-    if(NOT GNUTLS_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install gnutls-dev failed with ${GNUTLS_INSTALL_RESULT}, try installing gnutls-dev manually and then run cmake again")
-    else()
-        find_package(GnuTLS "3.4.6" REQUIRED)
-    endif()
-endif()
-
-#
 # Find tcmalloc and if not found try to install.
 #
 if(ENABLE_TCMALLOC)
@@ -354,50 +339,6 @@ target_compile_options(${CMAKE_PROJECT_NAME}
                        PRIVATE -Werror
                        )
 
-#
-# Libraries for statically linking gnutls.
-# libp11-kit and libunistring do not have a static version available, so we are
-# forced to use the shared version and bundle it.
-#
-set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
-
-find_library(GNUTLS_STATIC_LIB libgnutls.a REQUIRED)
-#
-# arm64 libgnutls.a has multiple definitions for some symbols exported by
-# libcrypto.a. The libcrypto.a object has some more symbols which are needed,
-# so we delete the offending object from libgnutls.a before linking.
-#
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-execute_process(
-	COMMAND bash -c "cp -vf ${GNUTLS_STATIC_LIB} /tmp/gnutls.a; ar dv /tmp/gnutls.a aes-aarch64.o"
-	COMMAND_ERROR_IS_FATAL ANY)
-set(GNUTLS_STATIC_LIB /tmp/gnutls.a)
-endif()
-
-find_library(HOGWEED_STATIC_LIB libhogweed.a REQUIRED)
-find_library(NETTLE_STATIC_LIB libnettle.a REQUIRED)
-find_library(TASN1_STATIC_LIB libtasn1.a REQUIRED)
-find_library(IDN2_STATIC_LIB libidn2.a REQUIRED)
-find_library(GMP_STATIC_LIB libgmp.a REQUIRED)
-set(CMAKE_FIND_LIBRARY_SUFFIXES .so)
-find_library(P11_KIT_SHARED_LIB libp11-kit.so REQUIRED)
-find_library(UNISTRING_SHARED_LIB NAMES
-             libunistring.so
-             libunistring.so.5
-             libunistring.so.2
-             REQUIRED)
-
-set(GNUTLS_ALL_LIBRARIES
-    ${GNUTLS_STATIC_LIB}
-    ${HOGWEED_STATIC_LIB}
-    ${NETTLE_STATIC_LIB}
-    ${TASN1_STATIC_LIB}
-    ${IDN2_STATIC_LIB}
-    ${GMP_STATIC_LIB}
-    ${P11_KIT_SHARED_LIB}
-    ${UNISTRING_SHARED_LIB})
-message(STATUS "Using gnutls libraries: ${GNUTLS_ALL_LIBRARIES}")
-
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}
                       -static-libgcc -static-libstdc++
@@ -406,8 +347,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       dl
                       pthread
                       nfs
-                      # GNUTLS libraries are needed by static libnfs.
-                      ${GNUTLS_ALL_LIBRARIES}
                       yaml-cpp
                       spdlog
                       Azure::azure-identity
