@@ -33,7 +33,9 @@ if [ "$BUILD_TYPE" == "Debug" ]; then
 else
     JEMALLOC=ON
     PARANOID=OFF
-    INSECURE_AUTH_FOR_DEVTEST=OFF
+    # TLS support has been removed from libnfs, so AZAUTH is always sent over
+    # the non-TLS connection, which requires this to be ON.
+    INSECURE_AUTH_FOR_DEVTEST=ON
 fi
 
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE \

@@ -11,11 +11,11 @@
 # For accessing the secondary endpoint (RA-GRS), append "-secondary" to the
 # account name, e.g., "myaccount-secondary".
 #
-account: sjc22prdste06hnfsv3acc1
+account: nfsv3acc1bl2prdev13a
 container: nfsv3test
 
 #cloud_suffix: blob.core.windows.net
-#cloud_suffix: blob.preprod.core.windows.net
+cloud_suffix: blob.preprod.core.windows.net
 #port: 2048
 
 #
@@ -203,9 +203,10 @@ oom_kill_disable: true
 auth: false
 
 #
-# Option controlling transport security, takes following values:
+# Option controlling transport security. Only "none" is supported.
+# RPC-with-TLS support (and its GnuTLS dependency) has been removed, so the
+# transport is always non-TLS.
 # none: do not use TLS encryption.
-# tls: use TLS encryption, as defined in RPC-with-TLS RFC 9289.
 #
 xprtsec: none
 
