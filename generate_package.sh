@@ -150,7 +150,9 @@ if [ "${BUILD_TYPE}" == "Debug" ]; then
     INSECURE_AUTH_FOR_DEVTEST=ON
 else
     PARANOID=OFF
-    INSECURE_AUTH_FOR_DEVTEST=OFF
+    # TLS support has been removed from libnfs, so AZAUTH is always sent over
+    # the non-TLS connection, which requires this to be ON.
+    INSECURE_AUTH_FOR_DEVTEST=ON
 fi
 
 # Run azurelinux packaging only on azurelinux runner

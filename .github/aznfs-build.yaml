@@ -96,7 +96,7 @@ stages:
               sudo tdnf update -y
               sudo tdnf install -y glibc-static rpm-build perl perl-IPC-Cmd \
                 gcc gcc-c++ make git curl unzip zip tar cmake \
-                zlib zlib-devel libuuid-devel gnutls gnutls-devel nfs-utils \
+                zlib zlib-devel libuuid-devel nfs-utils \
                 libyaml-devel spdlog-devel nlohmann-json-devel cmake make \
                 pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build binutils \
                 kernel-headers kernel-devel autoconf automake libtool jemalloc-devel fuse3-devel
@@ -197,7 +197,7 @@ stages:
               sudo tdnf update -y
               sudo tdnf install -y glibc-static rpm-build perl perl-IPC-Cmd \
                 gcc gcc-c++ make git curl unzip zip tar cmake \
-                zlib zlib-devel libuuid-devel gnutls gnutls-devel nfs-utils \
+                zlib zlib-devel libuuid-devel nfs-utils \
                 libyaml-devel spdlog-devel nlohmann-json-devel cmake make \
                 pkgconf pkgconf-m4 pkgconf-pkg-config ninja-build binutils \
                 kernel-headers kernel-devel autoconf automake libtool jemalloc-devel fuse3-devel
