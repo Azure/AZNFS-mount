@@ -25,6 +25,8 @@ option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" OFF)
 option(ENABLE_JEMALLOC "Use jemalloc for malloc/free/new/delete" ON)
 option(ENABLE_INSECURE_AUTH_FOR_DEVTEST "Enable AZAUTH for non-TLS connections" ON)
+option(ENABLE_DYNAMIC_LINKS "Use dynamic linking instead of bundling libs" OFF)
+
 #
 # Builds that make it to customers need to be extra careful about any unnecessary
 # logging. Some warning logs we have in our code are to attract developer
@@ -84,8 +86,11 @@ endif()
 set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for binaries")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH})
 
-set(LIBFUSE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/libfuse")
-set(LIBFUSE_BUILD_DIR "${CMAKE_BINARY_DIR}/extern/libfuse")
+# Only set libfuse paths for static builds
+if(NOT ENABLE_DYNAMIC_LINKS)
+    set(LIBFUSE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/libfuse")
+    set(LIBFUSE_BUILD_DIR "${CMAKE_BINARY_DIR}/extern/libfuse")
+endif()
 
 #
 # We add the following submodule(s), update them as needed, before starting.
@@ -122,8 +127,11 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/spdlog/CMakeLists.txt")
     message(FATAL_ERROR "The spdlog submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
-if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/libfuse/meson.build")
-    message(FATAL_ERROR "The libfuse submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+# Only check libfuse submodule for static builds
+if(NOT ENABLE_DYNAMIC_LINKS)
+    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/libfuse/meson.build")
+        message(FATAL_ERROR "The libfuse submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+    endif()
 endif()
 
 if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/vcpkg/bootstrap-vcpkg.sh")
@@ -144,16 +152,23 @@ if(NOT azure-storage-blobs-cpp_FOUND)
     message(FATAL_ERROR "azure-storage-blobs-cpp not found! Did you run cmake with -DCMAKE_TOOLCHAIN_FILE?")
 endif()
 
+# Choose package manager based on ENABLE_DYNAMIC_LINKS
+if(ENABLE_DYNAMIC_LINKS)
+    set(PKG_MGR tdnf)
+else()
+    set(PKG_MGR apt)
+endif()
+
 #
 # Ensure pkg_search_module(), needed for configuring some packages.
 #
 find_package(PkgConfig QUIET)
 if(NOT PKG_CONFIG_FOUND)
     message(STATUS "pkg-config not found, trying to install pkg-config!")
-    execute_process(COMMAND sudo apt install -y pkg-config
+    execute_process(COMMAND sudo ${PKG_MGR} install -y pkg-config
             RESULT_VARIABLE PKGCONFIG_INSTALL_RESULT)
     if(NOT PKGCONFIG_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install pkg-config failed with ${PKGCONFIG_INSTALL_RESULT}, try installing pkg-config manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install pkg-config failed with ${PKGCONFIG_INSTALL_RESULT}, try installing pkg-config manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # add the pkg_search_module() command.
@@ -162,47 +177,90 @@ if(NOT PKG_CONFIG_FOUND)
 endif()
 
 #
-# We need meson to compile libfuse.
+# Handle FUSE3 based on build type
 #
-find_program(MESON_EXECUTABLE meson QUIET)
-if(NOT MESON_FOUND)
-    message(STATUS "meson not found, trying to install meson!")
-    execute_process(COMMAND sudo apt install -y meson
-                    RESULT_VARIABLE MESON_INSTALL_RESULT)
-    if(NOT MESON_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install meson failed with ${MESON_INSTALL_RESULT}, try installing meson manually and then run cmake again")
-    else()
-        find_program(MESON_EXECUTABLE meson REQUIRED)
+if(ENABLE_DYNAMIC_LINKS)
+    #
+    # For dynamic builds, use system-installed fuse3 shared library
+    #
+    message(STATUS "Using system-installed fuse3 (dynamic linking)")
+
+    # First try to find fuse3 via pkg-config
+    find_package(PkgConfig REQUIRED)
+    pkg_search_module(FUSE3 QUIET fuse3)
+
+    if(NOT FUSE3_FOUND)
+        message(STATUS "fuse3 not found via pkg-config, trying to install the devel package")
+
+        if(PKG_MGR STREQUAL "apt")
+            set(FUSE3_PKG "libfuse3-dev")
+        else()
+            set(FUSE3_PKG "fuse3-devel")
+        endif()
+
+        execute_process(COMMAND sudo ${PKG_MGR} install -y ${FUSE3_PKG}
+                        RESULT_VARIABLE FUSE3_INSTALL_RESULT)
+
+        if(NOT FUSE3_INSTALL_RESULT EQUAL "0")
+            message(FATAL_ERROR "Failed to install ${FUSE3_PKG}, please install manually")
+        endif()
+
+        # Retry finding fuse3 after installation
+        pkg_search_module(FUSE3 REQUIRED fuse3)
     endif()
-endif()
 
-#
-# We need ninja to install libfuse in build dir.
-#
-find_program(NINJA_EXECUTABLE ninja QUIET)
-if(NOT NINJA_FOUND)
-    message(STATUS "ninja not found, trying to install ninja-build!")
-    execute_process(COMMAND sudo apt install -y ninja-build
-                    RESULT_VARIABLE NINJA_INSTALL_RESULT)
-    if(NOT NINJA_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install ninja-build failed with ${NINJA_INSTALL_RESULT}, try installing ninja-build manually and then run cmake again")
-    else()
-        find_program(NINJA_EXECUTABLE ninja REQUIRED)
+    message(STATUS "Found fuse3 libraries: ${FUSE3_LIBRARIES}")
+    message(STATUS "Found fuse3 include dirs: ${FUSE3_INCLUDE_DIRS}")
+    message(STATUS "Found fuse3 library dirs: ${FUSE3_LIBRARY_DIRS}")
+else()
+    #
+    # For static builds, build libfuse from source
+    #
+    message(STATUS "Building libfuse from source (static linking)")
+    
+    #
+    # We need meson to compile libfuse.
+    #
+    find_program(MESON_EXECUTABLE meson QUIET)
+    if(NOT MESON_FOUND)
+        message(STATUS "meson not found, trying to install meson!")
+        execute_process(COMMAND sudo ${PKG_MGR} install -y meson
+                        RESULT_VARIABLE MESON_INSTALL_RESULT)
+        if(NOT MESON_INSTALL_RESULT EQUAL "0")
+            message(FATAL_ERROR "${PKG_MGR} install meson failed with ${MESON_INSTALL_RESULT}, try installing meson manually and then run cmake again")
+        else()
+            find_program(MESON_EXECUTABLE meson REQUIRED)
+        endif()
     endif()
+
+    #
+    # We need ninja to install libfuse in build dir.
+    #
+    find_program(NINJA_EXECUTABLE ninja QUIET)
+    if(NOT NINJA_FOUND)
+        message(STATUS "ninja not found, trying to install ninja-build!")
+        execute_process(COMMAND sudo ${PKG_MGR} install -y ninja-build
+                        RESULT_VARIABLE NINJA_INSTALL_RESULT)
+        if(NOT NINJA_INSTALL_RESULT EQUAL "0")
+            message(FATAL_ERROR "${PKG_MGR} install ninja-build failed with ${NINJA_INSTALL_RESULT}, try installing ninja-build manually and then run cmake again")
+        else()
+            find_program(NINJA_EXECUTABLE ninja REQUIRED)
+        endif()
+    endif()
+
+    # Use multiarch layout for static builds
+    set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
+    set(fuse3_INCLUDE_DIR "/usr/local/include")
+
+    add_custom_command(
+        OUTPUT ${fuse3_LIBRARY}
+        COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static --buildtype=${MESON_BUILD_TYPE}
+        COMMAND ${MESON_EXECUTABLE} compile -C ${LIBFUSE_BUILD_DIR}
+        COMMAND sudo ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
+    )
+
+    add_custom_target(libfuse ALL DEPENDS ${fuse3_LIBRARY})
 endif()
-
-# Meson will install the fuse library and header files in the following paths.
-set(fuse3_LIBRARY "/usr/local/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu/libfuse3.a")
-set(fuse3_INCLUDE_DIR "/usr/local/include")
-
-add_custom_command(
-    OUTPUT ${fuse3_LIBRARY}
-    COMMAND ${MESON_EXECUTABLE} setup ${LIBFUSE_BUILD_DIR} ${LIBFUSE_SOURCE_DIR} --default-library=static --buildtype=${MESON_BUILD_TYPE}
-    COMMAND ${MESON_EXECUTABLE} compile -C ${LIBFUSE_BUILD_DIR}
-    COMMAND sudo ${MESON_EXECUTABLE} install -C ${LIBFUSE_BUILD_DIR}
-)
-
-add_custom_target(libfuse ALL DEPENDS ${fuse3_LIBRARY})
 
 #
 # Find tcmalloc and if not found try to install.
@@ -214,11 +272,16 @@ endif()
 
 find_package(tcmalloc QUIET)
 if(NOT tcmalloc_FOUND)
-    message(STATUS "tcmalloc not found, trying to install libgoogle-perftools-dev!")
-    execute_process(COMMAND sudo apt install -y libgoogle-perftools-dev
+    if(PKG_MGR STREQUAL "apt")
+        set(TCMALLOC_PKG "libgoogle-perftools-dev")
+    else()
+        set(TCMALLOC_PKG "gperftools-devel")
+    endif()
+    message(STATUS "tcmalloc not found, trying to install ${TCMALLOC_PKG}!")
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${TCMALLOC_PKG}
             RESULT_VARIABLE tcmalloc_INSTALL_RESULT)
     if(NOT tcmalloc_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install libgoogle-perftools-dev failed with ${tcmalloc_INSTALL_RESULT}, try installing libgoogle-perftools-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${TCMALLOC_PKG} failed with ${tcmalloc_INSTALL_RESULT}, try installing ${TCMALLOC_PKG} manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set tcmalloc_INCLUDE_DIR and tcmalloc_LIBRARY variables.
@@ -241,20 +304,29 @@ endif()
 pkg_search_module(JEMALLOC QUIET jemalloc)
 
 if(NOT JEMALLOC_FOUND)
-    message(STATUS "jemalloc not found, trying to install libjemalloc-dev!")
-    execute_process(COMMAND sudo apt install -y libjemalloc-dev
+    if(${PKG_MGR} STREQUAL "tdnf")
+        set(JEMALLOC_PKG jemalloc-devel)
+    else()
+        set(JEMALLOC_PKG libjemalloc-dev)
+    endif()
+    message(STATUS "jemalloc not found, trying to install ${JEMALLOC_PKG}!")
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${JEMALLOC_PKG}
             RESULT_VARIABLE JEMALLOC_INSTALL_RESULT)
     if(NOT JEMALLOC_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install libjemalloc-dev failed with ${JEMALLOC_INSTALL_RESULT}, try installing libjemalloc-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${JEMALLOC_PKG} failed with ${JEMALLOC_INSTALL_RESULT}, try installing ${JEMALLOC_PKG} manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
-        # will set JEMALLOC_LIBRARY_DIRS variable.
+        # will set JEMALLOC_LIBRARIES variable.
         pkg_search_module(JEMALLOC REQUIRED jemalloc)
     endif()
 endif()
 
-# We want to link against the static jemalloc lib.
-message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a")
+if(ENABLE_DYNAMIC_LINKS)
+    message(STATUS "Using jemalloc lib ${JEMALLOC_LIBRARIES}")
+else()
+    # We want to link against the static jemalloc lib.
+    message(STATUS "Using jemalloc static lib ${JEMALLOC_LIBRARY_DIRS}")
+endif()
 endif()
 
 #
@@ -262,11 +334,16 @@ endif()
 #
 pkg_search_module(UUID QUIET uuid)
 if(NOT UUID_FOUND)
-    message(STATUS "uuid not found, trying to install uuid-dev!")
-    execute_process(COMMAND sudo apt install -y uuid-dev
+    if(PKG_MGR STREQUAL "apt")
+        set(UUID_PKG "uuid-dev")
+    else()
+        set(UUID_PKG "uuid-devel")
+    endif()
+    message(STATUS "uuid not found, trying to install ${UUID_PKG}!")
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${UUID_PKG}
             RESULT_VARIABLE UUID_INSTALL_RESULT)
     if(NOT UUID_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install uuid-dev failed with ${UUID_INSTALL_RESULT}, try installing uuid-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${UUID_PKG} failed with ${UUID_INSTALL_RESULT}, try installing ${UUID_PKG} manually and then run cmake again")
     else()
         pkg_search_module(UUID REQUIRED uuid)
     endif()
@@ -280,11 +357,16 @@ message(STATUS "Using uuid include dir ${UUID_INCLUDE_DIRS}")
 #
 find_package(ZLIB QUIET)
 if(NOT ZLIB_FOUND)
-    message(STATUS "zlib not found, trying to install zlib1g-dev!")
-    execute_process(COMMAND sudo apt install -y zlib1g-dev
+    if(PKG_MGR STREQUAL "apt")
+        set(ZLIB_PKG "zlib1g-dev")
+    else()
+        set(ZLIB_PKG "zlib-devel")
+    endif()
+    message(STATUS "zlib not found, trying to install ${ZLIB_PKG}!")
+    execute_process(COMMAND sudo ${PKG_MGR} install -y ${ZLIB_PKG}
 		    RESULT_VARIABLE ZLIB_INSTALL_RESULT)
     if(NOT ZLIB_INSTALL_RESULT EQUAL "0")
-        message(FATAL_ERROR "apt install zlib1g-dev failed with ${ZLIB_INSTALL_RESULT}, try installing zlib1g-dev manually and then run cmake again")
+        message(FATAL_ERROR "${PKG_MGR} install ${ZLIB_PKG} failed with ${ZLIB_INSTALL_RESULT}, try installing ${ZLIB_PKG} manually and then run cmake again")
     else()
         # Call once more to ensure above install completed fine and also
         # will set ZLIB_INCLUDE_DIR and ZLIB_LIBRARY variables.
@@ -335,7 +417,10 @@ else()
 set(sources ${sources} src/main.cpp)
 add_executable(${CMAKE_PROJECT_NAME}
                ${sources})
-add_dependencies(${CMAKE_PROJECT_NAME} libfuse)
+    # Only add libfuse dependency for static builds
+    if(NOT ENABLE_DYNAMIC_LINKS)
+        add_dependencies(${CMAKE_PROJECT_NAME} libfuse)
+    endif()
 endif()
 
 # All include directories.
@@ -350,10 +435,15 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/spdlog/include")
 
 if(NOT ENABLE_NO_FUSE)
-target_include_directories(${CMAKE_PROJECT_NAME}
-                           PRIVATE "${fuse3_INCLUDE_DIR}")
-target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${fuse3_LIBRARY})
+    if(ENABLE_DYNAMIC_LINKS)
+        # Use system fuse3 include directories
+        target_include_directories(${CMAKE_PROJECT_NAME}
+                                   PRIVATE ${FUSE3_INCLUDE_DIRS})
+    else()
+        # Use built-from-source fuse3 include directory
+        target_include_directories(${CMAKE_PROJECT_NAME}
+                                   PRIVATE "${fuse3_INCLUDE_DIR}")
+    endif()
 endif()
 
 target_compile_options(${CMAKE_PROJECT_NAME}
@@ -363,19 +453,45 @@ target_compile_options(${CMAKE_PROJECT_NAME}
                        )
 
 # All libraries.
-target_link_libraries(${CMAKE_PROJECT_NAME}
-                      -static-libgcc -static-libstdc++
-                      -Wl,-rpath,/opt/microsoft/aznfs/libs
-                      ${ZLIB_LIBRARIES}
-                      dl
-                      pthread
-                      nfs
-                      yaml-cpp
-                      spdlog
-                      Azure::azure-identity
-                      Azure::azure-storage-blobs
-                      nlohmann_json::nlohmann_json
-                      uuid)
+if(ENABLE_DYNAMIC_LINKS)
+  # Dynamic linking: No static flags
+  target_link_libraries(${CMAKE_PROJECT_NAME}
+                        ${ZLIB_LIBRARIES}
+                        dl
+                        pthread
+                        nfs
+                        yaml-cpp
+                        spdlog
+                        Azure::azure-identity
+                        Azure::azure-storage-blobs
+                        nlohmann_json::nlohmann_json
+                        uuid)
+  
+  # Link against system fuse3 (only if not building nofuse)
+  if(NOT ENABLE_NO_FUSE)
+    target_link_libraries(${CMAKE_PROJECT_NAME} ${FUSE3_LIBRARIES})
+  endif()
+else()
+  # Static linking: Use static-libgcc/libstdc++
+  target_link_libraries(${CMAKE_PROJECT_NAME}
+                        -static-libgcc -static-libstdc++
+                        -Wl,-rpath,/opt/microsoft/aznfs/libs
+                        ${ZLIB_LIBRARIES}
+                        dl
+                        pthread
+                        nfs
+                        yaml-cpp
+                        spdlog
+                        Azure::azure-identity
+                        Azure::azure-storage-blobs
+                        nlohmann_json::nlohmann_json
+                        uuid)
+  
+  # Link against static fuse3 (only if not building nofuse)
+  if(NOT ENABLE_NO_FUSE)
+    target_link_libraries(${CMAKE_PROJECT_NAME} ${fuse3_LIBRARY})
+  endif()
+endif()
 
 if(ENABLE_TCMALLOC)
 target_link_libraries(${CMAKE_PROJECT_NAME}
@@ -383,8 +499,13 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 endif()
 
 if(ENABLE_JEMALLOC)
-target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a)
+  if(ENABLE_DYNAMIC_LINKS)
+    target_link_libraries(${CMAKE_PROJECT_NAME}
+                          ${JEMALLOC_LIBRARIES})
+  else()
+    target_link_libraries(${CMAKE_PROJECT_NAME}
+                          ${JEMALLOC_LIBRARY_DIRS}/libjemalloc.a)
+  endif()
 endif()
 
 install(TARGETS ${CMAKE_PROJECT_NAME})
