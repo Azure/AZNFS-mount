@@ -278,9 +278,16 @@ void nfs_client::periodic_updater()
      *       commit completes, else we will account for write cache as read.
      */
     const uint64_t cache = bytes_chunk_cache::bytes_allocated_g;
-    const uint64_t wcache = bytes_chunk_cache::bytes_dirty_g +
-                            bytes_chunk_cache::bytes_commit_pending_g;
-    const uint64_t rcache = (uint64_t) std::max((int64_t)(cache - wcache), 0L);
+    const uint64_t sampled_wcache = bytes_chunk_cache::bytes_dirty_g +
+                                    bytes_chunk_cache::bytes_commit_pending_g;
+
+    /*
+     * These counters are independent atomics, so their samples do not form a
+     * coherent snapshot. Clamp writer usage to the sampled total before
+     * deriving reader usage.
+     */
+    const uint64_t wcache = std::min(sampled_wcache, cache);
+    const uint64_t rcache = cache - wcache;
 
     /*
      * Read cache usage as percent of max_cache.
@@ -309,7 +316,7 @@ void nfs_client::periodic_updater()
     const double pct_cache = (cache * 100.0) / max_cache;
 
     assert(pct_cache <= 100.0);
-    assert((pct_rcache + pct_wcache) <= pct_cache);
+    assert((rcache + wcache) == cache);
 
     double rscale = 1.0;
     double wscale = 1.0;
