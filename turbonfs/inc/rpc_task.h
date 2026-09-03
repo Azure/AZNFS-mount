@@ -2129,16 +2129,13 @@ public:
      * in the RPC AUTH_UNIX header. With root_squash enabled on the
      * server, this causes ALL operations to be squashed to nobody.
      *
-     * This must be called before the rpc_nfs3_*_task() call so that
-     * rpc_allocate_pdu() picks up the correct AUTH credentials.
+    * Credential updates and PDU allocation must hold the selected
+    * connection's credential mutex as one operation.
      * For child/backend tasks where get_fuse_req() is null (for example
      * READ/WRITE backend tasks), we inherit the request context from the
      * parent task so each RPC still carries the correct caller identity.
-     * Thread safety: nfs_set_uid/gid internally calls rpc_set_uid_gid
-     * which replaces rpc->auth. The rpc_mutex inside libnfs protects
-     * the auth update and PDU allocation atomically.
      */
-    void set_caller_credentials()
+    void set_caller_credentials(struct nfs_context *nfs)
     {
         fuse_req *req = get_fuse_req();
 
@@ -2152,7 +2149,6 @@ public:
 
         const fuse_ctx *ctx = fuse_req_ctx(req);
         if (ctx) {
-            struct nfs_context *nfs = get_nfs_context();
             nfs_set_uid(nfs, ctx->uid);
             nfs_set_gid(nfs, ctx->gid);
 
@@ -2171,6 +2167,32 @@ public:
                                    static_cast<uint32_t>(gids_to_copy),
                                    auxiliary_gids.data());
         }
+    }
+
+    template <typename Args>
+    struct rpc_pdu *issue_rpc_with_credentials(
+        struct rpc_pdu *(*issue_rpc)(struct rpc_context *, rpc_cb, Args *,
+                                     void *),
+        rpc_cb callback,
+        Args *args,
+        void *private_data)
+    {
+        struct nfs_context *nfs = get_nfs_context();
+        std::lock_guard<std::recursive_mutex> lock(
+            client->get_credential_mutex(nfs));
+        set_caller_credentials(nfs);
+        return issue_rpc(nfs_get_rpc_context(nfs), callback, args,
+                         private_data);
+    }
+
+    template <typename IssueRpc>
+    struct rpc_pdu *issue_rpc_with_credentials(IssueRpc issue_rpc)
+    {
+        struct nfs_context *nfs = get_nfs_context();
+        std::lock_guard<std::recursive_mutex> lock(
+            client->get_credential_mutex(nfs));
+        set_caller_credentials(nfs);
+        return issue_rpc(nfs_get_rpc_context(nfs));
     }
 
     nfs_client *get_client() const
