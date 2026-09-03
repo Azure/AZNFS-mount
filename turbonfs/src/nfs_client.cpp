@@ -1157,6 +1157,12 @@ struct nfs_context* nfs_client::get_nfs_context(conn_sched_t csched,
     return transport.get_nfs_context(csched, fh_hash);
 }
 
+std::recursive_mutex& nfs_client::get_credential_mutex(
+    const struct nfs_context *nfs) const
+{
+    return transport.get_credential_mutex(nfs);
+}
+
 void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_LOOKUP);
