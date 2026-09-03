@@ -533,7 +533,9 @@ ensure_mountmap_exist_nolock()
     local mountmap_file=$1
     local entry=$2
 
-    IFS=" " read l_host l_ip l_nfsip <<< "$entry"
+    # A v4 non-TLS entry carries a trailing crc32 field; read it into l_crc32 so
+    # l_nfsip stays clean for the iptable rule. v3 entries have no 4th field.
+    IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$entry"
     if ! ensure_iptable_entry $l_ip $l_nfsip; then
         eecho "[$entry] failed to add to ${mountmap_file}!"
         return 1
@@ -595,7 +597,9 @@ ensure_mountmap_not_exist()
         fi
 
         # Delete the iptable rule corresponding to the outgoing mountmap entry.
-        IFS=" " read l_host l_ip l_nfsip <<< "$entry"
+        # A v4 non-TLS entry carries a trailing crc32 field; read it into l_crc32
+        # so l_nfsip stays clean for the iptable rule.
+        IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$entry"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip; then
                 eecho "[$entry] Refusing to remove from ${mountmap_file} as iptable entry could not be deleted!"
@@ -651,7 +655,7 @@ update_mountmap_entry()
     (
         flock -e 999
 
-        IFS=" " read l_host l_ip l_nfsip_old <<< "$old"
+        IFS=" " read l_host l_ip l_nfsip_old l_crc32_old <<< "$old"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_old" ]; then
             if ! ensure_iptable_entry_not_exist $l_ip $l_nfsip_old; then
                 eecho "[$old] Refusing to update ${mountmap_file} as old iptable entry could not be deleted!"
@@ -659,7 +663,7 @@ update_mountmap_entry()
             fi
         fi
 
-        IFS=" " read l_host l_ip l_nfsip_new <<< "$new"
+        IFS=" " read l_host l_ip l_nfsip_new l_crc32_new <<< "$new"
         if [ -n "$l_host" -a -n "$l_ip" -a -n "$l_nfsip_new" ]; then
             if ! ensure_iptable_entry $l_ip $l_nfsip_new; then
                 eecho "[$new] Refusing to update ${mountmap_file} as new iptable entry could not be added!"
@@ -697,6 +701,39 @@ update_mountmap_entry()
         fi
         chattr -f +i $mountmap_file
     ) 999<$mountmap_file
+}
+
+#
+# Deterministically derive the AZNFS control (virtual) file name for an account.
+# The server writes account-migration state (<PRT_stage>;<FSLocationIP>) to a
+# virtual file named after this value at the share root. The name is a stable
+# 32-bit hash of the account name (first label of the FQDN) and is stored as the
+# crc32 field in the mountmap so the watchdog can locate the file for polling.
+#
+get_aznfs_ctrl_filename()
+{
+    local hostname="$1"
+    local account_name=${hostname%%.*}
+    local key="abc"
+    local keylen=${#key}
+    local acc=0
+
+    for (( i=0; i<${#account_name}; ++i )); do
+        # Extract single character (byte) from each string
+        local ch="${account_name:i:1}"
+        local kch="${key:i%keylen:1}"
+
+        # Get decimal byte values
+        local b=$(printf '%d' "'$ch")
+        local kb=$(printf '%d' "'$kch")
+
+        local xored=$(( (b ^ kb) & 0xFF ))
+        local shift_amt=$(( (i % 4) * 8 ))
+        acc=$(( acc ^ (xored << shift_amt ) ))
+    done
+
+    acc=$(( acc & 0xFFFFFFFF ))
+    echo "AZNFSCtrl.txt${acc}"
 }
 
 #
@@ -848,7 +885,7 @@ octets_in_ipv4_prefix()
 search_free_local_ip_with_prefix()
 {
     initial_ip_prefix=$1
-    num_octets=$(octets_in_ipv4_prefix $ip_prefix)
+    num_octets=$(octets_in_ipv4_prefix $initial_ip_prefix)
 
     if [ $num_octets -ne 2 -a $num_octets -ne 3 ]; then
         eecho "Invalid IPv4 prefix: ${ip_prefix}"
