@@ -1078,8 +1078,8 @@ void rpc_task::issue_commit_rpc()
         rpc_retry = false;
         stats.on_rpc_issue();
 
-        if (rpc_nfs3_commit_task(get_rpc_ctx(),
-                                 commit_callback, &args, this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_commit_task,
+                                       commit_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1570,11 +1570,10 @@ void rpc_task::issue_write_rpc()
         rpc_retry = false;
         stats.on_rpc_issue();
 
-        if (rpc_nfs3_writev_task(get_rpc_ctx(),
-                                 write_iov_callback, &args,
-                                 bciov->iov,
-                                 bciov->iovcnt,
-                                 this) == NULL) {
+        if (issue_rpc_with_credentials([&](struct rpc_context *rpc) {
+            return rpc_nfs3_writev_task(rpc, write_iov_callback, &args,
+                            bciov->iov, bciov->iovcnt, this);
+            }) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -2654,8 +2653,8 @@ void rpc_task::run_lookup()
          *       access the task object after making the libnfs call.
          */
         stats.on_rpc_issue();
-        if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
-                                 this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_lookup_task,
+                           lookup_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -2685,8 +2684,8 @@ void rpc_task::run_access()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_access_task(get_rpc_ctx(), access_callback, &args,
-                                        this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_access_task,
+                           access_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -2898,8 +2897,8 @@ void rpc_task::run_getattr()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
-                                  this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_getattr_task,
+                           getattr_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -2928,8 +2927,8 @@ void rpc_task::run_statfs()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_fsstat_task(get_rpc_ctx(), statfs_callback, &args,
-                                 this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_fsstat_task,
+                           statfs_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -2971,8 +2970,9 @@ void rpc_task::run_create_file()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
-                                 this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_create_task,
+                                       createfile_callback, &args,
+                                       this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3016,8 +3016,8 @@ void rpc_task::run_mknod()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_create_task(get_rpc_ctx(), mknod_callback, &args,
-                                 this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_create_task,
+                                       mknod_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3055,8 +3055,8 @@ void rpc_task::run_mkdir()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
-                                this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_mkdir_task,
+                           mkdir_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3086,8 +3086,8 @@ void rpc_task::run_unlink()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_remove_task(get_rpc_ctx(),
-                                 unlink_callback, &args, this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_remove_task,
+                           unlink_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3118,8 +3118,8 @@ void rpc_task::run_rmdir()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_rmdir_task(get_rpc_ctx(),
-                                rmdir_callback, &args, this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_rmdir_task,
+                           rmdir_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3158,10 +3158,8 @@ void rpc_task::run_symlink()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_symlink_task(get_rpc_ctx(),
-                                         symlink_callback,
-                                         &args,
-                                         this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_symlink_task,
+                                       symlink_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3194,10 +3192,8 @@ void rpc_task::run_rename()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_rename_task(get_rpc_ctx(),
-                                        rename_callback,
-                                        &args,
-                                        this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_rename_task,
+                           rename_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3226,10 +3222,8 @@ void rpc_task::run_readlink()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_readlink_task(get_rpc_ctx(),
-                                          readlink_callback,
-                                          &args,
-                                          this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_readlink_task,
+                           readlink_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3349,8 +3343,8 @@ void rpc_task::run_setattr()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
-                                  this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_setattr_task,
+                           setattr_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -4129,13 +4123,13 @@ static void read_callback(
                  */
                 rpc_retry = false;
                 child_tsk->get_stats().on_rpc_issue();
-                if (rpc_nfs3_read_task(
-                        child_tsk->get_rpc_ctx(),
-                        read_callback,
-                        bc->get_buffer() + bc->pvt,
-                        new_size,
-                        &new_args,
-                        (void *) new_ctx) == NULL) {
+                if (child_tsk->issue_rpc_with_credentials(
+                    [&](struct rpc_context *rpc) {
+                        return rpc_nfs3_read_task(
+                        rpc, read_callback,
+                        bc->get_buffer() + bc->pvt, new_size,
+                        &new_args, (void *) new_ctx);
+                    }) == NULL) {
                     child_tsk->get_stats().on_rpc_cancel();
                     /*
                      * Most common reason for this is memory allocation failure,
@@ -4407,13 +4401,11 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_read_task(
-                get_rpc_ctx(), /* This round robins request across connections */
-                read_callback,
-                bc.get_buffer() + bc.pvt,
-                args.count,
-                &args,
-                (void *) ctx) == NULL) {
+            if (issue_rpc_with_credentials([&](struct rpc_context *rpc) {
+                return rpc_nfs3_read_task(rpc, read_callback,
+                              bc.get_buffer() + bc.pvt,
+                              args.count, &args, (void *) ctx);
+                }) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -5509,10 +5501,8 @@ void rpc_task::fetch_readdir_entries_from_server()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_readdir_task(get_rpc_ctx(),
-                                  readdir_callback,
-                                  &args,
-                                  this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_readdir_task,
+                           readdir_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -5575,10 +5565,9 @@ void rpc_task::fetch_readdirplus_entries_from_server()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if (rpc_nfs3_readdirplus_task(get_rpc_ctx(),
-                                      readdirplus_callback,
-                                      &args,
-                                      this) == NULL) {
+        if (issue_rpc_with_credentials(rpc_nfs3_readdirplus_task,
+                           readdirplus_callback, &args,
+                           this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
