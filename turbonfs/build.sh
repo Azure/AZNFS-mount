@@ -6,8 +6,42 @@ if [ $# -ne 1 ] || [ "$1" != "Release" -a "$1" != "Debug" ]; then
 fi
 
 BUILD_TYPE=$1
+RELEASE_NUMBER="0.0.1"
 
 export VCPKG_ROOT=extern/vcpkg
+
+is_azurelinux()
+{
+    if [ ! -r /etc/os-release ]; then
+        return 1
+    fi
+
+    . /etc/os-release
+    [ "${ID:-}" == "azurelinux" ] || [ "${ID:-}" == "mariner" ] || \
+        [[ " ${ID_LIKE:-} " == *" azurelinux "* ]] || [[ " ${ID_LIKE:-} " == *" mariner "* ]]
+}
+
+normalize_cmake_bool()
+{
+    case "$1" in
+        1|ON|On|on|TRUE|True|true|YES|Yes|yes)
+            echo "ON"
+            ;;
+        *)
+            echo "OFF"
+            ;;
+    esac
+}
+
+if [ -n "${ENABLE_DYNAMIC_LINKS+x}" ]; then
+    DYNAMIC_LINKS=$(normalize_cmake_bool "${ENABLE_DYNAMIC_LINKS}")
+elif is_azurelinux; then
+    DYNAMIC_LINKS=ON
+else
+    DYNAMIC_LINKS=OFF
+fi
+
+echo "ENABLE_DYNAMIC_LINKS=${DYNAMIC_LINKS}"
 
 # Update (vcpkg) submodules before calling cmake as toolchain build expects it.
 git submodule update --recursive --init
@@ -41,6 +75,8 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
       -DENABLE_JEMALLOC=$JEMALLOC \
       -DENABLE_PARANOID=$PARANOID \
       -DENABLE_INSECURE_AUTH_FOR_DEVTEST=$INSECURE_AUTH_FOR_DEVTEST \
+      -DENABLE_DYNAMIC_LINKS=$DYNAMIC_LINKS \
+      -DPACKAGE_VERSION=$RELEASE_NUMBER \
       -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake ..
 
 #cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_NO_FUSE=ON ..
