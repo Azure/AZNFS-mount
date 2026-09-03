@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# --------------------------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See License.txt in the project root for license information.
+# --------------------------------------------------------------------------------------------
+
+if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
+	chattr -f -i /opt/microsoft/azfiles-nfs/data/randbytes
+	chattr -f -i /opt/microsoft/azfiles-nfs/data/mountmapv4
+	chattr -f -i /opt/microsoft/azfiles-nfs/data/mountmapv4notls
+	rm -rf /opt/microsoft/azfiles-nfs
+	chattr -f -i /etc/stunnel/microsoft/azfiles-nfs/nfsv4_fileShare/stunnel*
+	rm -rf /etc/stunnel/microsoft
+fi

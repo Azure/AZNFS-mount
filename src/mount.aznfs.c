@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-#define MOUNTSCRIPT "/opt/microsoft/aznfs/mountscript.sh"
+#define MOUNTSCRIPT "/opt/microsoft/azfiles-nfs/mountscript.sh"
 
 int main(int argc, char *argv[])
 {

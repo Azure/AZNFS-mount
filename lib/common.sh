@@ -5,12 +5,12 @@
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
 
-APPNAME="aznfs"
-OPTDIR="/opt/microsoft/${APPNAME}"
+APPNAME="${APPNAME:-aznfs}"
+OPTDIR="${OPTDIR:-/opt/microsoft/${APPNAME}}"
 OPTDIRDATA="${OPTDIR}/data"
 LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 RANDBYTES="${OPTDIRDATA}/randbytes"
-INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
+INSTALLSCRIPT="${INSTALLSCRIPT:-${OPTDIR}/aznfs_install.sh}"
 
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
