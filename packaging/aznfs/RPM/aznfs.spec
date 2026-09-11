@@ -52,6 +52,13 @@ OPT_LIBS
 %endif
 /opt/microsoft/aznfs/sample-turbo-config.yaml
 /sbin/aznfsclient
+%if 0%{?foresight}
+/usr/lib/nfs-foresight/nfs-foresight
+/usr/lib/nfs-foresight/nfs-foresight-legacy
+/usr/lib/nfs-foresight/nfs-foresight.service
+/usr/lib/nfs-foresight/foresight.conf
+/usr/lib/nfs-foresight/foresight-gate.sh
+%endif
 
 %pre
 init="$(ps -q 1 -o comm=)"
@@ -322,6 +329,15 @@ else
         rm -f "$FLAG_FILE"
 fi
 
+%if 0%{?foresight}
+# nfs-foresight add-on: run the default-off gate installer only on a real
+# install/upgrade (not an aznfswatchdog auto-update). Never enables/starts it and
+# can never abort %post.
+if [ ! -f "$FLAG_FILE" ]; then
+	[ -x /usr/lib/nfs-foresight/foresight-gate.sh ] && /usr/lib/nfs-foresight/foresight-gate.sh install || true
+fi
+%endif
+
 
 if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
 	echo 	
@@ -372,6 +388,11 @@ if [ $1 == 0 ]; then
 
 	echo "Stopped aznfswatchdog service"
 
+%if 0%{?foresight}
+	# nfs-foresight add-on: stop+disable on uninstall (tolerant).
+	[ -x /usr/lib/nfs-foresight/foresight-gate.sh ] && /usr/lib/nfs-foresight/foresight-gate.sh remove || true
+%endif
+
 	# %files: These files are deleted during uninstallation after %preun and before %postun
 	if [ -f /opt/microsoft/aznfs/data/sample-turbo-config.yaml ]; then
 		chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
@@ -389,4 +410,9 @@ if [ $1 == 0 ]; then
 	rm -rf /opt/microsoft/aznfs
 	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
 	rm -rf /etc/stunnel/microsoft
+%if 0%{?foresight}
+	# nfs-foresight add-on: purge payload + config on uninstall only (tolerant).
+	# On upgrade ($1>=1) do nothing so config/enabled state persist.
+	[ -x /usr/lib/nfs-foresight/foresight-gate.sh ] && /usr/lib/nfs-foresight/foresight-gate.sh purge || true
+%endif
 fi

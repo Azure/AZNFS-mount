@@ -20,6 +20,63 @@ else
 	exit 1
 fi
 
+# ---- nfs-foresight (optional CO-RE eBPF add-on) ----
+FORESIGHT_SRC=${SOURCE_DIR}/extern/nfs-foresight
+FORESIGHT_OUT=${STG_DIR}/foresight
+FORESIGHT_STAGED=0
+
+# Build the default + legacy foresight binaries IF the toolchain is available (or
+# AZNFS_BUILD_FORESIGHT=1). Any absence/failure -> skip cleanly; aznfs build unaffected.
+build_foresight()
+{
+	if [ "${AZNFS_BUILD_FORESIGHT}" != "1" ]; then
+		if ! command -v clang >/dev/null 2>&1 || ! command -v bpftool >/dev/null 2>&1; then
+			echo "nfs-foresight: clang/bpftool absent; skipping foresight build (aznfs unaffected)"
+			return 0
+		fi
+	fi
+	if [ ! -f "${FORESIGHT_SRC}/foresight.c" ]; then
+		git -C "${SOURCE_DIR}" submodule update --init --depth 1 extern/nfs-foresight || {
+			echo "nfs-foresight: submodule init failed; skipping"; return 0; }
+	fi
+	local bpfarch=x86
+	[ "$(uname -m)" == "aarch64" ] && bpfarch=arm64
+	echo "nfs-foresight: building default + legacy (arch=${bpfarch})"
+	( set -e; cd "${FORESIGHT_SRC}"; make clean >/dev/null 2>&1 || true; \
+	  make ARCH=${bpfarch} VERSION=${RELEASE_NUMBER}; \
+	  make legacy ARCH=${bpfarch} VERSION=${RELEASE_NUMBER} ) \
+	  || { echo "nfs-foresight: build failed; skipping payload (aznfs unaffected)"; return 0; }
+	[ -x "${FORESIGHT_SRC}/foresight" ] && [ -x "${FORESIGHT_SRC}/foresight-legacy" ] || {
+		echo "nfs-foresight: binaries missing after build; skipping"; return 0; }
+	rm -rf "${FORESIGHT_OUT}"; mkdir -p "${FORESIGHT_OUT}"
+	cp -avf "${FORESIGHT_SRC}/foresight"                    "${FORESIGHT_OUT}/nfs-foresight"
+	cp -avf "${FORESIGHT_SRC}/foresight-legacy"             "${FORESIGHT_OUT}/nfs-foresight-legacy"
+	cp -avf "${FORESIGHT_SRC}/systemd/nfs-foresight.service" "${FORESIGHT_OUT}/nfs-foresight.service"
+	cp -avf "${FORESIGHT_SRC}/config/foresight.conf"        "${FORESIGHT_OUT}/foresight.conf"
+	cp -avf "${SOURCE_DIR}/packaging/${pkg_name}/foresight/foresight-gate.sh" "${FORESIGHT_OUT}/foresight-gate.sh"
+	chmod 0755 "${FORESIGHT_OUT}/nfs-foresight" "${FORESIGHT_OUT}/nfs-foresight-legacy" "${FORESIGHT_OUT}/foresight-gate.sh"
+	chmod 0644 "${FORESIGHT_OUT}/nfs-foresight.service" "${FORESIGHT_OUT}/foresight.conf"
+	FORESIGHT_STAGED=1
+	echo "nfs-foresight: payload staged at ${FORESIGHT_OUT}"
+}
+
+# Copy the staged payload into a package root's /usr/lib/nfs-foresight. No-op if not staged.
+# $1 = the package root dir (becomes '/').
+stage_foresight()
+{
+	[ "${FORESIGHT_STAGED}" == "1" ] || return 0
+	local dst=$1/usr/lib/nfs-foresight
+	mkdir -p "${dst}"
+	cp -avf "${FORESIGHT_OUT}/." "${dst}/"
+}
+
+# Echo the rpmbuild --define for foresight for a given family ($1=rpm_dir).
+# 1 for capable families when staged; 0 for stunnel or when not staged.
+foresight_rpm_define()
+{
+	if [ "${FORESIGHT_STAGED}" == "1" ] && [ "$1" != "stunnel" ]; then echo 1; else echo 0; fi
+}
+
 generate_rpm_package()
 {
 	rpm_dir=$1
@@ -141,8 +198,11 @@ generate_rpm_package()
 		sed -i -e "s/INSTALL_CMD/yum/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 	fi
 
+	# nfs-foresight payload (no-op unless built)
+	stage_foresight ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}
+
 	# Create the rpm package.
-	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "azurelinux_build $azurelinux_build_required" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "azurelinux_build $azurelinux_build_required" --define "foresight $(foresight_rpm_define ${rpm_dir})" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 }
 
 generate_tarball_package()
@@ -266,6 +326,11 @@ cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
 make
 popd
 
+# Build the optional nfs-foresight eBPF add-on payload (default-off; no-op unless
+# the BPF toolchain is present or AZNFS_BUILD_FORESIGHT=1). Runs for both the
+# generic and azurelinux packaging branches below.
+build_foresight
+
 if [ "$BUILD_MACHINE" != "azurelinux" ]; then
 	#########################
 	# Generate .deb package #
@@ -337,6 +402,9 @@ if [ "$BUILD_MACHINE" != "azurelinux" ]; then
 	cp -avfH  "${ld_linux_path}" "${ld_linux}"
 
 	patchelf --set-interpreter ${opt_dir}/libs/${ld_linux_name} ${aznfsclient}
+
+	# nfs-foresight payload (no-op unless built)
+	stage_foresight ${STG_DIR}/deb/${pkg_dir}
 
 	# Create the deb package.
 	dpkg-deb -Zgzip --root-owner-group --build $STG_DIR/deb/$pkg_dir

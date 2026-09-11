@@ -53,3 +53,9 @@ if [ ! -f "$flag_file" ]; then
 
 	echo "Stopped aznfs watchdog service"
 fi
+
+if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
+	# nfs-foresight add-on: stop+disable on remove/purge (tolerant). Existence
+	# check guards non-foresight builds; gate helper exits 0 (protects set -e).
+	[ -x /usr/lib/nfs-foresight/foresight-gate.sh ] && /usr/lib/nfs-foresight/foresight-gate.sh remove || true
+fi

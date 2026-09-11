@@ -132,6 +132,11 @@ if [ ! -f "$FLAG_FILE" ]; then
         # Start the watchdog service for NFSv4
         systemctl enable aznfswatchdogv4
         systemctl start aznfswatchdogv4
+
+        # nfs-foresight add-on: run the default-off gate installer (tolerant, never
+        # enables/starts). The existence check guards non-foresight builds; the
+        # gate helper exits 0 so it can never abort this set -e postinst.
+        [ -x /usr/lib/nfs-foresight/foresight-gate.sh ] && /usr/lib/nfs-foresight/foresight-gate.sh install || true
 else
         # Clean up the update in progress flag file.
         rm -f "$FLAG_FILE"

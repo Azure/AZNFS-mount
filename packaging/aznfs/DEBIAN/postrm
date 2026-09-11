@@ -14,4 +14,10 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	rm -rf /opt/microsoft/aznfs
 	chattr -f -i /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
 	rm -rf /etc/stunnel/microsoft
+
+	# nfs-foresight add-on: purge payload + config on remove/purge (tolerant).
+	# postrm runs after dpkg removes /usr/lib/nfs-foresight, so the gate helper may
+	# already be gone; call it if present, then fall back to a direct cleanup.
+	[ -x /usr/lib/nfs-foresight/foresight-gate.sh ] && /usr/lib/nfs-foresight/foresight-gate.sh purge || true
+	rm -rf /usr/lib/nfs-foresight /etc/nfs-foresight /usr/sbin/nfs-foresight /lib/systemd/system/nfs-foresight.service
 fi
