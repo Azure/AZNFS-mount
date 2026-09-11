@@ -16,3 +16,6 @@
 [submodule "turbonfs/extern/json"]
 	path = turbonfs/extern/json
 	url = https://github.com/nlohmann/json.git
+[submodule "extern/nfs-foresight"]
+	path = extern/nfs-foresight
+	url = https://github.com/psachdeva-ms/nfs-foresight.git
