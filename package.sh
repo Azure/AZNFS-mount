@@ -49,10 +49,26 @@ build_foresight()
 		[ -f "$_c" ] && { libbpf_a=$_c; break; }
 	done
 	[ -n "$libbpf_a" ] || echo "nfs-foresight: WARNING: no static libbpf.a found; binary will dynamically link libbpf"
+
+	# glibc parity: link FULLY STATIC so the one built binary runs on every target
+	# distro regardless of the (newer) build-host glibc. CO-RE handles kernel
+	# portability; static linking handles userspace/glibc portability. Requires the
+	# static libbpf/libelf/libz/libzstd (+ lzma) archives next to libbpf.a.
+	local ldlibs="-lelf -lz" cflags="-g -O2 -Wall" libdir=
+	[ -n "$libbpf_a" ] && libdir=$(dirname "$libbpf_a")
+	if [ -n "$libdir" ] && [ -f "${libdir}/libelf.a" ] && [ -f "${libdir}/libz.a" ] && [ -f "${libdir}/libzstd.a" ]; then
+		cflags="-g -O2 -Wall -static"
+		ldlibs="-l:libelf.a -l:libz.a -l:libzstd.a"
+		[ -f "${libdir}/liblzma.a" ] && ldlibs="${ldlibs} -l:liblzma.a"
+		[ -f "${libdir}/libbz2.a" ]  && ldlibs="${ldlibs} -l:libbz2.a"
+		echo "nfs-foresight: building fully-static (portable across glibc)"
+	else
+		echo "nfs-foresight: WARNING: static libelf/libz/libzstd not all found; binary will be dynamically linked (glibc-version dependent)"
+	fi
 	echo "nfs-foresight: building default + legacy (arch=${bpfarch}, libbpf_a=${libbpf_a:-none})"
 	( set -e; cd "${FORESIGHT_SRC}"; make clean >/dev/null 2>&1 || true; \
-	  make        ARCH=${bpfarch} VERSION=${RELEASE_NUMBER} ${libbpf_a:+LIBBPF_A="${libbpf_a}"}; \
-	  make legacy ARCH=${bpfarch} VERSION=${RELEASE_NUMBER} ${libbpf_a:+LIBBPF_A="${libbpf_a}"} ) \
+	  make        ARCH=${bpfarch} VERSION=${RELEASE_NUMBER} ${libbpf_a:+LIBBPF_A="${libbpf_a}"} CFLAGS="${cflags}" LIBBPF_LDLIBS="${ldlibs}"; \
+	  make legacy ARCH=${bpfarch} VERSION=${RELEASE_NUMBER} ${libbpf_a:+LIBBPF_A="${libbpf_a}"} CFLAGS="${cflags}" LIBBPF_LDLIBS="${ldlibs}" ) \
 	  || { echo "nfs-foresight: build failed; skipping payload (aznfs unaffected)"; return 0; }
 	[ -x "${FORESIGHT_SRC}/foresight" ] && [ -x "${FORESIGHT_SRC}/foresight-legacy" ] || {
 		echo "nfs-foresight: binaries missing after build; skipping"; return 0; }
