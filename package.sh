@@ -41,10 +41,18 @@ build_foresight()
 	fi
 	local bpfarch=x86
 	[ "$(uname -m)" == "aarch64" ] && bpfarch=arm64
-	echo "nfs-foresight: building default + legacy (arch=${bpfarch})"
+	# Locate a static libbpf.a so the shipped binary does NOT depend on libbpf.so at
+	# runtime. Paths differ by distro: RPM/SUSE use /usr/lib64, deb uses
+	# /usr/lib/<arch>-linux-gnu. Without this the Makefile falls back to dynamic -lbpf.
+	local libbpf_a=
+	for _c in /usr/lib64/libbpf.a "/usr/lib/$(uname -m)-linux-gnu/libbpf.a"; do
+		[ -f "$_c" ] && { libbpf_a=$_c; break; }
+	done
+	[ -n "$libbpf_a" ] || echo "nfs-foresight: WARNING: no static libbpf.a found; binary will dynamically link libbpf"
+	echo "nfs-foresight: building default + legacy (arch=${bpfarch}, libbpf_a=${libbpf_a:-none})"
 	( set -e; cd "${FORESIGHT_SRC}"; make clean >/dev/null 2>&1 || true; \
-	  make ARCH=${bpfarch} VERSION=${RELEASE_NUMBER}; \
-	  make legacy ARCH=${bpfarch} VERSION=${RELEASE_NUMBER} ) \
+	  make        ARCH=${bpfarch} VERSION=${RELEASE_NUMBER} ${libbpf_a:+LIBBPF_A="${libbpf_a}"}; \
+	  make legacy ARCH=${bpfarch} VERSION=${RELEASE_NUMBER} ${libbpf_a:+LIBBPF_A="${libbpf_a}"} ) \
 	  || { echo "nfs-foresight: build failed; skipping payload (aznfs unaffected)"; return 0; }
 	[ -x "${FORESIGHT_SRC}/foresight" ] && [ -x "${FORESIGHT_SRC}/foresight-legacy" ] || {
 		echo "nfs-foresight: binaries missing after build; skipping"; return 0; }
