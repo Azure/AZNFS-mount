@@ -90,8 +90,22 @@ stage_foresight()
 {
 	[ "${FORESIGHT_STAGED}" == "1" ] || return 0
 	local dst=$1/usr/lib/nfs-foresight
+	local with_legacy=${2:-0}
 	mkdir -p "${dst}"
-	cp -avf "${FORESIGHT_OUT}/." "${dst}/"
+	# Default binary + unit + config + gate helper go into every capable package.
+	cp -avf "${FORESIGHT_OUT}/nfs-foresight" "${FORESIGHT_OUT}/nfs-foresight.service" \
+	        "${FORESIGHT_OUT}/foresight.conf" "${FORESIGHT_OUT}/foresight-gate.sh" "${dst}/"
+	# The 4.18 legacy binary is only useful to the rpm family (RHEL8/CentOS8/Rocky8);
+	# deb (Ubuntu>=20.04/Debian>=12) and suse (SLES15/16) are all >=5.x, so omit it there.
+	[ "${with_legacy}" == "1" ] && cp -avf "${FORESIGHT_OUT}/nfs-foresight-legacy" "${dst}/"
+	return 0
+}
+
+# Echo the rpmbuild --define for the LEGACY binary: 1 only for the rpm family (the
+# only one with a kernel-4.18 target) when foresight was staged; 0 otherwise.
+foresight_legacy_define()
+{
+	if [ "${FORESIGHT_STAGED}" == "1" ] && [ "$1" == "rpm" ]; then echo 1; else echo 0; fi
 }
 
 # Echo the rpmbuild --define for foresight for a given family ($1=rpm_dir).
@@ -223,10 +237,10 @@ generate_rpm_package()
 	fi
 
 	# nfs-foresight payload (no-op unless built)
-	stage_foresight ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}
+	stage_foresight ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir} $(foresight_legacy_define ${rpm_dir})
 
 	# Create the rpm package.
-	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "azurelinux_build $azurelinux_build_required" --define "foresight $(foresight_rpm_define ${rpm_dir})" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+	rpmbuild --define "custom_stunnel $custom_stunnel_required" --define "azurelinux_build $azurelinux_build_required" --define "foresight $(foresight_rpm_define ${rpm_dir})" --define "foresight_legacy $(foresight_legacy_define ${rpm_dir})" --define "_topdir ${STG_DIR}/${rpm_dir}${rpmbuild_dir}" -v -bb ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 }
 
 generate_tarball_package()

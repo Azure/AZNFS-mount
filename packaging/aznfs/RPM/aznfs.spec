@@ -54,10 +54,12 @@ OPT_LIBS
 /sbin/aznfsclient
 %if 0%{?foresight}
 /usr/lib/nfs-foresight/nfs-foresight
-/usr/lib/nfs-foresight/nfs-foresight-legacy
 /usr/lib/nfs-foresight/nfs-foresight.service
 /usr/lib/nfs-foresight/foresight.conf
 /usr/lib/nfs-foresight/foresight-gate.sh
+%endif
+%if 0%{?foresight_legacy}
+/usr/lib/nfs-foresight/nfs-foresight-legacy
 %endif
 
 %pre
