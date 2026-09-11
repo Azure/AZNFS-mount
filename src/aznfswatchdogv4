@@ -14,7 +14,12 @@ mtime_mountmap_notls=0
 NFSFS_SERVERS_FILE="/proc/fs/nfsfs/servers"
 
 # How often to probe the storage IP for reachability (seconds).
-HEALTH_CHECK_FREQUENCY=60
+# This is the ZRS-failover detection cadence: worst-case detection latency for a
+# tenant failure is roughly this value (plus the ~3s probe timeout), before any
+# recovery/reconnect. Customers with tight HA monitors (e.g. Pacemaker resource
+# timeouts) can lower it via AZNFS_HEALTH_CHECK_FREQUENCY to shrink worst-case
+# detection time. Default 60s preserves prior behaviour.
+HEALTH_CHECK_FREQUENCY=${AZNFS_HEALTH_CHECK_FREQUENCY:-60}
 
 #
 # Check conntrack entries for NFSv4 non-TLS DNAT mounts (port 2049).
@@ -87,6 +92,7 @@ failover_stunnel()
     local l_checksumhash=$6
     local old_line=$7
     local new_ip=$8
+    local l_crc32=$9
 
     local old_ip=$l_ip
     local accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
@@ -150,8 +156,12 @@ failover_stunnel()
     # Step 4: Recompute checksum and update MOUNTMAPv4 with new IP, new file paths, and new checksum.
     local new_checksum=$(cksum $new_conf | awk '{print $1}')
 
-    # Build the new mountmap entry.
+    # Build the new mountmap entry. Preserve the trailing crc32 (control-file
+    # name) so account-migration polling keeps working after a ZRS failover.
     local new_entry="${l_host};${new_ip};${new_conf};${new_log};${new_pid};${new_checksum};mounted;0"
+    if [ -n "$l_crc32" ]; then
+        new_entry="${new_entry};${l_crc32}"
+    fi
 
     chattr -f -i $MOUNTMAPv4
     # Replace the entire old entry line (matched by old conf path) with the new entry.
@@ -430,8 +440,8 @@ process_nfsv4_notls_mounts()
             continue
         fi
 
-        # MOUNTMAPv4NOTLS format: hostname localip storageip
-        IFS=" " read l_host l_ip l_nfsip <<< "$line"
+        # MOUNTMAPv4NOTLS format: hostname localip storageip [crc32]
+        IFS=" " read l_host l_ip l_nfsip l_crc32 <<< "$line"
 
         if [ -z "$l_host" -o -z "$l_ip" -o -z "$l_nfsip" ]; then
             wecho "[FATAL] Deleting invalid line in $MOUNTMAPv4NOTLS: [$line]!"
@@ -461,6 +471,54 @@ process_nfsv4_notls_mounts()
         # Check 2: Verify DNAT rule still exists (safety net).
         #
         verify_iptable_entry "$l_ip" "$l_nfsip"
+
+        #
+        # Private endpoints (VNet) have no client-side ZRS failover and no
+        # account-migration handling: Azure manages failover internally and the
+        # endpoint IP is stable. Skip both migration polling and ZRS detection
+        # for them — this entry is a no-op past the cleanup/iptable checks.
+        # Note: for non-TLS, the real storage IP is $l_nfsip ($l_ip is the local
+        # DNAT proxy IP, which is always in the private range).
+        #
+        if is_private_ip "$l_nfsip"; then
+            continue
+        fi
+
+        #
+        # Account migration (server-signalled), checked BEFORE ZRS failover.
+        # The server publishes migration state to a virtual file named after the
+        # crc32 field at the share root: "<PRT_stage>;<FSLocationIP>". If the
+        # server has moved the account to a new IP, honour that authoritative
+        # signal and skip the reactive ZRS path this iteration.
+        #
+        if [ -n "$l_crc32" ]; then
+            local notls_mp=$(echo "$findmnt_notls" | grep "$l_ip" | awk '{print $2}' | head -1)
+            if [ -n "$notls_mp" ]; then
+                local vfile="${notls_mp}/${l_crc32}"
+                if [ -f "$vfile" ]; then
+                    local l_fslocation_line=$(cat "$vfile" 2>/dev/null)
+                    if [ $? -eq 0 ]; then
+                        local l_prt l_fslocationIP
+                        IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
+                        l_prt=${l_prt:-0}
+                        if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_nfsip" -a "$l_prt" -ge 5 ]; then
+                            pecho "Account migration for $l_host [$l_nfsip -> $l_fslocationIP] (PRT=$l_prt), updating DNAT."
+                            if update_mountmap_entry "$MOUNTMAPv4NOTLS" "$line" "$l_host $l_ip $l_fslocationIP $l_crc32"; then
+                                mtime_mountmap_notls=$(stat -c%Y $MOUNTMAPv4NOTLS)
+                                ping_new_endpoint "$notls_mp" &
+                                pecho "Migration complete for $l_host [$l_nfsip -> $l_fslocationIP]"
+                            else
+                                eecho "Failed to update DNAT for migration of $l_host [$l_nfsip -> $l_fslocationIP]!"
+                            fi
+                            # Server signal is authoritative; skip ZRS this pass.
+                            continue
+                        fi
+                    else
+                        wecho "Failed to read migration virtual file $vfile for $l_host."
+                    fi
+                fi
+            fi
+        fi
 
         #
         # Layer 1: Conntrack monitoring (passive, every 5s).
@@ -504,7 +562,7 @@ process_nfsv4_notls_mounts()
 
             pecho "IP for $l_host changed [$l_nfsip -> $new_ip], updating DNAT."
 
-            if update_mountmap_entry "$MOUNTMAPv4NOTLS" "$line" "$l_host $l_ip $new_ip"; then
+            if update_mountmap_entry "$MOUNTMAPv4NOTLS" "$line" "$l_host $l_ip $new_ip $l_crc32"; then
                 pecho "Failover complete for $l_host [$l_nfsip -> $new_ip]"
 
                 # Update mtime since we modified the file.
@@ -555,7 +613,7 @@ process_nfsv4_mounts()
     # MOUNTMAPv4 entry whose all nfs file shares are unmounted, we know
     # for sure that it's not in use by any mount and can be removed.
     #
-    findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
+    findmnt=$(findmnt | grep "nfs4\|$LOCALHOST" 2>&1)
 
     #
     # For no matching mounts also, findmnt exits with a failure return, so check
@@ -582,16 +640,21 @@ process_nfsv4_mounts()
 
         #
         # MOUNTMAPv4 line format:
-        #   New (8 fields): <hostname>;<IP>;<stunnel.conf>;<stunnel.log>;<stunnel.pid>;<checksum>;<status>;<timeout>
-        #   Old (7 fields): <IP>;<stunnel.conf>;<stunnel.log>;<stunnel.pid>;<checksum>;<status>;<timeout>
+        #   New (9 fields): <hostname>;<IP>;<stunnel.conf>;<stunnel.log>;<stunnel.pid>;<checksum>;<status>;<timeout>;<crc32>
+        #   8 fields:       same as above without the trailing crc32 (pre-migration schema).
+        #   Old (7 fields): no hostname, failover not possible.
         # Detect by field count to maintain backward compatibility with pre-existing mounts.
         #
         local field_count=$(echo "$line" | awk -F';' '{print NF}')
-        if [ "$field_count" -ge 8 ]; then
+        if [ "$field_count" -ge 9 ]; then
+            IFS=";" read l_host l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout l_crc32 <<< "$line"
+        elif [ "$field_count" -eq 8 ]; then
             IFS=";" read l_host l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
+            l_crc32=""
         else
             # Old format (7 fields): no hostname, failover not possible.
             l_host=""
+            l_crc32=""
             IFS=";" read l_ip l_conf l_log l_pid l_checksumhash l_status l_timeout <<< "$line"
         fi
 
@@ -687,6 +750,45 @@ process_nfsv4_mounts()
             fi
 
             #
+            # Account migration (server-signalled), checked BEFORE ZRS failover.
+            # The server publishes migration state to a virtual file named after
+            # the crc32 field at the share root: "<PRT_stage>;<FSLocationIP>".
+            # When the account has been moved, honour that authoritative signal
+            # via a normal stunnel failover to the new IP and skip the reactive
+            # ZRS path this iteration.
+            #
+            # Skip migration polling for private endpoints — Azure handles
+            # failover internally and the endpoint IP is stable (mirrors the
+            # ZRS guard below).
+            if [ -n "$l_crc32" ] && [ -n "$l_host" ] && ! is_private_ip "$l_ip"; then
+                local tls_mp=$(echo "$findmnt" | grep "$accept_port" | awk '{print $1}' | sed 's/^[^/]*//' | head -1)
+                if [ -n "$tls_mp" ]; then
+                    local vfile="${tls_mp}/${l_crc32}"
+                    if [ -f "$vfile" ]; then
+                        local l_fslocation_line=$(cat "$vfile" 2>/dev/null)
+                        if [ $? -eq 0 ]; then
+                            local l_prt l_fslocationIP
+                            IFS=";" read l_prt l_fslocationIP <<< "$l_fslocation_line"
+                            l_prt=${l_prt:-0}
+                            if [ -n "$l_fslocationIP" -a "$l_fslocationIP" != "$l_ip" -a "$l_prt" -ge 5 ]; then
+                                pecho "Account migration for $l_host [$l_ip -> $l_fslocationIP] (PRT=$l_prt), failing over stunnel..."
+                                if failover_stunnel "$l_host" "$l_ip" "$l_conf" "$l_log" "$l_pid" "$l_checksumhash" "$line" "$l_fslocationIP" "$l_crc32"; then
+                                    ping_new_endpoint "$tls_mp" &
+                                    pecho "Migration complete for $l_host [$l_ip -> $l_fslocationIP]"
+                                else
+                                    eecho "Failed stunnel failover for migration of $l_host [$l_ip -> $l_fslocationIP]!"
+                                fi
+                                # Server signal is authoritative; skip ZRS this pass.
+                                continue
+                            fi
+                        else
+                            wecho "Failed to read migration virtual file $vfile for $l_host."
+                        fi
+                    fi
+                fi
+            fi
+
+            #
             # ZRS failover detection for public endpoint TLS mounts.
             # Skip for private endpoints — Azure handles failover internally.
             #
@@ -711,7 +813,7 @@ process_nfsv4_mounts()
                     elif [ "$new_ip" == "$l_ip" ]; then
                         wecho "No alternative IP found for $l_host (DNS returned same IP $l_ip)."
                     else
-                        if failover_stunnel "$l_host" "$l_ip" "$l_conf" "$l_log" "$l_pid" "$l_checksumhash" "$line" "$new_ip"; then
+                        if failover_stunnel "$l_host" "$l_ip" "$l_conf" "$l_log" "$l_pid" "$l_checksumhash" "$line" "$new_ip" "$l_crc32"; then
                             # Force NFS client to reconnect through restarted stunnel.
                             local tls_mount_target=$(echo "$findmnt" | grep "$accept_port" | awk '{print $NF}' | head -1)
                             if [ -n "$tls_mount_target" ]; then
