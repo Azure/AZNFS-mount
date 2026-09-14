@@ -112,7 +112,12 @@ generate_rpm_package()
 		# In Centos/RedHat/Rocky, procps-ng provides pgrep.
 		sed -i -e "s/PROCPS_PACKAGE_NAME/procps-ng/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/DISTRO/rpm/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		sed -i -e "s/INSTALL_CMD/yum/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		# Azure Linux uses tdnf; other RPM distros use yum.
+		if [ "$rpm_dir" == "azurelinux" ]; then
+			sed -i -e "s/INSTALL_CMD/tdnf/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		else
+			sed -i -e "s/INSTALL_CMD/yum/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		fi
 	fi
 
 	# Create the rpm package.
