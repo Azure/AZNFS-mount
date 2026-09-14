@@ -138,7 +138,12 @@ generate_rpm_package()
 		# present in new versions, only install procps-ng which exists in all versions.
 		sed -i -e "s/PROCPS_PACKAGE_NAME/procps-ng/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
 		sed -i -e "s/DISTRO/rpm/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
-		sed -i -e "s/INSTALL_CMD/yum/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		# Azure Linux uses tdnf; other RPM distros use yum.
+		if [ "$rpm_dir" == "azurelinux" ]; then
+			sed -i -e "s/INSTALL_CMD/tdnf/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		else
+			sed -i -e "s/INSTALL_CMD/yum/g" ${STG_DIR}/${rpm_dir}/tmp/aznfs.spec
+		fi
 	fi
 
 	# Create the rpm package.
