@@ -17,11 +17,13 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
                      const struct fattr3 *fattr,
                      struct nfs_client *_client,
                      uint32_t _file_type,
-                     fuse_ino_t _ino) :
+                     fuse_ino_t _ino,
+                     bool require_kernel_cache) :
     file_type(_file_type),
     fh(*filehandle),
     crc(calculate_crc32(fh.get_fh())),
     ino(_ino == 0 ? (fuse_ino_t) this : _ino),
+    require_kernel_cache(require_kernel_cache),
     generation(get_current_usecs()),
     client(_client)
 {

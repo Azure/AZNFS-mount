@@ -368,7 +368,8 @@ public:
     struct nfs_inode *__get_nfs_inode(LOC_PARAMS
                                       const nfs_fh3 *fh,
                                       const struct fattr3 *fattr,
-                                      bool is_root_inode = false);
+                                      bool is_root_inode = false,
+                                      bool require_kernel_cache = false);
 
 #define get_nfs_inode(fh, fattr, ...) \
     __get_nfs_inode(LOC_VAL fh, fattr, ## __VA_ARGS__)
