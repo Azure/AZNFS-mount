@@ -61,6 +61,7 @@ generate_rpm_package()
 	cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/src/aznfs.logrotate ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${opt_dir}/
 
 	mkdir -p ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
 	cp -avf ${SOURCE_DIR}/src/aznfswatchdog.service ${STG_DIR}/${rpm_dir}/tmp${rpm_buildroot_dir}/${rpm_pkg_dir}${system_dir}
@@ -173,6 +174,10 @@ generate_tarball_package()
     cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
     cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
     cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
+    # No maintainer script here, so unlike deb/rpm nothing renders
+    # /etc/logrotate.d/aznfs at install time. common.sh generates it when it is
+    # first sourced, which is the same run that creates the log file.
+    cp -avf ${SOURCE_DIR}/src/aznfs.logrotate ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/
 
     # Set AKS_USER variable to true inside aznfswatchdog to indicate use by Azure Kubernetes Service (AKS).
     sed -i -e 's/AKS_USER="false"/AKS_USER="true"/' -e "s/RELEASE_NUMBER_FOR_AKS=x.y.z/RELEASE_NUMBER_FOR_AKS=${RELEASE_NUMBER}/" ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
@@ -205,6 +210,7 @@ generate_tarball_package()
     chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/nfsv4mountscript.sh
     chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/aznfs_install.sh
     chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
+    chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/aznfs.logrotate
     chmod 4755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
 
     # Create the tar.gz package.
@@ -297,6 +303,7 @@ if [ "$BUILD_MACHINE" != "azurelinux" ]; then
 	cp -avf ${SOURCE_DIR}/src/nfsv3mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/src/nfsv4mountscript.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/scripts/aznfs_install.sh ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
+	cp -avf ${SOURCE_DIR}/src/aznfs.logrotate ${STG_DIR}/deb/${pkg_dir}${opt_dir}/
 	cp -avf ${SOURCE_DIR}/turbonfs/sample-turbo-config.yaml ${STG_DIR}/deb/${pkg_dir}/${opt_dir}/
 
 	mkdir -p ${STG_DIR}/deb/${pkg_dir}${system_dir}

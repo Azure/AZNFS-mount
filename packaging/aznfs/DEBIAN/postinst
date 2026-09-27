@@ -10,6 +10,8 @@ set -e
 
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 CONFIG_FILE="/opt/microsoft/aznfs/data/config"
+LOGROTATE_TEMPLATE="/opt/microsoft/aznfs/aznfs.logrotate"
+LOGROTATE_CONFIG="/etc/logrotate.d/aznfs"
 AUTO_UPDATE_AZNFS="false"
 
 parse_user_config()
@@ -58,6 +60,280 @@ EOF
     fi
 }
 
+#
+# Generate the logrotate config for aznfs logs from the packaged template.
+# It's generated (and not shipped as a static file) since the log directory is
+# configurable using AZNFS_LOGDIR in CONFIG_FILE, with the limits from
+# AZNFS_LOGSIZE and AZNFS_LOGCOUNT. It's regenerated only if one of those three
+# changed, so that any local change to the rotation policy below is retained
+# across package upgrades otherwise.
+#
+#
+# Same rule as safe_logdir() in common.sh, which decides where the logs really
+# go: every component has to be one that only root can put files into, and none
+# of them may be a symlink. stat is deliberately not given -L, so a link is
+# judged as itself and rejected, rather than as the root owned directory a
+# local user pointed it at.
+#
+aznfs_safe_logdir()
+{
+    local dir="$1"
+    local path parent me owner gname mode gbit obit
+
+    me=$(id -u)
+
+    #
+    # Trailing slashes are removed first: "test -L link/" is false, because the
+    # slash forces the link to be resolved, so a caller passing "dir/" would
+    # walk straight past the symlink check below.
+    #
+    while [ "$dir" != "/" ] && [ "${dir%/}" != "$dir" ]; do
+        dir="${dir%/}"
+    done
+
+    path="$dir"
+
+    #
+    # Start at the deepest component that already exists, so this can be asked
+    # about a directory we have not created yet. -L as well as -e, so a
+    # dangling symlink counts as existing and is rejected rather than walked
+    # straight past.
+    #
+    while [ "$path" != "/" ] && [ ! -e "$path" ] && [ ! -L "$path" ]; do
+        path=$(dirname "$path")
+    done
+
+    while : ; do
+        # Explicit, so relaxing the mode checks cannot stop rejecting links.
+        [ -L "$path" ] && return 1
+
+        read -r owner gname mode < <(stat -c '%u %G %a' "$path" 2>/dev/null)
+        [ -n "$owner" ] || return 1
+        [ "$owner" == "0" -o "$owner" == "$me" ] || return 1
+
+        mode=$(printf '%04d' "$mode" 2>/dev/null) || return 1
+        gbit=$(( 8#${mode: -2:1} ))
+        obit=$(( 8#${mode: -1:1} ))
+
+        #
+        # World writable is never acceptable, sticky or not. Group writable is
+        # allowed for a parent owned by one of the groups distros use for log
+        # directories, /var/log is root:syslog 0775, but never for the log
+        # directory itself. Named rather than compared against a gid
+        # threshold: an ordinary group such as "users" sits at 100 on many
+        # distros.
+        #
+        [ $(( obit & 2 )) -eq 0 ] || return 1
+
+        if [ $(( gbit & 2 )) -ne 0 ]; then
+            if [ "$path" == "$dir" ]; then
+                return 1
+            fi
+
+            case "$gname" in
+                root|syslog) ;;
+                *) return 1 ;;
+            esac
+        fi
+
+        [ "$path" == "/" ] && break
+
+        # Any fixpoint ends the walk. dirname "//" is "//" on some systems, and
+        # without this the loop would spin forever on a repeated leading slash.
+        parent=$(dirname "$path")
+        [ "$parent" == "$path" ] && break
+        path="$parent"
+    done
+
+    return 0
+}
+
+install_logrotate_config()
+{
+    local logdir= logfiles= prev_logdir= prev_policy= tmpfile= logsize= logcount=
+
+    if [ ! -f "$LOGROTATE_TEMPLATE" ]; then
+        return
+    fi
+
+    if [ -f "$CONFIG_FILE" ]; then
+        logdir=$(sed -n 's|^[[:space:]]*AZNFS_LOGDIR[[:space:]]*=[[:space:]]*||p' "$CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's|[[:space:]]*$||' -e 's|^"\(.*\)"$|\1|' -e "s|^'\(.*\)'\$|\1|") || true
+    fi
+
+    logdir=${logdir:-/opt/microsoft/aznfs/data}
+
+    # Strip trailing slashes to keep the generated config path canonical.
+    while [ "$logdir" != "/" ] && [ "${logdir%/}" != "$logdir" ]; do
+        logdir=${logdir%/}
+    done
+
+    #
+    # The log directory must be an absolute path built only from characters that
+    # are safe as a sed replacement below ('&' and '|' are not) and inside the
+    # logrotate glob patterns ('*' and '?' are not). Fall back to the default
+    # for anything else rather than writing a broken config.
+    #
+    case "$logdir" in
+        /) logdir= ;;
+        /*[!A-Za-z0-9._/@+-]*) logdir= ;;
+        /*) ;;
+        *) logdir= ;;
+    esac
+
+    # "/." and "/var/log/.." are other spellings of a directory the case above
+    # would otherwise treat as distinct.
+    case "${logdir}/" in
+        */../*|*/./*) logdir= ;;
+    esac
+
+    if [ -z "$logdir" ]; then
+        echo "AZNFS_LOGDIR in $CONFIG_FILE is not a usable path, using /opt/microsoft/aznfs/data instead!"
+        logdir=/opt/microsoft/aznfs/data
+    fi
+
+    #
+    # mkdir -p succeeds for a directory that already exists even when it cannot
+    # be written to, e.g. on a read only filesystem. common.sh probes the same
+    # way at runtime and falls back when the probe fails, so probe here too.
+    # Otherwise the policy would rotate an unusable directory and leave the log
+    # that is actually being written, the one under the fallback, uncovered.
+    #
+    # The probe goes through mktemp rather than touching a known name: this
+    # runs as root, and a configured directory that others can write to would
+    # otherwise let them redirect it through a planted symlink.
+    #
+    logdir_usable=true
+
+    #
+    # Checked before anything is created, and again afterwards. mkdir -p follows
+    # a symlinked component, so validating only after the fact would still let a
+    # link planted in a world writable directory have root create directories
+    # inside its target.
+    #
+    if ! aznfs_safe_logdir "$logdir"; then
+        echo "Log directory $logdir is not root owned, is writable by others, or is a symlink!"
+        logdir_usable=false
+    fi
+
+    # Only what we create: mkdir honours the caller's umask, so under 0002
+    # this would be 0775 and the revalidation below would refuse what we just
+    # made. An existing directory keeps the mode its owner chose.
+    if [ "$logdir_usable" == "true" ] && [ ! -d "$logdir" ] &&
+       ! { mkdir -p "$(dirname "$logdir")" 2>/dev/null
+        mkdir "$logdir" 2>/dev/null && chmod 0755 "$logdir" 2>/dev/null; }; then
+        logdir_usable=false
+    fi
+
+    if [ "$logdir_usable" == "true" ] && ! aznfs_safe_logdir "$logdir"; then
+        echo "Log directory $logdir is not root owned, is writable by others, or is a symlink!"
+        logdir_usable=false
+    fi
+
+    if [ "$logdir_usable" == "true" ]; then
+        probe=$(mktemp "${logdir}/.aznfs-logdir-probe.XXXXXXXX" 2>/dev/null) || logdir_usable=false
+        [ -n "$probe" ] && rm -f "$probe"
+    fi
+
+    #
+    # Mirrors usable_logdir(..., "$LOGFILE") in common.sh. An existing log we
+    # cannot append to makes common.sh fall back at the first mount, and the
+    # policy would then be rotating a path AZNFS is not writing to.
+    #
+    if [ "$logdir_usable" == "true" ] &&
+       { [ -L "${logdir}/aznfs.log" ] ||
+         { [ -e "${logdir}/aznfs.log" ] && { [ ! -f "${logdir}/aznfs.log" ] || [ ! -w "${logdir}/aznfs.log" ]; }; }; }; then
+        echo "Log file ${logdir}/aznfs.log is not writable!"
+        logdir_usable=false
+    fi
+
+    if [ "$logdir_usable" != "true" ]; then
+        echo "Not able to use log directory $logdir, using /opt/microsoft/aznfs/data instead!"
+        logdir=/opt/microsoft/aznfs/data
+        mkdir -p "$logdir" 2>/dev/null && chmod 0755 "$logdir" 2>/dev/null
+    fi
+
+    #
+    # Rotation policy, same keys and defaults common.sh uses at mount time.
+    # Anything unusable falls back rather than producing an invalid policy.
+    #
+    logsize=$(sed -n 's|^[[:space:]]*AZNFS_LOGSIZE[[:space:]]*=[[:space:]]*||p' "$CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's|[[:space:]]*$||' -e 's|^"\(.*\)"$|\1|' -e "s|^'\(.*\)'\$|\1|") || true
+    logcount=$(sed -n 's|^[[:space:]]*AZNFS_LOGCOUNT[[:space:]]*=[[:space:]]*||p' "$CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's|[[:space:]]*$||' -e 's|^"\(.*\)"$|\1|' -e "s|^'\(.*\)'\$|\1|") || true
+
+    if [ -n "$logsize" ] && ! [[ "$logsize" =~ ^[1-9][0-9]*[kKmMgG]?$ ]]; then
+        echo "Invalid AZNFS_LOGSIZE $logsize, rotating at 100M instead!"
+        logsize=
+    fi
+
+    if [ -n "$logcount" ] && ! [[ "$logcount" =~ ^[0-9]+$ ]]; then
+        echo "Invalid AZNFS_LOGCOUNT $logcount, keeping 7 rotations instead!"
+        logcount=
+    fi
+
+    logsize="${logsize:-100M}"
+    logcount="${logcount:-7}"
+
+    #
+    # The markers record what the policy was generated for, so a change to any
+    # of them regenerates it and a hand edited policy otherwise survives.
+    #
+    if [ -f "$LOGROTATE_CONFIG" ]; then
+        prev_logdir=$(sed -n 's|^# AZNFS_LOGDIR: ||p' "$LOGROTATE_CONFIG" 2>/dev/null | head -1) || true
+        prev_policy=$(sed -n 's|^# AZNFS_LOGPOLICY: ||p' "$LOGROTATE_CONFIG" 2>/dev/null | head -1) || true
+
+        if [ "$prev_logdir" == "$logdir" -a \
+             "$prev_policy" == "size=${logsize} rotate=${logcount}" ]; then
+            return
+        fi
+    fi
+
+    #
+    # Rotate logs from the configured directory only. The watchdog services
+    # must be restarted after changing AZNFS_LOGDIR (see README), after which
+    # nothing writes to the previous directory any more.
+    #
+    logfiles="${logdir}/aznfs.log ${logdir}/turbo*.log"
+
+    mkdir -p "$(dirname $LOGROTATE_CONFIG)"
+
+    #
+    # Render to a temporary file and only then replace the destination. Writing
+    # straight to $LOGROTATE_CONFIG would truncate it before sed runs, so a
+    # failure part way through would leave an empty or partial policy, which
+    # disables rotation and loses any local edits.
+    #
+    # Staged outside the logrotate config directory: a temp file left behind
+    # there would itself be read as a config and fail the run with duplicate
+    # log entries. Same filesystem, so the rename stays atomic.
+    # mktemp, not a redirection onto a predictable name: "> $tmpfile" takes the
+    # caller's umask, so under umask 000 it is a 0666 file in /etc that can be
+    # written before the chmod below. mktemp always creates 0600.
+    tmpfile=$(mktemp "$(dirname "$(dirname "$LOGROTATE_CONFIG")")/.aznfs-logrotate.tmp.XXXXXX" 2>/dev/null)
+
+    if [ -z "$tmpfile" ]; then
+        echo "Not able to generate $LOGROTATE_CONFIG, aznfs logs will not be rotated!"
+        return
+    fi
+
+    if ! sed -e "s|AZNFS_LOGDIR_PLACEHOLDER|${logdir}|g" \
+             -e "s|AZNFS_LOGFILES_PLACEHOLDER|${logfiles}|g" \
+             -e "s|AZNFS_LOGPOLICY_PLACEHOLDER|size=${logsize} rotate=${logcount}|g" \
+             -e "s|AZNFS_LOGSIZE_PLACEHOLDER|${logsize}|g" \
+             -e "s|AZNFS_LOGCOUNT_PLACEHOLDER|${logcount}|g" \
+             "$LOGROTATE_TEMPLATE" > "$tmpfile"; then
+        rm -f "$tmpfile"
+        echo "Not able to generate $LOGROTATE_CONFIG, aznfs logs will not be rotated!"
+        return
+    fi
+
+    chmod 0644 "$tmpfile"
+
+    if ! mv -f "$tmpfile" "$LOGROTATE_CONFIG"; then
+        rm -f "$tmpfile"
+        echo "Not able to update $LOGROTATE_CONFIG, aznfs logs will not be rotated!"
+        return
+    fi
+}
+
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
 chmod 0755 /usr/sbin/aznfswatchdog
@@ -67,6 +343,8 @@ chmod 0755 /opt/microsoft/aznfs/nfsv3mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/nfsv4mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
+# Tolerate the template being absent, install_logrotate_config() below does too.
+[ -f /opt/microsoft/aznfs/aznfs.logrotate ] && chmod 0644 /opt/microsoft/aznfs/aznfs.logrotate
 
 # Set suid bit for mount.aznfs to allow mount for non-super user.
 chmod 4755 /sbin/mount.aznfs
@@ -110,9 +388,20 @@ if [ ! -f "$CONFIG_FILE" ]; then
         # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
         echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
 
+        #
+        # Directory for aznfs.log and the per-mount turbo logs, uncomment and
+        # change it to log to a different directory.
+        #
+        echo "#AZNFS_LOGDIR=/opt/microsoft/aznfs/data" >> "$CONFIG_FILE"
+        echo "#AZNFS_LOGSIZE=100M" >> "$CONFIG_FILE"
+        echo "#AZNFS_LOGCOUNT=7" >> "$CONFIG_FILE"
+
         # Set the permissions for the config file.
         chmod 0644 "$CONFIG_FILE"
 fi
+
+# Set up log rotation for aznfs logs, as per the configured log directory.
+install_logrotate_config
 
 #
 # If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
