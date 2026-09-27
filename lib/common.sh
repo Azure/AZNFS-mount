@@ -8,9 +8,386 @@
 APPNAME="aznfs"
 OPTDIR="/opt/microsoft/${APPNAME}"
 OPTDIRDATA="${OPTDIR}/data"
-LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 RANDBYTES="${OPTDIRDATA}/randbytes"
 INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
+
+#
+# Config file holding user settings, f.e. AUTO_UPDATE_AZNFS and AZNFS_LOGDIR.
+#
+AZNFS_CONFIG_FILE="${OPTDIRDATA}/config"
+
+#
+# Template used for generating the logrotate config for the aznfs logs and the
+# generated logrotate config which is picked by the logrotate service.
+#
+LOGROTATE_TEMPLATE="${OPTDIR}/${APPNAME}.logrotate"
+LOGROTATE_CONFIG="/etc/logrotate.d/${APPNAME}"
+
+#
+# Returns the value of the given setting from AZNFS_CONFIG_FILE, empty string
+# if the config file and/or the setting is not present.
+#
+# The whole rest of the line is taken as the value, with surrounding whitespace
+# (including a trailing CR from a config edited on Windows) and a matching pair
+# of surrounding quotes removed. Embedded whitespace is deliberately kept, so
+# that a value like "/var/log/my logs" is seen in full and can be rejected by
+# the caller rather than being silently truncated to "/var/log/my".
+#
+get_user_config()
+{
+    local key="$1" val
+
+    if [ ! -f "$AZNFS_CONFIG_FILE" ]; then
+        return 0
+    fi
+
+    val=$(sed -n "s|^[[:space:]]*${key}[[:space:]]*=[[:space:]]*||p" "$AZNFS_CONFIG_FILE" 2>/dev/null |
+            tail -n1 | sed -e 's|[[:space:]]*$||')
+
+    case "$val" in
+        \"*\") val=${val#\"}; val=${val%\"} ;;
+        \'*\') val=${val#\'}; val=${val%\'} ;;
+    esac
+
+    echo "$val"
+}
+
+#
+# Strip trailing slashes from a directory path so that "/var/log/aznfs/" and
+# "/var/log/aznfs" are treated as the same directory. Besides avoiding ugly
+# double slashes in log paths, this keeps the LOGROTATE_CONFIG idempotency
+# check stable, which compares the configured directory as a string.
+#
+normalize_dir()
+{
+    local dir="$1"
+
+    # Keep a lone "/" intact.
+    while [ "$dir" != "/" ] && [ "${dir%/}" != "$dir" ]; do
+        dir="${dir%/}"
+    done
+
+    echo "$dir"
+}
+
+#
+# Can the given path be used as the AZNFS log directory?
+#
+# It must be an absolute path built only from characters that are safe to use
+# unquoted, as a sed replacement when generating LOGROTATE_CONFIG (f.e. '&' and
+# '|' are not) and inside the logrotate glob patterns (f.e. '*' and '?' are
+# not). Anything else is rejected so we don't end up with a corrupt logrotate
+# config, a pattern matching unrelated files, or logs in an unpredictable
+# location.
+#
+is_valid_logdir()
+{
+    local dir="$1"
+
+    # Must be absolute, and "/" itself is not a sensible log directory.
+    case "$dir" in
+        /) return 1 ;;
+        /*) ;;
+        *) return 1 ;;
+    esac
+
+    #
+    # "/." and "/var/log/.." are other spellings of directories the checks
+    # above and below would otherwise treat as distinct, so a "." or ".."
+    # component is refused rather than resolved.
+    #
+    case "$dir/" in
+        */../*|*/./*) return 1 ;;
+    esac
+
+    case "$dir" in
+        *[!A-Za-z0-9._/@+-]*) return 1 ;;
+    esac
+
+    return 0
+}
+
+#
+# Is this a directory that only root can put files into?
+#
+# The logs are created and appended to as root, and the turbo client keeps its
+# log open with ">>", which cannot be made to refuse a symlink. So the only
+# durable protection is that nobody else can place a symlink there in the first
+# place.
+#
+# Every component is checked, not just the final directory: a root owned 0755
+# log directory sitting under a parent others can write to can simply be
+# renamed out of the way and replaced, and the checks we did on it then say
+# nothing about what we end up writing to.
+#
+# Nothing in the chain may be a symlink, and stat is deliberately not given -L
+# so that a link is judged as itself rather than as its target. A symlink is
+# mode 0777 and belongs to whoever created it, so the checks below reject one.
+# Judging it by its target instead would accept a link somebody else planted at
+# the path, which is the whole attack: with AZNFS_LOGDIR=/tmp/aznfs a local
+# user can pre-create /tmp/aznfs -> /etc, the target passes every check, and
+# root then creates and appends to /etc/aznfs.log. For the same reason the path
+# is not canonicalized first, that would resolve the planted link away before
+# it could be seen.
+#
+safe_logdir()
+{
+    local dir="$1"
+    local path parent me owner gname mode gbit obit
+
+    me=$(id -u)
+
+    #
+    # Trailing slashes are removed first: "test -L link/" is false, because the
+    # slash forces the link to be resolved, so a caller passing "dir/" would
+    # walk straight past the symlink check below.
+    #
+    while [ "$dir" != "/" ] && [ "${dir%/}" != "$dir" ]; do
+        dir="${dir%/}"
+    done
+
+    path="$dir"
+
+    #
+    # Start at the deepest component that already exists, so this can be asked
+    # about a directory we have not created yet. Anything below that point does
+    # not exist to be unsafe, and gets checked on the second call once it does.
+    # -L as well as -e, so a dangling symlink counts as existing and is
+    # rejected rather than walked straight past.
+    #
+    while [ "$path" != "/" ] && [ ! -e "$path" ] && [ ! -L "$path" ]; do
+        path=$(dirname "$path")
+    done
+
+    while : ; do
+        #
+        # Rejected explicitly rather than relying on a symlink's 0777 mode
+        # failing the checks below, so that relaxing those cannot silently
+        # stop rejecting links.
+        #
+        [ -L "$path" ] && return 1
+
+        read -r owner gname mode < <(stat -c '%u %G %a' "$path" 2>/dev/null)
+        [ -n "$owner" ] || return 1
+
+        #
+        # Owned by somebody else means they can rename or replace what is
+        # inside it, whatever its mode says.
+        #
+        [ "$owner" == "0" -o "$owner" == "$me" ] || return 1
+
+        #
+        # Normalized to four digits so the setuid/sticky digit cannot shift the
+        # digits being inspected.
+        #
+        mode=$(printf '%04d' "$mode" 2>/dev/null) || return 1
+        gbit=$(( 8#${mode: -2:1} ))
+        obit=$(( 8#${mode: -1:1} ))
+
+        #
+        # World writable is never acceptable, sticky or not: sticky protects
+        # entries that already exist, so it does nothing for a directory we
+        # have not created yet, where anybody can create it, or a symlink in
+        # its place, before we do.
+        #
+        [ $(( obit & 2 )) -eq 0 ] || return 1
+
+        if [ $(( gbit & 2 )) -ne 0 ]; then
+            #
+            # Group writable is how distros ship the obvious destination:
+            # /var/log is root:syslog 0775. Allowed for a parent owned by one
+            # of the groups used for that, never for the log directory itself.
+            #
+            # Named rather than compared against a gid threshold: GID ranges
+            # are configurable, and an ordinary group such as "users" sits at
+            # 100 on many distros, so "gid < 1000" would trust a group real
+            # users are in. "adm" is excluded for the same reason, on Ubuntu it
+            # contains the login user.
+            #
+            # A member of an allowed group can still rename the directory
+            # between this check and the writes that follow. Closing that needs
+            # the log to be created through a held directory descriptor with
+            # no-follow semantics, which a shell cannot do; the set is kept to
+            # daemon accounts so nothing a human logs in as is trusted.
+            #
+            if [ "$path" == "$dir" ]; then
+                return 1
+            fi
+
+            case "$gname" in
+                root|syslog) ;;
+                *) return 1 ;;
+            esac
+        fi
+
+        [ "$path" == "/" ] && break
+
+        # Any fixpoint ends the walk. dirname "//" is "//" on some systems, and
+        # without this the loop would spin forever on a repeated leading slash.
+        parent=$(dirname "$path")
+        [ "$parent" == "$path" ] && break
+        path="$parent"
+    done
+
+    return 0
+}
+
+#
+# Can we actually log into this directory? On top of the syntax check above it
+# has to exist or be creatable, and a file has to be writable inside it.
+#
+# The probe file is removed again when it wasn't already there, so probing does
+# not leave anything behind; callers create the log files they actually need.
+#
+usable_logdir()
+{
+    local dir="$1"
+
+    #
+    # Optional. Only inspected, never created or removed here.
+    #
+    local logfile="$2"
+
+    local probe
+
+    is_valid_logdir "$dir" || return 1
+
+    #
+    # Checked before anything is created, and again afterwards. mkdir -p
+    # follows a symlinked component, so validating only after the fact would
+    # still let a link planted in a world writable directory have root create
+    # directories inside its target. The second call covers the components we
+    # created ourselves, which did not exist to be checked by the first.
+    #
+    safe_logdir "$dir" || return 1
+
+    if [ ! -d "$dir" ]; then
+        # Parents with -p, the final component without: -p succeeds on an
+        # entry that already exists, so a symlink planted between the check
+        # above and here would be followed. Plain mkdir fails with EEXIST.
+        mkdir -p "$(dirname "$dir")" 2>/dev/null
+        mkdir "$dir" 2>/dev/null && chmod 0755 "$dir" 2>/dev/null
+
+        #
+        # An existing path that is not a directory fails here, not at the
+        # mkdir above.
+        #
+        [ -d "$dir" ] || return 1
+
+        safe_logdir "$dir" || return 1
+    fi
+
+    #
+    # mktemp, not a fixed name plus touch. common.sh is sourced as root from
+    # the setuid mount path, and if the configured directory is writable by
+    # others an unprivileged user could pre-create a symlink at a name we are
+    # about to touch and have us write through it. mktemp creates with O_EXCL
+    # under an unpredictable name, so it neither follows an existing symlink
+    # nor collides with a concurrent mount or watchdog.
+    #
+    probe=$(mktemp "${dir}/.aznfs-logdir-probe.XXXXXXXX" 2>/dev/null) || return 1
+    rm -f "$probe" 2>/dev/null
+
+    #
+    # A log file we cannot append to makes the directory unusable just the
+    # same. The real log is created once, further below.
+    #
+    #
+    # -L before -w, because -w follows the link and reports on the target: a
+    # symlink pointing at something writable would otherwise pass here and the
+    # append below would go through it as root. The directory chain already
+    # refuses symlinks, so the log file is held to the same rule.
+    #
+    if [ -n "$logfile" ] && [ -L "$logfile" ]; then
+        return 1
+    fi
+
+    if [ -n "$logfile" ] && [ -e "$logfile" ] &&
+       { [ ! -f "$logfile" ] || [ ! -w "$logfile" ]; }; then
+        return 1
+    fi
+
+    return 0
+}
+
+#
+# How large a log has to get before it is rotated, and how many rotations are
+# kept. Both feed straight into the generated logrotate policy.
+#
+# The size is logrotate's own syntax, a number with an optional k/M/G suffix.
+# Zero is refused because "size 0" rotates on every run. A count of zero is
+# allowed and means keep nothing, which is a sensible choice on a small disk.
+#
+is_valid_logsize()
+{
+    [[ "$1" =~ ^[1-9][0-9]*[kKmMgG]?$ ]]
+}
+
+is_valid_logcount()
+{
+    [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+#
+# Directory where aznfs.log and the per-mount turbo logs are created.
+# Users can change it either by setting AZNFS_LOGDIR in AZNFS_CONFIG_FILE or by
+# exporting the AZNFS_LOGDIR env variable, the env variable takes precedence.
+#
+# Note: The env variable is a per-invocation override, hence only the directory
+#       configured in AZNFS_CONFIG_FILE is covered by LOGROTATE_CONFIG.
+#
+#
+# Internal state for the log directory resolution below.
+#
+# This must be initialized: common.sh is sourced into a shell whose environment
+# comes from the caller, and mount.aznfs is setuid root, so an inherited value
+# would otherwise be taken for a real validation failure and let an
+# unprivileged caller force the fallback and the regeneration of the rotation
+# config.
+#
+bad_logdir=
+logdir_is_configured_one=
+bad_logsize=
+bad_logcount=
+
+#
+# Defaults for the rotation policy, used when the config file says nothing or
+# says something unusable.
+#
+AZNFS_LOGSIZE_DEFAULT="100M"
+AZNFS_LOGCOUNT_DEFAULT="7"
+
+AZNFS_CONFIGURED_LOGDIR="$(normalize_dir "$(get_user_config AZNFS_LOGDIR)")"
+
+if [ -n "$AZNFS_CONFIGURED_LOGDIR" ] && ! is_valid_logdir "$AZNFS_CONFIGURED_LOGDIR"; then
+    bad_logdir="$AZNFS_CONFIGURED_LOGDIR"
+    AZNFS_CONFIGURED_LOGDIR=
+fi
+
+AZNFS_CONFIGURED_LOGDIR="${AZNFS_CONFIGURED_LOGDIR:-$OPTDIRDATA}"
+AZNFS_LOGDIR="$(normalize_dir "${AZNFS_LOGDIR:-$AZNFS_CONFIGURED_LOGDIR}")"
+LOGFILE="${AZNFS_LOGDIR}/${APPNAME}.log"
+
+#
+# Rotation policy. Unlike the log directory these are not overridable from the
+# environment: they only ever describe what the generated policy should say, so
+# a per-invocation value would have no meaning.
+#
+AZNFS_LOGSIZE="$(get_user_config AZNFS_LOGSIZE)"
+AZNFS_LOGCOUNT="$(get_user_config AZNFS_LOGCOUNT)"
+
+if [ -n "$AZNFS_LOGSIZE" ] && ! is_valid_logsize "$AZNFS_LOGSIZE"; then
+    bad_logsize="$AZNFS_LOGSIZE"
+    AZNFS_LOGSIZE=
+fi
+
+if [ -n "$AZNFS_LOGCOUNT" ] && ! is_valid_logcount "$AZNFS_LOGCOUNT"; then
+    bad_logcount="$AZNFS_LOGCOUNT"
+    AZNFS_LOGCOUNT=
+fi
+
+AZNFS_LOGSIZE="${AZNFS_LOGSIZE:-$AZNFS_LOGSIZE_DEFAULT}"
+AZNFS_LOGCOUNT="${AZNFS_LOGCOUNT:-$AZNFS_LOGCOUNT_DEFAULT}"
 
 #
 # This stores the map of local IP and share name and external blob endpoint IP.
@@ -1254,6 +1631,126 @@ fix_read_ahead_config()
     fi
 }
 
+#
+# Make sure the logrotate config rotates the logs from the configured log
+# directory, with the configured limits. The config is generated from the
+# packaged template and is regenerated only if AZNFS_LOGDIR, AZNFS_LOGSIZE or
+# AZNFS_LOGCOUNT has changed, so that any local change done to the rotation
+# policy is not lost otherwise.
+#
+# Only the configured directory is covered. Long running processes like the
+# watchdog services resolve LOGFILE once at startup, so they have to be
+# restarted after a log directory change, see the README. Logs left in the
+# previous directory are not rotated any more and are not removed either.
+#
+ensure_logrotate_config()
+{
+    local tmpfile logfiles prev_logdir prev_policy
+
+    # Nothing to do if logrotate is not available on this system.
+    if [ ! -d "$(dirname $LOGROTATE_CONFIG)" -o ! -f "$LOGROTATE_TEMPLATE" ]; then
+        return 0
+    fi
+
+    #
+    # The marker lines recorded in the generated config tell us what it was
+    # generated for, so we can tell whether any of it changed. They record the
+    # configured values, not what the file currently says, so a policy edited
+    # by hand is left alone until the configuration itself changes.
+    #
+    if [ -f "$LOGROTATE_CONFIG" ]; then
+        prev_logdir=$(sed -n 's|^# AZNFS_LOGDIR: ||p' "$LOGROTATE_CONFIG" 2>/dev/null | head -1)
+        prev_policy=$(sed -n 's|^# AZNFS_LOGPOLICY: ||p' "$LOGROTATE_CONFIG" 2>/dev/null | head -1)
+
+        if [ "$prev_logdir" == "$AZNFS_CONFIGURED_LOGDIR" -a \
+             "$prev_policy" == "size=${AZNFS_LOGSIZE} rotate=${AZNFS_LOGCOUNT}" ]; then
+            return 0
+        fi
+    fi
+
+    #
+    # Rotate logs from the configured directory only.
+    #
+    # Processes started before a log directory change keep writing to the
+    # directory they picked up at startup, so the watchdog services must be
+    # restarted after changing AZNFS_LOGDIR (see README). A running Turbo
+    # client cannot be moved that way, it holds its log open for the life of
+    # the mount, so that mount has to be remounted. This is a documented
+    # limitation rather than something handled here, see the README.
+    #
+    logfiles="${AZNFS_CONFIGURED_LOGDIR}/${APPNAME}.log ${AZNFS_CONFIGURED_LOGDIR}/turbo*.log"
+
+    #
+    # Staged outside the logrotate config directory. A temp file left behind
+    # there by an interrupted mount is itself read as a rotation config, and
+    # logrotate then fails the whole run with a duplicate log entry for every
+    # path in it. The parent is the same filesystem, so the rename below is
+    # still atomic.
+    #
+    # mktemp rather than a redirection onto a predictable name: this runs from
+    # the setuid helper, which keeps the caller's umask, so "> $tmpfile" under
+    # umask 000 creates a 0666 file in /etc that the caller can write logrotate
+    # directives into before the chmod below. mktemp always creates 0600.
+    #
+    # '|| tmpfile=' is what keeps the empty check below reachable: under
+    # 'set -e' a failing command substitution exits at the assignment, so a
+    # caller that enables errexit would have the mount aborted by a failure
+    # this function is meant to report and move past.
+    #
+    tmpfile=$(mktemp "$(dirname "$(dirname "$LOGROTATE_CONFIG")")/.${APPNAME}-logrotate.tmp.XXXXXX" 2>/dev/null) || tmpfile=
+
+    if [ -z "$tmpfile" ]; then
+        vecho "Not able to generate '${LOGROTATE_CONFIG}', ${APPNAME} logs will not be rotated!"
+        return 1
+    fi
+
+    if ! sed -e "s|AZNFS_LOGDIR_PLACEHOLDER|${AZNFS_CONFIGURED_LOGDIR}|g" \
+             -e "s|AZNFS_LOGFILES_PLACEHOLDER|${logfiles}|g" \
+             -e "s|AZNFS_LOGPOLICY_PLACEHOLDER|size=${AZNFS_LOGSIZE} rotate=${AZNFS_LOGCOUNT}|g" \
+             -e "s|AZNFS_LOGSIZE_PLACEHOLDER|${AZNFS_LOGSIZE}|g" \
+             -e "s|AZNFS_LOGCOUNT_PLACEHOLDER|${AZNFS_LOGCOUNT}|g" \
+             "$LOGROTATE_TEMPLATE" > "$tmpfile" 2>/dev/null; then
+        rm -f "$tmpfile"
+        vecho "Not able to generate '${LOGROTATE_CONFIG}', ${APPNAME} logs will not be rotated!"
+        return 1
+    fi
+
+    #
+    # Guarded like every other step here: mktemp creates the staging file 0600,
+    # so a failure to widen it would otherwise install a policy logrotate skips
+    # as unreadable, and under a caller's 'set -e' it would abort the mount.
+    #
+    if ! chmod 0644 "$tmpfile"; then
+        rm -f "$tmpfile"
+        vecho "Not able to generate '${LOGROTATE_CONFIG}', ${APPNAME} logs will not be rotated!"
+        return 1
+    fi
+
+    if ! mv -f "$tmpfile" "$LOGROTATE_CONFIG"; then
+        rm -f "$tmpfile"
+        vecho "Not able to update '${LOGROTATE_CONFIG}', ${APPNAME} logs will not be rotated!"
+        return 1
+    fi
+
+    vecho "Generated '${LOGROTATE_CONFIG}' for rotating logs in '${AZNFS_CONFIGURED_LOGDIR}'."
+
+    #
+    # Tell the user how to complete the change and where the logs from before
+    # it are. Long running processes keep logging to the directory they picked
+    # up at startup until restarted, and since rotation is size based a log
+    # that stops growing is never rotated out, so those files stay until they
+    # are removed by hand.
+    #
+    if [ -n "$prev_logdir" -a "$prev_logdir" != "$AZNFS_CONFIGURED_LOGDIR" ]; then
+        wecho "AZNFS log directory changed to '${AZNFS_CONFIGURED_LOGDIR}'."
+        wecho "Restart the watchdog services so that they log there too:"
+        wecho "    sudo systemctl restart aznfswatchdog aznfswatchdogv4"
+        wecho "Logs from before the change remain in '${prev_logdir}' and are not removed automatically."
+    fi
+
+    return 0
+}
+
 # On some distros mount program doesn't pass correct PATH variable.
 export PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -1268,13 +1765,100 @@ if [ ! -d $OPTDIRDATA ]; then
     exit 1
 fi
 
+#
+# Make sure we can actually log into the configured directory. If we can't,
+# fall back to the default log directory instead of failing the mount over a
+# logging preference.
+#
+# The effective directory and the configured one are probed separately. A
+# per-invocation override decides where this invocation logs, but rotation
+# always follows the configured directory, so an unusable configured directory
+# has to be caught even when a valid override is hiding it. Otherwise the
+# policy would rotate a directory nothing can write to, while the default that
+# later invocations fall back to is left uncovered.
+#
+logdir_is_configured_one="no"
+[ "$AZNFS_LOGDIR" == "$AZNFS_CONFIGURED_LOGDIR" ] && logdir_is_configured_one="yes"
+
+if ! usable_logdir "$AZNFS_LOGDIR" "$LOGFILE"; then
+    # Not clobbered: an invalid value from the config file was recorded above,
+    # and that is the one worth naming, not the fallback that also failed.
+    [ -z "$bad_logdir" ] && bad_logdir="$AZNFS_LOGDIR"
+
+    #
+    # The configured directory is preferred over the default, because that is
+    # the one ensure_logrotate_config() covers. Dropping straight to the
+    # default would leave the log we actually write to unrotated, which is the
+    # problem this change exists to fix.
+    #
+    if [ "$logdir_is_configured_one" == "no" ] &&
+       usable_logdir "$AZNFS_CONFIGURED_LOGDIR" "${AZNFS_CONFIGURED_LOGDIR}/${APPNAME}.log"; then
+        AZNFS_LOGDIR="$AZNFS_CONFIGURED_LOGDIR"
+    else
+        AZNFS_LOGDIR="$OPTDIRDATA"
+    fi
+
+    LOGFILE="${AZNFS_LOGDIR}/${APPNAME}.log"
+fi
+
+#
+# The fallback is not exempt from the rule. Nothing else has checked it, and
+# appending through a link here would defeat every check above. The directory
+# is root owned, so a link at this path is either an attack or a broken
+# install; refusing is safer than writing wherever it points.
+#
+# Not eecho: that appends to $LOGFILE, which is the link being refused, so the
+# refusal would perform the very write it exists to prevent.
+#
+if [ -L "$LOGFILE" ]; then
+    echo "[FATAL] '${LOGFILE}' is a symlink, refusing to log through it!" >&2
+    echo "Set AZNFS_LOGDIR in ${AZNFS_CONFIG_FILE} to relocate logs instead." >&2
+    exit 1
+fi
+
+#
+# Created before the warnings below, not after: _log opens $LOGFILE, so warning
+# about a rejected directory first leaks a raw shell error to the terminal.
+#
 if [ ! -f $LOGFILE ]; then
     touch $LOGFILE
     if [ $? -ne 0 ]; then
-        eecho "[FATAL] Not able to create '${LOGFILE}'!"
+        echo "[FATAL] Not able to create '${LOGFILE}'!" >&2
         exit 1
     fi
 fi
+
+if [ "$logdir_is_configured_one" == "yes" ]; then
+    #
+    # Same value, so it has already been probed and is warned about below.
+    #
+    if [ -n "$bad_logdir" ]; then
+        AZNFS_CONFIGURED_LOGDIR="$OPTDIRDATA"
+    fi
+elif ! usable_logdir "$AZNFS_CONFIGURED_LOGDIR" "${AZNFS_CONFIGURED_LOGDIR}/${APPNAME}.log"; then
+    wecho "Not able to use configured log directory '${AZNFS_CONFIGURED_LOGDIR}', rotating '${OPTDIRDATA}' instead!"
+    AZNFS_CONFIGURED_LOGDIR="$OPTDIRDATA"
+fi
+
+if [ -n "$bad_logdir" ]; then
+    wecho "Not able to use log directory '${bad_logdir}', using '${AZNFS_LOGDIR}' instead!"
+    unset bad_logdir
+fi
+
+if [ -n "$bad_logsize" ]; then
+    wecho "Invalid AZNFS_LOGSIZE '${bad_logsize}', rotating at '${AZNFS_LOGSIZE}' instead!"
+    unset bad_logsize
+fi
+
+if [ -n "$bad_logcount" ]; then
+    wecho "Invalid AZNFS_LOGCOUNT '${bad_logcount}', keeping '${AZNFS_LOGCOUNT}' rotations instead!"
+    unset bad_logcount
+fi
+
+# Keep the logrotate config in sync with the configured log directory.
+# Never let a logging setup failure stop a mount, guarded in case a caller
+# enables errexit around this.
+ensure_logrotate_config || true
 
 # Create mount map file
 if ! create_mountmap_file; then
