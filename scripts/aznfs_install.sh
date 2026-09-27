@@ -7,9 +7,187 @@
 APPNAME="aznfs"
 OPTDIR="/opt/microsoft/${APPNAME}"
 OPTDIRDATA="${OPTDIR}/data"
-LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 CONFIG_FILE="${OPTDIRDATA}/config"
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
+
+#
+# Directory where aznfs.log is created.
+# Users can change it either by setting AZNFS_LOGDIR in CONFIG_FILE or by
+# exporting the AZNFS_LOGDIR env variable, the env variable takes precedence.
+#
+if [ -z "$AZNFS_LOGDIR" -a -f "$CONFIG_FILE" ]; then
+    AZNFS_LOGDIR=$(sed -n 's|^[[:space:]]*AZNFS_LOGDIR[[:space:]]*=[[:space:]]*||p' "$CONFIG_FILE" 2>/dev/null |
+                    tail -n1 | sed -e 's|[[:space:]]*$||' -e 's|^"\(.*\)"$|\1|' -e "s|^'\(.*\)'\$|\1|")
+fi
+
+AZNFS_LOGDIR="${AZNFS_LOGDIR:-$OPTDIRDATA}"
+
+# Strip trailing slashes to keep the log path canonical.
+while [ "$AZNFS_LOGDIR" != "/" ] && [ "${AZNFS_LOGDIR%/}" != "$AZNFS_LOGDIR" ]; do
+    AZNFS_LOGDIR="${AZNFS_LOGDIR%/}"
+done
+
+#
+# Same rule as safe_logdir() in common.sh, which decides where the logs really
+# go: every component has to be one that only root can put files into, and none
+# of them may be a symlink. stat is deliberately not given -L, so a link is
+# judged as itself and rejected, rather than as the root owned directory a
+# local user pointed it at.
+#
+aznfs_safe_logdir()
+{
+    local dir="$1"
+    local path parent me owner gname mode gbit obit
+
+    me=$(id -u)
+
+    #
+    # Trailing slashes are removed first: "test -L link/" is false, because the
+    # slash forces the link to be resolved, so a caller passing "dir/" would
+    # walk straight past the symlink check below.
+    #
+    while [ "$dir" != "/" ] && [ "${dir%/}" != "$dir" ]; do
+        dir="${dir%/}"
+    done
+
+    path="$dir"
+
+    #
+    # Start at the deepest component that already exists, so this can be asked
+    # about a directory we have not created yet. -L as well as -e, so a
+    # dangling symlink counts as existing and is rejected rather than walked
+    # straight past.
+    #
+    while [ "$path" != "/" ] && [ ! -e "$path" ] && [ ! -L "$path" ]; do
+        path=$(dirname "$path")
+    done
+
+    while : ; do
+        # Explicit, so relaxing the mode checks cannot stop rejecting links.
+        [ -L "$path" ] && return 1
+
+        read -r owner gname mode < <(stat -c '%u %G %a' "$path" 2>/dev/null)
+        [ -n "$owner" ] || return 1
+        [ "$owner" == "0" -o "$owner" == "$me" ] || return 1
+
+        mode=$(printf '%04d' "$mode" 2>/dev/null) || return 1
+        gbit=$(( 8#${mode: -2:1} ))
+        obit=$(( 8#${mode: -1:1} ))
+
+        #
+        # World writable is never acceptable, sticky or not. Group writable is
+        # allowed for a parent owned by one of the groups distros use for log
+        # directories, /var/log is root:syslog 0775, but never for the log
+        # directory itself. Named rather than compared against a gid
+        # threshold: an ordinary group such as "users" sits at 100 on many
+        # distros.
+        #
+        [ $(( obit & 2 )) -eq 0 ] || return 1
+
+        if [ $(( gbit & 2 )) -ne 0 ]; then
+            if [ "$path" == "$dir" ]; then
+                return 1
+            fi
+
+            case "$gname" in
+                root|syslog) ;;
+                *) return 1 ;;
+            esac
+        fi
+
+        [ "$path" == "/" ] && break
+
+        # Any fixpoint ends the walk. dirname "//" is "//" on some systems, and
+        # without this the loop would spin forever on a repeated leading slash.
+        parent=$(dirname "$path")
+        [ "$parent" == "$path" ] && break
+        path="$parent"
+    done
+
+    return 0
+}
+
+#
+# Only accept an absolute path built from characters that are safe to use
+# unquoted, fall back to the default directory otherwise.
+#
+case "$AZNFS_LOGDIR" in
+    /) AZNFS_LOGDIR="$OPTDIRDATA" ;;
+    /*[!A-Za-z0-9._/@+-]*) AZNFS_LOGDIR="$OPTDIRDATA" ;;
+    /*) ;;
+    *) AZNFS_LOGDIR="$OPTDIRDATA" ;;
+esac
+
+# "/." and "/var/log/.." are other spellings of a directory the case above
+# would otherwise treat as distinct.
+case "${AZNFS_LOGDIR}/" in
+    */../*|*/./*) AZNFS_LOGDIR="$OPTDIRDATA" ;;
+esac
+
+#
+# Never fail the installer over a logging preference: anything unusable falls
+# back to the default directory.
+#
+# The installer runs as root, so the directory has to be one that only root can
+# put files into, otherwise another user could plant a symlink at aznfs.log and
+# have us write through it. Same rule as safe_logdir() in common.sh. The probe
+# goes through mktemp for the same reason, rather than touching a known name.
+#
+logdir_usable=true
+
+#
+# Checked before anything is created, and again afterwards. mkdir -p follows a
+# symlinked component, so validating only after the fact would still let a link
+# planted in a world writable directory have root create directories inside its
+# target.
+#
+if ! aznfs_safe_logdir "$AZNFS_LOGDIR"; then
+    logdir_usable=false
+fi
+
+# Only what we create: mkdir honours the caller's umask, so under 0002 this
+# would be 0775 and the revalidation below would refuse what we just made. An
+# existing directory keeps the mode its owner chose.
+if [ "$logdir_usable" == "true" ] && [ ! -d "$AZNFS_LOGDIR" ] &&
+   ! { mkdir -p "$(dirname "$AZNFS_LOGDIR")" 2>/dev/null
+        mkdir "$AZNFS_LOGDIR" 2>/dev/null && chmod 0755 "$AZNFS_LOGDIR" 2>/dev/null; }; then
+    logdir_usable=false
+fi
+
+if [ "$logdir_usable" == "true" ] && ! aznfs_safe_logdir "$AZNFS_LOGDIR"; then
+    logdir_usable=false
+fi
+
+if [ "$logdir_usable" == "true" ]; then
+    probe=$(mktemp "${AZNFS_LOGDIR}/.aznfs-logdir-probe.XXXXXXXX" 2>/dev/null) || logdir_usable=false
+    [ -n "$probe" ] && rm -f "$probe"
+fi
+
+#
+# An existing log we cannot append to makes the directory unusable just the
+# same, the same check common.sh makes at mount time.
+#
+if [ "$logdir_usable" == "true" ] &&
+   { [ -L "${AZNFS_LOGDIR}/${APPNAME}.log" ] ||
+         { [ -e "${AZNFS_LOGDIR}/${APPNAME}.log" ] && { [ ! -f "${AZNFS_LOGDIR}/${APPNAME}.log" ] || [ ! -w "${AZNFS_LOGDIR}/${APPNAME}.log" ]; }; }; }; then
+    logdir_usable=false
+fi
+
+if [ "$logdir_usable" != "true" ]; then
+    AZNFS_LOGDIR="$OPTDIRDATA"
+    mkdir -p "$AZNFS_LOGDIR" && chmod 0755 "$AZNFS_LOGDIR"
+fi
+
+LOGFILE="${AZNFS_LOGDIR}/${APPNAME}.log"
+
+# The fallback path is checked too: this runs as root, and touch follows a
+# link. The diagnostic goes to stderr because wecho is not defined this early.
+if [ -L "$LOGFILE" ]; then
+    echo "'${LOGFILE}' is a symlink, refusing to log through it!" >&2
+    LOGFILE=/dev/null
+fi
+
+touch "$LOGFILE" 2>/dev/null
 
 AUTO_UPDATE_AZNFS=false
 apt_update_done=false

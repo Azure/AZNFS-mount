@@ -25,9 +25,31 @@ IP_PREFIXES="${AZNFS_IP_PREFIXES:-${DEFAULT_AZNFS_IP_PREFIXES}}"
 
 #
 # Directory where the turbo log file will be created.
-# User can override it with AZNFSC_LOGDIR env variable.
+# It defaults to the aznfs log directory (see AZNFS_LOGDIR in
+# /opt/microsoft/aznfs/data/config) and can be overridden with the
+# AZNFSC_LOGDIR env variable.
+# Note: Logs in a directory other than AZNFS_LOGDIR are not rotated by the
+#       logrotate config shipped in /etc/logrotate.d/aznfs.
 #
-AZNFSC_LOGDIR="${AZNFSC_LOGDIR:-/opt/microsoft/aznfs/data}"
+# It goes through the same validation as AZNFS_LOGDIR. Without the syntax
+# check an unvalidated value reaches the unquoted expansions below, where
+# whitespace word splits and glob characters expand, so the logs could land
+# somewhere other than the path that was asked for. Usability is probed here
+# too, otherwise a syntactically fine but unwritable directory would only be
+# discovered at the touch in create_aznfsclient_mount_args, which fails the
+# mount rather than falling back the way the log directory is meant to.
+#
+# Normalized before it is validated, not after: "test -L link/" is false, so a
+# value with a trailing slash would otherwise be checked in a form that hides a
+# symlink and then used in the stripped form that follows it.
+AZNFSC_LOGDIR="$(normalize_dir "$AZNFSC_LOGDIR")"
+
+if [ -n "$AZNFSC_LOGDIR" ] && ! usable_logdir "$AZNFSC_LOGDIR"; then
+    wecho "Not able to use turbo log directory '${AZNFSC_LOGDIR}', using '${AZNFS_LOGDIR}' instead!"
+    AZNFSC_LOGDIR=
+fi
+
+AZNFSC_LOGDIR="$(normalize_dir "${AZNFSC_LOGDIR:-$AZNFS_LOGDIR}")"
 
 # Aznfs port, defaults to 2048.
 AZNFS_PORT="${AZNFS_PORT:-2048}"
@@ -988,9 +1010,30 @@ create_aznfsclient_mount_args()
     # Finally add the mount point.
     AZNFSCLIENT_MOUNT_ARGS="$args $mount_point"
 
-    turbo_log=$AZNFSC_LOGDIR/turbo$(echo $mount_point | tr -s "/" "_").log
-    if [ ! -f $turbo_log ]; then
-        touch $turbo_log
+    turbo_log="$AZNFSC_LOGDIR/turbo$(printf '%s' "$mount_point" | tr -s "/" "_").log"
+
+    #
+    # The directory was checked when AZNFSC_LOGDIR was resolved, but the log
+    # file itself only becomes known here, once the mount point is. It gets the
+    # same rule as aznfs.log: never follow a symlink, and refuse anything that
+    # is not a regular file we can append to. aznfsclient opens it with ">>",
+    # which cannot be made to refuse a link.
+    #
+    # Fatal rather than a fallback. AZNFSC_LOGDIR defaults to AZNFS_LOGDIR, so
+    # for most mounts there is no other directory to move to, and the client
+    # would hold this path open for the life of the mount.
+    #
+    if [ -L "$turbo_log" ] ||
+       { [ -e "$turbo_log" ] && { [ ! -f "$turbo_log" ] || [ ! -w "$turbo_log" ]; }; }; then
+        eecho "[FATAL] Not able to use turbo log '${turbo_log}'!"
+        eecho "It must be a regular file that can be appended to, and must not be a symlink."
+        eecho "Mount failed!"
+        exit 1
+    fi
+
+    if [ ! -f "$turbo_log" ]; then
+        mkdir -p "$AZNFSC_LOGDIR"
+        touch "$turbo_log"
         if [ $? -ne 0 ]; then
             eecho "[FATAL] Not able to create '${turbo_log}'!"
             eecho "Mount failed!"
@@ -1002,7 +1045,7 @@ create_aznfsclient_mount_args()
     # Turbo mount uses different log file for each mount.
     # All logs from here on will come in that log file.
     #
-    LOGFILE=$turbo_log
+    LOGFILE="$turbo_log"
 }
 
 #
