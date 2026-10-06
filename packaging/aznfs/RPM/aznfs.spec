@@ -348,7 +348,7 @@ aznfs_safe_logdir()
 #
 aznfs_selinux_label_logdir()
 {
-    local dir="$1" cur
+    local dir="$1" cur re
 
     command -v selinuxenabled >/dev/null 2>&1 || return 0
     selinuxenabled 2>/dev/null || return 0
@@ -358,12 +358,20 @@ aznfs_selinux_label_logdir()
         *:var_log_t:*) return 0 ;;
     esac
 
+    #
+    # semanage takes a regex, not a literal path, and a valid log directory may
+    # contain '.' or '+'. Interpolated raw, AZNFS_LOGDIR=/srv/aznfs.v1 would
+    # register a rule that also relabels /srv/aznfsXv1. The removal path
+    # escapes the same way, so the rule added can always be the rule deleted.
+    #
+    re=$(printf '%s' "$dir" | sed 's/[][\.^$*+?(){}|]/\\&/g')
+
     # Recorded in policy so the label survives a filesystem relabel. semanage
     # ships in a package that is not a dependency, so the chcon below is what
     # actually applies it and is always attempted.
     if command -v semanage >/dev/null 2>&1; then
-        semanage fcontext -a -t var_log_t "${dir}(/.*)?" 2>/dev/null ||
-            semanage fcontext -m -t var_log_t "${dir}(/.*)?" 2>/dev/null
+        semanage fcontext -a -t var_log_t "${re}(/.*)?" 2>/dev/null ||
+            semanage fcontext -m -t var_log_t "${re}(/.*)?" 2>/dev/null
     fi
 
     chcon -R -t var_log_t "$dir" 2>/dev/null
@@ -868,7 +876,13 @@ if [ $1 == 0 ]; then
 	#
 	logdir=$(sed -n 's|^# AZNFS_LOGDIR: ||p' /etc/logrotate.d/aznfs 2>/dev/null | head -1)
 	if [ -n "$logdir" ] && command -v semanage >/dev/null 2>&1; then
-		semanage fcontext -d "${logdir}(/.*)?" 2>/dev/null
+		#
+		# Escaped exactly as install escaped it. Deleting the raw path would
+		# read '.' and '+' as regex, so undoing the rule for /srv/a.b could
+		# take out a pre-existing rule for /srv/axb that was never ours.
+		#
+		logdir_re=$(printf '%s' "$logdir" | sed 's/[][\.^$*+?(){}|]/\\&/g')
+		semanage fcontext -d "${logdir_re}(/.*)?" 2>/dev/null
 	fi
 
 	rm -rf /opt/microsoft/aznfs

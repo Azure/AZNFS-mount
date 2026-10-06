@@ -1489,6 +1489,8 @@ e2e_logdir_check()
     {
         echo "SOURCE_DIR='$SOURCE_DIR'"
         echo "OPTDIRDATA='$1'"
+        # The default under test, which is what installed_logdir() falls back to.
+        echo "DEFAULT_LOGDIR='$1'"
         echo "CONFIG_FILE='$SANDBOX/e2e-cfg'"
         sed -n '/^safe_logdir()$/,/^}$/p' "$COMMON"
         sed -n '/^logdir_is_usable()/,/^}/p;/^installed_logdir()/,/^}/p' "$E2E"
@@ -1514,6 +1516,41 @@ assert_eq "e2e refuses a world writable default" \
 ln -sfn "$SANDBOX/e2e-elsewhere" "$SANDBOX/e2e-safe/aznfs.log"
 assert_eq "e2e refuses a symlinked log in the default" \
     "ABORT" "$(e2e_logdir_check "$SANDBOX/e2e-safe")"
+
+#
+# The e2e has to resolve the same default common.sh ships, not a copy of it.
+# It assumed the data directory, and when the shipped default moved to
+# /var/log/aznfs that silently made backup_state() skip the directory the
+# installation actually logs to: the run would rotate and truncate live logs
+# and then restore nothing, while still reporting that it restored everything.
+#
+e2e_default=$(grep -c 'AZNFS_LOGDIR_DEFAULT=$(sed -n .s|\^AZNFS_LOGDIR_DEFAULT=' "$E2E")
+if [ "${e2e_default:-0}" -ge 1 ]; then
+    ok "e2e reads the default log directory out of common.sh"
+else
+    nok "e2e reads the default log directory out of common.sh" \
+        "AZNFS_LOGDIR_DEFAULT extracted from lib/common.sh" "a hardcoded default that can drift"
+fi
+
+#
+# ... and nothing may still treat the data directory as the default.
+#
+stale=$(grep -nE '\$OPTDIRDATA' "$E2E" |
+        grep -vE 'OPTDIRDATA="\$\{OPTDIR\}/data"|CONFIG_FILE=|echo "\$OPTDIRDATA"' | wc -l)
+if [ "$stale" == "0" ]; then
+    ok "e2e no longer treats the data directory as the default log directory"
+else
+    nok "e2e no longer treats the data directory as the default log directory" \
+        "0 stale uses" "$stale still reference \$OPTDIRDATA as the default"
+fi
+
+#
+# The two must agree on where the logs are, or backup and restore act on
+# different directories.
+#
+common_default=$(sed -n 's|^AZNFS_LOGDIR_DEFAULT="\(.*\)"$|\1|p' "$SOURCE_DIR/lib/common.sh" | head -1)
+assert_eq "common.sh exposes a parseable default log directory" \
+    "/var/log/aznfs" "$common_default"
 
 #
 # The turbo log check is fatal, so the README must not promise that a mount
@@ -2306,6 +2343,85 @@ run_label_fn \
     "selinuxenabled() { return 0; }; stat() { echo 'system_u:object_r:usr_t:s0'; }; semanage() { return 1; }; chcon() { return 1; }" \
     "/opt/microsoft/aznfs/data"
 assert_contains "failing selinux tools still return success" "RC=0" "$LABEL_OUT"
+
+#
+# semanage fcontext takes a regex, not a literal path, and is_valid_logdir
+# allows '.' and '+'. Interpolated raw, a rule for /srv/aznfs.v1 also matches
+# /srv/aznfsXv1, so install relabels a directory it was never pointed at and
+# removal deletes a rule that may not be ours.
+#
+run_label_fn \
+    "selinuxenabled() { return 0; }; stat() { echo 'system_u:object_r:usr_t:s0'; }; $MARKERS" \
+    "/srv/aznfs.v1+x"
+
+if grep -q 'SEMANAGE fcontext .*/srv/aznfs\\\.v1\\+x' "$LABEL_OUT"; then
+    ok "regex metacharacters in the log directory are escaped for semanage"
+else
+    nok "regex metacharacters in the log directory are escaped for semanage" \
+        'an escaped /srv/aznfs\.v1\+x' "$(grep SEMANAGE "$LABEL_OUT" | head -1)"
+fi
+
+#
+# ... and the escaped form still has to name the directory it came from, and
+# only that one. Proven against the pattern the function actually emitted
+# rather than against a copy of the escaping rule.
+#
+sem_pat=$(grep -m1 'SEMANAGE fcontext -a' "$LABEL_OUT" | awk '{print $NF}')
+if [ -z "$sem_pat" ]; then
+    nok "escaped pattern still matches its own directory" "a pattern to test" "none emitted"
+else
+    if printf '%s\n' '/srv/aznfs.v1+x' | grep -qE "^${sem_pat}$"; then
+        ok "escaped pattern still matches its own directory"
+    else
+        nok "escaped pattern still matches its own directory" "/srv/aznfs.v1+x matches $sem_pat" "no match"
+    fi
+
+    if printf '%s\n' '/srv/aznfs.v1+x/sub' | grep -qE "^${sem_pat}$"; then
+        ok "escaped pattern still matches paths below it"
+    else
+        nok "escaped pattern still matches paths below it" "subpath matches" "no match"
+    fi
+
+    if printf '%s\n' '/srv/aznfsXv1+x' | grep -qE "^${sem_pat}$"; then
+        nok "escaped pattern does not match an unrelated directory" "no match" "/srv/aznfsXv1+x matched"
+    else
+        ok "escaped pattern does not match an unrelated directory"
+    fi
+fi
+
+#
+# Uninstall has to delete exactly what install added. The two escape inline
+# rather than sharing a helper, since the maintainer scripts cannot source
+# common.sh, so this pins them to the same expression.
+#
+esc_expr='sed .s/\[\]\[\\.^$\*+?(){}|\]/\\\\&/g.'
+for f in "$SOURCE_DIR/lib/common.sh" \
+         "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" \
+         "$SOURCE_DIR/packaging/aznfs/DEBIAN/postrm" \
+         "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    n=$(grep -c "$esc_expr" "$f" 2>/dev/null)
+    if [ "${n:-0}" -ge 1 ]; then
+        ok "$(basename $f): escapes the path before handing it to semanage"
+    else
+        nok "$(basename $f): escapes the path before handing it to semanage" \
+            "the shared escape expression" "raw path interpolated into a regex"
+    fi
+done
+
+#
+# No call site may still interpolate the unescaped directory.
+#
+raw=$(grep -rn 'semanage fcontext' \
+          "$SOURCE_DIR/lib/common.sh" \
+          "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" \
+          "$SOURCE_DIR/packaging/aznfs/DEBIAN/postrm" \
+          "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec" 2>/dev/null |
+      grep -E '\$\{(dir|logdir)\}\(/' | wc -l)
+if [ "$raw" == "0" ]; then
+    ok "no semanage call site interpolates the raw path"
+else
+    nok "no semanage call site interpolates the raw path" "0 raw sites" "$raw still raw"
+fi
 
 #
 # The deb and rpm copies of the two logrotate functions have to stay byte

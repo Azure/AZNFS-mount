@@ -274,6 +274,35 @@ logdir_is_usable()
     return 0
 }
 
+#
+# The packaged default, read out of common.sh rather than repeated here. This
+# test used to assume the default was the data directory; when the shipped
+# default moved to /var/log/aznfs the assumption silently made backup_state()
+# skip the directory the installation actually logs to, so the run could rotate
+# and truncate live logs and then restore nothing.
+#
+AZNFS_LOGDIR_DEFAULT=$(sed -n 's|^AZNFS_LOGDIR_DEFAULT="\(.*\)"$|\1|p' "$SOURCE_DIR/lib/common.sh" | head -1)
+
+if [ -z "$AZNFS_LOGDIR_DEFAULT" ]; then
+    echo "Not able to read AZNFS_LOGDIR_DEFAULT from lib/common.sh, aborting."
+    exit 1
+fi
+
+#
+# Mirrors fallback_logdir() in common.sh: the packaged default is preferred,
+# and the data directory is the last resort when it cannot be used.
+#
+default_logdir()
+{
+    if logdir_is_usable "$AZNFS_LOGDIR_DEFAULT"; then
+        echo "$AZNFS_LOGDIR_DEFAULT"
+    else
+        echo "$OPTDIRDATA"
+    fi
+}
+
+DEFAULT_LOGDIR=$(default_logdir)
+
 installed_logdir()
 {
     local d=
@@ -288,9 +317,9 @@ installed_logdir()
     done
 
     case "$d" in
-        ""|/|/*[!A-Za-z0-9._/@+-]*) d="$OPTDIRDATA" ;;
+        ""|/|/*[!A-Za-z0-9._/@+-]*) d="$DEFAULT_LOGDIR" ;;
         /*) ;;
-        *) d="$OPTDIRDATA" ;;
+        *) d="$DEFAULT_LOGDIR" ;;
     esac
 
     #
@@ -312,13 +341,13 @@ installed_logdir()
     # substitution where exit would only leave the subshell.
     #
     if ! logdir_is_usable "$d"; then
-        if [ "$d" == "$OPTDIRDATA" ]; then
+        if [ "$d" == "$DEFAULT_LOGDIR" ]; then
             echo "Default log directory '$d' is not usable, refusing to run." >&2
             return 1
         fi
 
-        echo "Configured log directory '$d' is not usable, AZNFS falls back to '$OPTDIRDATA'." >&2
-        d="$OPTDIRDATA"
+        echo "Configured log directory '$d' is not usable, AZNFS falls back to '$DEFAULT_LOGDIR'." >&2
+        d="$DEFAULT_LOGDIR"
 
         if ! logdir_is_usable "$d"; then
             echo "Default log directory '$d' is not usable either, refusing to run." >&2
@@ -452,8 +481,8 @@ backup_state()
     # the configured directory has to be covered as well.
     #
     mkdir -p "$BACKUP/logs/default"
-    backup_logs "$OPTDIRDATA/aznfs.log*" "$BACKUP/logs/default"
-    backup_logs "$OPTDIRDATA/turbo*.log*" "$BACKUP/logs/default"
+    backup_logs "$DEFAULT_LOGDIR/aznfs.log*" "$BACKUP/logs/default"
+    backup_logs "$DEFAULT_LOGDIR/turbo*.log*" "$BACKUP/logs/default"
 
     if ! CONFIGURED_LOGDIR=$(installed_logdir); then
         echo "Refusing to back up or rotate through an unusable log directory."
@@ -466,7 +495,7 @@ backup_state()
     # remember whether it was there to begin with.
     [ -d "$CONFIGURED_LOGDIR" ] && echo yes > "$BACKUP/configured_logdir_existed"
 
-    if [ "$CONFIGURED_LOGDIR" != "$OPTDIRDATA" ]; then
+    if [ "$CONFIGURED_LOGDIR" != "$DEFAULT_LOGDIR" ]; then
         info "Also backing up the configured log directory $CONFIGURED_LOGDIR"
         mkdir -p "$BACKUP/logs/configured"
         backup_logs "$CONFIGURED_LOGDIR/aznfs.log*" "$BACKUP/logs/configured"
@@ -597,11 +626,11 @@ restore_state()
     # Put the logs back exactly as we found them, dropping the rotated files
     # this run created.
     #
-    restore_logs "$BACKUP/logs/default" "$OPTDIRDATA"
+    restore_logs "$BACKUP/logs/default" "$DEFAULT_LOGDIR"
 
     # And the configured directory, when it is a different one.
     cfg=$(cat "$BACKUP/configured_logdir" 2>/dev/null)
-    if [ -n "$cfg" -a "$cfg" != "$OPTDIRDATA" -a -d "$cfg" ]; then
+    if [ -n "$cfg" -a "$cfg" != "$DEFAULT_LOGDIR" -a -d "$cfg" ]; then
         restore_logs "$BACKUP/logs/configured" "$cfg"
 
         #
@@ -731,10 +760,10 @@ else
     nok "mount succeeded with default log dir" "mount command failed"
 fi
 
-assert_file  "aznfs.log exists in default dir" "$OPTDIRDATA/aznfs.log"
+assert_file  "aznfs.log exists in default dir" "$DEFAULT_LOGDIR/aznfs.log"
 assert_file  "logrotate config generated"      "$LRCONF"
-assert_contains "logrotate covers default aznfs.log" "$OPTDIRDATA/aznfs.log" "$LRCONF"
-assert_contains "marker records default dir"         "# AZNFS_LOGDIR: $OPTDIRDATA" "$LRCONF"
+assert_contains "logrotate covers default aznfs.log" "$DEFAULT_LOGDIR/aznfs.log" "$LRCONF"
+assert_contains "marker records default dir"         "# AZNFS_LOGDIR: $DEFAULT_LOGDIR" "$LRCONF"
 
 if logrotate -d -s "$SCRATCH/lr1.state" "$LRCONF" 2>&1 | grep -qiE "^error:"; then
     nok "logrotate accepts generated config" "$(logrotate -d -s "$SCRATCH/lr1.state" "$LRCONF" 2>&1 | grep -i '^error:' | head -1)"
@@ -742,7 +771,7 @@ else
     ok "logrotate accepts generated config"
 fi
 
-mount_log_lines=$(wc -l < "$OPTDIRDATA/aznfs.log")
+mount_log_lines=$(wc -l < "$DEFAULT_LOGDIR/aznfs.log")
 echo "    (aznfs.log currently $mount_log_lines lines)"
 
 # ---------------------------------------------------------------------------
@@ -755,11 +784,11 @@ info "[2] Real rotation with a live mount (copytruncate)"
 # from one this phase produced, so leaving it would let the assertion below pass
 # on a rotation that happened before the test started.
 #
-rm -f "$OPTDIRDATA"/aznfs.log.[0-9]*
-before_inode=$(stat -c %i "$OPTDIRDATA/aznfs.log")
+rm -f "$DEFAULT_LOGDIR"/aznfs.log.[0-9]*
+before_inode=$(stat -c %i "$DEFAULT_LOGDIR/aznfs.log")
 logrotate -f -s "$SCRATCH/lr1.state" "$LRCONF" >"$SCRATCH/lr1.out" 2>&1
 lr1_rc=$?
-after_inode=$(stat -c %i "$OPTDIRDATA/aznfs.log")
+after_inode=$(stat -c %i "$DEFAULT_LOGDIR/aznfs.log")
 
 assert_eq_inode()
 {
@@ -772,7 +801,7 @@ assert_eq_inode()
 }
 assert_eq_inode
 
-if [ "$lr1_rc" -eq 0 ] && ls "$OPTDIRDATA"/aznfs.log.1* >/dev/null 2>&1; then
+if [ "$lr1_rc" -eq 0 ] && ls "$DEFAULT_LOGDIR"/aznfs.log.1* >/dev/null 2>&1; then
     ok "rotated copy created"
 else
     nok "rotated copy created" "a fresh aznfs.log.1*" \
@@ -784,7 +813,7 @@ umount "$MOUNT_POINT" 2>/dev/null
 do_mount
 sleep 2
 
-if [ -s "$OPTDIRDATA/aznfs.log" ]; then
+if [ -s "$DEFAULT_LOGDIR/aznfs.log" ]; then
     ok "logging continues into the live log after rotation"
 else
     nok "logging continues into the live log after rotation" "aznfs.log is empty"
@@ -794,8 +823,8 @@ fi
 info "[3] Change log directory MIDWAY (watchdog running, mount live)"
 # ---------------------------------------------------------------------------
 
-old_log_size=$(stat -c %s "$OPTDIRDATA/aznfs.log")
-old_log_sum=$(md5sum "$OPTDIRDATA/aznfs.log" | cut -d' ' -f1)
+old_log_size=$(stat -c %s "$DEFAULT_LOGDIR/aznfs.log")
+old_log_sum=$(md5sum "$DEFAULT_LOGDIR/aznfs.log" | cut -d' ' -f1)
 
 set_logdir "$ALTLOGDIR"
 
@@ -805,11 +834,11 @@ do_mount
 sleep 2
 
 assert_file "new log dir created"                 "$ALTLOGDIR/aznfs.log"
-assert_file "OLD log file still present"          "$OPTDIRDATA/aznfs.log"
+assert_file "OLD log file still present"          "$DEFAULT_LOGDIR/aznfs.log"
 assert_contains "logrotate covers NEW dir"        "$ALTLOGDIR/aznfs.log"   "$LRCONF"
 assert_contains "marker updated to new dir"       "# AZNFS_LOGDIR: $ALTLOGDIR" "$LRCONF"
 
-if grep -qF -- "$OPTDIRDATA/aznfs.log" "$LRCONF"; then
+if grep -qF -- "$DEFAULT_LOGDIR/aznfs.log" "$LRCONF"; then
     nok "only the configured dir is rotated" "old dir not listed" "old dir still listed"
 else
     ok "only the configured dir is rotated"
@@ -833,7 +862,7 @@ if [ -n "$wd_pid" ] && [ "$wd_pid" != "0" ]; then
     echo "    watchdog(pid $wd_pid) log target: ${wd_log:-<not holding aznfs.log open>}"
 fi
 
-new_sum=$(md5sum "$OPTDIRDATA/aznfs.log" | cut -d' ' -f1)
+new_sum=$(md5sum "$DEFAULT_LOGDIR/aznfs.log" | cut -d' ' -f1)
 if [ "$old_log_sum" == "$new_sum" ]; then
     echo "    old log unchanged since the switch"
 else
@@ -841,7 +870,7 @@ else
 fi
 
 # Old content must never be moved or truncated by the switch itself.
-new_size=$(stat -c %s "$OPTDIRDATA/aznfs.log")
+new_size=$(stat -c %s "$DEFAULT_LOGDIR/aznfs.log")
 if [ "$new_size" -ge "$old_log_size" ]; then
     ok "old log content preserved (not moved or truncated)"
 else
@@ -893,9 +922,9 @@ umount "$MOUNT_POINT" 2>/dev/null
 do_mount
 sleep 2
 
-assert_contains "marker back to default" "# AZNFS_LOGDIR: $OPTDIRDATA" "$LRCONF"
+assert_contains "marker back to default" "# AZNFS_LOGDIR: $DEFAULT_LOGDIR" "$LRCONF"
 
-dupes=$(grep -c -- "$OPTDIRDATA/aznfs.log" "$LRCONF")
+dupes=$(grep -c -- "$DEFAULT_LOGDIR/aznfs.log" "$LRCONF")
 if [ "$dupes" == "1" ]; then
     ok "no duplicate entry after switching back"
 else
@@ -921,7 +950,7 @@ else
     nok "mount still succeeds with an unusable AZNFS_LOGDIR" "mount failed"
 fi
 
-assert_file "fell back to default log file" "$OPTDIRDATA/aznfs.log"
+assert_file "fell back to default log file" "$DEFAULT_LOGDIR/aznfs.log"
 
 umount "$MOUNT_POINT" 2>/dev/null
 
@@ -941,23 +970,23 @@ do_mount
 sleep 2
 
 # Make the live log small and old.
-: > "$OPTDIRDATA/aznfs.log"
-echo "a small amount of history" >> "$OPTDIRDATA/aznfs.log"
-touch -d '60 days ago' "$OPTDIRDATA/aznfs.log"
+: > "$DEFAULT_LOGDIR/aznfs.log"
+echo "a small amount of history" >> "$DEFAULT_LOGDIR/aznfs.log"
+touch -d '60 days ago' "$DEFAULT_LOGDIR/aznfs.log"
 
 # Pretend it was last rotated long ago, so any time based policy would fire.
 cat > "$SCRATCH/size.state" <<EOF
 logrotate state -- version 2
-"$OPTDIRDATA/aznfs.log" 2000-01-01-0:0:0
+"$DEFAULT_LOGDIR/aznfs.log" 2000-01-01-0:0:0
 EOF
 
 size_out=$(logrotate -d -s "$SCRATCH/size.state" "$LRCONF" 2>&1)
 
-if echo "$size_out" | grep -A6 "considering log $OPTDIRDATA/aznfs.log" | grep -q "does not need rotating"; then
+if echo "$size_out" | grep -A6 "considering log $DEFAULT_LOGDIR/aznfs.log" | grep -q "does not need rotating"; then
     ok "small 60-day-old log NOT rotated (size policy, no time rotation)"
 else
     nok "small 60-day-old log NOT rotated (size policy, no time rotation)" \
-        "$(echo "$size_out" | grep -A6 "considering log $OPTDIRDATA/aznfs.log" | tail -2)"
+        "$(echo "$size_out" | grep -A6 "considering log $DEFAULT_LOGDIR/aznfs.log" | tail -2)"
 fi
 
 if echo "$size_out" | grep -qiE "^error:"; then
@@ -986,25 +1015,25 @@ if [ -z "$lr_bytes" ]; then
     skip "oversized log IS rotated by a non-forced run" "could not parse size '$lr_size' from the live policy"
     skip "copytruncate kept the inode on a size-triggered rotation" "no parsed size"
 else
-    rm -f "$OPTDIRDATA"/aznfs.log.[0-9]*
-    : > "$OPTDIRDATA/aznfs.log"
-    dd if=/dev/zero bs=1M count=$(( lr_bytes / 1048576 + 1 )) status=none >> "$OPTDIRDATA/aznfs.log"
-    ino_before=$(stat -c %i "$OPTDIRDATA/aznfs.log")
+    rm -f "$DEFAULT_LOGDIR"/aznfs.log.[0-9]*
+    : > "$DEFAULT_LOGDIR/aznfs.log"
+    dd if=/dev/zero bs=1M count=$(( lr_bytes / 1048576 + 1 )) status=none >> "$DEFAULT_LOGDIR/aznfs.log"
+    ino_before=$(stat -c %i "$DEFAULT_LOGDIR/aznfs.log")
 
     cat > "$SCRATCH/real.state" <<EOF
 logrotate state -- version 2
-"$OPTDIRDATA/aznfs.log" 2000-01-01-0:0:0
+"$DEFAULT_LOGDIR/aznfs.log" 2000-01-01-0:0:0
 EOF
     logrotate -s "$SCRATCH/real.state" "$LRCONF" >"$SCRATCH/real.out" 2>&1
 
-    if [ -f "$OPTDIRDATA/aznfs.log.1" ]; then
+    if [ -f "$DEFAULT_LOGDIR/aznfs.log.1" ]; then
         ok "oversized log IS rotated by a non-forced run"
     else
         nok "oversized log IS rotated by a non-forced run" \
             "aznfs.log.1 after exceeding $lr_size" "$(tail -2 "$SCRATCH/real.out")"
     fi
 
-    ino_after=$(stat -c %i "$OPTDIRDATA/aznfs.log" 2>/dev/null)
+    ino_after=$(stat -c %i "$DEFAULT_LOGDIR/aznfs.log" 2>/dev/null)
     if [ -n "$ino_after" ] && [ "$ino_before" = "$ino_after" ]; then
         ok "copytruncate kept the inode on a size-triggered rotation"
     else
@@ -1012,11 +1041,11 @@ EOF
             "inode $ino_before" "inode ${ino_after:-file missing}"
     fi
 
-    rm -f "$OPTDIRDATA"/aznfs.log.[0-9]*
-    : > "$OPTDIRDATA/aznfs.log"
+    rm -f "$DEFAULT_LOGDIR"/aznfs.log.[0-9]*
+    : > "$DEFAULT_LOGDIR/aznfs.log"
 fi
 
-assert_contains "config covers turbo logs glob" "$OPTDIRDATA/turbo*.log" "$LRCONF"
+assert_contains "config covers turbo logs glob" "$DEFAULT_LOGDIR/turbo*.log" "$LRCONF"
 
 # ---------------------------------------------------------------------------
 info "[8b] Turbo client logs are really rotated"
@@ -1031,7 +1060,7 @@ info "[8b] Turbo client logs are really rotated"
 # set_logdir "" above put the installation back on the default directory, so
 # that is where the turbo log is now. CONFIGURED_LOGDIR is what was configured
 # at backup time and would miss it on a machine that uses a custom one.
-turbo_log=$(ls -1 "$OPTDIRDATA"/turbo*.log 2>/dev/null | head -1)
+turbo_log=$(ls -1 "$DEFAULT_LOGDIR"/turbo*.log 2>/dev/null | head -1)
 
 if [ -z "$turbo_log" ]; then
     skip "turbo log produced by the mount" "no turbo*.log present, not a v3 Turbo mount"
@@ -1113,7 +1142,7 @@ info "[9] A process started before the change keeps using the OLD directory"
 # the same behaviour explicitly with the production common.sh.
 #
 set_logdir ""
-: > "$OPTDIRDATA/aznfs.log"
+: > "$DEFAULT_LOGDIR/aznfs.log"
 
 cat > "$SCRATCH/longrun.sh" <<'LONGRUN'
 AZNFS_VERSION=e2e
@@ -1146,24 +1175,24 @@ ended_with=$(tail -1 "$SCRATCH/longrun.target" 2>/dev/null)
 echo "    process resolved LOGFILE at start : $started_with"
 echo "    ... and still used at the end     : $ended_with"
 
-if [ "$started_with" == "$OPTDIRDATA/aznfs.log" ] && [ "$ended_with" == "$OPTDIRDATA/aznfs.log" ]; then
+if [ "$started_with" == "$DEFAULT_LOGDIR/aznfs.log" ] && [ "$ended_with" == "$DEFAULT_LOGDIR/aznfs.log" ]; then
     ok "long running process keeps writing to the OLD directory (as expected)"
 else
     nok "long running process keeps writing to the OLD directory (as expected)" \
         "start=$started_with end=$ended_with"
 fi
 
-if grep -q "long running process still logging" "$OPTDIRDATA/aznfs.log" 2>/dev/null; then
+if grep -q "long running process still logging" "$DEFAULT_LOGDIR/aznfs.log" 2>/dev/null; then
     ok "its log line really landed in the OLD directory"
 else
-    nok "its log line really landed in the OLD directory" "line not found in $OPTDIRDATA/aznfs.log"
+    nok "its log line really landed in the OLD directory" "line not found in $DEFAULT_LOGDIR/aznfs.log"
 fi
 
 #
 # This is why the watchdog services must be restarted after changing the log
 # directory: only the configured directory is rotated from here on.
 #
-if grep -qF -- "$OPTDIRDATA/aznfs.log" "$LRCONF"; then
+if grep -qF -- "$DEFAULT_LOGDIR/aznfs.log" "$LRCONF"; then
     nok "old dir is no longer rotated (restart required, per README)" \
         "old dir not in config" "old dir still listed"
 else

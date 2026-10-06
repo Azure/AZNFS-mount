@@ -18,7 +18,13 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	#
 	logdir=$(sed -n 's|^# AZNFS_LOGDIR: ||p' /etc/logrotate.d/aznfs 2>/dev/null | head -1)
 	if [ -n "$logdir" ] && command -v semanage >/dev/null 2>&1; then
-		semanage fcontext -d "${logdir}(/.*)?" 2>/dev/null
+		#
+		# Escaped exactly as install escaped it. Deleting the raw path would
+		# read '.' and '+' as regex, so undoing the rule for /srv/a.b could
+		# take out a pre-existing rule for /srv/axb that was never ours.
+		#
+		logdir_re=$(printf '%s' "$logdir" | sed 's/[][\.^$*+?(){}|]/\\&/g')
+		semanage fcontext -d "${logdir_re}(/.*)?" 2>/dev/null
 	fi
 
 	rm -rf /opt/microsoft/aznfs
