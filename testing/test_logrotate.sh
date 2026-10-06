@@ -1753,13 +1753,29 @@ assert_eq "installer: safe log dir is used" \
 # not in the requested directory, because a link there is already caught by
 # the mode rules and the test could not fail.
 #
+# The default is now held to the full usability rule rather than just existence
+# and ownership, so a symlinked aznfs.log disqualifies it outright and the
+# installer moves on to the data directory. That is strictly better than the
+# previous outcome, which was to select the default and then degrade LOGFILE to
+# /dev/null: logging keeps working and the link is still never followed.
+#
 setup_sandbox
 mkdir -p "$ROOT/var/log/aznfs"
 ln -sfn "$SANDBOX/inst-elsewhere" "$ROOT/var/log/aznfs/aznfs.log"
 mkdir -p "$SANDBOX/inst-bad"
 chmod 0777 "$SANDBOX/inst-bad"
-assert_eq "installer: symlinked fallback log is not written through" \
-    "/dev/null" "$(run_installer_logdir_snippet "$SANDBOX/inst-bad")"
+
+inst_logfile=$(run_installer_logdir_snippet "$SANDBOX/inst-bad")
+
+assert_eq "installer: symlinked fallback is skipped for the data directory" \
+    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$inst_logfile"
+
+if [ "$inst_logfile" == "$ROOT/var/log/aznfs/aznfs.log" ]; then
+    nok "installer: symlinked fallback log is not written through" \
+        "anything but the symlinked path" "the symlink itself was selected"
+else
+    ok "installer: symlinked fallback log is not written through"
+fi
 
 if [ -e "$SANDBOX/inst-elsewhere" ]; then
     nok "installer: symlink target is never created" "no file" "a file was created"
@@ -2424,6 +2440,81 @@ else
 fi
 
 #
+# The fallback has to clear the same bar as the configured directory. It used
+# to be accepted on existence and ownership alone, so a default on a read only
+# filesystem, or holding an aznfs.log that cannot be appended to, was written
+# into the policy while common.sh went on to reject it and log in the data
+# directory, leaving the real log with nothing rotating it.
+#
+for f in "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" \
+         "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    if grep -q 'aznfs_logdir_usable "$default_logdir"' "$f"; then
+        ok "$(basename $f): the fallback is held to the full usability rule"
+    else
+        nok "$(basename $f): the fallback is held to the full usability rule" \
+            "aznfs_logdir_usable on the default" "existence and ownership only"
+    fi
+done
+
+if grep -q 'probe=$(mktemp "${LOGDIR_DEFAULT}/.aznfs-logdir-probe' "$SOURCE_DIR/scripts/aznfs_install.sh"; then
+    ok "aznfs_install.sh: the fallback is write-probed before it is chosen"
+else
+    nok "aznfs_install.sh: the fallback is write-probed before it is chosen" \
+        "a probe on LOGDIR_DEFAULT" "chosen without probing"
+fi
+
+#
+# An fcontext rule we did not create is not ours to retype or to delete, so
+# install only ever adds, and removal is keyed off a marker written only when
+# the add succeeded.
+#
+for f in "$SOURCE_DIR/lib/common.sh" \
+         "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" \
+         "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    if grep -q 'semanage fcontext -m' "$f"; then
+        nok "$(basename $f): never retypes an existing fcontext rule" \
+            "no -m" "modifies a rule it did not create"
+    else
+        ok "$(basename $f): never retypes an existing fcontext rule"
+    fi
+
+    if grep -q '\.selinux_fcontext' "$f"; then
+        ok "$(basename $f): records the rule it created"
+    else
+        nok "$(basename $f): records the rule it created" "a .selinux_fcontext marker" "no ownership record"
+    fi
+done
+
+for f in "$SOURCE_DIR/packaging/aznfs/DEBIAN/postrm" \
+         "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    if grep -q 'cat /opt/microsoft/aznfs/data/.selinux_fcontext' "$f"; then
+        ok "$(basename $f): removal only touches a rule this package created"
+    else
+        nok "$(basename $f): removal only touches a rule this package created" \
+            "keyed off the ownership marker" "keyed off the policy comment"
+    fi
+done
+
+#
+# An upgrade moves the logs to the new default, but a watchdog that is already
+# running resolved its log path at start and would keep the old file open with
+# nothing rotating it. 'start' is a no-op on a running unit, so it has to be a
+# restart.
+#
+for f in "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" \
+         "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    starts=$(grep -cE '^\s*systemctl start aznfswatchdog' "$f")
+    restarts=$(grep -cE '^\s*systemctl restart aznfswatchdog' "$f")
+
+    if [ "${starts:-0}" == "0" ] && [ "${restarts:-0}" == "2" ]; then
+        ok "$(basename $f): both watchdogs are restarted, so an upgrade picks up the new log directory"
+    else
+        nok "$(basename $f): both watchdogs are restarted, so an upgrade picks up the new log directory" \
+            "2 restarts, 0 starts" "$restarts restarts, $starts starts"
+    fi
+done
+
+#
 # The deb and rpm copies of the two logrotate functions have to stay byte
 # identical. They drifted once already: the deb copy had "|| true" on five
 # assignments and the rpm copy did not, which is set -e protection that only
@@ -2431,7 +2522,7 @@ fi
 #
 # The rpm copy escapes % as %% and carries a comment saying why, so the two are
 # compared after undoing both. Anything else that differs is drift.
-for fn in install_logrotate_config aznfs_safe_logdir aznfs_selinux_label_logdir; do
+for fn in install_logrotate_config aznfs_safe_logdir aznfs_selinux_label_logdir aznfs_logdir_usable; do
     if diff <(sed -n "/^${fn}()/,/^}/p" "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst") \
             <(sed -n "/^${fn}()/,/^}/p" "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec" |
               grep -v '^        # %% not %: rpm expands macros' |
@@ -3114,7 +3205,7 @@ run_postinst_snippet()
     # it out silently makes install_logrotate_config() see no configured log
     # directory at all, so every case would "pass" by falling back to default.
     #
-    sed -n '/^CONFIG_FILE=/,/^AUTO_UPDATE_AZNFS=/p;/^aznfs_safe_logdir()/,/^}/p;/^aznfs_selinux_label_logdir()/,/^}/p;/^install_logrotate_config()/,/^}/p' \
+    sed -n '/^CONFIG_FILE=/,/^AUTO_UPDATE_AZNFS=/p;/^aznfs_safe_logdir()/,/^}/p;/^aznfs_logdir_usable()/,/^}/p;/^aznfs_selinux_label_logdir()/,/^}/p;/^install_logrotate_config()/,/^}/p' \
         "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" > "$snippet"
     sed -i "s#/opt/microsoft/aznfs#$ROOT/opt/microsoft/aznfs#g; s#/var/log/aznfs#$ROOT/var/log/aznfs#g; s#/etc/logrotate.d#$ROOT/etc/logrotate.d#g" "$snippet"
 
@@ -3158,7 +3249,7 @@ run_rpm_post_snippet()
 {
     local snippet="$SANDBOX/rpmsnippet.sh"
 
-    rpm_scriptlet '/^CONFIG_FILE=/,/^AUTO_UPDATE_AZNFS=/p;/^aznfs_safe_logdir()/,/^}/p;/^aznfs_selinux_label_logdir()/,/^}/p;/^install_logrotate_config()/,/^}/p' > "$snippet"
+    rpm_scriptlet '/^CONFIG_FILE=/,/^AUTO_UPDATE_AZNFS=/p;/^aznfs_safe_logdir()/,/^}/p;/^aznfs_logdir_usable()/,/^}/p;/^aznfs_selinux_label_logdir()/,/^}/p;/^install_logrotate_config()/,/^}/p' > "$snippet"
 
     sed -i "s#/opt/microsoft/aznfs#$ROOT/opt/microsoft/aznfs#g; s#/var/log/aznfs#$ROOT/var/log/aznfs#g; s#/etc/logrotate.d#$ROOT/etc/logrotate.d#g" "$snippet"
 

@@ -185,10 +185,30 @@ if [ "$logdir_usable" != "true" ]; then
     # The packaged default first, the data directory only if that fails too.
     # Same order as common.sh and the packaging scriptlets use.
     #
-    if [ "$AZNFS_LOGDIR" != "$LOGDIR_DEFAULT" ] &&
-       { [ -d "$LOGDIR_DEFAULT" ] ||
-         { mkdir "$LOGDIR_DEFAULT" 2>/dev/null && chmod 0755 "$LOGDIR_DEFAULT" 2>/dev/null; }; } &&
-       aznfs_safe_logdir "$LOGDIR_DEFAULT"; then
+    # Held to the full rule, not just existence and ownership: a default that
+    # exists on a read only filesystem, or that already holds an aznfs.log we
+    # cannot append to, would otherwise be chosen here and the unchecked touch
+    # below would fail, leaving the installer with no usable log at all.
+    #
+    default_usable=false
+    if [ "$AZNFS_LOGDIR" != "$LOGDIR_DEFAULT" ]; then
+        if aznfs_safe_logdir "$LOGDIR_DEFAULT" &&
+           { [ -d "$LOGDIR_DEFAULT" ] ||
+             { mkdir -p "$(dirname "$LOGDIR_DEFAULT")" 2>/dev/null
+               mkdir "$LOGDIR_DEFAULT" 2>/dev/null && chmod 0755 "$LOGDIR_DEFAULT" 2>/dev/null; }; } &&
+           aznfs_safe_logdir "$LOGDIR_DEFAULT"; then
+            probe=$(mktemp "${LOGDIR_DEFAULT}/.aznfs-logdir-probe.XXXXXXXX" 2>/dev/null) && default_usable=true
+            [ -n "$probe" ] && rm -f "$probe"
+        fi
+
+        if [ "$default_usable" == "true" ] &&
+           { [ -L "${LOGDIR_DEFAULT}/${APPNAME}.log" ] ||
+             { [ -e "${LOGDIR_DEFAULT}/${APPNAME}.log" ] && { [ ! -f "${LOGDIR_DEFAULT}/${APPNAME}.log" ] || [ ! -w "${LOGDIR_DEFAULT}/${APPNAME}.log" ]; }; }; }; then
+            default_usable=false
+        fi
+    fi
+
+    if [ "$default_usable" == "true" ]; then
         AZNFS_LOGDIR="$LOGDIR_DEFAULT"
     else
         AZNFS_LOGDIR="$OPTDIRDATA"

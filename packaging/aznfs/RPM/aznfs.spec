@@ -346,6 +346,64 @@ aznfs_safe_logdir()
 # Entirely best effort. A host with SELinux disabled, or without the tools,
 # must still install and mount normally, so every step tolerates failure.
 #
+#
+# The whole rule common.sh applies at mount time: the directory exists or can
+# be created, is root owned and not writable by others, accepts a new file,
+# and does not already hold a log we cannot append to.
+#
+# Used for the configured directory and for the packaged default alike. The
+# fallback used to be accepted on existence and ownership only, so a default
+# that exists on a read only filesystem, or holds an unappendable aznfs.log,
+# was written into the policy while common.sh went on to reject it and log in
+# the data directory instead, leaving the real log with nothing rotating it.
+#
+aznfs_logdir_usable()
+{
+    local logdir="$1" probe
+
+    #
+    # Checked before anything is created, and again afterwards. mkdir -p
+    # follows a symlinked component, so validating only after the fact would
+    # still let a link planted in a world writable directory have root create
+    # directories inside its target.
+    #
+    aznfs_safe_logdir "$logdir" || return 1
+
+    # Only what we create: mkdir honours the caller's umask, so under 0002
+    # this would be 0775 and the revalidation below would refuse what we just
+    # made. An existing directory keeps the mode its owner chose.
+    if [ ! -d "$logdir" ]; then
+        mkdir -p "$(dirname "$logdir")" 2>/dev/null
+        mkdir "$logdir" 2>/dev/null && chmod 0755 "$logdir" 2>/dev/null || return 1
+        aznfs_safe_logdir "$logdir" || return 1
+    fi
+
+    #
+    # mkdir -p succeeds for a directory that already exists even when it cannot
+    # be written to, e.g. on a read only filesystem, so the write is probed.
+    # Through mktemp rather than a known name: this runs as root, and a
+    # directory others can write to would otherwise let them redirect the probe
+    # through a planted symlink.
+    #
+    probe=$(mktemp "${logdir}/.aznfs-logdir-probe.XXXXXXXX" 2>/dev/null) || return 1
+    rm -f "$probe" 2>/dev/null
+
+    #
+    # Mirrors usable_logdir(..., "$LOGFILE") in common.sh. An existing log we
+    # cannot append to makes common.sh fall back at the first mount, and the
+    # policy would then be rotating a path AZNFS is not writing to.
+    #
+    if [ -L "${logdir}/aznfs.log" ]; then
+        return 1
+    fi
+
+    if [ -e "${logdir}/aznfs.log" ] && { [ ! -f "${logdir}/aznfs.log" ] || [ ! -w "${logdir}/aznfs.log" ]; }; then
+        return 1
+    fi
+
+    return 0
+}
+
 aznfs_selinux_label_logdir()
 {
     local dir="$1" cur re
@@ -369,9 +427,16 @@ aznfs_selinux_label_logdir()
     # Recorded in policy so the label survives a filesystem relabel. semanage
     # ships in a package that is not a dependency, so the chcon below is what
     # actually applies it and is always attempted.
+    #
+    # Only ever -a, never -m. A rule already covering this path belongs to the
+    # administrator or to another package, and quietly retyping it would both
+    # override a deliberate decision and leave nothing to restore on uninstall.
+    # The path is recorded only when we created the rule, so removal can tell
+    # ours from one that was already there.
     if command -v semanage >/dev/null 2>&1; then
-        semanage fcontext -a -t var_log_t "${re}(/.*)?" 2>/dev/null ||
-            semanage fcontext -m -t var_log_t "${re}(/.*)?" 2>/dev/null
+        if semanage fcontext -a -t var_log_t "${re}(/.*)?" 2>/dev/null; then
+            printf '%s\n' "$dir" > /opt/microsoft/aznfs/data/.selinux_fcontext 2>/dev/null
+        fi
     fi
 
     chcon -R -t var_log_t "$dir" 2>/dev/null
@@ -434,48 +499,11 @@ install_logrotate_config()
     # runs as root, and a configured directory that others can write to would
     # otherwise let them redirect it through a planted symlink.
     #
-    logdir_usable=true
-
-    #
-    # Checked before anything is created, and again afterwards. mkdir -p follows
-    # a symlinked component, so validating only after the fact would still let a
-    # link planted in a world writable directory have root create directories
-    # inside its target.
-    #
-    if ! aznfs_safe_logdir "$logdir"; then
-        echo "Log directory $logdir is not root owned, is writable by others, or is a symlink!"
+    if aznfs_logdir_usable "$logdir"; then
+        logdir_usable=true
+    else
         logdir_usable=false
-    fi
-
-    # Only what we create: mkdir honours the caller's umask, so under 0002
-    # this would be 0775 and the revalidation below would refuse what we just
-    # made. An existing directory keeps the mode its owner chose.
-    if [ "$logdir_usable" == "true" ] && [ ! -d "$logdir" ] &&
-       ! { mkdir -p "$(dirname "$logdir")" 2>/dev/null
-        mkdir "$logdir" 2>/dev/null && chmod 0755 "$logdir" 2>/dev/null; }; then
-        logdir_usable=false
-    fi
-
-    if [ "$logdir_usable" == "true" ] && ! aznfs_safe_logdir "$logdir"; then
-        echo "Log directory $logdir is not root owned, is writable by others, or is a symlink!"
-        logdir_usable=false
-    fi
-
-    if [ "$logdir_usable" == "true" ]; then
-        probe=$(mktemp "${logdir}/.aznfs-logdir-probe.XXXXXXXX" 2>/dev/null) || logdir_usable=false
-        [ -n "$probe" ] && rm -f "$probe"
-    fi
-
-    #
-    # Mirrors usable_logdir(..., "$LOGFILE") in common.sh. An existing log we
-    # cannot append to makes common.sh fall back at the first mount, and the
-    # policy would then be rotating a path AZNFS is not writing to.
-    #
-    if [ "$logdir_usable" == "true" ] &&
-       { [ -L "${logdir}/aznfs.log" ] ||
-         { [ -e "${logdir}/aznfs.log" ] && { [ ! -f "${logdir}/aznfs.log" ] || [ ! -w "${logdir}/aznfs.log" ]; }; }; }; then
-        echo "Log file ${logdir}/aznfs.log is not writable!"
-        logdir_usable=false
+        echo "Log directory $logdir is not usable!"
     fi
 
     if [ "$logdir_usable" != "true" ]; then
@@ -486,10 +514,7 @@ install_logrotate_config()
         # actually written to. The data directory is the last resort: it always
         # exists, but a confined logrotate cannot write anything in it.
         #
-        if [ "$logdir" != "$default_logdir" ] &&
-           { [ -d "$default_logdir" ] ||
-             { mkdir "$default_logdir" 2>/dev/null && chmod 0755 "$default_logdir" 2>/dev/null; }; } &&
-           aznfs_safe_logdir "$default_logdir"; then
+        if [ "$logdir" != "$default_logdir" ] && aznfs_logdir_usable "$default_logdir"; then
             echo "Not able to use log directory $logdir, using $default_logdir instead!"
             logdir="$default_logdir"
         else
@@ -773,13 +798,21 @@ if [ ! -f "$FLAG_FILE" ]; then
 		systemctl enable nfs-client.target
 
         # Start watchdog service for NFSv3
+        #
+        # restart, not start. On an upgrade the watchdog is already running and
+        # resolved its log path when it started, so 'start' is a no-op and it
+        # keeps the previous default's log open. The policy only covers the new
+        # directory, so that file would grow with nothing rotating it until an
+        # operator intervened. Restarting is what the README prescribes after a
+        # log directory change, and the migration above is exactly that.
+        #
         systemctl daemon-reload
         systemctl enable aznfswatchdog
-        systemctl start aznfswatchdog
+        systemctl restart aznfswatchdog
 
         # Start watchdog service for NFSv4
         systemctl enable aznfswatchdogv4
-        systemctl start aznfswatchdogv4
+        systemctl restart aznfswatchdogv4
 else
         # Clean up the update in progress flag file.
         rm -f "$FLAG_FILE"
@@ -872,9 +905,14 @@ if [ $1 == 0 ]; then
 	#
 	# Drop the file context rule install added for a relocated log directory,
 	# otherwise it outlives the package and keeps relabelling a path we no
-	# longer own. The directory the policy named is the one to undo.
+	# longer own.
 	#
-	logdir=$(sed -n 's|^# AZNFS_LOGDIR: ||p' /etc/logrotate.d/aznfs 2>/dev/null | head -1)
+	# Keyed off the marker install wrote, not off the policy comment: the
+	# marker exists only when this package created the rule. An identical rule
+	# an administrator or another package had already put there is left alone,
+	# since removing AZNFS must not take a rule something else still needs.
+	#
+	logdir=$(cat /opt/microsoft/aznfs/data/.selinux_fcontext 2>/dev/null | head -1)
 	if [ -n "$logdir" ] && command -v semanage >/dev/null 2>&1; then
 		#
 		# Escaped exactly as install escaped it. Deleting the raw path would

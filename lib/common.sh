@@ -371,9 +371,16 @@ selinux_label_logdir()
     # Recorded in policy so the label survives a filesystem relabel. semanage
     # ships in a package that is not a dependency, so chcon below is what
     # actually applies it and is always attempted.
+    #
+    # Only ever -a, never -m. A rule already covering this path belongs to the
+    # administrator or to another package, and quietly retyping it would both
+    # override a deliberate decision and leave nothing to restore on uninstall.
+    # The path is recorded only when we created the rule, so removal can tell
+    # ours from one that was already there.
     if command -v semanage >/dev/null 2>&1; then
-        semanage fcontext -a -t var_log_t "${re}(/.*)?" 2>/dev/null ||
-            semanage fcontext -m -t var_log_t "${re}(/.*)?" 2>/dev/null
+        if semanage fcontext -a -t var_log_t "${re}(/.*)?" 2>/dev/null; then
+            printf '%s\n' "$dir" > "${OPTDIRDATA}/.selinux_fcontext" 2>/dev/null
+        fi
     fi
 
     chcon -R -t var_log_t "$dir" 2>/dev/null
