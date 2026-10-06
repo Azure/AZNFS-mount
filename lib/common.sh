@@ -311,6 +311,69 @@ usable_logdir()
 }
 
 #
+# Where logs go when the configured directory cannot be used.
+#
+# The packaged default is preferred, but it is created on demand and creation
+# can fail (read only /var, something already in the way), and logging must
+# never be the thing that fails a mount. The data directory is checked to exist
+# before this point, so it is the last resort even though a confined logrotate
+# cannot rotate anything in it.
+#
+fallback_logdir()
+{
+    #
+    # The directory only, deliberately not the log file in it. A symlink at the
+    # fallback log path has to stay fatal further down rather than quietly
+    # diverting us to another directory: nothing upstream has vetted it, this
+    # runs as root, and silently logging elsewhere would hide what is either an
+    # attack or a broken install.
+    #
+    if usable_logdir "$AZNFS_LOGDIR_DEFAULT"; then
+        echo "$AZNFS_LOGDIR_DEFAULT"
+    else
+        echo "$OPTDIRDATA"
+    fi
+}
+
+#
+# Give the log directory a type the confined logrotate_t domain is allowed to
+# write, so that a scheduled rotation can actually rotate.
+#
+# Only relevant for a directory outside /var/log, which an admin is free to
+# configure: a path under /srv or /opt inherits a type logrotate_t may read but
+# not write, and rotation there fails with an AVC denial and no rotated file.
+# A directory that already carries a log type is left alone, which is the
+# common case and keeps this from adding a redundant rule per install.
+#
+# Entirely best effort. A host with SELinux disabled, or without the tools,
+# must still install and mount normally, so every step is tolerant of failure.
+#
+selinux_label_logdir()
+{
+    local dir="$1" cur
+
+    command -v selinuxenabled >/dev/null 2>&1 || return 0
+    selinuxenabled 2>/dev/null || return 0
+
+    cur=$(stat -c %C "$dir" 2>/dev/null)
+    case "$cur" in
+        *:var_log_t:*) return 0 ;;
+    esac
+
+    # Recorded in policy so the label survives a filesystem relabel. semanage
+    # ships in a package that is not a dependency, so chcon below is what
+    # actually applies it and is always attempted.
+    if command -v semanage >/dev/null 2>&1; then
+        semanage fcontext -a -t var_log_t "${dir}(/.*)?" 2>/dev/null ||
+            semanage fcontext -m -t var_log_t "${dir}(/.*)?" 2>/dev/null
+    fi
+
+    chcon -R -t var_log_t "$dir" 2>/dev/null
+
+    return 0
+}
+
+#
 # How large a log has to get before it is rotated, and how many rotations are
 # kept. Both feed straight into the generated logrotate policy.
 #
@@ -354,6 +417,24 @@ bad_logcount=
 # Defaults for the rotation policy, used when the config file says nothing or
 # says something unusable.
 #
+#
+# Logs live under /var/log, not in the data directory next to mountmap and
+# randbytes.
+#
+# Those are written by the mount helper, which is setuid and runs confined as
+# mount_t under SELinux, while logrotate runs confined as logrotate_t. There is
+# no single type both domains can write, so one shared directory can only ever
+# satisfy one of them. Anything under /opt inherits usr_t, which logrotate_t may
+# read but not write, so rotation of the default log directory failed outright
+# on an enforcing host and the daily logrotate run exited non-zero with it.
+# Giving the logs their own directory under /var/log gives them var_log_t, the
+# type logrotate_t is granted, and leaves the data directory's labelling alone.
+#
+# This is only the default. AZNFS_LOGDIR still relocates the logs anywhere that
+# passes the safety checks, and selinux_label_logdir() makes such a directory
+# rotatable too.
+#
+AZNFS_LOGDIR_DEFAULT="/var/log/aznfs"
 AZNFS_LOGSIZE_DEFAULT="100M"
 AZNFS_LOGCOUNT_DEFAULT="7"
 
@@ -364,7 +445,7 @@ if [ -n "$AZNFS_CONFIGURED_LOGDIR" ] && ! is_valid_logdir "$AZNFS_CONFIGURED_LOG
     AZNFS_CONFIGURED_LOGDIR=
 fi
 
-AZNFS_CONFIGURED_LOGDIR="${AZNFS_CONFIGURED_LOGDIR:-$OPTDIRDATA}"
+AZNFS_CONFIGURED_LOGDIR="${AZNFS_CONFIGURED_LOGDIR:-$AZNFS_LOGDIR_DEFAULT}"
 AZNFS_LOGDIR="$(normalize_dir "${AZNFS_LOGDIR:-$AZNFS_CONFIGURED_LOGDIR}")"
 LOGFILE="${AZNFS_LOGDIR}/${APPNAME}.log"
 
@@ -1653,6 +1734,14 @@ ensure_logrotate_config()
     fi
 
     #
+    # Before the marker check below, not after: the policy is only regenerated
+    # when the configuration changes, but the label can be lost independently
+    # of it, f.e. by a filesystem relabel on a host with no semanage to record
+    # it. Once the directory carries a log type this returns immediately.
+    #
+    selinux_label_logdir "$AZNFS_CONFIGURED_LOGDIR"
+
+    #
     # The marker lines recorded in the generated config tell us what it was
     # generated for, so we can tell whether any of it changed. They record the
     # configured values, not what the file currently says, so a policy edited
@@ -1795,7 +1884,7 @@ if ! usable_logdir "$AZNFS_LOGDIR" "$LOGFILE"; then
        usable_logdir "$AZNFS_CONFIGURED_LOGDIR" "${AZNFS_CONFIGURED_LOGDIR}/${APPNAME}.log"; then
         AZNFS_LOGDIR="$AZNFS_CONFIGURED_LOGDIR"
     else
-        AZNFS_LOGDIR="$OPTDIRDATA"
+        AZNFS_LOGDIR="$(fallback_logdir)"
     fi
 
     LOGFILE="${AZNFS_LOGDIR}/${APPNAME}.log"
@@ -1833,11 +1922,13 @@ if [ "$logdir_is_configured_one" == "yes" ]; then
     # Same value, so it has already been probed and is warned about below.
     #
     if [ -n "$bad_logdir" ]; then
-        AZNFS_CONFIGURED_LOGDIR="$OPTDIRDATA"
+        AZNFS_CONFIGURED_LOGDIR="$(fallback_logdir)"
     fi
 elif ! usable_logdir "$AZNFS_CONFIGURED_LOGDIR" "${AZNFS_CONFIGURED_LOGDIR}/${APPNAME}.log"; then
-    wecho "Not able to use configured log directory '${AZNFS_CONFIGURED_LOGDIR}', rotating '${OPTDIRDATA}' instead!"
-    AZNFS_CONFIGURED_LOGDIR="$OPTDIRDATA"
+    fallback_dir="$(fallback_logdir)"
+    wecho "Not able to use configured log directory '${AZNFS_CONFIGURED_LOGDIR}', rotating '${fallback_dir}' instead!"
+    AZNFS_CONFIGURED_LOGDIR="$fallback_dir"
+    unset fallback_dir
 fi
 
 if [ -n "$bad_logdir" ]; then

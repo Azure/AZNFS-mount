@@ -16,10 +16,32 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	existing_mounts_v4=$(cat /opt/microsoft/aznfs/data/mountmapv4 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts_v3 -ne 0 -o $existing_mounts_v4 -ne 0 ]; then
 		echo
-		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!"
-		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} "
-		read -n 1 result
-		echo
+		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!${NORMAL}"
+
+		#
+		# Only prompt when there is a terminal to prompt on.
+		#
+		# Removal is routinely driven from automation that has no controlling
+		# terminal (Ansible, cloud-init, image builds, a packaging frontend
+		# running scriptlets detached). Reading the answer there either fails
+		# outright or stops the scriptlet on SIGTTIN while it still holds the
+		# packaging lock, and the removal is then wedged part way through with
+		# the dependencies gone and the package still installed.
+		#
+		# Proceeding is the right default: the warning is informational, the
+		# mounts keep working and only stop being tracked, and an operator who
+		# ran the removal non-interactively has already made the decision.
+		#
+		result=y
+		if [ "$AZNFS_NONINTERACTIVE_INSTALL" != "1" ] && { : < /dev/tty; } 2>/dev/null; then
+			echo -n -e "${RED}Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
+			# From /dev/tty, not stdin: dpkg often gives maintainer scripts a
+			# stdin of /dev/null while a terminal still exists, and the '||'
+			# keeps a read that hits EOF from aborting the script under set -e.
+			read -n 1 result < /dev/tty || result=y
+			echo
+		fi
+
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
 			exit 1

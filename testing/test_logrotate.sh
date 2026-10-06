@@ -164,9 +164,28 @@ setup_sandbox()
     touch "$ROOT/opt/microsoft/aznfs/data/mountmap" \
           "$ROOT/opt/microsoft/aznfs/data/mountmapv4"
 
-    sed -e "s#^OPTDIR=\"/opt/microsoft/\${APPNAME}\"#OPTDIR=\"$ROOT/opt/microsoft/\${APPNAME}\"#" \
-        -e "s#^LOGROTATE_CONFIG=\"/etc/logrotate.d/\${APPNAME}\"#LOGROTATE_CONFIG=\"$ROOT/etc/logrotate.d/\${APPNAME}\"#" \
-        "$SOURCE_DIR/lib/common.sh" > "$COMMON"
+    {
+        #
+        # Prepended, because common.sh resolves the log directory while it is
+        # being sourced. The sandbox must not relabel anything or register file
+        # context rules on the machine running the tests, so the labelling is
+        # driven down its "SELinux is not enabled" path, which is a real and
+        # supported configuration. The labelling itself is covered separately.
+        #
+        echo 'selinuxenabled() { return 1; }'
+
+        sed -e "s#^OPTDIR=\"/opt/microsoft/\${APPNAME}\"#OPTDIR=\"$ROOT/opt/microsoft/\${APPNAME}\"#" \
+            -e "s#^LOGROTATE_CONFIG=\"/etc/logrotate.d/\${APPNAME}\"#LOGROTATE_CONFIG=\"$ROOT/etc/logrotate.d/\${APPNAME}\"#" \
+            -e "s#^AZNFS_LOGDIR_DEFAULT=\"/var/log/aznfs\"#AZNFS_LOGDIR_DEFAULT=\"$ROOT/var/log/aznfs\"#" \
+            "$SOURCE_DIR/lib/common.sh"
+    } > "$COMMON"
+
+    #
+    # The default log directory is created on demand, so it deliberately does
+    # not exist yet. Its parent does, left at the umask: safe_logdir() refuses a
+    # world writable ancestor, which is the rule several cases below depend on.
+    #
+    mkdir -p "$ROOT/var/log"
 }
 
 #
@@ -218,12 +237,12 @@ echo "[1] Log directory resolution"
 
 setup_sandbox
 assert_eq "no config file -> default log dir" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 
 setup_sandbox
 write_config "AUTO_UPDATE_AZNFS=false"
 assert_eq "config without AZNFS_LOGDIR -> default" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 
 setup_sandbox
 write_config "AZNFS_LOGDIR=$SANDBOX/varlog"
@@ -238,7 +257,7 @@ assert_eq "env var overrides config" \
 setup_sandbox
 write_config "#AZNFS_LOGDIR=$SANDBOX/commented"
 assert_eq "commented-out setting is ignored" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 
 setup_sandbox
 write_config "   AZNFS_LOGDIR   =   $SANDBOX/spaced   "
@@ -263,7 +282,7 @@ assert_eq "duplicate keys -> last one wins" \
 setup_sandbox
 write_config "AZNFS_LOGDIR="
 assert_eq "empty value -> falls back to default" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 
 setup_sandbox
 write_config "AZNFS_LOGDIR=$SANDBOX/trailing/"
@@ -296,7 +315,7 @@ assert_eq "trailing-slash variant does not discard local policy edits" \
 setup_sandbox
 write_config "AZNFS_LOGDIR=/proc/cannot/create/here"
 assert_eq "uncreatable dir -> falls back to default" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 
 #
 # An invalid value in the config file must not stop a valid per-invocation
@@ -311,7 +330,7 @@ setup_sandbox
 write_config "AZNFS_LOGDIR=/bad path/from/config"
 resolve LOGFILE >/dev/null
 assert_contains "invalid config still falls back in the rotation config" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+    "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
 setup_sandbox
 write_config "AZNFS_LOGDIR=/bad path/from/config"
@@ -338,7 +357,7 @@ echo "[1b] Rejected log directory values (must fall back, never fail a mount)"
 # Every unsafe character is rejected by the same check, so only the ones with a
 # distinct failure mode are covered here rather than one case per character.
 #
-DEFAULT_LOG="$ROOT/opt/microsoft/aznfs/data/aznfs.log"
+DEFAULT_LOG="$ROOT/var/log/aznfs/aznfs.log"
 
 reject_case()
 {
@@ -539,7 +558,7 @@ write_config "AZNFS_LOGDIR=/proc/nope/nope"
 assert_eq "valid override still logs to the override" \
     "$SANDBOX/override/aznfs.log" "$(resolve LOGFILE AZNFS_LOGDIR=$SANDBOX/override)"
 assert_contains "unusable configured dir is not rotated behind a valid override" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+    "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 if grep -q "/proc/nope/nope" "$LRCONF"; then
     nok "unusable configured dir absent from policy" "absent" "still rotated"
 else
@@ -1652,6 +1671,7 @@ run_installer_logdir_snippet()
     {
         echo "APPNAME=aznfs"
         echo "OPTDIRDATA='$ROOT/opt/microsoft/aznfs/data'"
+        echo "LOGDIR_DEFAULT='$ROOT/var/log/aznfs'"
         echo "AZNFS_LOGDIR='$1'"
         sed -n '/^aznfs_safe_logdir()/,/^}/p;/^# Only accept an absolute path/,/^touch "\$LOGFILE" 2>\/dev\/null$/p' \
             "$SOURCE_DIR/scripts/aznfs_install.sh"
@@ -1665,7 +1685,7 @@ setup_sandbox
 mkdir -p "$SANDBOX/inst-unsafe"
 chmod 0777 "$SANDBOX/inst-unsafe"
 assert_eq "installer: world writable log dir falls back" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(run_installer_logdir_snippet "$SANDBOX/inst-unsafe")"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(run_installer_logdir_snippet "$SANDBOX/inst-unsafe")"
 
 #
 # 0775 and 0757 pin the group and the other check separately, a 0777 directory
@@ -1675,13 +1695,13 @@ setup_sandbox
 mkdir -p "$SANDBOX/inst-grpw"
 chmod 0775 "$SANDBOX/inst-grpw"
 assert_eq "installer: group writable log dir falls back" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(run_installer_logdir_snippet "$SANDBOX/inst-grpw")"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(run_installer_logdir_snippet "$SANDBOX/inst-grpw")"
 
 setup_sandbox
 mkdir -p "$SANDBOX/inst-othw"
 chmod 0757 "$SANDBOX/inst-othw"
 assert_eq "installer: other writable log dir falls back" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(run_installer_logdir_snippet "$SANDBOX/inst-othw")"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(run_installer_logdir_snippet "$SANDBOX/inst-othw")"
 
 setup_sandbox
 mkdir -p "$SANDBOX/inst-safe"
@@ -1697,8 +1717,8 @@ assert_eq "installer: safe log dir is used" \
 # the mode rules and the test could not fail.
 #
 setup_sandbox
-mkdir -p "$ROOT/opt/microsoft/aznfs/data"
-ln -sfn "$SANDBOX/inst-elsewhere" "$ROOT/opt/microsoft/aznfs/data/aznfs.log"
+mkdir -p "$ROOT/var/log/aznfs"
+ln -sfn "$SANDBOX/inst-elsewhere" "$ROOT/var/log/aznfs/aznfs.log"
 mkdir -p "$SANDBOX/inst-bad"
 chmod 0777 "$SANDBOX/inst-bad"
 assert_eq "installer: symlinked fallback log is not written through" \
@@ -1928,10 +1948,10 @@ echo "[3] logrotate config generation"
 setup_sandbox
 resolve LOGFILE >/dev/null
 assert_contains "config generated on first run" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+    "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
 assert_contains "config covers turbo logs too" \
-    "$ROOT/opt/microsoft/aznfs/data/turbo*.log" "$LRCONF"
+    "$ROOT/var/log/aznfs/turbo*.log" "$LRCONF"
 
 if ! grep -q "AZNFS_LOGDIR_PLACEHOLDER" "$LRCONF"; then
     ok "placeholder fully substituted"
@@ -2104,12 +2124,188 @@ setup_sandbox
 rm -f "$LRCONF"
 resolve LOGFILE >/dev/null
 
-if [ -f "$LRCONF" ] && [ -f "$ROOT/opt/microsoft/aznfs/data/aznfs.log" ]; then
+if [ -f "$LRCONF" ] && [ -f "$ROOT/var/log/aznfs/aznfs.log" ]; then
     ok "tarball case: first use creates the log and the policy together"
 else
     nok "tarball case: first use creates the log and the policy together" "both present" \
-        "log=$([ -f "$ROOT/opt/microsoft/aznfs/data/aznfs.log" ] && echo yes || echo no) policy=$([ -f "$LRCONF" ] && echo yes || echo no)"
+        "log=$([ -f "$ROOT/var/log/aznfs/aznfs.log" ] && echo yes || echo no) policy=$([ -f "$LRCONF" ] && echo yes || echo no)"
 fi
+
+# ---------------------------------------------------------------------------
+echo
+echo "[8b] Rotation naming: a global 'dateext' must not cap rotation at one a day"
+# ---------------------------------------------------------------------------
+
+#
+# RHEL and others set "dateext" in /etc/logrotate.conf, which names a rotation
+# after the date. With a size based policy that caps rotation at one per day:
+# the second attempt fails with "destination already exists, skipping rotation",
+# the live log is then never truncated again however far past "size" it grows,
+# and the whole run exits non-zero so the daily logrotate unit reports failure.
+#
+assert_contains "template carries nodateext" "nodateext" "$SOURCE_DIR/src/aznfs.logrotate"
+
+setup_sandbox
+write_config "AZNFS_LOGSIZE=1k"
+resolve LOGFILE >/dev/null
+assert_contains "generated policy carries nodateext" "nodateext" "$LRCONF"
+
+#
+# The regression itself, not just the directive that prevents it. The generated
+# block is placed after a global "dateext" exactly as the distro's
+# logrotate.conf does, and then has to rotate more than once on the same day.
+#
+if command -v logrotate >/dev/null 2>&1; then
+    setup_sandbox
+    write_config "AZNFS_LOGDIR=$SANDBOX/dated" "AZNFS_LOGSIZE=1k"
+    resolve LOGFILE >/dev/null
+
+    make_conf "$SANDBOX/dated.body"
+    {
+        echo "dateext"
+        cat "$SANDBOX/dated.body"
+    } > "$SANDBOX/dated.conf"
+    chmod 0644 "$SANDBOX/dated.conf"
+
+    for gen in 1 2 3; do
+        head -c 4096 /dev/zero | tr '\0' "$gen" > "$SANDBOX/dated/aznfs.log"
+        logrotate -s "$SANDBOX/dated.state" "$SANDBOX/dated.conf" 2>/dev/null
+    done
+
+    ndated=$(ls "$SANDBOX/dated"/aznfs.log.* 2>/dev/null | wc -l)
+    assert_eq "rotates more than once a day under a global dateext" "yes" \
+        "$([ "$ndated" -ge 2 ] && echo yes || echo no)"
+
+    if ls "$SANDBOX/dated"/aznfs.log-[0-9]* >/dev/null 2>&1; then
+        nok "rotations stay numbered, not dated" "aznfs.log.N" \
+            "$(ls "$SANDBOX/dated" | tr '\n' ' ')"
+    else
+        ok "rotations stay numbered, not dated"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+echo
+echo "[8c] Removal must not block when there is no terminal to prompt on"
+# ---------------------------------------------------------------------------
+
+#
+# Removal is routinely driven from automation with no controlling terminal.
+# Reading the confirmation from /dev/tty there either fails or stops the
+# scriptlet on SIGTTIN while it holds the packaging lock, leaving the removal
+# wedged with the dependencies gone and the package still installed.
+#
+run_prerm_remove()
+{
+    local snippet="$SANDBOX/prerm.sh" rc
+
+    sed -n "/^if \[ \"\$1\" == 'remove'/,/^fi$/p" \
+        "$SOURCE_DIR/packaging/aznfs/DEBIAN/prerm" > "$snippet"
+    sed -i "s#/opt/microsoft/aznfs#$ROOT/opt/microsoft/aznfs#g" "$snippet"
+
+    # setsid drops the controlling terminal, which is what makes /dev/tty
+    # unopenable and so reproduces the automation case faithfully.
+    env ${1:+AZNFS_NONINTERACTIVE_INSTALL=$1} \
+        setsid bash -e "$snippet" remove </dev/null >"$SANDBOX/prerm.out" 2>&1
+    rc=$?
+    printf '%s' "$rc"
+}
+
+if command -v setsid >/dev/null 2>&1; then
+    setup_sandbox
+    echo "1.2.3.4;$SANDBOX/mnt;0" > "$ROOT/opt/microsoft/aznfs/data/mountmapv4"
+
+    assert_eq "prerm: existing mounts + no terminal does not abort removal" \
+        "0" "$(run_prerm_remove)"
+    assert_contains "prerm: the warning is still printed" \
+        "will not be tracked" "$SANDBOX/prerm.out"
+
+    setup_sandbox
+    echo "1.2.3.4;$SANDBOX/mnt;0" > "$ROOT/opt/microsoft/aznfs/data/mountmap"
+    assert_eq "prerm: v3 mountmap + no terminal does not abort removal" \
+        "0" "$(run_prerm_remove)"
+
+    setup_sandbox
+    echo "1.2.3.4;$SANDBOX/mnt;0" > "$ROOT/opt/microsoft/aznfs/data/mountmapv4"
+    assert_eq "prerm: AZNFS_NONINTERACTIVE_INSTALL=1 does not abort removal" \
+        "0" "$(run_prerm_remove 1)"
+else
+    skip "prerm: existing mounts + no terminal does not abort removal" "setsid is not available"
+fi
+
+#
+# Both packaging copies have to carry the guard, not just the deb one that the
+# case above can run.
+#
+for f in "$SOURCE_DIR/packaging/aznfs/DEBIAN/prerm" "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    if grep -q 'AZNFS_NONINTERACTIVE_INSTALL" != "1" \] && { : < /dev/tty; }' "$f"; then
+        ok "$(basename "$f"): removal prompt is guarded by a tty check"
+    else
+        nok "$(basename "$f"): removal prompt is guarded by a tty check" \
+            "a /dev/tty probe" "unguarded read"
+    fi
+done
+
+# ---------------------------------------------------------------------------
+echo
+echo "[8d] SELinux: the log directory gets a type logrotate is allowed to write"
+# ---------------------------------------------------------------------------
+
+#
+# Anything under /opt inherits usr_t, which the confined logrotate_t domain may
+# read but not write, so a scheduled rotation there is denied and nothing is
+# ever rotated. The default now lives under /var/log, which carries var_log_t
+# already; a directory an admin configures elsewhere is labelled instead.
+#
+run_label_fn()
+{
+    local stubs="$1" dir="$2" snippet="$SANDBOX/label.sh"
+
+    {
+        sed -n '/^selinux_label_logdir()/,/^}/p' "$SOURCE_DIR/lib/common.sh"
+        echo "$stubs"
+        echo "selinux_label_logdir '$dir'; echo \"RC=\$?\""
+    } > "$snippet"
+
+    # To a file rather than a variable: assert_contains takes a path.
+    bash "$snippet" > "$SANDBOX/label.out" 2>&1
+}
+
+MARKERS='semanage() { echo SEMANAGE "$@"; }; chcon() { echo CHCON "$@"; }'
+LABEL_OUT="$SANDBOX/label.out"
+
+run_label_fn "selinuxenabled() { return 1; }; $MARKERS" "$SANDBOX/anywhere"
+assert_contains "selinux disabled -> succeeds" "RC=0" "$LABEL_OUT"
+if grep -q 'CHCON\|SEMANAGE' "$LABEL_OUT"; then
+    nok "selinux disabled -> nothing is relabelled" "no calls" "$(cat "$LABEL_OUT")"
+else
+    ok "selinux disabled -> nothing is relabelled"
+fi
+
+run_label_fn \
+    "selinuxenabled() { return 0; }; stat() { echo 'system_u:object_r:var_log_t:s0'; }; $MARKERS" \
+    "/var/log/aznfs"
+assert_contains "already a log type -> succeeds" "RC=0" "$LABEL_OUT"
+if grep -q 'CHCON\|SEMANAGE' "$LABEL_OUT"; then
+    nok "already a log type -> left alone" "no calls" "$(cat "$LABEL_OUT")"
+else
+    ok "already a log type -> left alone"
+fi
+
+run_label_fn \
+    "selinuxenabled() { return 0; }; stat() { echo 'system_u:object_r:usr_t:s0'; }; $MARKERS" \
+    "/opt/microsoft/aznfs/data"
+assert_contains "usr_t log dir -> relabelled to var_log_t" "CHCON -R -t var_log_t" "$LABEL_OUT"
+assert_contains "usr_t log dir -> recorded for a relabel" "SEMANAGE fcontext" "$LABEL_OUT"
+assert_contains "usr_t log dir -> still succeeds" "RC=0" "$LABEL_OUT"
+
+#
+# It must never be able to fail a mount or an install, whatever the tools do.
+#
+run_label_fn \
+    "selinuxenabled() { return 0; }; stat() { echo 'system_u:object_r:usr_t:s0'; }; semanage() { return 1; }; chcon() { return 1; }" \
+    "/opt/microsoft/aznfs/data"
+assert_contains "failing selinux tools still return success" "RC=0" "$LABEL_OUT"
 
 #
 # The deb and rpm copies of the two logrotate functions have to stay byte
@@ -2119,7 +2315,7 @@ fi
 #
 # The rpm copy escapes % as %% and carries a comment saying why, so the two are
 # compared after undoing both. Anything else that differs is drift.
-for fn in install_logrotate_config aznfs_safe_logdir; do
+for fn in install_logrotate_config aznfs_safe_logdir aznfs_selinux_label_logdir; do
     if diff <(sed -n "/^${fn}()/,/^}/p" "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst") \
             <(sed -n "/^${fn}()/,/^}/p" "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec" |
               grep -v '^        # %% not %: rpm expands macros' |
@@ -2245,7 +2441,7 @@ assert_eq "bad env override falls back to the configured dir" \
 assert_contains "bad env override keeps the configured dir rotated" \
     "$SANDBOX/keepme/aznfs.log" "$LRCONF"
 
-if grep -qF -- "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"; then
+if grep -qF -- "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"; then
     nok "bad env override does not switch rotation to the default dir" \
         "config still on the configured dir" "config regenerated for the default dir"
 else
@@ -2260,7 +2456,7 @@ setup_sandbox
 write_config "AZNFS_LOGDIR=/proc/cannot/create/here"
 resolve LOGFILE >/dev/null
 assert_contains "unusable configured dir falls back in the config too" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+    "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
 #
 # An unwritable log in the configured directory makes it unusable too, and this
@@ -2283,7 +2479,7 @@ else
     write_config "AZNFS_LOGDIR=$SANDBOX/cfgro"
     resolve LOGFILE "AZNFS_LOGDIR=$SANDBOX/envok" >/dev/null
     assert_contains "unwritable log in the configured dir falls back in the config" \
-        "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+        "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
     if grep -qF -- "$SANDBOX/cfgro/aznfs.log" "$LRCONF"; then
         nok "rotation does not cover a configured dir with an unwritable log" \
@@ -2323,7 +2519,7 @@ echo "[3b] Log directory changed midway"
 # restarted after a change (documented in the README).
 #
 setup_sandbox
-DEFAULTDIR="$ROOT/opt/microsoft/aznfs/data"
+DEFAULTDIR="$ROOT/var/log/aznfs"
 
 resolve LOGFILE >/dev/null
 assert_contains "before change: default dir covered" "$DEFAULTDIR/aznfs.log" "$LRCONF"
@@ -2377,7 +2573,7 @@ echo "[3c] Chained log directory changes (default -> B -> C -> default)"
 # directory, and must stay valid for logrotate.
 #
 setup_sandbox
-DEFAULTDIR="$ROOT/opt/microsoft/aznfs/data"
+DEFAULTDIR="$ROOT/var/log/aznfs"
 
 resolve LOGFILE >/dev/null                          # default
 
@@ -2420,7 +2616,7 @@ write_config "AZNFS_LOGDIR=$SANDBOX/notified"
 first=$(notice_out)                                     # the change
 second=$(notice_out)                                    # same dir again
 
-if echo "$first" | grep -q "remain in '$ROOT/opt/microsoft/aznfs/data'"; then
+if echo "$first" | grep -q "remain in '$ROOT/var/log/aznfs'"; then
     ok "user is told where the previous logs remain"
 else
     nok "user is told where the previous logs remain" "notice naming the old dir" "$(echo "$first" | tail -2)"
@@ -2464,7 +2660,7 @@ fi
 setup_sandbox
 rm -f "$ROOT/opt/microsoft/aznfs/aznfs.logrotate"
 assert_eq "missing template -> logging still works" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 if [ ! -f "$LRCONF" ]; then
     ok "missing template -> no config written"
 else
@@ -2475,13 +2671,13 @@ fi
 setup_sandbox
 rm -rf "$ROOT/etc/logrotate.d"
 assert_eq "no logrotate.d -> logging still works" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 
 # Read-only /etc/logrotate.d -> must not fail the mount, no temp file left behind.
 setup_sandbox
 chmod a-w "$ROOT/etc/logrotate.d"
 assert_eq "read-only logrotate.d -> logging still works" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+    "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 leftover=$(find "$ROOT/etc/logrotate.d" -name 'aznfs.tmp.*' 2>/dev/null | wc -l)
 assert_eq "read-only logrotate.d -> no temp file leaked" "0" "$leftover"
 chmod u+w "$ROOT/etc/logrotate.d"
@@ -2802,9 +2998,16 @@ run_postinst_snippet()
     # it out silently makes install_logrotate_config() see no configured log
     # directory at all, so every case would "pass" by falling back to default.
     #
-    sed -n '/^CONFIG_FILE=/,/^AUTO_UPDATE_AZNFS=/p;/^aznfs_safe_logdir()/,/^}/p;/^install_logrotate_config()/,/^}/p' \
+    sed -n '/^CONFIG_FILE=/,/^AUTO_UPDATE_AZNFS=/p;/^aznfs_safe_logdir()/,/^}/p;/^aznfs_selinux_label_logdir()/,/^}/p;/^install_logrotate_config()/,/^}/p' \
         "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" > "$snippet"
-    sed -i "s#/opt/microsoft/aznfs#$ROOT/opt/microsoft/aznfs#g; s#/etc/logrotate.d#$ROOT/etc/logrotate.d#g" "$snippet"
+    sed -i "s#/opt/microsoft/aznfs#$ROOT/opt/microsoft/aznfs#g; s#/var/log/aznfs#$ROOT/var/log/aznfs#g; s#/etc/logrotate.d#$ROOT/etc/logrotate.d#g" "$snippet"
+
+    #
+    # Extracted above so a syntax error in it still fails the run, then stubbed
+    # so the sandbox cannot acquire SELinux labels or file context rules on the
+    # developer's machine. The real function has its own cases further down.
+    #
+    echo 'aznfs_selinux_label_logdir() { :; }' >> "$snippet"
 
     # Optional prelude, used to stub out a command whose failure is under test.
     [ -n "${1:-}" ] && echo "$1" >> "$snippet"
@@ -2839,9 +3042,12 @@ run_rpm_post_snippet()
 {
     local snippet="$SANDBOX/rpmsnippet.sh"
 
-    rpm_scriptlet '/^CONFIG_FILE=/,/^AUTO_UPDATE_AZNFS=/p;/^aznfs_safe_logdir()/,/^}/p;/^install_logrotate_config()/,/^}/p' > "$snippet"
+    rpm_scriptlet '/^CONFIG_FILE=/,/^AUTO_UPDATE_AZNFS=/p;/^aznfs_safe_logdir()/,/^}/p;/^aznfs_selinux_label_logdir()/,/^}/p;/^install_logrotate_config()/,/^}/p' > "$snippet"
 
-    sed -i "s#/opt/microsoft/aznfs#$ROOT/opt/microsoft/aznfs#g; s#/etc/logrotate.d#$ROOT/etc/logrotate.d#g" "$snippet"
+    sed -i "s#/opt/microsoft/aznfs#$ROOT/opt/microsoft/aznfs#g; s#/var/log/aznfs#$ROOT/var/log/aznfs#g; s#/etc/logrotate.d#$ROOT/etc/logrotate.d#g" "$snippet"
+
+    # Stubbed for the same reason as in run_postinst_snippet().
+    echo 'aznfs_selinux_label_logdir() { :; }' >> "$snippet"
 
     [ -n "${1:-}" ] && echo "$1" >> "$snippet"
 
@@ -2921,7 +3127,7 @@ else
     run_rpm_post_snippet
     assert_eq "rpm %post: fresh install exits 0" "0" "$?"
     assert_contains "rpm %post: generates config" \
-        "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+        "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
     leftover=$(grep -o 'AZNFS_[A-Z]*_PLACEHOLDER' "$LRCONF" 2>/dev/null | sort -u | tr '\n' ' ')
     if [ -z "$leftover" ]; then
@@ -2969,7 +3175,7 @@ fi
 setup_sandbox
 run_postinst_snippet
 assert_eq "postinst: fresh install exits 0" "0" "$?"
-assert_contains "postinst: generates config" "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+assert_contains "postinst: generates config" "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
 setup_sandbox
 write_config "AUTO_UPDATE_AZNFS=false"
@@ -2981,7 +3187,7 @@ write_config "AZNFS_LOGDIR=/proc/nope/nope"
 run_postinst_snippet
 assert_eq "postinst: uncreatable log dir must not abort install" "0" "$?"
 assert_contains "postinst: falls back to default log dir" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+    "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
 #
 # mkdir -p returns success for an existing directory even when nothing can be
@@ -3002,7 +3208,7 @@ if [ "$(id -u)" -ne 0 ]; then
     run_postinst_snippet
     assert_eq "postinst: unwritable existing log dir must not abort install" "0" "$?"
     assert_contains "postinst: unwritable existing log dir falls back" \
-        "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+        "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
     if grep -q "$SANDBOX/ro-logdir/aznfs.log" "$LRCONF"; then
         nok "postinst: unwritable log dir is not rotated" "absent from policy" "still rotated"
@@ -3015,7 +3221,7 @@ if [ "$(id -u)" -ne 0 ]; then
     # two drift apart again and the rotation covers the wrong path.
     #
     assert_eq "runtime agrees: unwritable existing log dir falls back too" \
-        "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$(resolve LOGFILE)"
+        "$ROOT/var/log/aznfs/aznfs.log" "$(resolve LOGFILE)"
 
     chmod 0755 "$SANDBOX/ro-logdir"
 else
@@ -3038,7 +3244,7 @@ if [ "$(id -u)" -ne 0 ]; then
     run_postinst_snippet
     assert_eq "postinst: unwritable existing log must not abort install" "0" "$?"
     assert_contains "postinst: unwritable existing log falls back" \
-        "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+        "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
     assert_eq "install and runtime agree on an unwritable existing log" \
         "$DEFAULT_LOG" "$(resolve LOGFILE)"
     chmod 0644 "$SANDBOX/pkg-rolog/aznfs.log"
@@ -3059,7 +3265,7 @@ write_config "AZNFS_LOGDIR=$SANDBOX/pkg-unsafe"
 run_postinst_snippet
 assert_eq "postinst: unsafe log dir must not abort install" "0" "$?"
 assert_contains "postinst: unsafe log dir falls back" \
-    "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+    "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 
 #
 # The maintainer script has its own copy of the path handling, so the unsafe
@@ -3085,7 +3291,7 @@ postinst_reject()
         return
     fi
 
-    assert_contains "$desc" "$ROOT/opt/microsoft/aznfs/data/aznfs.log" "$LRCONF"
+    assert_contains "$desc" "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"
 }
 
 postinst_reject "postinst: unsafe character rejected, config not corrupted" "$SANDBOX/a&b"
@@ -3327,6 +3533,103 @@ write_config "AZNFS_LOGDIR=$SANDBOX/upg/"
 run_postinst_snippet
 assert_eq "postinst: trailing-slash variant preserves policy edits" \
     "# admin tweak" "$(tail -n1 "$LRCONF")"
+
+# ---------------------------------------------------------------------------
+echo
+echo "[5b] Upgrade: logs left by the previous default follow it"
+# ---------------------------------------------------------------------------
+
+#
+# The default moved from the data directory to /var/log/aznfs. An upgrade that
+# left the old logs behind would strand files nothing rotates any more, so they
+# are moved with it. An admin who set AZNFS_LOGDIR keeps the documented
+# behaviour of old logs staying where they were.
+#
+seed_legacy_logs()
+{
+    local d="$ROOT/opt/microsoft/aznfs/data"
+    echo live    > "$d/aznfs.log"
+    echo rot1    > "$d/aznfs.log.1"
+    echo rot2    > "$d/aznfs.log.2.gz"
+    echo turbo   > "$d/turbo-mnt.log"
+}
+
+setup_sandbox
+write_config "AUTO_UPDATE_AZNFS=false"
+seed_legacy_logs
+run_postinst_snippet
+assert_eq "upgrade: legacy live log moved out of the data dir" \
+    "no" "$([ -e "$ROOT/opt/microsoft/aznfs/data/aznfs.log" ] && echo yes || echo no)"
+assert_eq "upgrade: legacy rotations moved too" \
+    "yes" "$([ -f "$ROOT/var/log/aznfs/aznfs.log.1" ] && [ -f "$ROOT/var/log/aznfs/aznfs.log.2.gz" ] && echo yes || echo no)"
+assert_eq "upgrade: turbo logs moved too" \
+    "yes" "$([ -f "$ROOT/var/log/aznfs/turbo-mnt.log" ] && echo yes || echo no)"
+assert_eq "upgrade: content is preserved, not truncated" \
+    "rot1" "$(cat "$ROOT/var/log/aznfs/aznfs.log.1" 2>/dev/null)"
+
+#
+# A configured directory is the admin's choice, so nothing is moved and the
+# default must not creep back in over it on an upgrade.
+#
+setup_sandbox
+write_config "AZNFS_LOGDIR=$SANDBOX/chosen" "AZNFS_LOGSIZE=250M" "AZNFS_LOGCOUNT=4"
+seed_legacy_logs
+run_postinst_snippet
+assert_eq "configured log dir: legacy logs are left alone" \
+    "yes" "$([ -f "$ROOT/opt/microsoft/aznfs/data/aznfs.log" ] && echo yes || echo no)"
+assert_contains "upgrade keeps rotating the configured dir, not the default" \
+    "# AZNFS_LOGDIR: $SANDBOX/chosen" "$LRCONF"
+assert_contains "upgrade keeps the configured size and count" \
+    "# AZNFS_LOGPOLICY: size=250M rotate=4" "$LRCONF"
+if grep -qF "$ROOT/var/log/aznfs/aznfs.log" "$LRCONF"; then
+    nok "upgrade does not fall back to the default dir" \
+        "only the configured dir" "the default leaked into the policy"
+else
+    ok "upgrade does not fall back to the default dir"
+fi
+
+#
+# Never clobber. A file already at the destination is the live one.
+#
+setup_sandbox
+write_config "AUTO_UPDATE_AZNFS=false"
+seed_legacy_logs
+mkdir -p "$ROOT/var/log/aznfs"
+echo keepme > "$ROOT/var/log/aznfs/aznfs.log"
+run_postinst_snippet
+assert_eq "existing log at the destination is not overwritten" \
+    "keepme" "$(cat "$ROOT/var/log/aznfs/aznfs.log" 2>/dev/null)"
+
+#
+# The commented hint in an existing config named the previous default. Left as
+# it was, the file documents a default that is not in effect.
+#
+HINT_FIX='s|^#AZNFS_LOGDIR=/opt/microsoft/aznfs/data[[:space:]]*$|#AZNFS_LOGDIR=/var/log/aznfs|'
+
+for f in "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    if grep -qF "$HINT_FIX" "$f"; then
+        ok "$(basename "$f"): corrects the stale log dir hint on upgrade"
+    else
+        nok "$(basename "$f"): corrects the stale log dir hint on upgrade" \
+            "a sed rewriting the commented default" "absent"
+    fi
+done
+
+setup_sandbox
+printf 'AUTO_UPDATE_AZNFS=false\n#AZNFS_LOGDIR=/opt/microsoft/aznfs/data\n' > "$CONFIG"
+sed -i "$HINT_FIX" "$CONFIG"
+assert_contains "stale commented hint is corrected" "#AZNFS_LOGDIR=/var/log/aznfs" "$CONFIG"
+
+setup_sandbox
+printf 'AUTO_UPDATE_AZNFS=false\nAZNFS_LOGDIR=/opt/microsoft/aznfs/data\n' > "$CONFIG"
+sed -i "$HINT_FIX" "$CONFIG"
+assert_contains "a real setting on the old path is never rewritten" \
+    "AZNFS_LOGDIR=/opt/microsoft/aznfs/data" "$CONFIG"
+
+setup_sandbox
+printf 'AUTO_UPDATE_AZNFS=false\n#AZNFS_LOGDIR=/srv/mylogs\n' > "$CONFIG"
+sed -i "$HINT_FIX" "$CONFIG"
+assert_contains "an unrelated commented hint is left alone" "#AZNFS_LOGDIR=/srv/mylogs" "$CONFIG"
 
 # ---------------------------------------------------------------------------
 echo
@@ -3689,7 +3992,7 @@ fi
 # floor deliberately when adding tests, and only lower it when removing them on
 # purpose.
 #
-EXPECTED_MIN_TESTS=388
+EXPECTED_MIN_TESTS=417
 
 if [ $((PASS + SKIP)) -lt $EXPECTED_MIN_TESTS ]; then
     echo "Only $((PASS + SKIP)) tests ran, expected at least ${EXPECTED_MIN_TESTS}."

@@ -11,6 +11,16 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	chattr -f -i /opt/microsoft/aznfs/data/mountmapv4
 	chattr -f -i /opt/microsoft/aznfs/data/mountmapv4notls
 	chattr -f -i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
+	#
+	# Drop the file context rule install added for a relocated log directory,
+	# otherwise it outlives the package and keeps relabelling a path we no
+	# longer own. The directory the policy named is the one to undo.
+	#
+	logdir=$(sed -n 's|^# AZNFS_LOGDIR: ||p' /etc/logrotate.d/aznfs 2>/dev/null | head -1)
+	if [ -n "$logdir" ] && command -v semanage >/dev/null 2>&1; then
+		semanage fcontext -d "${logdir}(/.*)?" 2>/dev/null
+	fi
+
 	rm -rf /opt/microsoft/aznfs
 	rm -f /etc/logrotate.d/aznfs
 	chattr -f -i /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*

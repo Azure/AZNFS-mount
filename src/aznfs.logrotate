@@ -36,6 +36,22 @@ AZNFS_LOGFILES_PLACEHOLDER {
 	size AZNFS_LOGSIZE_PLACEHOLDER
 	rotate AZNFS_LOGCOUNT_PLACEHOLDER
 
+	#
+	# Rotations are numbered, never dated.
+	#
+	# RHEL and several other distros set "dateext" globally in
+	# /etc/logrotate.conf, which names a rotation after the date instead of a
+	# sequence number. Combined with a size based policy that caps rotation at
+	# one per day: the second rotation of the same day fails with "destination
+	# already exists, skipping rotation", the live log is never truncated
+	# again no matter how far past "size" it grows, and the whole logrotate
+	# run exits non-zero so the daily logrotate unit reports a failure.
+	#
+	# Sequence numbers have no such limit, so the global setting is overridden
+	# here rather than left to whatever the distro happens to ship.
+	#
+	nodateext
+
 	missingok
 	notifempty
 	compress

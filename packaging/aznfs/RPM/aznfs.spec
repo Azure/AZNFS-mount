@@ -333,9 +333,47 @@ aznfs_safe_logdir()
     return 0
 }
 
+#
+# Give the log directory a type the confined logrotate_t domain is allowed to
+# write, so that a scheduled rotation can actually rotate.
+#
+# Only relevant for a directory outside /var/log, which an admin is free to
+# configure: a path under /srv or /opt inherits a type logrotate_t may read but
+# not write, and rotation there fails with an AVC denial and no rotated file.
+# A directory that already carries a log type is left alone, which is the
+# common case and keeps this from adding a redundant rule on every install.
+#
+# Entirely best effort. A host with SELinux disabled, or without the tools,
+# must still install and mount normally, so every step tolerates failure.
+#
+aznfs_selinux_label_logdir()
+{
+    local dir="$1" cur
+
+    command -v selinuxenabled >/dev/null 2>&1 || return 0
+    selinuxenabled 2>/dev/null || return 0
+
+    cur=$(stat -c %%C "$dir" 2>/dev/null)
+    case "$cur" in
+        *:var_log_t:*) return 0 ;;
+    esac
+
+    # Recorded in policy so the label survives a filesystem relabel. semanage
+    # ships in a package that is not a dependency, so the chcon below is what
+    # actually applies it and is always attempted.
+    if command -v semanage >/dev/null 2>&1; then
+        semanage fcontext -a -t var_log_t "${dir}(/.*)?" 2>/dev/null ||
+            semanage fcontext -m -t var_log_t "${dir}(/.*)?" 2>/dev/null
+    fi
+
+    chcon -R -t var_log_t "$dir" 2>/dev/null
+
+    return 0
+}
+
 install_logrotate_config()
 {
-    local logdir= logfiles= prev_logdir= prev_policy= tmpfile= logsize= logcount=
+    local logdir= logfiles= prev_logdir= prev_policy= tmpfile= logsize= logcount= configured_logdir= legacy_logdir=/opt/microsoft/aznfs/data
 
     if [ ! -f "$LOGROTATE_TEMPLATE" ]; then
         return
@@ -345,7 +383,8 @@ install_logrotate_config()
         logdir=$(sed -n 's|^[[:space:]]*AZNFS_LOGDIR[[:space:]]*=[[:space:]]*||p' "$CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's|[[:space:]]*$||' -e 's|^"\(.*\)"$|\1|' -e "s|^'\(.*\)'\$|\1|") || true
     fi
 
-    logdir=${logdir:-/opt/microsoft/aznfs/data}
+    configured_logdir="$logdir"
+    logdir=${logdir:-/var/log/aznfs}
 
     # Strip trailing slashes to keep the generated config path canonical.
     while [ "$logdir" != "/" ] && [ "${logdir%/}" != "$logdir" ]; do
@@ -372,8 +411,8 @@ install_logrotate_config()
     esac
 
     if [ -z "$logdir" ]; then
-        echo "AZNFS_LOGDIR in $CONFIG_FILE is not a usable path, using /opt/microsoft/aznfs/data instead!"
-        logdir=/opt/microsoft/aznfs/data
+        echo "AZNFS_LOGDIR in $CONFIG_FILE is not a usable path, using /var/log/aznfs instead!"
+        logdir=/var/log/aznfs
     fi
 
     #
@@ -432,9 +471,47 @@ install_logrotate_config()
     fi
 
     if [ "$logdir_usable" != "true" ]; then
-        echo "Not able to use log directory $logdir, using /opt/microsoft/aznfs/data instead!"
-        logdir=/opt/microsoft/aznfs/data
-        mkdir -p "$logdir" 2>/dev/null && chmod 0755 "$logdir" 2>/dev/null
+        #
+        # The packaged default is tried before the data directory, and only
+        # when it is not already what failed. common.sh falls back the same way
+        # at mount time, and the policy has to name the directory the logs are
+        # actually written to. The data directory is the last resort: it always
+        # exists, but a confined logrotate cannot write anything in it.
+        #
+        if [ "$logdir" != "/var/log/aznfs" ] &&
+           { [ -d /var/log/aznfs ] ||
+             { mkdir /var/log/aznfs 2>/dev/null && chmod 0755 /var/log/aznfs 2>/dev/null; }; } &&
+           aznfs_safe_logdir /var/log/aznfs; then
+            echo "Not able to use log directory $logdir, using /var/log/aznfs instead!"
+            logdir=/var/log/aznfs
+        else
+            echo "Not able to use log directory $logdir, using /opt/microsoft/aznfs/data instead!"
+            logdir=/opt/microsoft/aznfs/data
+            mkdir -p "$logdir" 2>/dev/null && chmod 0755 "$logdir" 2>/dev/null
+        fi
+    fi
+
+    aznfs_selinux_label_logdir "$logdir"
+
+    #
+    # Logs the previous default left in the data directory move with the default,
+    # so an upgrade does not strand files that nothing rotates any more.
+    #
+    # Only when AZNFS_LOGDIR is unset: an admin who picked a directory keeps the
+    # documented behaviour of old logs staying where they were put.
+    #
+    # Same filesystem only. Across filesystems mv copies and unlinks, and a
+    # watchdog or Turbo client still holding the old log open would carry on
+    # writing into the unlinked inode and lose everything written after the
+    # move. A rename leaves those descriptors pointing at the file we moved.
+    #
+    if [ -z "$configured_logdir" ] && [ "$logdir" != "$legacy_logdir" ] && [ -d "$legacy_logdir" ] &&
+       [ "$(stat -c %%d "$legacy_logdir" 2>/dev/null)" == "$(stat -c %%d "$logdir" 2>/dev/null)" ]; then
+        for f in "$legacy_logdir"/aznfs.log "$legacy_logdir"/aznfs.log.* \
+                 "$legacy_logdir"/turbo*.log "$legacy_logdir"/turbo*.log.*; do
+            # Never clobber: a file already at the destination is the live one.
+            [ -f "$f" ] && [ ! -e "${logdir}/${f##*/}" ] && mv -f "$f" "$logdir/" 2>/dev/null
+        done
     fi
 
     #
@@ -616,12 +693,22 @@ if [ ! -f "$CONFIG_FILE" ]; then
         # Directory for aznfs.log and the per-mount turbo logs, uncomment and
         # change it to log to a different directory.
         #
-        echo "#AZNFS_LOGDIR=/opt/microsoft/aznfs/data" >> "$CONFIG_FILE"
+        echo "#AZNFS_LOGDIR=/var/log/aznfs" >> "$CONFIG_FILE"
         echo "#AZNFS_LOGSIZE=100M" >> "$CONFIG_FILE"
         echo "#AZNFS_LOGCOUNT=7" >> "$CONFIG_FILE"
 
         # Set the permissions for the config file.
         chmod 0644 "$CONFIG_FILE"
+fi
+
+#
+# An existing config still carries the commented hint naming the previous
+# default log directory, which is no longer where logs go. Correct it so the
+# file does not document a default that is not in effect. Only the commented
+# form is rewritten, never a setting the admin actually made.
+#
+if [ -f "$CONFIG_FILE" ]; then
+        sed -i 's|^#AZNFS_LOGDIR=/opt/microsoft/aznfs/data[[:space:]]*$|#AZNFS_LOGDIR=/var/log/aznfs|' "$CONFIG_FILE" 2>/dev/null || true
 fi
 
 # Set up log rotation for aznfs logs, as per the configured log directory.
@@ -674,10 +761,30 @@ if [ $1 == 0 ]; then
 	existing_mounts_v4=$(cat /opt/microsoft/aznfs/data/mountmapv4 2>/dev/null | egrep '^\S+' | wc -l)
 	if [ $existing_mounts_v3 -ne 0 -o $existing_mounts_v4 -ne 0 ]; then
 		echo
-		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!" > /dev/tty
-		echo -n -e "Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
-		read -n 1 result < /dev/tty
-		echo
+		echo -e "${RED}There are existing Azure Blob/Files NFS mounts using aznfs mount helper, they will not be tracked!${NORMAL}"
+
+		#
+		# Only prompt when there is a terminal to prompt on.
+		#
+		# Removal is routinely driven from automation that has no controlling
+		# terminal (Ansible, cloud-init, image builds, a packaging frontend
+		# running scriptlets detached). Reading from /dev/tty there either
+		# fails outright or stops the scriptlet on SIGTTIN while it still holds
+		# the rpm lock, and the removal is then wedged part way through with
+		# the dependencies gone and the package still installed.
+		#
+		# Proceeding is the right default: the warning is informational, the
+		# mounts keep working and only stop being tracked, and an operator who
+		# ran the removal non-interactively has already made the decision.
+		#
+		result=y
+		if [ "$AZNFS_NONINTERACTIVE_INSTALL" != "1" ] && { : < /dev/tty; } 2>/dev/null; then
+			echo -n -e "${RED}Are you sure you want to continue? [y/N]${NORMAL} " > /dev/tty
+			# The '||' keeps a read that hits EOF from aborting the scriptlet.
+			read -n 1 result < /dev/tty || result=y
+			echo
+		fi
+
 		if [ "$result" != "y" -a "$result" != "Y" ]; then
 			echo "Removal aborted!"
 			if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
@@ -717,6 +824,16 @@ if [ $1 == 0 ]; then
 	chattr -i -f /opt/microsoft/aznfs/data/randbytes
 	chattr -i -f /opt/microsoft/aznfs/data/mountmapv4
 	chattr -i -f /opt/microsoft/aznfs/data/mountmapv4notls
+	#
+	# Drop the file context rule install added for a relocated log directory,
+	# otherwise it outlives the package and keeps relabelling a path we no
+	# longer own. The directory the policy named is the one to undo.
+	#
+	logdir=$(sed -n 's|^# AZNFS_LOGDIR: ||p' /etc/logrotate.d/aznfs 2>/dev/null | head -1)
+	if [ -n "$logdir" ] && command -v semanage >/dev/null 2>&1; then
+		semanage fcontext -d "${logdir}(/.*)?" 2>/dev/null
+	fi
+
 	rm -rf /opt/microsoft/aznfs
 	rm -f /etc/logrotate.d/aznfs
 	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*

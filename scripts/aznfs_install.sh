@@ -15,12 +15,19 @@ FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 # Users can change it either by setting AZNFS_LOGDIR in CONFIG_FILE or by
 # exporting the AZNFS_LOGDIR env variable, the env variable takes precedence.
 #
+# The default lives under /var/log rather than in the data directory, so that
+# the logs carry a type the confined logrotate domain can write and are rotated
+# on an SELinux host. See AZNFS_LOGDIR_DEFAULT in common.sh. OPTDIRDATA remains
+# the last resort below because it is always present.
+#
+LOGDIR_DEFAULT="/var/log/aznfs"
+
 if [ -z "$AZNFS_LOGDIR" -a -f "$CONFIG_FILE" ]; then
     AZNFS_LOGDIR=$(sed -n 's|^[[:space:]]*AZNFS_LOGDIR[[:space:]]*=[[:space:]]*||p' "$CONFIG_FILE" 2>/dev/null |
                     tail -n1 | sed -e 's|[[:space:]]*$||' -e 's|^"\(.*\)"$|\1|' -e "s|^'\(.*\)'\$|\1|")
 fi
 
-AZNFS_LOGDIR="${AZNFS_LOGDIR:-$OPTDIRDATA}"
+AZNFS_LOGDIR="${AZNFS_LOGDIR:-$LOGDIR_DEFAULT}"
 
 # Strip trailing slashes to keep the log path canonical.
 while [ "$AZNFS_LOGDIR" != "/" ] && [ "${AZNFS_LOGDIR%/}" != "$AZNFS_LOGDIR" ]; do
@@ -112,16 +119,16 @@ aznfs_safe_logdir()
 # unquoted, fall back to the default directory otherwise.
 #
 case "$AZNFS_LOGDIR" in
-    /) AZNFS_LOGDIR="$OPTDIRDATA" ;;
-    /*[!A-Za-z0-9._/@+-]*) AZNFS_LOGDIR="$OPTDIRDATA" ;;
+    /) AZNFS_LOGDIR="$LOGDIR_DEFAULT" ;;
+    /*[!A-Za-z0-9._/@+-]*) AZNFS_LOGDIR="$LOGDIR_DEFAULT" ;;
     /*) ;;
-    *) AZNFS_LOGDIR="$OPTDIRDATA" ;;
+    *) AZNFS_LOGDIR="$LOGDIR_DEFAULT" ;;
 esac
 
 # "/." and "/var/log/.." are other spellings of a directory the case above
 # would otherwise treat as distinct.
 case "${AZNFS_LOGDIR}/" in
-    */../*|*/./*) AZNFS_LOGDIR="$OPTDIRDATA" ;;
+    */../*|*/./*) AZNFS_LOGDIR="$LOGDIR_DEFAULT" ;;
 esac
 
 #
@@ -174,8 +181,19 @@ if [ "$logdir_usable" == "true" ] &&
 fi
 
 if [ "$logdir_usable" != "true" ]; then
-    AZNFS_LOGDIR="$OPTDIRDATA"
-    mkdir -p "$AZNFS_LOGDIR" && chmod 0755 "$AZNFS_LOGDIR"
+    #
+    # The packaged default first, the data directory only if that fails too.
+    # Same order as common.sh and the packaging scriptlets use.
+    #
+    if [ "$AZNFS_LOGDIR" != "$LOGDIR_DEFAULT" ] &&
+       { [ -d "$LOGDIR_DEFAULT" ] ||
+         { mkdir "$LOGDIR_DEFAULT" 2>/dev/null && chmod 0755 "$LOGDIR_DEFAULT" 2>/dev/null; }; } &&
+       aznfs_safe_logdir "$LOGDIR_DEFAULT"; then
+        AZNFS_LOGDIR="$LOGDIR_DEFAULT"
+    else
+        AZNFS_LOGDIR="$OPTDIRDATA"
+        mkdir -p "$AZNFS_LOGDIR" && chmod 0755 "$AZNFS_LOGDIR"
+    fi
 fi
 
 LOGFILE="${AZNFS_LOGDIR}/${APPNAME}.log"
