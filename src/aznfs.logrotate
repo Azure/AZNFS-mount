@@ -1,0 +1,66 @@
+#
+# Logrotate configuration for AZNFS mount helper, watchdog and Turbo client logs.
+#
+# This file is generated from the template /opt/microsoft/aznfs/aznfs.logrotate.
+# It's regenerated only when AZNFS_LOGDIR, AZNFS_LOGSIZE or AZNFS_LOGCOUNT in
+# /opt/microsoft/aznfs/data/config changes, so any change made to the rotation
+# policy below is retained across mounts and package upgrades until one of
+# those three is changed.
+#
+# The marker lines below record what this file was generated for and are what
+# that check keys off, so don't edit or remove them.
+#
+# AZNFS_LOGDIR: AZNFS_LOGDIR_PLACEHOLDER
+# AZNFS_LOGPOLICY: AZNFS_LOGPOLICY_PLACEHOLDER
+#
+AZNFS_LOGFILES_PLACEHOLDER {
+	su root root
+
+	#
+	# Rotate purely on size, with no time based rotation.
+	#
+	# These are diagnostic logs, so retention should scale with log volume and
+	# not with wall clock time. A time based policy (f.e. "daily") would rotate
+	# even a few KB worth of logs every day, and the history a support case can
+	# rely on would then be limited to 'rotate' days regardless of how little
+	# was logged. With a size based policy a quiet system retains a much longer
+	# history in small files, while a busy one still stays within the same
+	# worst case disk usage.
+	#
+	# Note that "size" makes logrotate ignore time directives altogether, so
+	# "daily"/"weekly" must not be added here alongside it.
+	#
+	# Both values come from AZNFS_LOGSIZE and AZNFS_LOGCOUNT in
+	# /opt/microsoft/aznfs/data/config.
+	#
+	size AZNFS_LOGSIZE_PLACEHOLDER
+	rotate AZNFS_LOGCOUNT_PLACEHOLDER
+
+	#
+	# Rotations are numbered, never dated.
+	#
+	# RHEL and several other distros set "dateext" globally in
+	# /etc/logrotate.conf, which names a rotation after the date instead of a
+	# sequence number. Combined with a size based policy that caps rotation at
+	# one per day: the second rotation of the same day fails with "destination
+	# already exists, skipping rotation", the live log is never truncated
+	# again no matter how far past "size" it grows, and the whole logrotate
+	# run exits non-zero so the daily logrotate unit reports a failure.
+	#
+	# Sequence numbers have no such limit, so the global setting is overridden
+	# here rather than left to whatever the distro happens to ship.
+	#
+	nodateext
+
+	missingok
+	notifempty
+	compress
+	delaycompress
+
+	#
+	# aznfsclient holds the log file open for the entire life of the mount and
+	# doesn't support re-opening it after rotation, so the log file must be
+	# copied and truncated in place instead of being renamed.
+	#
+	copytruncate
+}
