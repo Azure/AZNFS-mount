@@ -3637,13 +3637,28 @@ done
 # an open writer holds.
 #
 for f in "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
-    if grep -q 'cp -p "\$f" "\${logdir}/\${f##\*/}" 2>/dev/null && : > "\$f"' "$f"; then
+    if grep -q 'if cp -p "\$f" "\${logdir}/\${f##\*/}" 2>/dev/null; then' "$f"; then
         ok "$(basename "$f"): live logs are copy-truncated, not renamed"
     else
         nok "$(basename "$f"): live logs are copy-truncated, not renamed" \
             "cp followed by a truncate" "absent"
     fi
 done
+
+#
+# A failed copy must not leave a partial file at the destination: every later
+# run would skip it as already present, and that truncated copy would be the
+# log AZNFS appends to from then on.
+#
+setup_sandbox
+write_config "AUTO_UPDATE_AZNFS=false"
+seed_legacy_logs
+# cp fails, so nothing should be left behind and the source must keep its data.
+run_postinst_snippet 'cp() { return 1; }'
+assert_eq "failed copy leaves no partial log at the destination" \
+    "no" "$([ -e "$ROOT/var/log/aznfs/aznfs.log" ] && echo yes || echo no)"
+assert_eq "failed copy leaves the source log intact" \
+    "live" "$(cat "$ROOT/opt/microsoft/aznfs/data/aznfs.log" 2>/dev/null)"
 
 #
 # The commented hint in an existing config named the previous default. Left as
@@ -4037,7 +4052,7 @@ fi
 # floor deliberately when adding tests, and only lower it when removing them on
 # purpose.
 #
-EXPECTED_MIN_TESTS=417
+EXPECTED_MIN_TESTS=429
 
 if [ $((PASS + SKIP)) -lt $EXPECTED_MIN_TESTS ]; then
     echo "Only $((PASS + SKIP)) tests ran, expected at least ${EXPECTED_MIN_TESTS}."

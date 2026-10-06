@@ -342,7 +342,15 @@ install_logrotate_config()
         for f in "$legacy_logdir"/aznfs.log "$legacy_logdir"/turbo*.log; do
             [ -f "$f" ] || continue
             [ -e "${logdir}/${f##*/}" ] && continue
-            cp -p "$f" "${logdir}/${f##*/}" 2>/dev/null && : > "$f" 2>/dev/null
+
+            # A half written copy would be skipped as already present by every
+            # later run, leaving that truncated copy as the log being appended
+            # to and rotated, so it is removed rather than kept.
+            if cp -p "$f" "${logdir}/${f##*/}" 2>/dev/null; then
+                : > "$f" 2>/dev/null
+            else
+                rm -f "${logdir}/${f##*/}" 2>/dev/null
+            fi
         done
 
         #
