@@ -3558,14 +3558,27 @@ setup_sandbox
 write_config "AUTO_UPDATE_AZNFS=false"
 seed_legacy_logs
 run_postinst_snippet
-assert_eq "upgrade: legacy live log moved out of the data dir" \
-    "no" "$([ -e "$ROOT/opt/microsoft/aznfs/data/aznfs.log" ] && echo yes || echo no)"
+assert_eq "upgrade: live log content reaches the new dir" \
+    "live" "$(cat "$ROOT/var/log/aznfs/aznfs.log" 2>/dev/null)"
 assert_eq "upgrade: legacy rotations moved too" \
     "yes" "$([ -f "$ROOT/var/log/aznfs/aznfs.log.1" ] && [ -f "$ROOT/var/log/aznfs/aznfs.log.2.gz" ] && echo yes || echo no)"
 assert_eq "upgrade: turbo logs moved too" \
     "yes" "$([ -f "$ROOT/var/log/aznfs/turbo-mnt.log" ] && echo yes || echo no)"
 assert_eq "upgrade: content is preserved, not truncated" \
     "rot1" "$(cat "$ROOT/var/log/aznfs/aznfs.log.1" 2>/dev/null)"
+
+#
+# The rotations are gone from the data directory, but the live log is left in
+# place and emptied: a watchdog or Turbo client may still hold it open, and
+# unlinking it across a filesystem boundary would discard whatever they write
+# before they are restarted.
+#
+assert_eq "upgrade: rotations no longer in the data dir" \
+    "no" "$([ -e "$ROOT/opt/microsoft/aznfs/data/aznfs.log.1" ] && echo yes || echo no)"
+assert_eq "upgrade: live log kept in place for any open writer" \
+    "yes" "$([ -f "$ROOT/opt/microsoft/aznfs/data/aznfs.log" ] && echo yes || echo no)"
+assert_eq "upgrade: live log truncated, so content is not duplicated" \
+    "0" "$(stat -c %s "$ROOT/opt/microsoft/aznfs/data/aznfs.log" 2>/dev/null)"
 
 #
 # A configured directory is the admin's choice, so nothing is moved and the
@@ -3599,6 +3612,38 @@ echo keepme > "$ROOT/var/log/aznfs/aznfs.log"
 run_postinst_snippet
 assert_eq "existing log at the destination is not overwritten" \
     "keepme" "$(cat "$ROOT/var/log/aznfs/aznfs.log" 2>/dev/null)"
+
+#
+# A rename carries the file's own SELinux label, so a migrated log arrives
+# still typed usr_t and the confined logrotate still cannot write it. Without a
+# relabel the migration reintroduces the very bug it is part of fixing. Labels
+# cannot be asserted from an unprivileged sandbox, so this checks the relabel is
+# there and is reached from the migration block.
+#
+for f in "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    if sed -n '/^install_logrotate_config()/,/^}/p' "$f" |
+       sed -n '/mv -f "\$f" "\$logdir\/"/,/^    fi$/p' |
+       grep -q 'restorecon -R -F "\$logdir"'; then
+        ok "$(basename "$f"): migrated logs are relabelled after the move"
+    else
+        nok "$(basename "$f"): migrated logs are relabelled after the move" \
+            "a restorecon following the mv" "absent"
+    fi
+done
+
+#
+# A live log is copied and truncated, never renamed: /opt and /var are separate
+# filesystems on a stock layout, and a cross filesystem rename unlinks the inode
+# an open writer holds.
+#
+for f in "$SOURCE_DIR/packaging/aznfs/DEBIAN/postinst" "$SOURCE_DIR/packaging/aznfs/RPM/aznfs.spec"; do
+    if grep -q 'cp -p "\$f" "\${logdir}/\${f##\*/}" 2>/dev/null && : > "\$f"' "$f"; then
+        ok "$(basename "$f"): live logs are copy-truncated, not renamed"
+    else
+        nok "$(basename "$f"): live logs are copy-truncated, not renamed" \
+            "cp followed by a truncate" "absent"
+    fi
+done
 
 #
 # The commented hint in an existing config named the previous default. Left as

@@ -177,6 +177,11 @@ whose parents are `root` owned and not group writable, or leave it at the defaul
 - A Turbo mount that is already running keeps writing to its existing log file. Unmount and mount it again to move it,
   otherwise that one log keeps growing in the old directory with nothing rotating it.
 
+This applies to a directory *you* change. The one time move of the previous default, `/opt/microsoft/aznfs/data`, to
+`/var/log/aznfs` is done for you when the package is upgraded, and only while `AZNFS_LOGDIR` is unset. Rotated logs are
+moved; the live log is copied and then emptied rather than moved, so that a watchdog or Turbo client still holding it
+open keeps a valid file to write to until it is restarted.
+
 #### Log rotation:
 AZNFS generates `/etc/logrotate.d/aznfs` from the three settings above, so logrotate handles the rest. Nothing needs
 to be run by hand.

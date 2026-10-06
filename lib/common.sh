@@ -414,10 +414,6 @@ bad_logsize=
 bad_logcount=
 
 #
-# Defaults for the rotation policy, used when the config file says nothing or
-# says something unusable.
-#
-#
 # Logs live under /var/log, not in the data directory next to mountmap and
 # randbytes.
 #
@@ -435,6 +431,11 @@ bad_logcount=
 # rotatable too.
 #
 AZNFS_LOGDIR_DEFAULT="/var/log/aznfs"
+
+#
+# Defaults for the rotation policy, used when the config file says nothing or
+# says something unusable.
+#
 AZNFS_LOGSIZE_DEFAULT="100M"
 AZNFS_LOGCOUNT_DEFAULT="7"
 

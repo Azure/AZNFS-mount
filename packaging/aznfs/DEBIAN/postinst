@@ -188,7 +188,7 @@ aznfs_selinux_label_logdir()
 
 install_logrotate_config()
 {
-    local logdir= logfiles= prev_logdir= prev_policy= tmpfile= logsize= logcount= configured_logdir= legacy_logdir=/opt/microsoft/aznfs/data
+    local logdir= logfiles= prev_logdir= prev_policy= tmpfile= logsize= logcount= configured_logdir= legacy_logdir=/opt/microsoft/aznfs/data default_logdir=/var/log/aznfs
 
     if [ ! -f "$LOGROTATE_TEMPLATE" ]; then
         return
@@ -199,7 +199,7 @@ install_logrotate_config()
     fi
 
     configured_logdir="$logdir"
-    logdir=${logdir:-/var/log/aznfs}
+    logdir=${logdir:-$default_logdir}
 
     # Strip trailing slashes to keep the generated config path canonical.
     while [ "$logdir" != "/" ] && [ "${logdir%/}" != "$logdir" ]; do
@@ -226,8 +226,8 @@ install_logrotate_config()
     esac
 
     if [ -z "$logdir" ]; then
-        echo "AZNFS_LOGDIR in $CONFIG_FILE is not a usable path, using /var/log/aznfs instead!"
-        logdir=/var/log/aznfs
+        echo "AZNFS_LOGDIR in $CONFIG_FILE is not a usable path, using $default_logdir instead!"
+        logdir="$default_logdir"
     fi
 
     #
@@ -293,15 +293,15 @@ install_logrotate_config()
         # actually written to. The data directory is the last resort: it always
         # exists, but a confined logrotate cannot write anything in it.
         #
-        if [ "$logdir" != "/var/log/aznfs" ] &&
-           { [ -d /var/log/aznfs ] ||
-             { mkdir /var/log/aznfs 2>/dev/null && chmod 0755 /var/log/aznfs 2>/dev/null; }; } &&
-           aznfs_safe_logdir /var/log/aznfs; then
-            echo "Not able to use log directory $logdir, using /var/log/aznfs instead!"
-            logdir=/var/log/aznfs
+        if [ "$logdir" != "$default_logdir" ] &&
+           { [ -d "$default_logdir" ] ||
+             { mkdir "$default_logdir" 2>/dev/null && chmod 0755 "$default_logdir" 2>/dev/null; }; } &&
+           aznfs_safe_logdir "$default_logdir"; then
+            echo "Not able to use log directory $logdir, using $default_logdir instead!"
+            logdir="$default_logdir"
         else
-            echo "Not able to use log directory $logdir, using /opt/microsoft/aznfs/data instead!"
-            logdir=/opt/microsoft/aznfs/data
+            echo "Not able to use log directory $logdir, using $legacy_logdir instead!"
+            logdir="$legacy_logdir"
             mkdir -p "$logdir" 2>/dev/null && chmod 0755 "$logdir" 2>/dev/null
         fi
     fi
@@ -320,13 +320,42 @@ install_logrotate_config()
     # writing into the unlinked inode and lose everything written after the
     # move. A rename leaves those descriptors pointing at the file we moved.
     #
-    if [ -z "$configured_logdir" ] && [ "$logdir" != "$legacy_logdir" ] && [ -d "$legacy_logdir" ] &&
-       [ "$(stat -c %d "$legacy_logdir" 2>/dev/null)" == "$(stat -c %d "$logdir" 2>/dev/null)" ]; then
-        for f in "$legacy_logdir"/aznfs.log "$legacy_logdir"/aznfs.log.* \
-                 "$legacy_logdir"/turbo*.log "$legacy_logdir"/turbo*.log.*; do
+    if [ -z "$configured_logdir" ] && [ "$logdir" != "$legacy_logdir" ] && [ -d "$legacy_logdir" ]; then
+        #
+        # Rotated logs are historical and nothing holds them open, so they are
+        # moved whatever filesystem they are on.
+        #
+        for f in "$legacy_logdir"/aznfs.log.* "$legacy_logdir"/turbo*.log.*; do
             # Never clobber: a file already at the destination is the live one.
             [ -f "$f" ] && [ ! -e "${logdir}/${f##*/}" ] && mv -f "$f" "$logdir/" 2>/dev/null
         done
+
+        #
+        # A live log may still be held open by a watchdog or a Turbo client, so
+        # it is copied and truncated rather than moved. /opt and /var are
+        # separate filesystems on a stock layout, and a cross filesystem mv
+        # unlinks the inode those writers hold and silently discards whatever
+        # they write afterwards; truncating in place leaves their descriptors
+        # pointing at the file they already have. This is the same reasoning as
+        # the copytruncate in the rotation policy.
+        #
+        for f in "$legacy_logdir"/aznfs.log "$legacy_logdir"/turbo*.log; do
+            [ -f "$f" ] || continue
+            [ -e "${logdir}/${f##*/}" ] && continue
+            cp -p "$f" "${logdir}/${f##*/}" 2>/dev/null && : > "$f" 2>/dev/null
+        done
+
+        #
+        # A rename carries the file's own label with it, so a rotation moved out
+        # of the data directory arrives still typed usr_t and the confined
+        # logrotate still cannot write it. Relabel to what the destination
+        # implies, or the move would reintroduce exactly the problem the move
+        # is part of fixing.
+        #
+        if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled 2>/dev/null; then
+            restorecon -R -F "$logdir" 2>/dev/null ||
+                chcon -R -t var_log_t "$logdir" 2>/dev/null
+        fi
     fi
 
     #
