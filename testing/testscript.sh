@@ -78,6 +78,17 @@ do_mount()
 {
     local storage_account="$1"
     local directory="$2"
+    local mount_helper="/sbin/mount.aznfs"
+
+    if [ ! -f "$mount_helper" ]; then
+        echo "[ERROR] Mount helper is missing at $mount_helper"
+        exit 1
+    fi
+
+    if [ -u "$mount_helper" ]; then
+        echo "[ERROR] Mount helper $mount_helper has the setuid bit set"
+        exit 1
+    fi
 
     # Create mount directory if not exists.
     if [ ! -d "$directory" ]; then

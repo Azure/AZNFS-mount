@@ -184,7 +184,7 @@ generate_tarball_package()
     chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/nfsv4mountscript.sh
     chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/aznfs_install.sh
     chmod 0644 ${STG_DIR}/tarball/${tar_pkg_dir}${opt_dir}/common.sh
-    chmod 4755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
+    chmod 0755 ${STG_DIR}/tarball/${tar_pkg_dir}/sbin/mount.aznfs
 
     # Create the tar.gz package.
     cd ${STG_DIR}/tarball/${tar_pkg_dir}
