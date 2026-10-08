@@ -249,8 +249,8 @@ chmod 0755 /opt/microsoft/aznfs/nfsv4mountscript.sh
 chmod 0755 /opt/microsoft/aznfs/aznfs_install.sh
 chmod 0644 /opt/microsoft/aznfs/common.sh
 
-# Set suid bit for mount.aznfs to allow mount for non-super user.
-chmod 4755 /sbin/mount.aznfs
+# mount.aznfs must be run by root.
+chmod 0755 /sbin/mount.aznfs
 
 # Create data directory for holding mountmap and log file. 
 mkdir -p /opt/microsoft/aznfs/data
