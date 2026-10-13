@@ -124,7 +124,8 @@ AZNFS is supported on following Linux distros:
   them (10M size, 5 rotations). Changes to the rotation policy in that file are kept until `AZNFS_LOGDIR` is changed.
 - Changing `AZNFS_LOGDIR` takes effect for new mounts. Run `systemctl restart aznfswatchdog aznfswatchdogv4` for the
   watchdogs to pick it up.
-- If syslog is not available (no `logger` or `/dev/log`) and `AZNFS_LOGDIR` is not set, logs go to `/opt/microsoft/aznfs/data/aznfs.log`.
+- If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set, it behaves
+  as if `AZNFS_LOGDIR=/opt/microsoft/aznfs/data`, i.e. all the above log files go there and are rotated if logrotate is installed.
 
 ## Implementation Details
 

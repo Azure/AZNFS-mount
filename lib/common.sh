@@ -212,16 +212,16 @@ init_logging()
     fi
 
     #
-    # Fall back to the old default log file when syslog is not usable, f.e.
+    # Fall back to file logging in OPTDIRDATA when syslog is not usable, f.e.
     # minimal container images without logger or /dev/log.
     #
     if [ -z "$LOGFILE" ] && { ! command -v logger &> /dev/null || [ ! -S /dev/log ]; }; then
-        LOGFILE="$DEFAULT_LOGFILE"
-        if ! (umask 022; touch "$LOGFILE"); then
-            LOGFILE=
-            eecho "[FATAL] Not able to create '${DEFAULT_LOGFILE}'!"
+        if ! (umask 022; touch "$DEFAULT_LOGFILE"); then
+            echo -e "${RED}[FATAL] Not able to create '${DEFAULT_LOGFILE}'!${NORMAL}"
             exit 1
         fi
+        AZNFS_LOGDIR="$OPTDIRDATA"
+        LOGFILE="$DEFAULT_LOGFILE"
     fi
 
     if [ -n "$warning" ]; then
