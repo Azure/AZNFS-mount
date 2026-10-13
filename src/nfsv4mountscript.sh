@@ -18,6 +18,12 @@ mount_point=$5
 
 STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
 STUNNELLOGDIR="$STUNNELDIR/logs"
+
+#
+# stunnel logs go to AZNFS_LOGDIR if configured, else to syslog. The log path
+# is still recorded in MOUNTMAPv4 in the latter case, it just never gets created.
+#
+STUNNEL_LOG_FILE_DIR="${AZNFS_LOGDIR:-$STUNNELLOGDIR}"
 NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 DEBUG_LEVEL="info"
@@ -340,12 +346,16 @@ add_stunnel_configuration()
         return 1
     fi
 
-    stunnel_log_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.log"
-    echo "output = $stunnel_log_file" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add log file path to $stunnel_conf_file!"
-        return 1
+    stunnel_log_file="$STUNNEL_LOG_FILE_DIR/stunnel_$storageaccount_ip.log"
+
+    # Without an output file stunnel logs to syslog.
+    if [ -n "$AZNFS_LOGDIR" ]; then
+        echo "output = $stunnel_log_file" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add log file path to $stunnel_conf_file!"
+            return 1
+        fi
     fi
 
     stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
@@ -580,7 +590,7 @@ tls_nfsv4_files_share_mount()
             vecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
             accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
             stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
-            stunnel_log_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.log"
+            stunnel_log_file="$STUNNEL_LOG_FILE_DIR/stunnel_$storageaccount_ip.log"
 
             if [ -f "$stunnel_pid_file" ]; then
                 pid=$(cat $stunnel_pid_file)

@@ -96,7 +96,7 @@ failover_stunnel()
     local stunnel_log_dir=$(dirname $l_log)
     local new_conf="$stunnel_dir/stunnel_${new_ip}.conf"
     local new_log="$stunnel_log_dir/stunnel_${new_ip}.log"
-    local new_pid="$stunnel_log_dir/stunnel_${new_ip}.pid"
+    local new_pid="$(dirname $l_pid)/stunnel_${new_ip}.pid"
 
     pecho "Stunnel failover for $l_host: $old_ip -> $new_ip (port $accept_port)"
 
@@ -290,8 +290,8 @@ cleanup_stunnel_files()
         eecho "Unable to kill stunnel process $pid!"
     fi
 
-    # Cleanup stunnel files
-    rm $l_log
+    # Cleanup stunnel files, log file doesn't exist if stunnel logs to syslog.
+    rm -f $l_log
     if [ $? -ne 0 ]; then
         eecho "[FATAL] Unable to delete stunnel log file $l_log!"
     fi
@@ -680,7 +680,11 @@ process_nfsv4_mounts()
                         eecho "It's recommended to unmount all shares from $l_ip and then remount shares using aznfs mount helper!"
                     else
                         eecho "[FATAL] watchdog service is unable to start stunnel process for '${l_conf}'!"
-                        eecho "Please check the stunnel logs in $l_log for more details."
+                        if [ -f "$l_log" ]; then
+                            eecho "Please check the stunnel logs in $l_log for more details."
+                        else
+                            eecho "Please check the stunnel logs in syslog (journalctl -t stunnel) for more details."
+                        fi
                         eecho "It's recommended to unmount all shares from $l_ip and then remount shares using aznfs mount helper!"
                     fi
                 fi

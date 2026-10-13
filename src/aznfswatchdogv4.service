@@ -13,6 +13,8 @@ After=
 User=root
 
 ExecStart=/usr/sbin/aznfswatchdogv4
+# Messages are already logged to syslog (or AZNFS_LOGDIR), don't duplicate them in the journal.
+StandardOutput=null
 Restart=always
 RestartSec=5
 

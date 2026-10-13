@@ -7,9 +7,21 @@
 APPNAME="aznfs"
 OPTDIR="/opt/microsoft/${APPNAME}"
 OPTDIRDATA="${OPTDIR}/data"
-LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
 CONFIG_FILE="${OPTDIRDATA}/config"
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
+
+#
+# Same log destination as common.sh: AZNFS_LOGDIR from CONFIG_FILE if set and
+# already set up by common.sh, else syslog, else the old default log file.
+#
+LOGFILE=
+AZNFS_LOGDIR=$(egrep -o '^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" 2>/dev/null | tail -n1 | tr -d '[:blank:]"' | cut -d '=' -f2- | sed 's#/*$##')
+if [ -n "$AZNFS_LOGDIR" ] && [ -f "$AZNFS_LOGDIR/${APPNAME}.log" ] && [ ! -L "$AZNFS_LOGDIR/${APPNAME}.log" ]; then
+    LOGFILE="$AZNFS_LOGDIR/${APPNAME}.log"
+elif ! command -v logger &> /dev/null || [ ! -S /dev/log ]; then
+    LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
+    touch "$LOGFILE"
+fi
 
 AUTO_UPDATE_AZNFS=false
 apt_update_done=false
@@ -27,18 +39,35 @@ NORMAL="\e[0m"
 HOSTNAME=$(hostname)
 
 #
+# Write a log line to LOGFILE, or to syslog with the given priority if LOGFILE
+# is not set.
+#
+_log_write()
+{
+    local priority=$1
+    local color=$2
+    local msg=$3
+
+    if [ -n "$LOGFILE" ]; then
+        (
+            flock -e 999
+            echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}" >> "$LOGFILE"
+        ) 999<"$LOGFILE"
+    else
+        echo -e "$$: ${msg}" | logger -t "$APPNAME" -p "user.${priority}"
+    fi
+}
+
+#
 # Core logging function.
 #
 _log()
 {
     color=$1
     msg=$2
+    priority=${3:-info}
 
-    log_message="$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}"
-    (
-        flock -e 999
-        echo -e "$log_message" >> "$LOGFILE"
-    ) 999<"$LOGFILE"
+    _log_write "$priority" "$color" "$msg"
 
     echo -e "${color}${msg}${NORMAL}"
 }
@@ -67,7 +96,7 @@ secho()
 wecho()
 {
     color=$YELLOW
-    _log $color "${*}"
+    _log $color "${*}" warning
 }
 
 #
@@ -76,7 +105,7 @@ wecho()
 eecho()
 {
     color=$RED
-    _log $color "${*}"
+    _log $color "${*}" err
 }
 
 #
@@ -88,11 +117,7 @@ vecho()
 
     # Unless AZNFS_VERBOSE flag is set, do not echo to console.
     if [ -z "$AZNFS_VERBOSE" -o "$AZNFS_VERBOSE" == "0" ]; then
-        (
-            flock -e 999
-            echo -e "$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${*}${NORMAL}" >> $LOGFILE
-        ) 999<$LOGFILE
-
+        _log_write info "$color" "${*}"
         return
     fi
 

@@ -109,6 +109,8 @@ fi
 if [ ! -f "$CONFIG_FILE" ]; then
         # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
         echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
+        echo "# Uncomment to log to files in this directory (rotated via logrotate) instead of syslog." >> "$CONFIG_FILE"
+        echo "#AZNFS_LOGDIR=/var/log/aznfs" >> "$CONFIG_FILE"
 
         # Set the permissions for the config file.
         chmod 0644 "$CONFIG_FILE"
