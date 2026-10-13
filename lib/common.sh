@@ -269,8 +269,8 @@ ensure_logrotate_config()
         cat > "${LOGROTATE_CONF}.$$" <<EOF
 ${marker}
 ${AZNFS_LOGDIR}/*.log {
-    size 10M
-    rotate 5
+    size 100M
+    rotate 7
     missingok
     notifempty
     compress

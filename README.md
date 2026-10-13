@@ -121,7 +121,7 @@ AZNFS is supported on following Linux distros:
 - To log to files instead, set `AZNFS_LOGDIR` in `/opt/microsoft/aznfs/data/config`, f.e. `AZNFS_LOGDIR=/var/log/aznfs`.
   The directory must be an absolute path and must not be writable by group or others. Logs then go to `aznfs.log`,
   `turbo_<mountpoint>.log` and `stunnel_<ip>.log` in that directory, and `/etc/logrotate.d/aznfs` is generated to rotate
-  them (10M size, 5 rotations). Changes to the rotation policy in that file are kept until `AZNFS_LOGDIR` is changed.
+  them (100M size, 7 rotations). Changes to the rotation policy in that file are kept until `AZNFS_LOGDIR` is changed.
 - Changing `AZNFS_LOGDIR` takes effect for new mounts. Run `systemctl restart aznfswatchdog aznfswatchdogv4` for the
   watchdogs to pick it up.
 - If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set, it behaves
