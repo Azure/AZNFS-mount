@@ -116,7 +116,7 @@ AZNFS is supported on following Linux distros:
 ### Logs:
 - By default all logs go to syslog:
   - AZNFS watchdog and mount helper: `journalctl -t aznfs`
-  - Turbo NFS client (aznfsclient): `journalctl -t aznfsclient`
+  - Turbo NFS client (aznfsclient): `journalctl -t aznfsclient_<mountpoint>`, f.e. `journalctl -t aznfsclient_mnt_data` for `/mnt/data`
   - Stunnel (NFSv4 TLS mounts): `journalctl -t stunnel`
 - To log to files instead, set `AZNFS_LOGDIR` in `/opt/microsoft/aznfs/data/config`, f.e. `AZNFS_LOGDIR=/var/log/aznfs`.
   The directory must be an absolute path and must not be writable by group or others. Logs then go to `aznfs.log`,
@@ -126,6 +126,8 @@ AZNFS is supported on following Linux distros:
   watchdogs to pick it up.
 - If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set, it behaves
   as if `AZNFS_LOGDIR=/opt/microsoft/aznfs/data`, i.e. all the above log files go there and are rotated if logrotate is installed.
+- Mounts made before upgrading to a version with syslog support keep logging to `/opt/microsoft/aznfs/data/turbo*.log`
+  and `/etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/*.log` until remounted. These are rotated with the same policy.
 
 ## Implementation Details
 

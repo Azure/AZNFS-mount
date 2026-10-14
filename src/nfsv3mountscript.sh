@@ -634,9 +634,11 @@ create_aznfsclient_mount_args()
 
     #
     # Without AZNFS_LOGDIR aznfsclient logs to syslog, see aznfsclient_mount().
+    # The tag carries the mount point, same naming as the turbo log file.
     #
     if [ -z "$AZNFS_LOGDIR" ]; then
-        TURBO_LOG_LOCATION="syslog (journalctl -t aznfsclient)"
+        TURBO_SYSLOG_TAG="aznfsclient$(printf '%s' "$mount_point" | tr -c 'A-Za-z0-9._-' '_' | tr -s '_')"
+        TURBO_LOG_LOCATION="syslog (journalctl -t $TURBO_SYSLOG_TAG)"
         return
     fi
 
@@ -697,7 +699,7 @@ aznfsclient_mount()
         $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f >> "$LOGFILE" 2>&1 &
     else
         # logger must not hold on to our stdout, mount(8) callers may wait for its EOF.
-        $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f 2>&1 | logger -t aznfsclient -p user.info > /dev/null 2>&1 &
+        $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f 2>&1 | logger -t "$TURBO_SYSLOG_TAG" -p user.info > /dev/null 2>&1 &
     fi
 
     vvecho "Waiting for mount to complete (timeout: 30 seconds)..."
