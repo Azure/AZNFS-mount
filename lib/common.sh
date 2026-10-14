@@ -219,7 +219,7 @@ init_logging()
     #
     if [ -z "$LOGFILE" ] && { ! command -v logger &> /dev/null || [ ! -S /dev/log ]; }; then
         if ! (umask 022; touch "$DEFAULT_LOGFILE"); then
-            echo -e "${RED}[FATAL] Not able to create '${DEFAULT_LOGFILE}'!${NORMAL}"
+            echo -e "${RED}[FATAL] Not able to create '${DEFAULT_LOGFILE}'!${NORMAL}" >&2
             exit 1
         fi
         AZNFS_LOGDIR="$OPTDIRDATA"
