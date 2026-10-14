@@ -11,16 +11,21 @@ CONFIG_FILE="${OPTDIRDATA}/config"
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 
 #
-# Same log destination as common.sh: AZNFS_LOGDIR from CONFIG_FILE if set and
-# already set up by common.sh, else syslog, else the old default log file.
+# Same log destination and AZNFS_LOGDIR checks as init_logging() in common.sh,
+# keep the two in sync.
 #
 LOGFILE=
 AZNFS_LOGDIR=$(egrep -o '^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" 2>/dev/null | tail -n1 | tr -d '[:blank:]"' | cut -d '=' -f2- | sed 's#/*$##')
-if [ -n "$AZNFS_LOGDIR" ] && [ -f "$AZNFS_LOGDIR/${APPNAME}.log" ] && [ ! -L "$AZNFS_LOGDIR/${APPNAME}.log" ]; then
+if [ -n "$AZNFS_LOGDIR" ] &&
+   [[ "$AZNFS_LOGDIR" =~ ^/[A-Za-z0-9._@+/-]+$ ]] &&
+   (umask 022; mkdir -p "$AZNFS_LOGDIR") 2>/dev/null &&
+   [ -z "$(find -L "$AZNFS_LOGDIR" -maxdepth 0 -perm /022 2>/dev/null)" ] &&
+   [ ! -L "$AZNFS_LOGDIR/${APPNAME}.log" ] &&
+   (umask 022; touch "$AZNFS_LOGDIR/${APPNAME}.log") 2>/dev/null; then
     LOGFILE="$AZNFS_LOGDIR/${APPNAME}.log"
 elif ! command -v logger &> /dev/null || [ ! -S /dev/log ]; then
     LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
-    touch "$LOGFILE"
+    (umask 022; touch "$LOGFILE")
 fi
 
 AUTO_UPDATE_AZNFS=false
