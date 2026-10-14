@@ -15,7 +15,7 @@ FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 # keep the two in sync.
 #
 LOGFILE=
-AZNFS_LOGDIR=$(egrep -o '^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" 2>/dev/null | tail -n1 | tr -d '[:blank:]"' | cut -d '=' -f2- | sed 's#/*$##')
+AZNFS_LOGDIR=$(sed -n 's/^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*//p' "$CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e 's#/*$##')
 if [ -n "$AZNFS_LOGDIR" ] &&
    [[ "$AZNFS_LOGDIR" =~ ^/[A-Za-z0-9._@+/-]+$ ]] &&
    (umask 022; mkdir -p "$AZNFS_LOGDIR") 2>/dev/null &&

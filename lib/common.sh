@@ -195,8 +195,7 @@ init_logging()
     local logdir
     local warning=
 
-    logdir=$(egrep -o '^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*[^[:space:]]*' "$AZNFS_CONFIG_FILE" 2>/dev/null | tail -n1 | tr -d '[:blank:]"' | cut -d '=' -f2-)
-    logdir=$(echo "$logdir" | sed 's#/*$##')
+    logdir=$(sed -n 's/^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*//p' "$AZNFS_CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e 's#/*$##')
 
     if [ -n "$logdir" ]; then
         if [[ ! "$logdir" =~ ^/[A-Za-z0-9._@+/-]+$ ]]; then
