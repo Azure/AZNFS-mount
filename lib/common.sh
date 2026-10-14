@@ -188,8 +188,7 @@ vvecho()
 
 #
 # Read AZNFS_LOGDIR from AZNFS_CONFIG_FILE and set up LOGFILE accordingly.
-# The environment is deliberately not honoured, mount.aznfs is setuid root and
-# its caller controls the environment.
+# Not taken from the environment, so mount helper and watchdog services agree.
 #
 init_logging()
 {
