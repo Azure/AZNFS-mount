@@ -16,8 +16,10 @@ FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 #
 LOGFILE=
 AZNFS_LOGDIR=$(sed -n 's/^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*//p' "$CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e 's#/*$##')
+NO_ROTATE_RE='^/(etc|usr|boot|efi|dev|tmp|var/tmp)/'
 if [ -n "$AZNFS_LOGDIR" ] &&
    [[ "$AZNFS_LOGDIR" =~ ^/[A-Za-z0-9._@+/-]+$ ]] &&
+   ! [[ "$AZNFS_LOGDIR/" =~ $NO_ROTATE_RE || "$(readlink -m "$AZNFS_LOGDIR")/" =~ $NO_ROTATE_RE ]] &&
    (umask 022; mkdir -p "$AZNFS_LOGDIR") 2>/dev/null &&
    [ -z "$(find -L "$AZNFS_LOGDIR" -maxdepth 0 -perm /022 2>/dev/null)" ] &&
    [ ! -L "$AZNFS_LOGDIR/${APPNAME}.log" ] &&

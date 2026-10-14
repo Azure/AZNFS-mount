@@ -118,17 +118,25 @@ AZNFS is supported on following Linux distros:
   - AZNFS watchdog and mount helper: `journalctl -t aznfs`
   - Turbo NFS client (aznfsclient): `journalctl -t aznfsclient_<mountpoint>`, f.e. `journalctl -t aznfsclient_mnt_data` for `/mnt/data`
   - Stunnel (NFSv4 TLS mounts): `journalctl -t stunnel`
-- To log to files instead, set `AZNFS_LOGDIR` in `/opt/microsoft/aznfs/data/config`, f.e. `AZNFS_LOGDIR=/var/log/aznfs`.
-  The directory must be an absolute path and must not be writable by group or others. Logs then go to `aznfs.log`,
-  `turbo_<mountpoint>.log` and `stunnel_<ip>.log` in that directory, and `/etc/logrotate.d/aznfs` is generated to rotate
-  them (100M size, 7 rotations). This file is updated on aznfs upgrades, unless it has been edited locally, in which case
-  the local edits are kept until `AZNFS_LOGDIR` is changed.
-- Changing `AZNFS_LOGDIR` takes effect for new mounts. Run `systemctl restart aznfswatchdog aznfswatchdogv4` for the
-  watchdogs to pick it up.
-- If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set, it behaves
-  as if `AZNFS_LOGDIR=/opt/microsoft/aznfs/data`, i.e. all the above log files go there and are rotated if logrotate is installed.
-- Mounts made before upgrading to a version with syslog support keep logging to `/opt/microsoft/aznfs/data/turbo*.log`
-  and `/etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs/*.log` until remounted. These are rotated with the same policy.
+- To log to files instead, set `AZNFS_LOGDIR` in `/opt/microsoft/aznfs/data/config` and restart the watchdog services:
+  ```
+  echo 'AZNFS_LOGDIR=/var/log/aznfs' | sudo tee -a /opt/microsoft/aznfs/data/config
+  sudo systemctl restart aznfswatchdog aznfswatchdogv4
+  ```
+  Logs then go to `aznfs.log`, `turbo_<mountpoint>.log` and `stunnel_<ip>.log` in that directory, which is created if
+  missing. New mounts use it right away, existing mounts keep logging to the old location until remounted.
+  To go back to syslog, remove the `AZNFS_LOGDIR` line and restart the watchdog services again.
+- `AZNFS_LOGDIR` must be an absolute path made of `[A-Za-z0-9._@+/-]`, must not be writable by group or others, and
+  must not be under `/etc`, `/usr`, `/boot`, `/efi`, `/dev`, `/tmp` or `/var/tmp` (the system logrotate service cannot
+  rotate logs there). Otherwise a warning is logged (`journalctl -t aznfs | grep AZNFS_LOGDIR`) and syslog is used.
+- Log files are rotated via the generated `/etc/logrotate.d/aznfs` (100M size, 7 rotations). This file is updated on
+  aznfs upgrades, unless it has been edited locally, in which case the local edits are kept until `AZNFS_LOGDIR` is changed.
+- If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set or not
+  usable, it behaves as if `AZNFS_LOGDIR=/opt/microsoft/aznfs/data`, i.e. all the above log files go there and are
+  rotated if logrotate is installed.
+- Turbo mounts made before upgrading to a version with syslog support keep logging to
+  `/opt/microsoft/aznfs/data/turbo*.log` until remounted, these are rotated with the same policy. NFSv4 TLS mounts made
+  before the upgrade keep logging to `/etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs` until unmounted.
 
 ## Implementation Details
 
