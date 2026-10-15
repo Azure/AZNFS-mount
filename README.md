@@ -144,7 +144,8 @@ AZNFS is supported on following Linux distros:
   usable, all the above log files go to `/var/log/aznfs` and are rotated if logrotate is installed. If `/var/log/aznfs`
   cannot be used either, they go to `/opt/microsoft/aznfs/data`, which is only rotated if logrotate is allowed there.
 - Turbo mounts made before upgrading to a version with syslog support keep logging to
-  `/opt/microsoft/aznfs/data/turbo_*.log` until remounted, these are rotated with the same policy. NFSv4 TLS mounts made
+  `/opt/microsoft/aznfs/data/turbo_*.log` until remounted, and watchdogs started before the upgrade keep logging to
+  `/opt/microsoft/aznfs/data/aznfs.log` until restarted, these are rotated with the same policy. NFSv4 TLS mounts made
   before the upgrade keep logging to `/etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs` until unmounted.
 
 ## Implementation Details
