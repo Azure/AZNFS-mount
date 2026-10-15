@@ -102,11 +102,17 @@ _log_write()
     local priority=$1
     local color=$2
     local msg=$3
+    local level
 
     if [ -n "$LOGFILE" ]; then
+        case "$priority" in
+            err)     level=ERROR ;;
+            warning) level=WARN ;;
+            *)       level=INFO ;;
+        esac
         (
             flock -e 999
-            echo -e "${prefix}$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: ${color}${msg}${NORMAL}" >> "$LOGFILE"
+            echo -e "${prefix}$(date -u +"%a %b %d %G %T.%3N") $HOSTNAME $$: [${level}] ${color}${msg}${NORMAL}" >> "$LOGFILE"
         ) 999<"$LOGFILE"
     else
         echo -e "${prefix}$$: ${msg}" | logger -t "$APPNAME" -p "user.${priority}"
