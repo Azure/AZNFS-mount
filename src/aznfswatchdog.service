@@ -14,6 +14,9 @@ User=root
 Environment="AZNFS_SKIP_UNMOUNT_CLEANUP=0"
 
 ExecStart=/usr/sbin/aznfswatchdog
+# Messages are already logged to syslog (or AZNFS_LOGDIR), don't duplicate them in the journal.
+StandardOutput=null
+StandardError=journal
 Restart=always
 RestartSec=5
 
