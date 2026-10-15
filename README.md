@@ -125,6 +125,8 @@ AZNFS is supported on following Linux distros:
   ```
   Logs then go to `aznfs.log`, `turbo_<mountpoint>.log` and `stunnel_<ip>.log` in that directory, which is created if
   missing. New mounts use it right away, existing mounts keep logging to the old location until remounted.
+  NFSv4 TLS mounts to the same storage account share one stunnel, which keeps its log location until all of those
+  shares are unmounted and the watchdog has cleaned it up, so unmount all of them before remounting.
   To go back to syslog, remove the `AZNFS_LOGDIR` line and restart the watchdog services again.
 - `AZNFS_LOGDIR` must be an absolute path made of `[A-Za-z0-9._@+/-]` (also after resolving symlinks), must not be
   writable by group or others, it and every directory and symlink it is reached through must be owned by root and not
