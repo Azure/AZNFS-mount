@@ -208,26 +208,83 @@ logrotate_allowed()
 
 #
 # Root appends to files in the log dir, so no other user may be able to replace
-# it or any directory above it, on the given path as well as the resolved one.
-# Group write is tolerated above the log dir for system groups (f.e. Ubuntu's
-# root:syslog /var/log).
+# it or anything it is reached through. Resolves the path one component at a
+# time like the kernel does, checking every directory and symlink on the way,
+# including symlink targets and their ancestors. Group write is tolerated for
+# system groups (f.e. Ubuntu's root:syslog /var/log).
 #
 trusted_path()
 {
-    local p uid gid mode type
+    local cur=/ rest=$1 comp next link uid gid mode type hops=0
 
-    for p in "$1" "$(readlink -f "$1")"; do
-        while :; do
-            IFS=: read -r uid gid mode type < <(stat -c '%u:%g:%a:%F' "$p" 2>/dev/null) || return 1
-            [ "$uid" == "0" ] || return 1
-            if [ "$type" != "symbolic link" ]; then
-                (( 8#$mode & 8#002 )) && return 1
-                (( 8#$mode & 8#020 )) && [ "$gid" -ge 1000 ] && return 1
-            fi
-            [ "$p" == "/" ] && break
-            p=$(dirname "$p")
-        done
+    IFS=: read -r uid gid mode type < <(stat -c '%u:%g:%a:%F' / 2>/dev/null) || return 1
+    [ "$uid" == "0" ] && ! (( 8#$mode & 8#022 )) || return 1
+
+    while [ -n "$rest" ]; do
+        comp=${rest%%/*}
+        if [ "$comp" == "$rest" ]; then rest=; else rest=${rest#*/}; fi
+        case "$comp" in
+            ""|.) continue ;;
+            ..) cur=$(dirname "$cur"); continue ;;
+        esac
+
+        next=${cur%/}/$comp
+        IFS=: read -r uid gid mode type < <(stat -c '%u:%g:%a:%F' "$next" 2>/dev/null) || return 1
+        [ "$uid" == "0" ] || return 1
+
+        if [ "$type" == "symbolic link" ]; then
+            (( ++hops > 40 )) && return 1
+            link=$(readlink "$next")
+            [[ "$link" == /* ]] || link="$cur/$link"
+            # Resolve the target from / so all of its ancestors get checked too.
+            rest="$link/$rest"
+            cur=/
+        else
+            (( 8#$mode & 8#002 )) && return 1
+            (( 8#$mode & 8#020 )) && [ "$gid" -ge 1000 ] && return 1
+            cur=$next
+        fi
     done
+}
+
+#
+# Path rules that don't need the directory to exist, also for the resolved path.
+#
+valid_logdir_path()
+{
+    local real=$(readlink -m "$1")
+
+    if [[ ! "$1" =~ ^/[A-Za-z0-9._@+/-]+$ || ! "$real" =~ ^/[A-Za-z0-9._@+/-]+$ ]]; then
+        LOGDIR_ERROR="must be an absolute path made of [A-Za-z0-9._@+/-], also after resolving symlinks"
+    elif [[ "$1/" =~ $LOGDIR_NO_ROTATE_RE || "$real/" =~ $LOGDIR_NO_ROTATE_RE ]]; then
+        LOGDIR_ERROR="logs under /etc, /usr, /boot, /efi, /dev, /tmp or /var/tmp cannot be rotated"
+    fi
+
+    [ -z "$LOGDIR_ERROR" ]
+}
+
+#
+# Can logrotate safely rotate aznfs logs in this existing directory.
+#
+rotatable_logdir()
+{
+    local dir=$1
+    local real
+
+    LOGDIR_ERROR=
+    if ! valid_logdir_path "$dir"; then
+        :
+    elif ! trusted_path "$dir"; then
+        LOGDIR_ERROR="it and every directory it is reached through must be owned by root and not writable by other users"
+    elif [ -n "$(find -L "$dir" -maxdepth 0 -perm /022 2>/dev/null)" ]; then
+        LOGDIR_ERROR="must not be writable by group or others"
+    elif ! logrotate_allowed "$dir"; then
+        real=$(readlink -f "$dir")
+        # semanage takes a regex, '.' and '+' are the only metacharacters valid_logdir_path allows.
+        LOGDIR_ERROR="SELinux does not allow logrotate there, to allow it run: semanage fcontext -a -t var_log_t '$(echo "$real" | sed 's/[.+]/\\&/g')(/.*)?' && restorecon -R '${real}'"
+    fi
+
+    [ -z "$LOGDIR_ERROR" ]
 }
 
 #
@@ -237,21 +294,22 @@ trusted_path()
 usable_logdir()
 {
     local dir=$1
+    local base=$1
 
     LOGDIR_ERROR=
-    if [[ ! "$dir" =~ ^/[A-Za-z0-9._@+/-]+$ ]]; then
-        LOGDIR_ERROR="must be an absolute path made of [A-Za-z0-9._@+/-]"
-    elif [[ "$dir/" =~ $LOGDIR_NO_ROTATE_RE || "$(readlink -m "$dir")/" =~ $LOGDIR_NO_ROTATE_RE ]]; then
-        LOGDIR_ERROR="logs under /etc, /usr, /boot, /efi, /dev, /tmp or /var/tmp cannot be rotated"
+    while [ ! -e "$base" ] && [ "$base" != "/" ]; do
+        base=$(dirname "$base")
+    done
+
+    if ! valid_logdir_path "$dir"; then
+        :
+    # Don't let root create directories through a path someone else controls.
+    elif ! trusted_path "$base"; then
+        LOGDIR_ERROR="it and every directory it is reached through must be owned by root and not writable by other users"
     elif ! (umask 022; mkdir -p "$dir") 2>/dev/null; then
         LOGDIR_ERROR="not able to create it"
-    elif ! trusted_path "$dir"; then
-        LOGDIR_ERROR="it and every directory above it must be owned by root and not writable by other users"
-    elif [ -n "$(find -L "$dir" -maxdepth 0 -perm /022 2>/dev/null)" ]; then
-        LOGDIR_ERROR="must not be writable by group or others"
-    elif ! logrotate_allowed "$dir"; then
-        local real=$(readlink -f "$dir")
-        LOGDIR_ERROR="SELinux does not allow logrotate there, to allow it run: semanage fcontext -a -t var_log_t '${real}(/.*)?' && restorecon -R '${real}'"
+    elif ! rotatable_logdir "$dir"; then
+        :
     elif [ -L "$dir/${APPNAME}.log" ] || ! (umask 022; touch "$dir/${APPNAME}.log") 2>/dev/null; then
         LOGDIR_ERROR="not able to use '${dir}/${APPNAME}.log'"
     fi
@@ -318,23 +376,49 @@ ensure_logrotate_config()
 {
     local marker="${LOGROTATE_MARKER}${AZNFS_LOGDIR}"
     local paths=
+    local dirs=
+    local kept=
     local body
     local sum
+    local d
 
     if [ -f "$LOGROTATE_CONF" ] && ! grep -q "^${LOGROTATE_MARKER}" "$LOGROTATE_CONF" 2>/dev/null; then
         vecho "${LOGROTATE_CONF} not generated by aznfs, leaving it alone."
         return
     fi
 
-    # logrotate rejects a file matched by more than one pattern, so skip legacy paths AZNFS_LOGDIR covers.
     if [ -n "$AZNFS_LOGDIR" ]; then
         if logrotate_allowed "$AZNFS_LOGDIR"; then
-            paths="${AZNFS_LOGDIR}/${APPNAME}.log"$'\n'"${AZNFS_LOGDIR}/turbo_*.log"$'\n'"${AZNFS_LOGDIR}/stunnel_*.log"
+            dirs="$AZNFS_LOGDIR"
         else
             wecho "SELinux does not allow logrotate in '${AZNFS_LOGDIR}', logs there will not be rotated!"
         fi
     fi
-    [ "$AZNFS_LOGDIR" != "$OPTDIRDATA" ] && logrotate_allowed "$OPTDIRDATA" && paths="${paths}"$'\n'"${LEGACY_TURBO_LOGS}"
+
+    #
+    # Turbo, stunnel and watchdogs started before AZNFS_LOGDIR changed keep
+    # writing to the previous directory, keep rotating it while its logs are
+    # open or recently written, and still safe to rotate.
+    #
+    while read -r d; do
+        [ -z "$d" ] && continue
+        [[ $'\n'"$dirs"$'\n' == *$'\n'"$d"$'\n'* ]] && continue
+        rotatable_logdir "$d" || continue
+        if [ -n "$(find /proc/[0-9]*/fd -lname "$d/*.log" -print -quit 2>/dev/null)" ] ||
+           [ -n "$(find "$d" -maxdepth 1 \( -name "${APPNAME}.log" -o -name 'turbo_*.log' -o -name 'stunnel_*.log' \) -mtime -7 -print -quit 2>/dev/null)" ]; then
+            dirs="${dirs}"$'\n'"$d"
+            kept="${kept}# Also rotating: ${d}"$'\n'
+        fi
+    done < <(sed -n -e "s/^${LOGROTATE_MARKER}//p" -e 's/^# Also rotating: //p' "$LOGROTATE_CONF" 2>/dev/null)
+
+    for d in $dirs; do
+        paths="${paths}${d}/${APPNAME}.log"$'\n'"${d}/turbo_*.log"$'\n'"${d}/stunnel_*.log"$'\n'
+    done
+
+    # logrotate rejects a file matched by more than one pattern, so skip legacy paths a log dir covers.
+    if [[ $'\n'"$dirs"$'\n' != *$'\n'"$OPTDIRDATA"$'\n'* ]] && logrotate_allowed "$OPTDIRDATA"; then
+        paths="${paths}${LEGACY_TURBO_LOGS}"
+    fi
     paths=$(echo "$paths" | sed '/^$/d')
 
     # Nothing logrotate is allowed to rotate, an empty or failing config would only break logrotate.service.
@@ -348,7 +432,7 @@ ensure_logrotate_config()
     # of the mount. nodateext as with dateext (default on some distros) size
     # based rotation cannot happen more than once a day.
     #
-    body="${paths}
+    body="${kept}${paths}
 {
     size 100M
     rotate 7

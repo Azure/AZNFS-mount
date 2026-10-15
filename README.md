@@ -126,8 +126,9 @@ AZNFS is supported on following Linux distros:
   Logs then go to `aznfs.log`, `turbo_<mountpoint>.log` and `stunnel_<ip>.log` in that directory, which is created if
   missing. New mounts use it right away, existing mounts keep logging to the old location until remounted.
   To go back to syslog, remove the `AZNFS_LOGDIR` line and restart the watchdog services again.
-- `AZNFS_LOGDIR` must be an absolute path made of `[A-Za-z0-9._@+/-]`, must not be writable by group or others, it
-  and every directory above it must be owned by root and not writable by other users, and it
+- `AZNFS_LOGDIR` must be an absolute path made of `[A-Za-z0-9._@+/-]` (also after resolving symlinks), must not be
+  writable by group or others, it and every directory and symlink it is reached through must be owned by root and not
+  writable by other users, and it
   must not be under `/etc`, `/usr`, `/boot`, `/efi`, `/dev`, `/tmp` or `/var/tmp` (the system logrotate service cannot
   rotate logs there). Otherwise a warning is logged (`journalctl -t aznfs | grep AZNFS_LOGDIR`) and syslog is used.
 - With SELinux enforcing (f.e. RHEL), logrotate may only rotate files labelled `var_log_t`. Directories under `/var/log`
@@ -137,6 +138,8 @@ AZNFS is supported on following Linux distros:
   ```
 - Log files are rotated via the generated `/etc/logrotate.d/aznfs` (100M size, 7 rotations). This file is updated on
   aznfs upgrades, unless it has been edited locally, in which case the local edits are kept until `AZNFS_LOGDIR` is changed.
+  After `AZNFS_LOGDIR` changes, the previous directory keeps being rotated while its logs are still open or were written
+  in the last 7 days, since mounts made before the change keep logging there.
 - If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set or not
   usable, all the above log files go to `/var/log/aznfs` and are rotated if logrotate is installed. If `/var/log/aznfs`
   cannot be used either, they go to `/opt/microsoft/aznfs/data`, which is only rotated if logrotate is allowed there.
