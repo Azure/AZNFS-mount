@@ -236,6 +236,7 @@ init_logging()
 {
     local logdir
     local warning=
+    local nosyslog=
 
     logdir=$(sed -n 's/^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*//p' "$AZNFS_CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e 's#/*$##')
 
@@ -252,6 +253,7 @@ init_logging()
     # OPTDIRDATA is the last resort, logs are kept there even if not rotatable.
     #
     if [ -z "$AZNFS_LOGDIR" ] && { ! command -v logger &> /dev/null || [ ! -S /dev/log ]; }; then
+        nosyslog=1
         if usable_logdir "$FALLBACK_LOGDIR"; then
             AZNFS_LOGDIR="$FALLBACK_LOGDIR"
         elif (umask 022; touch "$DEFAULT_LOGFILE") 2>/dev/null; then
@@ -267,6 +269,10 @@ init_logging()
 
     if [ -n "$warning" ]; then
         wecho "${warning}, logging to ${LOGFILE:-syslog} instead!"
+    fi
+
+    if [ -n "$nosyslog" ]; then
+        vecho "Syslog not available, logging to ${LOGFILE}"
     fi
 
     ensure_logrotate_config
