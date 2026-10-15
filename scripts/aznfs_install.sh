@@ -22,12 +22,18 @@ if [ -n "$AZNFS_LOGDIR" ] &&
    ! [[ "$AZNFS_LOGDIR/" =~ $NO_ROTATE_RE || "$(readlink -m "$AZNFS_LOGDIR")/" =~ $NO_ROTATE_RE ]] &&
    (umask 022; mkdir -p "$AZNFS_LOGDIR") 2>/dev/null &&
    [ -z "$(find -L "$AZNFS_LOGDIR" -maxdepth 0 -perm /022 2>/dev/null)" ] &&
+   { [ "$(cat /sys/fs/selinux/enforce 2>/dev/null)" != "1" ] || [[ "$(stat -L -c %C "$AZNFS_LOGDIR" 2>/dev/null)" == *:var_log_t:* ]]; } &&
    [ ! -L "$AZNFS_LOGDIR/${APPNAME}.log" ] &&
    (umask 022; touch "$AZNFS_LOGDIR/${APPNAME}.log") 2>/dev/null; then
     LOGFILE="$AZNFS_LOGDIR/${APPNAME}.log"
 elif ! command -v logger &> /dev/null || [ ! -S /dev/log ]; then
-    LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
-    (umask 022; touch "$LOGFILE")
+    # /var/log/aznfs is set up by common.sh when usable, else the last resort is OPTDIRDATA.
+    if [ -f "/var/log/${APPNAME}/${APPNAME}.log" ] && [ ! -L "/var/log/${APPNAME}/${APPNAME}.log" ]; then
+        LOGFILE="/var/log/${APPNAME}/${APPNAME}.log"
+    else
+        LOGFILE="${OPTDIRDATA}/${APPNAME}.log"
+        (umask 022; touch "$LOGFILE")
+    fi
 fi
 
 AUTO_UPDATE_AZNFS=false

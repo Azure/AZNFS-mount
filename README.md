@@ -129,11 +129,16 @@ AZNFS is supported on following Linux distros:
 - `AZNFS_LOGDIR` must be an absolute path made of `[A-Za-z0-9._@+/-]`, must not be writable by group or others, and
   must not be under `/etc`, `/usr`, `/boot`, `/efi`, `/dev`, `/tmp` or `/var/tmp` (the system logrotate service cannot
   rotate logs there). Otherwise a warning is logged (`journalctl -t aznfs | grep AZNFS_LOGDIR`) and syslog is used.
+- With SELinux enforcing (f.e. RHEL), logrotate may only rotate files labelled `var_log_t`. Directories under `/var/log`
+  get that label automatically. To use another directory, label it first, else it is rejected as above:
+  ```
+  sudo semanage fcontext -a -t var_log_t '/data/aznfs-logs(/.*)?' && sudo restorecon -R /data/aznfs-logs
+  ```
 - Log files are rotated via the generated `/etc/logrotate.d/aznfs` (100M size, 7 rotations). This file is updated on
   aznfs upgrades, unless it has been edited locally, in which case the local edits are kept until `AZNFS_LOGDIR` is changed.
 - If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set or not
-  usable, it behaves as if `AZNFS_LOGDIR=/opt/microsoft/aznfs/data`, i.e. all the above log files go there and are
-  rotated if logrotate is installed.
+  usable, all the above log files go to `/var/log/aznfs` and are rotated if logrotate is installed. If `/var/log/aznfs`
+  cannot be used either, they go to `/opt/microsoft/aznfs/data`, which is only rotated if logrotate is allowed there.
 - Turbo mounts made before upgrading to a version with syslog support keep logging to
   `/opt/microsoft/aznfs/data/turbo*.log` until remounted, these are rotated with the same policy. NFSv4 TLS mounts made
   before the upgrade keep logging to `/etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs` until unmounted.
