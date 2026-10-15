@@ -402,10 +402,15 @@ ensure_logrotate_config()
     #
     while read -r d; do
         [ -z "$d" ] && continue
-        [[ $'\n'"$dirs"$'\n' == *$'\n'"$d"$'\n'* ]] && continue
         rotatable_logdir "$d" || continue
-        if [ -n "$(find /proc/[0-9]*/fd -lname "$d/*.log" -print -quit 2>/dev/null)" ] ||
-           [ -n "$(find "$d" -maxdepth 1 \( -name "${APPNAME}.log" -o -name 'turbo_*.log' -o -name 'stunnel_*.log' \) -mtime -7 -print -quit 2>/dev/null)" ]; then
+        local real=$(readlink -f "$d") seen=0 e
+        for e in $dirs; do
+            [ "$(readlink -f "$e")" == "$real" ] && seen=1 && break
+        done
+        [ $seen -eq 1 ] && continue
+        # /proc fd links hold the resolved path.
+        if [ -n "$(find /proc/[0-9]*/fd -lname "$real/*.log" -print -quit 2>/dev/null)" ] ||
+           [ -n "$(find -H "$d" -maxdepth 1 \( -name "${APPNAME}.log" -o -name 'turbo_*.log' -o -name 'stunnel_*.log' \) -mtime -7 -print -quit 2>/dev/null)" ]; then
             dirs="${dirs}"$'\n'"$d"
             kept="${kept}# Also rotating: ${d}"$'\n'
         fi
