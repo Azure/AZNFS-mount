@@ -27,6 +27,7 @@
  * - bytes_chunk_cache::chunkmap_lock_43
  * - membuf::mb_lock_44
  * - membuf::flush_waiters_lock_44
+ * - nfs_connection::credential_mutex_45
  */
 
 extern "C" {
@@ -307,6 +308,9 @@ public:
      */
     struct nfs_context* get_nfs_context(conn_sched_t csched,
                                         uint32_t fh_hash) const;
+
+    std::recursive_mutex& get_credential_mutex(
+        const struct nfs_context *nfs) const;
 
     /*
      * Given an inode number, return the nfs_inode structure.
