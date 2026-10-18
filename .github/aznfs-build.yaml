@@ -227,7 +227,6 @@ stages:
               PathtoPublish: $(Build.ArtifactStagingDirectory)
               artifactName: 'aznfs-temp'
 
-# TODO: add azurelinux later to release and publish stages post approvals 
   - stage: ReleaseArtifacts
     displayName: "Sign and Release Artifacts"
     jobs:
@@ -435,6 +434,60 @@ stages:
                 ]
 
           - task: EsrpCodeSigning@5
+            displayName: 'ESRP CodeSigning Azure Linux 3.0 x86_64'
+            inputs:
+              ConnectedServiceName: 'Azure AZNFS'
+              AppRegistrationClientId: $(AppRegistrationClientId)
+              AppRegistrationTenantId: $(AppRegistrationTenantId)
+              UseMSIAuthentication: true
+              AuthAKVName: $(AuthAKVName)
+              AuthSignCertName: $(AuthSignCertName)
+              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpmazurelinux
+              Pattern: '*.rpm'
+              SessionTimeout: 90
+              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+              MaxConcurrency: 25
+              signConfigType: inlineSignParams
+              VerboseLogin: true
+              inlineOperation: |
+                [
+                  {
+                    "KeyCode": "CP-459159-Pgp",
+                    "OperationCode": "LinuxSign",
+                    "ToolName": "sign",
+                    "ToolVersion": "1.0",
+                    "Parameters": {}
+                  }
+                ]
+
+          - task: EsrpCodeSigning@5
+            displayName: 'ESRP CodeSigning Azure Linux 3.0 ARM64'
+            inputs:
+              ConnectedServiceName: 'Azure AZNFS'
+              AppRegistrationClientId: $(AppRegistrationClientId)
+              AppRegistrationTenantId: $(AppRegistrationTenantId)
+              UseMSIAuthentication: true
+              AuthAKVName: $(AuthAKVName)
+              AuthSignCertName: $(AuthSignCertName)
+              FolderPath: $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpmazurelinuxarm64
+              Pattern: '*.rpm'
+              SessionTimeout: 90
+              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+              MaxConcurrency: 25
+              signConfigType: inlineSignParams
+              VerboseLogin: true
+              inlineOperation: |
+                [
+                  {
+                    "KeyCode": "CP-459159-Pgp",
+                    "OperationCode": "LinuxSign",
+                    "ToolName": "sign",
+                    "ToolVersion": "1.0",
+                    "Parameters": {}
+                  }
+                ]
+
+          - task: EsrpCodeSigning@5
             displayName: 'ESRP CodeSigning MI STUNNEL'
             inputs:
               ConnectedServiceName: 'Azure AZNFS'
@@ -470,7 +523,6 @@ stages:
               chmod 755 $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/*/*.rpm
               rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/*.md
               rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/*/*.md
-              rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpmazurelinux $(Build.ArtifactStagingDirectory)/aznfs-temp/artifacts/rpmazurelinuxarm64
               mv $(Build.ArtifactStagingDirectory)/aznfs-temp/* $(Build.ArtifactStagingDirectory)/
               rm -rf $(Build.ArtifactStagingDirectory)/aznfs-temp/
             displayName: 'Make Artifacts executable'
@@ -578,6 +630,12 @@ stages:
                   
                   aznfsArcRpmStunnel=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/stunnel/aznfs*-1.aarch64.rpm`
                   echo "AZNFS ARC Stunnel RPM Package ID: $aznfsRpmStunnel"
+
+                  aznfsRpmAzureLinux=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpmazurelinux/aznfs*-1.x86_64.rpm`
+                  echo "AZNFS Azure Linux RPM Package ID: $aznfsRpmAzureLinux"
+
+                  aznfsArcRpmAzureLinux=`pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload $(Build.ArtifactStagingDirectory)/aznfs-signed/artifacts/rpmazurelinuxarm64/aznfs*-1.aarch64.rpm`
+                  echo "AZNFS ARC Azure Linux RPM Package ID: $aznfsArcRpmAzureLinux"
 
                   ################################### Add uploaded packages to its repository ######################################
                   echo "now adding packages to repositories..."

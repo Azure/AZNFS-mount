@@ -1,5 +1,7 @@
 # Do not remove these comments - the list should start at line #3
 # Format of the file : <Distro Name>,<Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
+AzureLinux-3.0,aznfsRpmAzureLinux,azurelinux-3.0-prod-ms-oss-x86_64-yum,
+AzureLinux-3.0,aznfsArcRpmAzureLinux,azurelinux-3.0-prod-ms-oss-aarch64-yum,
 Debian-12,aznfsDebNewKey,microsoft-debian-bookworm-prod-apt,bookworm
 Debian-12,aznfsArmNewKey,microsoft-debian-bookworm-prod-apt,bookworm
 Debian-13,aznfsDebNewKey,microsoft-debian-trixie-prod-apt,trixie

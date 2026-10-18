@@ -102,7 +102,11 @@ vecho()
 use_dnf_or_yum() 
 {
     yum="yum"
-    if command -v dnf &> /dev/null; then
+    # Azure Linux ships only tdnf by default; prefer it, then dnf, then yum.
+    if command -v tdnf &> /dev/null; then
+        yum="tdnf"
+        pecho "Using 'tdnf' instead of 'yum'"
+    elif command -v dnf &> /dev/null; then
         yum="dnf"
         pecho "Using 'dnf' instead of 'yum'"
     fi
