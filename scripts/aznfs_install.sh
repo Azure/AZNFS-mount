@@ -111,7 +111,7 @@ use_dnf_or_yum()
 #
 # This returns distro id in a canonical form, that rest of the code understands.
 # We only use lowercase single word names for distro names:
-# ubuntu, centos, redhat, sles.
+# debian, ubuntu, centos, redhat, sles.
 #
 canonicalize_distro_id()
 {
@@ -134,7 +134,7 @@ ensure_pkg()
 {
     local distro="$distro_id"
 
-    if [ "$distro" == "ubuntu" ]; then
+    if [ "$distro" == "ubuntu" -o "$distro" == "debian" ]; then
         apt -y update
         if [ $? -ne 0 ]; then
             echo

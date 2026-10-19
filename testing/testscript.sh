@@ -23,7 +23,7 @@ install_aznfs()
 
 #
 # We only use lowercase single word names for distro id:
-# ubuntu, centos, redhat, sles.
+# debian, ubuntu, centos, redhat, sles.
 #
 canonicalize_distro_id()
 {
@@ -52,7 +52,7 @@ remove_aznfs()
         distro_id="Unknown"
     fi
 
-    if [ "$distro_id" == "ubuntu" ]; then
+    if [ "$distro_id" == "ubuntu" -o "$distro_id" == "debian" ]; then
         remove_output=$(apt purge -y aznfs 2>&1)
     elif [ "$distro_id" == "centos" -o "$distro_id" == "rocky" -o "$distro_id" == "rhel" ]; then
         remove_output=$(yum remove -y aznfs 2>&1)

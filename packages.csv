@@ -1,5 +1,9 @@
 # Do not remove these comments - the list should start at line #3
 # Format of the file : <Distro Name>,<Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
+Debian-12,aznfsDebNewKey,microsoft-debian-bookworm-prod-apt,bookworm
+Debian-12,aznfsArmNewKey,microsoft-debian-bookworm-prod-apt,bookworm
+Debian-13,aznfsDebNewKey,microsoft-debian-trixie-prod-apt,trixie
+Debian-13,aznfsArmNewKey,microsoft-debian-trixie-prod-apt,trixie
 Ubuntu-18.04,aznfsDeb,microsoft-ubuntu-bionic-prod-apt,bionic
 Ubuntu-18.04,aznfsArm,microsoft-ubuntu-bionic-prod-apt,bionic
 Ubuntu-20.04,aznfsDeb,microsoft-ubuntu-focal-prod-apt,focal
