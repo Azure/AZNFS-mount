@@ -43,6 +43,9 @@ MOUNTMAPv3="${OPTDIRDATA}/mountmap"
 #
 MOUNTMAPv4="${OPTDIRDATA}/mountmapv4"
 
+# stunnel pid files, /run is emptied on reboot like the stunnel processes.
+STUNNELPIDDIR="/run/${APPNAME}"
+
 #
 # This stores the map of hostname, local proxy IP and storage endpoint IP for NFSv4 non-TLS mounts.
 # Format: hostname localip storageip (same as MOUNTMAPv3)
