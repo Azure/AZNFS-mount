@@ -2166,21 +2166,21 @@ public:
      */
     void set_caller_credentials(struct nfs_context *nfs)
     {
-        const auth_unix_credential_snapshot *credentials =
-            &rpc_api->caller_credentials;
+        auth_unix_credential_snapshot& credentials =
+            rpc_api->caller_credentials;
 
-        if (!credentials->valid) {
+        if (!credentials.valid) {
             nfs_set_uid(nfs, 0);
             nfs_set_gid(nfs, 0);
             nfs_set_auxiliary_gids(nfs, 0, nullptr);
             return;
         }
 
-        nfs_set_uid(nfs, credentials->uid);
-        nfs_set_gid(nfs, credentials->gid);
+        nfs_set_uid(nfs, credentials.uid);
+        nfs_set_gid(nfs, credentials.gid);
         nfs_set_auxiliary_gids(nfs,
-                       credentials->auxiliary_gid_count,
-                       credentials->auxiliary_gids.data());
+                               credentials.auxiliary_gid_count,
+                               credentials.auxiliary_gids.data());
     }
 
     void inherit_caller_credentials(const api_task_info& source)
