@@ -657,14 +657,18 @@ process_nfsv4_mounts()
             if [ $checksumHash != $l_checksumhash ]; then
                 eecho "'${l_conf}' file has modified!"
                 eecho "It's not recommended to modify '${l_conf}' file created by aznfs mount helper!"
-                eecho "watchdog service will do cleanup, kill stunnel process with pid:$(cat $l_pid) and remove '${l_conf}'; '${l_log}'; '${l_pid}'!"
+                eecho "watchdog service will do cleanup, kill stunnel process with pid:$(cat $l_pid 2>/dev/null) and remove '${l_conf}'; '${l_log}'; '${l_pid}'!"
                 eecho "Please remount the shares from ${l_ip} using aznfs mount helper."
 
                 cleanup_mount $l_conf $l_log $l_pid $line
                 continue
             fi
 
-            is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`)
+            # The pid file is gone after a reboot, stunnel then needs a restart.
+            is_stunnel_running=
+            if [ -s "$l_pid" ]; then
+                is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`)
+            fi
             if [ -z "$is_stunnel_running" ]; then
                 vecho "Watchdog: stunnel is not running! Restarting the stunnel"
 
