@@ -2107,6 +2107,10 @@ public:
             fuse_gids{};
         const int group_count = fuse_req_getgroups(
             request, static_cast<int>(fuse_gids.size()), fuse_gids.data());
+        if (group_count < 0) {
+            AZLogWarn("Failed to get supplementary groups for uid={} pid={}: {}",
+                      ctx->uid, ctx->pid, group_count);
+        }
         const int gids_to_copy = std::clamp(
             group_count, 0, api_task_info::AUTH_UNIX_MAX_AUXILIARY_GIDS);
         for (int i = 0; i < gids_to_copy; i++) {
