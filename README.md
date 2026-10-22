@@ -64,15 +64,19 @@ AZNFS is supported on following Linux distros:
 
 ## Auto Update
 
-- Upon running the installation command, you will be prompted to configure automatic updates for AZNFS. Enabling automatic updates ensures that you 
-  stay current with the latest features, improvements, and security patches, providing you with the best and most seamless AZNFS experience.
+- AZNFS can keep itself up-to-date with the latest features, improvements, and security patches. This is controlled by
+  `AUTO_UPDATE_AZNFS` in `/opt/microsoft/aznfs/data/config`.
+- Package install and upgrade never prompt. On a fresh install `AUTO_UPDATE_AZNFS` defaults to `false` (see
+  [Non-Interactive Installation](#non-interactive-installation) for the exception). Package upgrades never change an existing value.
 
 > [!NOTE]
-> 1. You can also turn off/on auto-update at any time by changing the value of AUTO_UPDATE_AZNFS to false/true respectively in `/opt/microsoft/aznfs/data/config`.
+> 1. You can turn auto-update on/off at any time by setting AUTO_UPDATE_AZNFS to true/false respectively in `/opt/microsoft/aznfs/data/config`.
+>    To choose the value before installing, create that file with the desired `AUTO_UPDATE_AZNFS=true|false` line first. An empty `AUTO_UPDATE_AZNFS=` is treated as not set.
 > 2. Existing mounts will not be effected by auto update.
 
 ## Non-Interactive Installation
-- If your setup requires a noninteractive install, set the following environment variables before installing AZNFS:
+- Installation and upgrades are always non-interactive. For backward compatibility, the following environment variables still
+  enable auto-update, but only when `AUTO_UPDATE_AZNFS` is not already set in `/opt/microsoft/aznfs/data/config`:
   
   For all distros, you can use:
   ```
@@ -83,7 +87,8 @@ AZNFS is supported on following Linux distros:
 	export DEBIAN_FRONTEND=noninteractive
 	```
 > [!NOTE]
-> Installing noninteractively will set `AUTO_UPDATE_AZNFS=true` by default.
+> Installing with either of these set will set `AUTO_UPDATE_AZNFS=true` if it is not already configured. An existing
+> `AUTO_UPDATE_AZNFS=false` is never overridden.
 
 ## Usage Instructions
 

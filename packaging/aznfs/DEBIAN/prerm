@@ -27,29 +27,29 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	fi
 fi
 
-flag_file="/tmp/.update_in_progress_from_watchdog.flag"
-
-if [ -f "$flag_file" ]; then
-	# Get the PID of aznfswatchdog.
-	pid_aznfswatchdog=$(pgrep -x aznfswatchdog)
-	
-	# Read the PID from the flag file.
-	pid_aznfswatchdog_in_flagfile=$(cat $flag_file)
-	
-	if [ "$pid_aznfswatchdog" != "$pid_aznfswatchdog_in_flagfile" ]; then
-		# The flag file is stale, remove it.
-		rm -f "$flag_file"
-		echo "Removed stale flag file"
-	fi
-fi
-
-if [ ! -f "$flag_file" ]; then
-	# Stop aznfswatchdog service and clean it.
-	systemctl stop aznfswatchdog
-	systemctl disable aznfswatchdog
-
-	systemctl stop aznfswatchdogv4
-	systemctl disable aznfswatchdogv4
+#
+# Stop the watchdogs only when the package is being removed. On upgrade leave them running, so an
+# interrupted upgrade cannot leave them disabled. postinst restarts them with the new version.
+#
+if [ "$1" == 'remove' ]; then
+	#
+	# KillMode=process keeps the stunnels respawned by aznfswatchdogv4 running when it is stopped, and postrm
+	# deletes their files. Kill the whole cgroup first (systemctl kill signals all processes of the unit by
+	# default), as stopping it did before KillMode=process.
+	#
+	systemctl kill aznfswatchdogv4 > /dev/null 2>&1 || true
+	systemctl stop aznfswatchdog aznfswatchdogv4 || true
+	systemctl disable aznfswatchdog aznfswatchdogv4 || true
 
 	echo "Stopped aznfs watchdog service"
+elif [ "$1" == 'upgrade' ]; then
+	#
+	# Older versions' postinst only "start" the watchdogs, so on downgrade stop them (but keep them
+	# enabled) for the older version to actually run.
+	#
+	current_version=$(dpkg-query -W -f='${Version}' aznfs 2>/dev/null || true)
+	if [ -n "$current_version" ] && [ -n "$2" ] && dpkg --compare-versions "$2" lt "$current_version"; then
+		systemctl stop aznfswatchdog aznfswatchdogv4 || true
+		echo "Stopped aznfs watchdog service for downgrade"
+	fi
 fi

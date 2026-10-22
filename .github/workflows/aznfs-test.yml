@@ -45,6 +45,10 @@ jobs:
             "/lib/common.sh"
             "/scripts/aznfs_install.sh"
             "/testing/testscript.sh"
+            "/packaging/aznfs/DEBIAN/preinst"
+            "/packaging/aznfs/DEBIAN/postinst"
+            "/packaging/aznfs/DEBIAN/prerm"
+            "/packaging/aznfs/DEBIAN/postrm"
           )
 
           # To track whether any file has errors.
