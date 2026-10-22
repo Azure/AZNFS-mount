@@ -1385,6 +1385,8 @@ struct api_task_info
      */
     fuse_req *req = nullptr;
 
+    auth_unix_credential_snapshot caller_credentials;
+
 
     /*
      * Only valid for FUSE_READ and FUSE_WRITE.
@@ -1599,6 +1601,7 @@ struct api_task_info
         assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
 
         req = nullptr;
+        caller_credentials.clear();
         parent_task = nullptr;
         bc = nullptr;
         pvt = nullptr;
@@ -2076,6 +2079,38 @@ public:
     void set_fuse_req(fuse_req *request)
     {
         rpc_api->req = request;
+        rpc_api->caller_credentials.clear();
+
+        if (request == nullptr) {
+            return;
+        }
+
+        const fuse_ctx *ctx = fuse_req_ctx(request);
+        if (ctx == nullptr) {
+            return;
+        }
+
+        rpc_api->caller_credentials.uid = ctx->uid;
+        rpc_api->caller_credentials.gid = ctx->gid;
+
+        std::array<gid_t, auth_unix_credential_snapshot::MAX_AUXILIARY_GIDS>
+            fuse_gids{};
+        const int group_count = fuse_req_getgroups(
+            request, static_cast<int>(fuse_gids.size()), fuse_gids.data());
+        if (group_count < 0) {
+            AZLogWarn("Failed to get supplementary groups for uid={} pid={}: {}",
+                      ctx->uid, ctx->pid, group_count);
+        }
+        const int gids_to_copy = std::clamp(
+            group_count, 0,
+            static_cast<int>(auth_unix_credential_snapshot::MAX_AUXILIARY_GIDS));
+        for (int i = 0; i < gids_to_copy; i++) {
+            rpc_api->caller_credentials.auxiliary_gids[i] =
+                static_cast<uint32_t>(fuse_gids[i]);
+        }
+        rpc_api->caller_credentials.auxiliary_gid_count =
+            static_cast<uint32_t>(gids_to_copy);
+        rpc_api->caller_credentials.valid = true;
     }
 
     struct fuse_req *get_fuse_req() const
@@ -2117,11 +2152,6 @@ public:
 
     struct nfs_context *get_nfs_context() const;
 
-    struct rpc_context *get_rpc_ctx() const
-    {
-        return nfs_get_rpc_context(get_nfs_context());
-    }
-
     /**
      * Set RPC AUTH_UNIX credentials to match the FUSE caller's uid/gid/groups.
      *
@@ -2129,44 +2159,51 @@ public:
      * in the RPC AUTH_UNIX header. With root_squash enabled on the
      * server, this causes ALL operations to be squashed to nobody.
      *
-    * Credential updates and PDU allocation must hold the selected
-    * connection's credential mutex as one operation.
-     * For child/backend tasks where get_fuse_req() is null (for example
-     * READ/WRITE backend tasks), we inherit the request context from the
-     * parent task so each RPC still carries the correct caller identity.
+      * Credential updates and PDU allocation must hold the selected
+      * connection's credential mutex as one operation. Child/backend tasks
+      * carry a snapshot of the originating request credentials. Tasks without
+      * an originating request use the root service identity deliberately.
      */
     void set_caller_credentials(struct nfs_context *nfs)
     {
-        fuse_req *req = get_fuse_req();
+        auth_unix_credential_snapshot& credentials =
+            rpc_api->caller_credentials;
 
-        if ((req == nullptr) && rpc_api && rpc_api->parent_task) {
-            req = rpc_api->parent_task->get_fuse_req();
-        }
-
-        if (req == nullptr) {
+        if (!credentials.valid) {
+            nfs_set_uid(nfs, 0);
+            nfs_set_gid(nfs, 0);
+            nfs_set_auxiliary_gids(nfs, 0, nullptr);
             return;
         }
 
-        const fuse_ctx *ctx = fuse_req_ctx(req);
-        if (ctx) {
-            nfs_set_uid(nfs, ctx->uid);
-            nfs_set_gid(nfs, ctx->gid);
+        nfs_set_uid(nfs, credentials.uid);
+        nfs_set_gid(nfs, credentials.gid);
+        nfs_set_auxiliary_gids(nfs,
+                               credentials.auxiliary_gid_count,
+                               credentials.auxiliary_gids.data());
+    }
 
-            constexpr int AUTH_UNIX_MAX_AUXILIARY_GIDS = 16;
-            std::array<gid_t, AUTH_UNIX_MAX_AUXILIARY_GIDS> fuse_gids{};
-            const int group_count = fuse_req_getgroups(
-                req, static_cast<int>(fuse_gids.size()), fuse_gids.data());
-            const int gids_to_copy = std::clamp(
-                group_count, 0, AUTH_UNIX_MAX_AUXILIARY_GIDS);
-            std::array<uint32_t, AUTH_UNIX_MAX_AUXILIARY_GIDS>
-                auxiliary_gids{};
-            for (int i = 0; i < gids_to_copy; i++) {
-                auxiliary_gids[i] = static_cast<uint32_t>(fuse_gids[i]);
-            }
-            nfs_set_auxiliary_gids(nfs,
-                                   static_cast<uint32_t>(gids_to_copy),
-                                   auxiliary_gids.data());
-        }
+    void inherit_caller_credentials(const api_task_info& source)
+    {
+        rpc_api->caller_credentials = source.caller_credentials;
+    }
+
+    void inherit_caller_credentials(
+        const auth_unix_credential_snapshot& credentials)
+    {
+        rpc_api->caller_credentials = credentials;
+    }
+
+    void inherit_caller_credentials(const rpc_task& source)
+    {
+        inherit_caller_credentials(*source.rpc_api);
+    }
+
+    void set_parent_task(rpc_task *parent_task)
+    {
+        assert(parent_task != nullptr);
+        rpc_api->parent_task = parent_task;
+        inherit_caller_credentials(*parent_task);
     }
 
     template <typename Args>

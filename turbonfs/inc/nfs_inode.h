@@ -1487,7 +1487,8 @@ public:
     int copy_to_cache(const struct fuse_bufvec* bufv,
                       off_t offset,
                       uint64_t *extent_left,
-                      uint64_t *extent_right);
+                      uint64_t *extent_right,
+                      const auth_unix_credential_snapshot& credentials);
 
     /**
      * Flush the dirty file cache represented by filecache_handle and wait
