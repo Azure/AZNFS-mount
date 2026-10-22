@@ -247,7 +247,7 @@ typedef struct aznfsc_cfg
     // Fuse max_idle_threads config value.
     int fuse_max_idle_threads = -1;
 
-    // Whether to use TLS or not.
+    // Transport security; only "none" is supported (TLS support removed).
     const char *xprtsec = nullptr;
 
     // Whether to disable OOM killing for the aznfsclient process.
