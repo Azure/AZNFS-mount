@@ -13,3 +13,14 @@ if [ "$init" != "systemd" ]; then
 	echo "Cannot install this package on a non-systemd system!"
 	exit 1
 fi
+
+#
+# Watchdogs disabled by the prerm of an older aznfs version (or a previously interrupted upgrade)
+# are re-enabled right away, instead of waiting for postinst which may never run.
+#
+if [ "$1" == 'upgrade' ] && [ -f /lib/systemd/system/aznfswatchdog.service ]; then
+	for svc in aznfswatchdog aznfswatchdogv4; do
+		systemctl enable $svc || true
+		systemctl start $svc || true
+	done
+fi

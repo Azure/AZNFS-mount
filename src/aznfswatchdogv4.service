@@ -15,6 +15,11 @@ User=root
 ExecStart=/usr/sbin/aznfswatchdogv4
 Restart=always
 RestartSec=5
+# stunnel processes respawned by aznfswatchdogv4 run in this service's cgroup. Stopping or restarting
+# the watchdog (e.g. on package upgrade) must not kill them and reset the NFSv4 TLS connections.
+# The watchdog kills a stunnel explicitly (via its pid file) once its mounts are gone.
+# Package removal kills the stunnels with 'systemctl kill' (whole cgroup) before stopping the watchdog.
+KillMode=process
 
 [Install]
 WantedBy=nfs-client.target

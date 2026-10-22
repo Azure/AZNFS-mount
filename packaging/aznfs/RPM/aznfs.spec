@@ -159,85 +159,165 @@ if [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -
 	fi
 fi
 
-flag_file="/tmp/.update_in_progress_from_watchdog.flag"
-
-if [ -f "$flag_file" ]; then
-	# Get the PID of aznfswatchdog.
-	aznfswatchdog_pid=$(pgrep -x aznfswatchdog)
-	
-	# Read the PID from the flag file.
-	aznfswatchdog_pid_inside_flag=$(cat "$flag_file")
-	
-	if [ "$aznfswatchdog_pid" != "$aznfswatchdog_pid_inside_flag" ]; then
-		# The flag file is stale, remove it.
-		rm -f "$flag_file"
-		echo "Removed stale flag file"
-	fi
-fi
-
-# In case of manual upgrade, stop the watchdog before proceeding.
-if [ $1 == 2 ] && [ ! -f "$flag_file" ]; then
-        systemctl stop aznfswatchdog
-        systemctl disable aznfswatchdog
-
-        systemctl stop aznfswatchdogv4
-        systemctl disable aznfswatchdogv4
-
-        echo "Stopped aznfs watchdog service"
-fi
+#
+# Do not stop or disable the watchdogs on upgrade. If the transaction is interrupted
+# before the post-install scriptlet, the old watchdogs keep running instead of being left disabled.
+# The post-install scriptlet restarts them to pick up the new version.
+#
 
 
 %post
 
 FLAG_FILE="/tmp/.update_in_progress_from_watchdog.flag"
 CONFIG_FILE="/opt/microsoft/aznfs/data/config"
-AUTO_UPDATE_AZNFS="false"
+# restore_watchdogs progress: 0 not run yet, 1 running, 2 done (see on_signal).
+restore_state=0
+pending_exit=0
 
-parse_user_config()
+#
+# Package scriptlets must never prompt, they may run unattended (dnf-automatic, Satellite,
+# Ansible). Never change an existing non-empty AUTO_UPDATE_AZNFS value; add it when missing or
+# empty (an empty AUTO_UPDATE_AZNFS= counts as not set and is replaced).
+#
+init_auto_update_config()
 {
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo "[BUG] $CONFIG_FILE not found, proceeding with default values..."
-        return
+        touch "$CONFIG_FILE"
+        chmod 0644 "$CONFIG_FILE"
     fi
 
-    # Read the value of AUTO_UPDATE_AZNFS from the configuration file and convert to lowercase for easy comparison later.
-    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
-    AUTO_UPDATE_AZNFS=${AUTO_UPDATE_AZNFS,,}
+    # An empty assignment left next to the line added below would make aznfs_install.sh reject the config.
+    if grep -q '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*$' "$CONFIG_FILE"; then
+        sed -i '/^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*$/d' "$CONFIG_FILE" || echo "[WARNING] Failed to remove empty AUTO_UPDATE_AZNFS from $CONFIG_FILE"
+    fi
+
+    # Same parsing as aznfs_install.sh, so both agree on what is configured.
+    local value
+    value=$(grep -Eo '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]+' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
+    value=${value,,}
+
+    if ! grep -q '^AUTO_UPDATE_AZNFS[[:space:]]*=' "$CONFIG_FILE"; then
+        # Legacy behaviour: non-interactive install opts in to auto-update.
+        value="false"
+        if [ "$AZNFS_NONINTERACTIVE_INSTALL" == "1" ]; then
+            value="true"
+        fi
+
+        # Make sure we append on a new line.
+        if [ -s "$CONFIG_FILE" ] && [ -n "$(tail -c1 "$CONFIG_FILE")" ]; then
+            echo >> "$CONFIG_FILE"
+        fi
+        echo "AUTO_UPDATE_AZNFS=$value" >> "$CONFIG_FILE"
+    elif [ "$value" != "true" ] && [ "$value" != "false" ]; then
+        echo "[WARNING] Invalid AUTO_UPDATE_AZNFS value '$value' in $CONFIG_FILE, auto-update will not run."
+    fi
+
+    if [ "$value" == "false" ]; then
+        echo "AZNFS auto-update is disabled. To stay up-to-date with the latest features, improvements and security patches,"
+        echo "set AUTO_UPDATE_AZNFS=true in $CONFIG_FILE."
+    fi
 }
 
-user_consent_for_auto_update()
+#
+# Check that the watchdogs ended up enabled and running, retry once, then report an error with the fix.
+# Restart=always does not recover a unit that hit its start rate limit or failed a start condition, so a
+# unit that is not active is reset and started once. An active unit is never stopped or restarted here:
+# on auto-update aznfswatchdog itself is running this scriptlet.
+# Never fails the scriptlet: a persistent cause (e.g. a masked unit) is not fixed by re-running it,
+# and a failed postinst would leave the package half-configured and break later package manager runs.
+#
+verify_watchdogs()
 {
-    parse_user_config
+    local svc enabled active
 
-    if [ "$AUTO_UPDATE_AZNFS" == "true" ]; then
-        return
+    for svc in aznfswatchdog aznfswatchdogv4; do
+        enabled=$(systemctl is-enabled $svc 2>/dev/null)
+        active=$(systemctl is-active $svc 2>/dev/null)
+        [ "$enabled" == "enabled" ] && [ "$active" == "active" ] && continue
+
+        echo "[WARNING] $svc is ${enabled:-unknown} and ${active:-unknown}, retrying..."
+        [ "$enabled" == "enabled" ] || systemctl enable $svc
+        if [ "$active" != "active" ]; then
+            # Clears the failed state and the start rate limit.
+            systemctl reset-failed $svc > /dev/null 2>&1
+            systemctl start $svc
+        fi
+
+        enabled=$(systemctl is-enabled $svc 2>/dev/null)
+        active=$(systemctl is-active $svc 2>/dev/null)
+        [ "$enabled" == "enabled" ] && [ "$active" == "active" ] && continue
+
+        echo "[ERROR] $svc is ${enabled:-unknown} and ${active:-unknown}, it must be enabled and running for AZNFS mounts to be monitored."
+        echo "[ERROR] Check 'systemctl status $svc' and 'journalctl -u $svc', unmask it if masked, then run: systemctl reset-failed $svc; systemctl enable $svc && systemctl start $svc"
+    done
+    return 0
+}
+
+#
+# Best effort: enable and (re)start the watchdogs, then verify they are enabled and running. Called at the
+# end of this scriptlet, from the EXIT trap and from on_signal, so HUP/INT/TERM part way through still runs
+# it; the guard makes it run once. HUP/INT/TERM arriving while it runs are deferred until it is done (see
+# on_signal). It cannot run if this scriptlet is SIGKILLed; the pre-install scriptlet does not stop the
+# watchdogs on upgrade, so they keep running the old version in that case.
+#
+restore_watchdogs()
+{
+    [ $restore_state -ne 0 ] && return
+    restore_state=1
+
+    #
+    # A valid flag file means aznfswatchdog itself is running this update (aznfs_install.sh).
+    # Restarting aznfswatchdog would kill the package manager, so leave that to aznfs_install.sh.
+    #
+    local auto_update=0
+    if [ -f "$FLAG_FILE" ]; then
+        if pgrep -x aznfswatchdog | grep -qxF -f "$FLAG_FILE"; then
+            auto_update=1
+        else
+            echo "Removing stale flag file $FLAG_FILE"
+        fi
+        rm -f "$FLAG_FILE"
     fi
 
-    sed -i '/AUTO_UPDATE_AZNFS/d' "$CONFIG_FILE"
+    # Wanted by watchdog service.
+    systemctl enable nfs-client.target || echo "[WARNING] Failed to enable nfs-client.target"
 
-    if [ "$AZNFS_NONINTERACTIVE_INSTALL" == "1" ]; then
-        echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
-        return
+    systemctl daemon-reload || echo "[WARNING] systemctl daemon-reload failed"
+
+    # Enable one at a time, one masked unit must not prevent enabling the other.
+    local svc
+    for svc in aznfswatchdog aznfswatchdogv4; do
+        systemctl enable $svc || echo "[WARNING] Failed to enable $svc"
+    done
+    systemctl restart aznfswatchdogv4 || echo "[WARNING] Failed to restart aznfswatchdogv4"
+    if [ $auto_update -eq 0 ]; then
+        systemctl restart aznfswatchdog || echo "[WARNING] Failed to restart aznfswatchdog"
     fi
 
-    title="Enable auto update for AZNFS mount helper"
-    auto_update_prompt=$(cat << EOF
-    Stay up-to-date with the latest features, improvements, and security patches!
+    verify_watchdogs
 
-    AUTO-UPDATE WILL JUST UPDATE THE MOUNT HELPER BINARY AND WILL NOT CAUSE ANY DISRUPTION TO MOUNTED SHARES.
-
-    We recommend enabling automatic updates for the best/seamless AZNFS experience.
-
-    You can turn off auto-update at any time from /opt/microsoft/aznfs/data/config.
-EOF
-)
-
-    if whiptail --title "$title" --yesno "$auto_update_prompt" 0 0 > /dev/tty; then
-        echo "AUTO_UPDATE_AZNFS=true" >> "$CONFIG_FILE"
-    else
-        echo "AUTO_UPDATE_AZNFS=false" >> "$CONFIG_FILE"
+    restore_state=2
+    if [ $pending_exit -ne 0 ]; then
+        exit $pending_exit
     fi
 }
+
+#
+# HUP/INT/TERM: while restore_watchdogs runs the signal is deferred until it is done, so it is never cut short.
+# Otherwise run the restore now (it returns at once if already done) and exit with the signal's code.
+#
+on_signal()
+{
+    pending_exit=$1
+    [ $restore_state -eq 1 ] && return
+    restore_watchdogs
+    exit $1
+}
+
+trap restore_watchdogs EXIT
+trap 'on_signal 129' HUP
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 
 # Set appropriate permissions.
 chmod 0755 /opt/microsoft/aznfs/
@@ -290,37 +370,10 @@ if [ -f /opt/microsoft/aznfs/sample-turbo-config.yaml ]; then
         chattr -f +i /opt/microsoft/aznfs/data/sample-turbo-config.yaml
 fi
 
-# Check if the config file exists; if not, create it.
-if [ ! -f "$CONFIG_FILE" ]; then
-        # Create the config file and set default AUTO_UPDATE_AZNFS=false inside it.
-        echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
+# Add AUTO_UPDATE_AZNFS to the config file if missing, preserving any existing value.
+init_auto_update_config
 
-        # Set the permissions for the config file.
-        chmod 0644 "$CONFIG_FILE"
-fi
-
-#
-# If it's an auto update triggered by aznfswatchdog, don't restart watchdog.
-# Additionally, ask user about auto update configuration.
-#
-if [ ! -f "$FLAG_FILE" ]; then
-        user_consent_for_auto_update
-
-		# Wanted by watchdog service
-		systemctl enable nfs-client.target
-
-        # Start watchdog service for NFSv3
-        systemctl daemon-reload
-        systemctl enable aznfswatchdog
-        systemctl start aznfswatchdog
-
-        # Start watchdog service for NFSv4
-        systemctl enable aznfswatchdogv4
-        systemctl start aznfswatchdogv4
-else
-        # Clean up the update in progress flag file.
-        rm -f "$FLAG_FILE"
-fi
+restore_watchdogs
 
 
 if [ "DISTRO" != "suse" -a ! -f /etc/centos-release ]; then
@@ -367,6 +420,10 @@ if [ $1 == 0 ]; then
 	systemctl stop aznfswatchdog
 	systemctl disable aznfswatchdog
 
+	# KillMode=process keeps the stunnels respawned by aznfswatchdogv4 running when it is stopped, and the
+	# post-uninstall scriptlet deletes their files. Kill the whole cgroup first (systemctl kill signals all
+	# processes of the unit by default), as stopping it did before KillMode=process.
+	systemctl kill aznfswatchdogv4 > /dev/null 2>&1
 	systemctl stop aznfswatchdogv4
 	systemctl disable aznfswatchdogv4
 
