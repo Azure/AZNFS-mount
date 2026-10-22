@@ -433,6 +433,15 @@ ensure_logrotate_config()
     fi
     paths=$(echo "$paths" | sed '/^$/d')
 
+    local recorded_sum=
+    if [ -f "$LOGROTATE_CONF" ] && [ "$(head -n1 "$LOGROTATE_CONF")" == "$marker" ]; then
+        recorded_sum=$(sed -n '2s/^# Checksum: //p' "$LOGROTATE_CONF")
+        if [ "$(tail -n +3 "$LOGROTATE_CONF" | cksum | awk '{print $1}')" != "$recorded_sum" ]; then
+            vecho "${LOGROTATE_CONF} was modified locally, not updating it to the new aznfs default."
+            return
+        fi
+    fi
+
     # Nothing logrotate is allowed to rotate, an empty or failing config would only break logrotate.service.
     if [ -z "$paths" ]; then
         rm -f "$LOGROTATE_CONF"
@@ -457,17 +466,7 @@ ensure_logrotate_config()
 }"
     sum=$(printf '%s\n' "$body" | cksum | awk '{print $1}')
 
-    if [ -f "$LOGROTATE_CONF" ] && [ "$(head -n1 "$LOGROTATE_CONF")" == "$marker" ]; then
-        local recorded_sum=$(sed -n '2s/^# Checksum: //p' "$LOGROTATE_CONF")
-        local actual_sum=$(tail -n +3 "$LOGROTATE_CONF" | cksum | awk '{print $1}')
-
-        if [ "$recorded_sum" == "$sum" ]; then
-            return
-        elif [ "$actual_sum" != "$recorded_sum" ]; then
-            vecho "${LOGROTATE_CONF} was modified locally, not updating it to the new aznfs default."
-            return
-        fi
-    fi
+    [ "$recorded_sum" == "$sum" ] && return
 
     if ! command -v logrotate &> /dev/null || [ ! -d "$(dirname "$LOGROTATE_CONF")" ]; then
         if [ -n "$AZNFS_LOGDIR" ]; then
