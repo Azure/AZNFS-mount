@@ -843,7 +843,7 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
              * complete the parent task when all issued writes complete.
              */
             if (parent_task) {
-                write_task->rpc_api->parent_task = parent_task;
+                write_task->set_parent_task(parent_task);
                 parent_task->num_ongoing_backend_writes++;
             }
             write_task->rpc_api->pvt = new bc_iovec(this);
@@ -887,7 +887,7 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec,
             assert(write_task->rpc_api->pvt == nullptr);
 
             if (parent_task) {
-                write_task->rpc_api->parent_task = parent_task;
+                write_task->set_parent_task(parent_task);
                 parent_task->num_ongoing_backend_writes++;
             }
             write_task->rpc_api->pvt = new bc_iovec(this);

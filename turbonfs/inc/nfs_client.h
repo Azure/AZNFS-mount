@@ -312,6 +312,18 @@ public:
     std::recursive_mutex& get_credential_mutex(
         const struct nfs_context *nfs) const;
 
+    template <typename IssueRpc>
+    struct rpc_pdu *issue_rpc_with_service_credentials(
+        struct nfs_context *nfs,
+        IssueRpc issue_rpc)
+    {
+        std::lock_guard<std::recursive_mutex> lock(get_credential_mutex(nfs));
+        nfs_set_uid(nfs, 0);
+        nfs_set_gid(nfs, 0);
+        nfs_set_auxiliary_gids(nfs, 0, nullptr);
+        return issue_rpc(nfs_get_rpc_context(nfs));
+    }
+
     /*
      * Given an inode number, return the nfs_inode structure.
      * For efficient access we use the address of the nfs_inode structure as

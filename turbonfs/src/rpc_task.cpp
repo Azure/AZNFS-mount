@@ -1378,7 +1378,9 @@ static void write_iov_callback(
              * child write too.
              */
             if (task->rpc_api->parent_task) {
-                write_task->rpc_api->parent_task = task->rpc_api->parent_task;
+                write_task->set_parent_task(task->rpc_api->parent_task);
+            } else {
+                write_task->inherit_caller_credentials(*task);
             }
 
             task->rpc_api->pvt = nullptr;
@@ -3666,7 +3668,7 @@ void rpc_task::run_read()
                 bc_vec[i].offset);
 
             // Set the parent task of the child to the current RPC task.
-            child_tsk->rpc_api->parent_task = this;
+            child_tsk->set_parent_task(this);
 
             /*
              * Set "bytes read" to 0 and this will be updated as data is read,
@@ -4080,7 +4082,7 @@ static void read_callback(
              * current RPC task. This is required if the current task itself
              * is one of the child tasks running part of the fuse read request.
              */
-            child_tsk->rpc_api->parent_task = parent_task;
+            child_tsk->set_parent_task(parent_task);
 
             /*
              * Child task must continue to fill the same bc.

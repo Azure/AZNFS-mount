@@ -1285,8 +1285,12 @@ try_again:
 
         rpc_retry = false;
         task->get_stats().on_rpc_issue();
-        if ((pdu = rpc_nfs3_lookup_task(rpc, lookup_sync_callback,
-                                        &args, ctx)) == NULL) {
+        pdu = issue_rpc_with_service_credentials(
+            nfs_context, [&](struct rpc_context *locked_rpc) {
+                return rpc_nfs3_lookup_task(
+                    locked_rpc, lookup_sync_callback, &args, ctx);
+            });
+        if (pdu == NULL) {
             task->get_stats().on_rpc_cancel();
             /*
              * This call fails due to internal issues like OOM etc
@@ -1806,7 +1810,7 @@ void nfs_client::read(
      * to the server even while application read causes us to block.
      */
     [[maybe_unused]] const int num_ra =
-        inode->get_rastate()->issue_readaheads();
+        inode->get_rastate()->issue_readaheads(*tsk);
 
     AZLogDebug("[{}] {} readaheads issued for client read offset: {} size: {}",
                ino, num_ra, off, size);
@@ -1838,6 +1842,7 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
         get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
     commit_task->init_flush(nullptr /* fuse_req */,
                             rpc_api->flush_task.get_ino());
+    commit_task->inherit_caller_credentials(*rpc_api);
     commit_task->rpc_api->pvt = rpc_api->pvt;
     rpc_api->pvt = nullptr;
 
@@ -1867,6 +1872,7 @@ void nfs_client::jukebox_write(struct api_task_info *rpc_api)
     struct rpc_task *write_task =
         get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
     write_task->init_write_be(rpc_api->write_task.get_ino());
+    write_task->inherit_caller_credentials(*rpc_api);
 
     // Any new task should start fresh as a parent task.
     assert(write_task->rpc_api->parent_task == nullptr);
@@ -1905,7 +1911,7 @@ void nfs_client::jukebox_write(struct api_task_info *rpc_api)
         // At least this child task has not completed.
         assert(rpc_api->parent_task->num_ongoing_backend_writes > 0);
 
-        write_task->rpc_api->parent_task = rpc_api->parent_task;
+        write_task->set_parent_task(rpc_api->parent_task);
     }
 
     write_task->issue_write_rpc();
@@ -1938,7 +1944,7 @@ void nfs_client::jukebox_read(struct api_task_info *rpc_api)
     // At least this child task has not completed.
     assert(rpc_api->parent_task->num_ongoing_backend_reads > 0);
 
-    child_tsk->rpc_api->parent_task = rpc_api->parent_task;
+    child_tsk->set_parent_task(rpc_api->parent_task);
 
     [[maybe_unused]]  const struct rpc_task *const parent_task =
         child_tsk->rpc_api->parent_task;
@@ -2364,8 +2370,12 @@ try_again:
         if (task) {
             task->get_stats().on_rpc_issue();
         }
-        if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_sync_callback,
-                                         &args, ctx)) == NULL) {
+        pdu = issue_rpc_with_service_credentials(
+            nfs_context, [&](struct rpc_context *locked_rpc) {
+                return rpc_nfs3_getattr_task(
+                    locked_rpc, getattr_sync_callback, &args, ctx);
+            });
+        if (pdu == NULL) {
             if (task) {
                 task->get_stats().on_rpc_cancel();
             }
