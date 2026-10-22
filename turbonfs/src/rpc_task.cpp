@@ -1238,7 +1238,7 @@ void bc_iovec::on_io_fail(int status)
         assert(mb->is_inuse() && mb->is_locked());
         assert(mb->is_flushing() && mb->is_dirty() && mb->is_uptodate());
 
-        mb->clear_flushing();
+        mb->clear_flushing(true);
         mb->clear_locked();
         mb->clear_inuse();
         iov++;
@@ -1379,9 +1379,8 @@ static void write_iov_callback(
              */
             if (task->rpc_api->parent_task) {
                 write_task->set_parent_task(task->rpc_api->parent_task);
-            } else {
-                write_task->inherit_caller_credentials(*task);
             }
+            write_task->inherit_caller_credentials(*task);
 
             task->rpc_api->pvt = nullptr;
 
@@ -1499,6 +1498,14 @@ bool rpc_task::add_bc(const bytes_chunk& bc)
 
     struct bc_iovec *bciov = (struct bc_iovec *) rpc_api->pvt;
     assert(bciov->magic == BC_IOVEC_MAGIC);
+
+    const auth_unix_credential_snapshot& credentials =
+        bc.get_membuf()->get_write_credentials();
+    if (!bciov->bcq.empty() &&
+        !(rpc_api->caller_credentials == credentials)) {
+        return false;
+    }
+    assert(rpc_api->caller_credentials == credentials);
 
     return bciov->add_bc(bc);
 }
@@ -2786,8 +2793,9 @@ void rpc_task::run_write()
      * as failing a write is not good, so we better be sure we tried enough.
      */
     for (int i = 0; i < 100; i++) {
-        error_code = inode->copy_to_cache(bufv, offset,
-                                          &extent_left, &extent_right);
+        error_code = inode->copy_to_cache(
+            bufv, offset, &extent_left, &extent_right,
+            rpc_api->caller_credentials);
         if (error_code != EAGAIN) {
             break;
         }

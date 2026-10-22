@@ -1912,6 +1912,7 @@ void nfs_client::jukebox_write(struct api_task_info *rpc_api)
         assert(rpc_api->parent_task->num_ongoing_backend_writes > 0);
 
         write_task->set_parent_task(rpc_api->parent_task);
+        write_task->inherit_caller_credentials(*rpc_api);
     }
 
     write_task->issue_write_rpc();

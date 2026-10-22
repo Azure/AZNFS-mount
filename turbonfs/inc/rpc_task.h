@@ -1385,12 +1385,7 @@ struct api_task_info
      */
     fuse_req *req = nullptr;
 
-    static constexpr int AUTH_UNIX_MAX_AUXILIARY_GIDS = 16;
-    bool has_caller_credentials = false;
-    uid_t caller_uid = 0;
-    gid_t caller_gid = 0;
-    uint32_t auxiliary_gid_count = 0;
-    std::array<uint32_t, AUTH_UNIX_MAX_AUXILIARY_GIDS> auxiliary_gids{};
+    auth_unix_credential_snapshot caller_credentials;
 
 
     /*
@@ -1606,11 +1601,7 @@ struct api_task_info
         assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
 
         req = nullptr;
-        has_caller_credentials = false;
-        caller_uid = 0;
-        caller_gid = 0;
-        auxiliary_gid_count = 0;
-        auxiliary_gids.fill(0);
+        caller_credentials.clear();
         parent_task = nullptr;
         bc = nullptr;
         pvt = nullptr;
@@ -2088,8 +2079,7 @@ public:
     void set_fuse_req(fuse_req *request)
     {
         rpc_api->req = request;
-        rpc_api->has_caller_credentials = false;
-        rpc_api->auxiliary_gid_count = 0;
+        rpc_api->caller_credentials.clear();
 
         if (request == nullptr) {
             return;
@@ -2100,10 +2090,10 @@ public:
             return;
         }
 
-        rpc_api->caller_uid = ctx->uid;
-        rpc_api->caller_gid = ctx->gid;
+        rpc_api->caller_credentials.uid = ctx->uid;
+        rpc_api->caller_credentials.gid = ctx->gid;
 
-        std::array<gid_t, api_task_info::AUTH_UNIX_MAX_AUXILIARY_GIDS>
+        std::array<gid_t, auth_unix_credential_snapshot::MAX_AUXILIARY_GIDS>
             fuse_gids{};
         const int group_count = fuse_req_getgroups(
             request, static_cast<int>(fuse_gids.size()), fuse_gids.data());
@@ -2112,13 +2102,15 @@ public:
                       ctx->uid, ctx->pid, group_count);
         }
         const int gids_to_copy = std::clamp(
-            group_count, 0, api_task_info::AUTH_UNIX_MAX_AUXILIARY_GIDS);
+            group_count, 0,
+            static_cast<int>(auth_unix_credential_snapshot::MAX_AUXILIARY_GIDS));
         for (int i = 0; i < gids_to_copy; i++) {
-            rpc_api->auxiliary_gids[i] =
+            rpc_api->caller_credentials.auxiliary_gids[i] =
                 static_cast<uint32_t>(fuse_gids[i]);
         }
-        rpc_api->auxiliary_gid_count = static_cast<uint32_t>(gids_to_copy);
-        rpc_api->has_caller_credentials = true;
+        rpc_api->caller_credentials.auxiliary_gid_count =
+            static_cast<uint32_t>(gids_to_copy);
+        rpc_api->caller_credentials.valid = true;
     }
 
     struct fuse_req *get_fuse_req() const
@@ -2174,33 +2166,32 @@ public:
      */
     void set_caller_credentials(struct nfs_context *nfs)
     {
-        api_task_info *credential_source = rpc_api;
-        if (!credential_source->has_caller_credentials &&
-            credential_source->parent_task != nullptr) {
-            credential_source = credential_source->parent_task->rpc_api;
-        }
+        const auth_unix_credential_snapshot *credentials =
+            &rpc_api->caller_credentials;
 
-        if (!credential_source->has_caller_credentials) {
+        if (!credentials->valid) {
             nfs_set_uid(nfs, 0);
             nfs_set_gid(nfs, 0);
             nfs_set_auxiliary_gids(nfs, 0, nullptr);
             return;
         }
 
-        nfs_set_uid(nfs, credential_source->caller_uid);
-        nfs_set_gid(nfs, credential_source->caller_gid);
+        nfs_set_uid(nfs, credentials->uid);
+        nfs_set_gid(nfs, credentials->gid);
         nfs_set_auxiliary_gids(nfs,
-                               credential_source->auxiliary_gid_count,
-                               credential_source->auxiliary_gids.data());
+                       credentials->auxiliary_gid_count,
+                       credentials->auxiliary_gids.data());
     }
 
     void inherit_caller_credentials(const api_task_info& source)
     {
-        rpc_api->has_caller_credentials = source.has_caller_credentials;
-        rpc_api->caller_uid = source.caller_uid;
-        rpc_api->caller_gid = source.caller_gid;
-        rpc_api->auxiliary_gid_count = source.auxiliary_gid_count;
-        rpc_api->auxiliary_gids = source.auxiliary_gids;
+        rpc_api->caller_credentials = source.caller_credentials;
+    }
+
+    void inherit_caller_credentials(
+        const auth_unix_credential_snapshot& credentials)
+    {
+        rpc_api->caller_credentials = credentials;
     }
 
     void inherit_caller_credentials(const rpc_task& source)

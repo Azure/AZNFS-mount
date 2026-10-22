@@ -597,7 +597,7 @@ void membuf::set_flushing()
 /**
  * Must be called after flushing dirty membuf to Blob.
  */
-void membuf::clear_flushing()
+void membuf::clear_flushing(bool write_failed)
 {
     // See comment in set_flushing() above.
     assert(is_locked());
@@ -613,16 +613,8 @@ void membuf::clear_flushing()
      */
     assert(flag & MB_Flag::Flushing);
 
-    /*
-     * clear_flushing() must be called after clear_dirty().
-     * In case WRITE RPC fails, we don't clear dirty flag, in that case this
-     * assert will fail. We still leave it as it helps catch workflow bugs and
-     * we mostly do hard mount where write never fails.
-     *
-     * TODO: Remove me once we have enough testing.
-     *       Don't release it to production.
-     */
-    assert(!is_dirty());
+    assert(write_failed || !is_dirty());
+    assert(!write_failed || is_dirty());
 
     flag &= ~MB_Flag::Flushing;
 
