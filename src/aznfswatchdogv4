@@ -767,4 +767,5 @@ while :; do
     epoch_now=$(date +%s)
     process_nfsv4_mounts
     process_nfsv4_notls_mounts
+    rotate_logs_without_logrotate
 done
