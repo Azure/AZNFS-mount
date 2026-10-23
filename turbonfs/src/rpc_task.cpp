@@ -2404,6 +2404,8 @@ void rename_callback(
                 task->rpc_api->rename_task.get_newname();
             silly_rename_inode->parent_ino =
                 task->rpc_api->rename_task.get_newparent_ino();
+            silly_rename_inode->silly_rename_credentials =
+                task->rpc_api->caller_credentials;
             silly_rename_inode->is_silly_renamed = true;
 
             /*
@@ -2777,8 +2779,10 @@ void rpc_task::run_write()
      * Copy application data into chunk cache and initiate writes for all
      * membufs. We don't wait for the writes to actually finish, which means
      * we support buffered writes.
-     * Note that copy_to_cache() may return EAGAIN in the rare case where this
-     * writer thread races with another thread trying to read the same membuf.
+    * Note that copy_to_cache() may return EAGAIN when existing dirty data has
+    * different credentials and must be flushed before a partial overwrite,
+    * or in the rare case where this writer thread races with another thread
+    * trying to read the same membuf.
      * The membuf is bigger than what the writer wants to write and is not
      * uptodate, so the writer needs to wait for the the reader to read into
      * the membuf and mark it uptodate before it can update the part it wants
@@ -2793,9 +2797,18 @@ void rpc_task::run_write()
      * as failing a write is not good, so we better be sure we tried enough.
      */
     for (int i = 0; i < 100; i++) {
+        bool flush_required = false;
         error_code = inode->copy_to_cache(
             bufv, offset, &extent_left, &extent_right,
-            rpc_api->caller_credentials);
+            rpc_api->caller_credentials, &flush_required);
+        if (flush_required) {
+            assert(error_code == EAGAIN);
+            error_code = inode->flush_cache_and_wait();
+            if (error_code != 0) {
+                break;
+            }
+            continue;
+        }
         if (error_code != EAGAIN) {
             break;
         }

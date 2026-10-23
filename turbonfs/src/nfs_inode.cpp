@@ -328,7 +328,9 @@ bool nfs_inode::in_ra_window(uint64_t offset, uint64_t length) const
  *       lookup_sync(), the corresponding nfs_inode will still be present in
  *       our inode_map since kernel wouldn't have called forget on the inode.
  */
-struct nfs_inode *nfs_inode::lookup(const char *filename, int *failure_status)
+struct nfs_inode *nfs_inode::lookup(const char *filename,
+                                    int *failure_status,
+                                    fuse_req_t req)
 {
     // Must be called only for a directory inode.
     assert(is_dir());
@@ -362,7 +364,7 @@ struct nfs_inode *nfs_inode::lookup(const char *filename, int *failure_status)
 
     if (child_ino == 0) {
        const int status =
-           client->lookup_sync(get_fuse_ino(), filename, child_ino);
+           client->lookup_sync(get_fuse_ino(), filename, child_ino, req);
        if (status != 0) {
            AZLogDebug("{}/{}, sync LOOKUP failed with error {}!",
                       get_fuse_ino(), filename, status);
@@ -954,7 +956,8 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
                              off_t offset,
                              uint64_t *extent_left,
                              uint64_t *extent_right,
-                             const auth_unix_credential_snapshot& credentials)
+                             const auth_unix_credential_snapshot& credentials,
+                             bool *flush_required)
 {
     /*
      * XXX We currently only handle bufv with count=1.
@@ -980,6 +983,8 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
     const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
     int err = 0;
     bool inject_eagain = false;
+    assert(flush_required != nullptr);
+    *flush_required = false;
 
     /*
      * Get bytes_chunk(s) covering the range [offset, offset+length).
@@ -1023,6 +1028,17 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
          * Lock the membuf while we copy application data into it.
          */
         mb->set_locked();
+
+        if (!bc.maps_full_membuf() && mb->is_dirty() &&
+            !(mb->get_write_credentials() == credentials)) {
+            *flush_required = true;
+            err = EAGAIN;
+            mb->clear_locked();
+            mb->clear_inuse();
+            assert(remaining >= bc.length);
+            remaining -= bc.length;
+            continue;
+        }
 
         /*
          * If we own the full membuf we can safely copy to it, also if the
@@ -1789,7 +1805,9 @@ bool nfs_inode::release(fuse_req_t req)
                ino, parent_ino, silly_renamed_name, fmt::ptr(req));
 
     client->unlink(req, parent_ino,
-                   silly_renamed_name.c_str(), true /* for_silly_rename */);
+                   silly_renamed_name.c_str(), true /* for_silly_rename */,
+                   &silly_rename_credentials);
+    silly_rename_credentials.clear();
 
     /*
      * Either flush() would have called the fuse callback, or unlink() would

@@ -534,7 +534,8 @@ public:
         fuse_req_t req,
         fuse_ino_t parent_ino,
         const char *name,
-        bool for_silly_rename);
+        bool for_silly_rename,
+        const auth_unix_credential_snapshot *credentials = nullptr);
 
     void rmdir(
         fuse_req_t req,
@@ -596,7 +597,8 @@ public:
     int lookup_sync(
         fuse_ino_t parent_ino,
         const char *name,
-        fuse_ino_t& child_ino);
+        fuse_ino_t& child_ino,
+        fuse_req_t req = nullptr);
 
     void access(
         fuse_req_t req,
