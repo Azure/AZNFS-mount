@@ -658,6 +658,21 @@ create_aznfsclient_mount_args()
 }
 
 #
+# Send stdin to syslog with TURBO_SYSLOG_TAG for the life of the mount. By default
+# logger exits when the syslog socket goes away (f.e. journald restart), leaving
+# aznfsclient writing into a pipe nobody reads. With --socket-errors=off it keeps
+# reading and reconnects on the next line instead (util-linux >= 2.31). Older
+# logger without the option logs via glibc syslog(), which reconnects itself.
+#
+turbo_syslog()
+{
+    local opts=
+
+    logger --help 2>&1 | grep -q -- '--socket-errors' && opts="--socket-errors=off"
+    logger $opts -t "$TURBO_SYSLOG_TAG" -p user.info "$@"
+}
+
+#
 # Parses the MOUNT_OPTIONS into aznfsclient args string and calls the 
 # turbo client. The client ensures it always prioritizes the option values
 # provided as part of the mount command instead of the config file.
@@ -699,7 +714,7 @@ aznfsclient_mount()
         $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f >> "$LOGFILE" 2>&1 &
     else
         # logger must not hold on to our stdout, mount(8) callers may wait for its EOF.
-        $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f 2>&1 | logger -t "$TURBO_SYSLOG_TAG" -p user.info > /dev/null 2>&1 &
+        $AZNFSCLIENT_BINARY_PATH $AZNFSCLIENT_MOUNT_ARGS -f 2>&1 | turbo_syslog > /dev/null 2>&1 &
     fi
 
     vvecho "Waiting for mount to complete (timeout: 30 seconds)..."

@@ -213,14 +213,15 @@ logrotate_allowed()
 # Root appends to files in the log dir, so no other user may be able to replace
 # it or anything it is reached through. Resolves the path one component at a
 # time like the kernel does, checking every directory and symlink on the way,
-# including symlink targets and their ancestors. Group write is tolerated for
-# system groups (f.e. Ubuntu's root:syslog /var/log).
+# including symlink targets and their ancestors. Group write is only tolerated
+# on /var/log itself (root:syslog 0775 on some Ubuntu releases), whose group
+# can already rewrite every system log.
 #
 trusted_path()
 {
-    local cur=/ rest=$1 comp next link uid gid mode hops=0
+    local cur=/ rest=$1 comp next link uid mode hops=0
 
-    IFS=: read -r uid gid mode < <(stat -c '%u:%g:%a' / 2>/dev/null) || return 1
+    IFS=: read -r uid mode < <(stat -c '%u:%a' / 2>/dev/null) || return 1
     [ "$uid" == "0" ] && ! (( 8#$mode & 8#022 )) || return 1
 
     while [ -n "$rest" ]; do
@@ -232,7 +233,7 @@ trusted_path()
         esac
 
         next=${cur%/}/$comp
-        IFS=: read -r uid gid mode < <(stat -c '%u:%g:%a' "$next" 2>/dev/null) || return 1
+        IFS=: read -r uid mode < <(stat -c '%u:%a' "$next" 2>/dev/null) || return 1
         [ "$uid" == "0" ] || return 1
 
         if [ -L "$next" ]; then
@@ -244,7 +245,7 @@ trusted_path()
             cur=/
         else
             (( 8#$mode & 8#002 )) && return 1
-            (( 8#$mode & 8#020 )) && [ "$gid" -ge 1000 ] && return 1
+            (( 8#$mode & 8#020 )) && [ "$next" != "/var/log" ] && return 1
             cur=$next
         fi
     done
