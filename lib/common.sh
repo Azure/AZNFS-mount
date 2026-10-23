@@ -203,7 +203,7 @@ vvecho()
 #
 # With SELinux enforcing, logrotate (logrotate_t) may only rotate files labelled var_log_t.
 #
-logrotate_allowed()
+selinux_allows_logrotate()
 {
     [ "$(cat /sys/fs/selinux/enforce 2>/dev/null)" == "1" ] || return 0
     [[ "$(stat -L -c %C "$1" 2>/dev/null)" == *:var_log_t:* ]]
@@ -253,11 +253,13 @@ trusted_path()
 
 #
 # Path rules that don't need the directory to exist, also for the resolved path.
+# Sets LOGDIR_ERROR to the reason if not met.
 #
 valid_logdir_path()
 {
     local real=$(readlink -m "$1")
 
+    LOGDIR_ERROR=
     if [[ ! "$1" =~ ^/[A-Za-z0-9._@+/-]+$ || ! "$real" =~ ^/[A-Za-z0-9._@+/-]+$ ]]; then
         LOGDIR_ERROR="must be an absolute path made of [A-Za-z0-9._@+/-], also after resolving symlinks"
     elif [[ "$1/" =~ $LOGDIR_NO_ROTATE_RE || "$real/" =~ $LOGDIR_NO_ROTATE_RE ]]; then
@@ -282,7 +284,7 @@ rotatable_logdir()
         LOGDIR_ERROR="it and every directory it is reached through must be owned by root and not writable by other users"
     elif [ -n "$(find -L "$dir" -maxdepth 0 -perm /022 2>/dev/null)" ]; then
         LOGDIR_ERROR="must not be writable by group or others"
-    elif ! logrotate_allowed "$dir"; then
+    elif ! selinux_allows_logrotate "$dir"; then
         real=$(readlink -f "$dir")
         # semanage takes a regex, '.' and '+' are the only metacharacters valid_logdir_path allows.
         LOGDIR_ERROR="SELinux does not allow logrotate there, to allow it run: semanage fcontext -a -t var_log_t '$(echo "$real" | sed 's/[.+]/\\&/g')(/.*)?' && restorecon -R '${real}'"
@@ -392,7 +394,7 @@ ensure_logrotate_config()
     fi
 
     if [ -n "$AZNFS_LOGDIR" ]; then
-        if logrotate_allowed "$AZNFS_LOGDIR"; then
+        if selinux_allows_logrotate "$AZNFS_LOGDIR"; then
             dirs="$AZNFS_LOGDIR"
         else
             wecho "SELinux does not allow logrotate in '${AZNFS_LOGDIR}', logs there will not be rotated!"
