@@ -393,4 +393,5 @@ if [ $1 == 0 ]; then
 	chattr -i -f /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
 	rm -rf /etc/stunnel/microsoft
 	rm -rf /run/aznfs
+	rm -rf /var/log/aznfs
 fi

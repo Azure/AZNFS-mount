@@ -16,4 +16,5 @@ if [ "$1" == 'remove' -o "$1" == 'purge' ]; then
 	chattr -f -i /etc/stunnel/microsoft/aznfs/nfsv4_fileShare/stunnel*
 	rm -rf /etc/stunnel/microsoft
 	rm -rf /run/aznfs
+	rm -rf /var/log/aznfs
 fi
