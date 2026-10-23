@@ -45,6 +45,8 @@ jobs:
             "/lib/common.sh"
             "/scripts/aznfs_install.sh"
             "/testing/testscript.sh"
+            "/testing/test_stunnel_syslog.sh"
+            "/testing/test_turbo_syslog_outage.sh"
           )
 
           # To track whether any file has errors.
@@ -90,3 +92,14 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/testing/testscript.sh
           $GITHUB_WORKSPACE/testing/testscript.sh
+
+      # stunnel was installed with aznfs by testscript.sh. Exit code 77 means skipped.
+      - name: Run stunnel logging unit test
+        shell: bash
+        run: |
+          sudo bash $GITHUB_WORKSPACE/testing/test_stunnel_syslog.sh || [ $? -eq 77 ]
+
+      - name: Run turbo syslog outage unit test
+        shell: bash
+        run: |
+          bash $GITHUB_WORKSPACE/testing/test_turbo_syslog_outage.sh || [ $? -eq 77 ]

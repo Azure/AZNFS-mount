@@ -207,7 +207,7 @@ process_nfsv3_mounts()
 
     if $check_for_latest_update; then
         if [ -e "$INSTALLSCRIPT" ]; then
-            "$INSTALLSCRIPT" "auto-update"
+            AZNFS_LOGFILE="$LOGFILE" "$INSTALLSCRIPT" "auto-update"
         else
             wecho "[FATAL] $INSTALLSCRIPT not found. This is an unexpected error!"
             Wecho "[FATAL] Please contact Microsoft support."

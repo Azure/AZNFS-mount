@@ -18,6 +18,12 @@ mount_point=$5
 
 STUNNELDIR="/etc/stunnel/microsoft/${APPNAME}/nfsv4_fileShare"
 STUNNELLOGDIR="$STUNNELDIR/logs"
+
+#
+# stunnel logs go to AZNFS_LOGDIR if configured, else to syslog. The log path
+# is still recorded in MOUNTMAPv4 in the latter case, it just never gets created.
+#
+STUNNEL_LOG_FILE_DIR="${AZNFS_LOGDIR:-$STUNNELLOGDIR}"
 NFSV4_PORT_RANGE_START=20049
 NFSV4_PORT_RANGE_END=21049
 DEBUG_LEVEL="info"
@@ -340,15 +346,19 @@ add_stunnel_configuration()
         return 1
     fi
 
-    stunnel_log_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.log"
-    echo "output = $stunnel_log_file" >> $stunnel_conf_file
-    if [ $? -ne 0 ]; then
-        chattr -f +i $stunnel_conf_file
-        eecho "Failed to add log file path to $stunnel_conf_file!"
-        return 1
+    stunnel_log_file="$STUNNEL_LOG_FILE_DIR/stunnel_$storageaccount_ip.log"
+
+    # Without an output file stunnel logs to syslog.
+    if [ -n "$AZNFS_LOGDIR" ]; then
+        echo "output = $stunnel_log_file" >> $stunnel_conf_file
+        if [ $? -ne 0 ]; then
+            chattr -f +i $stunnel_conf_file
+            eecho "Failed to add log file path to $stunnel_conf_file!"
+            return 1
+        fi
     fi
 
-    stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
+    stunnel_pid_file="$STUNNELPIDDIR/stunnel_$storageaccount_ip.pid"
     echo "pid = $stunnel_pid_file" >> $stunnel_conf_file
     if [ $? -ne 0 ]; then
         chattr -f +i $stunnel_conf_file
@@ -522,6 +532,12 @@ tls_nfsv4_files_share_mount()
     # Set trap to cleanup the lock on mountmap file on exit.
     trap 'cleanup' EXIT
 
+    # stunnel doesn't create the directory of its pid file.
+    if ! (umask 022; mkdir -p "$STUNNELPIDDIR"); then
+        eecho "[FATAL] Not able to create ${STUNNELPIDDIR}!"
+        exit 1
+    fi
+
     # Lock the mountmap file as both mounthelper and watchdog processes can update the file.
     exec {fd2}<$MOUNTMAPv4
     flock -e $fd2
@@ -579,8 +595,9 @@ tls_nfsv4_files_share_mount()
             # but not the stunnel_conf_file. In this case, we should also remove the stunnel_conf_file and create a new one.
             vecho "Failed to find the mountmap entry for $stunnel_conf_file in $MOUNTMAPv4."
             accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
-            stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
-            stunnel_log_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.log"
+            # Configs created before the pid files moved to STUNNELPIDDIR have them under /etc.
+            stunnel_pid_file=$(sed -n 's/^pid = //p' $stunnel_conf_file)
+            stunnel_log_file="$STUNNEL_LOG_FILE_DIR/stunnel_$storageaccount_ip.log"
 
             if [ -f "$stunnel_pid_file" ]; then
                 pid=$(cat $stunnel_pid_file)
@@ -715,7 +732,7 @@ tls_nfsv4_files_share_mount()
         is_stunnel_running=
 
         # Check if stunnel_pid_file exist for storageaccount and stunnel process is running.
-        stunnel_pid_file="$STUNNELLOGDIR/stunnel_$storageaccount_ip.pid"
+        stunnel_pid_file=$(sed -n 's/^pid = //p' $stunnel_conf_file)
         if [ -f "$stunnel_pid_file" ]; then
             is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $stunnel_pid_file`)
         fi

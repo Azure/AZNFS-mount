@@ -96,7 +96,7 @@ failover_stunnel()
     local stunnel_log_dir=$(dirname $l_log)
     local new_conf="$stunnel_dir/stunnel_${new_ip}.conf"
     local new_log="$stunnel_log_dir/stunnel_${new_ip}.log"
-    local new_pid="$stunnel_log_dir/stunnel_${new_ip}.pid"
+    local new_pid="$STUNNELPIDDIR/stunnel_${new_ip}.pid"
 
     pecho "Stunnel failover for $l_host: $old_ip -> $new_ip (port $accept_port)"
 
@@ -281,22 +281,24 @@ cleanup_stunnel_files()
     local l_pid=$3
     local accept_port
 
-    # Kill stunnel process first.
-    pid=$(cat $l_pid)
+    # Kill stunnel process first, its pid file is gone if the system rebooted.
     accept_port=$(cat $l_conf | grep accept | cut -d ':' -f 2)
-    pecho "killing stunnel process with pid: $pid on port: $accept_port"
-    kill -9 $pid
-    if [ $? -ne 0 ]; then
-        eecho "Unable to kill stunnel process $pid!"
+    if [ -f "$l_pid" ]; then
+        pid=$(cat $l_pid)
+        pecho "killing stunnel process with pid: $pid on port: $accept_port"
+        kill -9 $pid
+        if [ $? -ne 0 ]; then
+            eecho "Unable to kill stunnel process $pid!"
+        fi
     fi
 
-    # Cleanup stunnel files
-    rm $l_log
+    # Cleanup stunnel files, log file doesn't exist if stunnel logs to syslog.
+    rm -f $l_log
     if [ $? -ne 0 ]; then
         eecho "[FATAL] Unable to delete stunnel log file $l_log!"
     fi
 
-    rm $l_pid
+    rm -f $l_pid
     if [ $? -ne 0 ]; then
         eecho "[FATAL] Unable to delete stunnel pid file $l_pid!"
     fi
@@ -655,14 +657,18 @@ process_nfsv4_mounts()
             if [ $checksumHash != $l_checksumhash ]; then
                 eecho "'${l_conf}' file has modified!"
                 eecho "It's not recommended to modify '${l_conf}' file created by aznfs mount helper!"
-                eecho "watchdog service will do cleanup, kill stunnel process with pid:$(cat $l_pid) and remove '${l_conf}'; '${l_log}'; '${l_pid}'!"
+                eecho "watchdog service will do cleanup, kill stunnel process with pid:$(cat $l_pid 2>/dev/null) and remove '${l_conf}'; '${l_log}'; '${l_pid}'!"
                 eecho "Please remount the shares from ${l_ip} using aznfs mount helper."
 
                 cleanup_mount $l_conf $l_log $l_pid $line
                 continue
             fi
 
-            is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`)
+            # The pid file is gone after a reboot, stunnel then needs a restart.
+            is_stunnel_running=
+            if [ -s "$l_pid" ]; then
+                is_stunnel_running=$($NETSTATCOMMAND -anp | grep stunnel | grep `cat $l_pid`)
+            fi
             if [ -z "$is_stunnel_running" ]; then
                 vecho "Watchdog: stunnel is not running! Restarting the stunnel"
 
@@ -680,7 +686,11 @@ process_nfsv4_mounts()
                         eecho "It's recommended to unmount all shares from $l_ip and then remount shares using aznfs mount helper!"
                     else
                         eecho "[FATAL] watchdog service is unable to start stunnel process for '${l_conf}'!"
-                        eecho "Please check the stunnel logs in $l_log for more details."
+                        if [ -f "$l_log" ]; then
+                            eecho "Please check the stunnel logs in $l_log for more details."
+                        else
+                            eecho "Please check the stunnel logs in syslog (journalctl -t stunnel) for more details."
+                        fi
                         eecho "It's recommended to unmount all shares from $l_ip and then remount shares using aznfs mount helper!"
                     fi
                 fi
@@ -738,6 +748,11 @@ vecho "Starting aznfswatchdog for NFSv4..."
 
 # Detect and log distro, bash and AZNFS-mount version
 log_version_info
+
+# stunnel restarted after a reboot needs the directory of its pid file.
+if ! (umask 022; mkdir -p "$STUNNELPIDDIR"); then
+    eecho "Not able to create ${STUNNELPIDDIR}!"
+fi
 
 if ! chattr -f +i $MOUNTMAPv4; then
     wecho "chattr does not work for ${MOUNTMAPv4}!"
