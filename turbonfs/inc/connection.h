@@ -4,6 +4,8 @@
 #include "aznfsc.h"
 #include "nfs_internal.h"
 
+#include <mutex>
+
 /**
  * This represents one connection to the NFS server.
  * For achieving higher throughput we can have more than one connections to the
@@ -26,6 +28,12 @@ private:
      * This is initialized when the connection is started.
      */
     struct nfs_context *nfs_context = nullptr;
+
+    /*
+     * Serializes AUTH_UNIX updates with PDU creation on this context.
+     * Recursive locking permits an inline callback to issue another RPC.
+     */
+    std::recursive_mutex credential_mutex_45;
 
     /*
      * Integral index of this connection in the rpc_transport's connection
@@ -55,6 +63,11 @@ public:
     struct nfs_context* get_nfs_context() const
     {
         return nfs_context;
+    }
+
+    std::recursive_mutex& get_credential_mutex()
+    {
+        return credential_mutex_45;
     }
 
     /*
