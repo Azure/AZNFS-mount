@@ -463,7 +463,7 @@ ensure_logrotate_config()
     #
     body="${kept}${paths}
 {
-    size 100M
+    size 20M
     rotate 7
     missingok
     notifempty

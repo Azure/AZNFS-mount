@@ -138,7 +138,7 @@ AZNFS is supported on following Linux distros:
   ```
   sudo semanage fcontext -a -t var_log_t '/data/aznfs-logs(/.*)?' && sudo restorecon -R /data/aznfs-logs
   ```
-- Log files are rotated via the generated `/etc/logrotate.d/aznfs` (100M size, 7 rotations). This file is updated on
+- Log files are rotated via the generated `/etc/logrotate.d/aznfs` (20M size, 7 rotations). This file is updated on
   aznfs upgrades, unless it has been edited locally, in which case the local edits are kept until `AZNFS_LOGDIR` is changed.
   After `AZNFS_LOGDIR` changes, the previous directory keeps being rotated while its logs are still open or were written
   in the last 7 days, since mounts made before the change keep logging there. When it is dropped, aznfs logs
