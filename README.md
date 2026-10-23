@@ -141,7 +141,9 @@ AZNFS is supported on following Linux distros:
 - Log files are rotated via the generated `/etc/logrotate.d/aznfs` (100M size, 7 rotations). This file is updated on
   aznfs upgrades, unless it has been edited locally, in which case the local edits are kept until `AZNFS_LOGDIR` is changed.
   After `AZNFS_LOGDIR` changes, the previous directory keeps being rotated while its logs are still open or were written
-  in the last 7 days, since mounts made before the change keep logging there.
+  in the last 7 days, since mounts made before the change keep logging there. When it is dropped, aznfs logs
+  `No longer rotating '<dir>' ...`. aznfs never deletes log files, remove the old ones from then on if not needed:
+  `sudo rm -f <dir>/aznfs.log* <dir>/turbo_*.log* <dir>/stunnel_*.log*`.
 - If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set or not
   usable, all the above log files go to `/var/log/aznfs` and are rotated if logrotate is installed. If `/var/log/aznfs`
   cannot be used either, they go to `/opt/microsoft/aznfs/data`, which is only rotated if logrotate is allowed there.

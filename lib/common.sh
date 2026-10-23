@@ -384,6 +384,7 @@ ensure_logrotate_config()
     local paths=
     local dirs=
     local kept=
+    local dropped=
     local body
     local sum
     local d
@@ -420,6 +421,8 @@ ensure_logrotate_config()
            [ -n "$(find -H "$d" -maxdepth 1 \( -name "${APPNAME}.log" -o -name 'turbo_*.log' -o -name 'stunnel_*.log' \) -mtime -7 -print -quit 2>/dev/null)" ]; then
             dirs="${dirs}"$'\n'"$d"
             kept="${kept}# Also rotating: ${d}"$'\n'
+        else
+            dropped="${dropped}${d}"$'\n'
         fi
     done < <(sed -n -e "s/^${LOGROTATE_MARKER}//p" -e 's/^# Also rotating: //p' "$LOGROTATE_CONF" 2>/dev/null)
 
@@ -449,6 +452,7 @@ ensure_logrotate_config()
     # Nothing logrotate is allowed to rotate, an empty or failing config would only break logrotate.service.
     if [ -z "$paths" ]; then
         rm -f "$LOGROTATE_CONF"
+        log_dropped_logdirs "$dropped"
         return
     fi
 
@@ -493,6 +497,20 @@ ensure_logrotate_config()
     fi
 
     vecho "Logs will be rotated as per ${LOGROTATE_CONF}."
+    log_dropped_logdirs "$dropped"
+}
+
+#
+# Logged once, when the config without these previous log dirs is written. aznfs
+# never deletes log files, the admin decides when the old ones can go.
+#
+log_dropped_logdirs()
+{
+    local d
+
+    while read -r d; do
+        [ -n "$d" ] && pecho "No longer rotating '${d}', no aznfs process logs there anymore. The aznfs logs there (${APPNAME}.log*, turbo_*.log*, stunnel_*.log*) can be removed."
+    done <<< "$1"
 }
 
 #
