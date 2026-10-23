@@ -445,5 +445,4 @@ fi
 while :; do
     sleep $MONITOR_INTERVAL_SECS
     process_nfsv3_mounts
-    rotate_logs_without_logrotate
 done

@@ -30,12 +30,6 @@ LEGACY_LOGS="${DEFAULT_LOGFILE}"$'\n'"${OPTDIRDATA}/turbo_*.log"
 # logrotate.service can't rotate here (ProtectSystem=full, PrivateTmp, PrivateDevices).
 LOGDIR_NO_ROTATE_RE='^/(etc|usr|boot|efi|dev|tmp|var/tmp)/'
 
-# Same policy as LOGROTATE_CONF, used by rotate_logs_without_logrotate().
-LOG_ROTATE_SIZE=$((100 * 1024 * 1024))
-LOG_ROTATE_KEEP=7
-LOG_ROTATE_CHECK_SECS=300
-NEXT_LOG_ROTATE_CHECK=0
-
 RANDBYTES="${OPTDIRDATA}/randbytes"
 INSTALLSCRIPT="${OPTDIR}/aznfs_install.sh"
 
@@ -352,15 +346,14 @@ init_logging()
     #
     # No syslog, f.e. minimal container images without logger or /dev/log.
     # OPTDIRDATA is the last resort, logs are kept there even if not rotatable.
-    # On AKS it is the host path the CSI driver mounts, /var/log is lost with the pod.
     #
     if [ -z "$AZNFS_LOGDIR" ] && { ! command -v logger &> /dev/null || [ ! -S /dev/log ]; }; then
         nosyslog=1
-        if [ "$AKS_USER" != "true" ] && usable_logdir "$FALLBACK_LOGDIR"; then
+        if usable_logdir "$FALLBACK_LOGDIR"; then
             AZNFS_LOGDIR="$FALLBACK_LOGDIR"
         elif (umask 022; touch "$DEFAULT_LOGFILE") 2>/dev/null; then
             AZNFS_LOGDIR="$OPTDIRDATA"
-            [ "$AKS_USER" != "true" ] && warning="${warning:+${warning}. }Not able to use ${FALLBACK_LOGDIR}, ${LOGDIR_ERROR}"
+            warning="${warning:+${warning}. }Not able to use ${FALLBACK_LOGDIR}, ${LOGDIR_ERROR}"
         else
             echo -e "${RED}[FATAL] Not able to create '${DEFAULT_LOGFILE}'!${NORMAL}" >&2
             exit 1
@@ -481,7 +474,7 @@ ensure_logrotate_config()
 
     if ! command -v logrotate &> /dev/null || [ ! -d "$(dirname "$LOGROTATE_CONF")" ]; then
         if [ -n "$AZNFS_LOGDIR" ]; then
-            vecho "logrotate not installed, the aznfs watchdogs rotate the logs in '${AZNFS_LOGDIR}' themselves."
+            wecho "logrotate not installed, logs in '${AZNFS_LOGDIR}' will not be rotated!"
         fi
         return
     fi
@@ -500,43 +493,6 @@ ensure_logrotate_config()
     fi
 
     vecho "Logs will be rotated as per ${LOGROTATE_CONF}."
-}
-
-#
-# Without logrotate (f.e. the AKS CSI driver image, which unpacks aznfs from a
-# tarball) the watchdogs rotate the logs in AZNFS_LOGDIR with the same policy as
-# LOGROTATE_CONF: copytruncate past LOG_ROTATE_SIZE, keep LOG_ROTATE_KEEP, compress
-# all but the newest rotated file when gzip is available.
-#
-rotate_logs_without_logrotate()
-{
-    (( SECONDS < NEXT_LOG_ROTATE_CHECK )) && return
-    NEXT_LOG_ROTATE_CHECK=$((SECONDS + LOG_ROTATE_CHECK_SECS))
-
-    [ -n "$AZNFS_LOGDIR" ] || return
-    command -v logrotate &> /dev/null && return
-
-    # Both watchdogs call this, only one may shift the rotated files at a time.
-    (
-        flock -n 9 || exit 0
-
-        local f i size
-        for f in "$AZNFS_LOGDIR/${APPNAME}.log" "$AZNFS_LOGDIR"/turbo_*.log "$AZNFS_LOGDIR"/stunnel_*.log; do
-            [ -f "$f" ] && [ ! -L "$f" ] || continue
-            size=$(stat -c %s "$f" 2>/dev/null) || continue
-            (( size > LOG_ROTATE_SIZE )) || continue
-
-            rm -f "$f.$LOG_ROTATE_KEEP" "$f.$LOG_ROTATE_KEEP.gz"
-            for (( i = LOG_ROTATE_KEEP - 1; i >= 1; i-- )); do
-                [ -e "$f.$i.gz" ] && mv -f "$f.$i.gz" "$f.$((i + 1)).gz"
-                [ -e "$f.$i" ] && mv -f "$f.$i" "$f.$((i + 1))"
-            done
-            [ -e "$f.2" ] && command -v gzip &> /dev/null && gzip -f "$f.2"
-
-            # Same lock as _log_write(), so no aznfs.log line is lost between copy and truncate.
-            ( flock -e 8; cp -p "$f" "$f.1" && : > "$f" ) 8<"$f"
-        done
-    ) 9>"${OPTDIRDATA}/.logrotate.lock"
 }
 
 #
