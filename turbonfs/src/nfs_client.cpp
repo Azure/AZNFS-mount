@@ -1243,14 +1243,13 @@ static void lookup_sync_callback(
 
 int nfs_client::lookup_sync(fuse_ino_t parent_ino,
                             const char* name,
-                            fuse_ino_t& child_ino)
+                            fuse_ino_t& child_ino,
+                            fuse_req_t req)
 {
     assert(name != nullptr);
 
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
-    const uint32_t fh_hash = parent_inode->get_crc();
-    struct nfs_context *nfs_context =
-        get_nfs_context(CONN_SCHED_FH_HASH, fh_hash);
+    struct nfs_context *nfs_context = nullptr;
     struct rpc_task *task = nullptr;
     struct sync_rpc_context *ctx = nullptr;
     struct rpc_pdu *pdu = nullptr;
@@ -1272,8 +1271,9 @@ try_again:
         }
 
         task = get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
-        task->init_lookup(nullptr /* fuse_req */, name, parent_ino);
+        task->init_lookup(req, name, parent_ino);
         task->rpc_api->pvt = &child_ino;
+        nfs_context = task->get_nfs_context();
 
         if (ctx) {
             delete ctx;
@@ -1285,8 +1285,8 @@ try_again:
 
         rpc_retry = false;
         task->get_stats().on_rpc_issue();
-        pdu = issue_rpc_with_service_credentials(
-            nfs_context, [&](struct rpc_context *locked_rpc) {
+        pdu = task->issue_rpc_with_credentials(
+            [&](struct rpc_context *locked_rpc) {
                 return rpc_nfs3_lookup_task(
                     locked_rpc, lookup_sync_callback, &args, ctx);
             });
@@ -1478,7 +1478,7 @@ bool nfs_client::silly_rename(
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
     // Inode of the file being silly renamed.
     int lookup_status = -1;
-    struct nfs_inode *inode = parent_inode->lookup(name, &lookup_status);
+    struct nfs_inode *inode = parent_inode->lookup(name, &lookup_status, req);
     /*
      * Is this silly rename called to silly rename an outgoing file in a
      * rename workflow as opposed to silly renaming a to-be-unlinked file.
@@ -1583,11 +1583,15 @@ void nfs_client::unlink(
     fuse_req_t req,
     fuse_ino_t parent_ino,
     const char* name,
-    bool for_silly_rename)
+    bool for_silly_rename,
+    const auth_unix_credential_snapshot *credentials)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_UNLINK);
 
     tsk->init_unlink(req, parent_ino, name, for_silly_rename);
+    if (credentials != nullptr) {
+        tsk->inherit_caller_credentials(*credentials);
+    }
     tsk->run_unlink();
 }
 
@@ -1598,7 +1602,7 @@ void nfs_client::rmdir(
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RMDIR);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
-    struct nfs_inode *inode = parent_inode->lookup(name);
+    struct nfs_inode *inode = parent_inode->lookup(name, nullptr, req);
 
     if (parent_inode->has_dircache()) {
         parent_inode->get_dircache()->dnlc_remove(name);
