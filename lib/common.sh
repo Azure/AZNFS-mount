@@ -393,11 +393,12 @@ ensure_logrotate_config()
         return
     fi
 
+    # The last resort OPTDIRDATA is used for logging even when logrotate can't rotate it.
     if [ -n "$AZNFS_LOGDIR" ]; then
-        if selinux_allows_logrotate "$AZNFS_LOGDIR"; then
+        if rotatable_logdir "$AZNFS_LOGDIR"; then
             dirs="$AZNFS_LOGDIR"
         else
-            wecho "SELinux does not allow logrotate in '${AZNFS_LOGDIR}', logs there will not be rotated!"
+            wecho "Logs in '${AZNFS_LOGDIR}' will not be rotated, ${LOGDIR_ERROR}!"
         fi
     fi
 
