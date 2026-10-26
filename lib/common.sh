@@ -380,11 +380,23 @@ init_logging()
 }
 
 #
+# Mount helpers and the watchdog may run this concurrently, hold a lock across
+# reading and replacing LOGROTATE_CONF so a stale run can't overwrite a newer one.
+#
+ensure_logrotate_config()
+{
+    (
+        flock -w 30 997 || vecho "Not able to lock ${LOGROTATE_CONF}, updating it anyway."
+        _ensure_logrotate_config
+    ) 997>>"${OPTDIRDATA}/.logrotate.lock"
+}
+
+#
 # Generate LOGROTATE_CONF for the NFSv4 log files in AZNFS_LOGDIR (if set). The
 # second line records the checksum of what we generated, so a newer release can
 # update the config, unless an admin has since edited it.
 #
-ensure_logrotate_config()
+_ensure_logrotate_config()
 {
     local marker="${LOGROTATE_MARKER}${AZNFS_LOGDIR}"
     local paths=
