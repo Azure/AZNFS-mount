@@ -114,16 +114,17 @@ AZNFS is supported on following Linux distros:
 	sudo mount -t aznfs -o vers=4.1,notls,clean <account-name>.file.core.windows.net:/<account-name>/<container-name> /mountpoint
 	```
 ### Logs:
-- By default all logs go to syslog:
+- By default the AZNFS logs go to syslog:
   - AZNFS watchdog and mount helper: `journalctl -t aznfs`
-  - Turbo NFS client (aznfsclient): `journalctl -t aznfsclient_<mountpoint>`, f.e. `journalctl -t aznfsclient_mnt_data` for `/mnt/data`
   - Stunnel (NFSv4 TLS mounts): `journalctl -t stunnel`
+- The Turbo NFS client (aznfsclient) keeps logging to `/opt/microsoft/aznfs/data/turbo_<mountpoint>.log`, which is
+  rotated with the policy below.
 - To log to files instead, set `AZNFS_LOGDIR` in `/opt/microsoft/aznfs/data/config` and restart the watchdog services:
   ```
   echo 'AZNFS_LOGDIR=/var/log/aznfs' | sudo tee -a /opt/microsoft/aznfs/data/config
   sudo systemctl restart aznfswatchdog aznfswatchdogv4
   ```
-  Logs then go to `aznfs.log`, `turbo_<mountpoint>.log` and `stunnel_<ip>.log` in that directory, which is created if
+  Logs then go to `aznfs.log` and `stunnel_<ip>.log` in that directory, which is created if
   missing. New mounts use it right away, existing mounts keep logging to the old location until remounted.
   NFSv4 TLS mounts to the same storage account share one stunnel, which keeps its log location until all of those
   shares are unmounted and the watchdog has cleaned it up, so unmount all of them before remounting.
@@ -143,14 +144,13 @@ AZNFS is supported on following Linux distros:
   After `AZNFS_LOGDIR` changes, the previous directory keeps being rotated while its logs are still open or were written
   in the last 7 days, since mounts made before the change keep logging there. When it is dropped, aznfs logs
   `No longer rotating '<dir>' ...`. aznfs does not delete log files there, remove the old ones from then on if not needed:
-  `sudo rm -f <dir>/aznfs.log* <dir>/turbo_*.log* <dir>/stunnel_*.log*`.
+  `sudo rm -f <dir>/aznfs.log* <dir>/stunnel_*.log*`.
 - Uninstalling aznfs deletes `/var/log/aznfs` along with `/opt/microsoft/aznfs`, logs in any other `AZNFS_LOGDIR` are kept.
 - If syslog is not available (no `logger` or `/dev/log`, f.e. in containers) and `AZNFS_LOGDIR` is not set or not
-  usable, all the above log files go to `/var/log/aznfs` and are rotated if logrotate is installed. If `/var/log/aznfs`
+  usable, the aznfs and stunnel log files go to `/var/log/aznfs` and are rotated if logrotate is installed. If `/var/log/aznfs`
   cannot be used either, they go to `/opt/microsoft/aznfs/data`, which is only rotated if logrotate is allowed there.
-- Turbo mounts made before upgrading to a version with syslog support keep logging to
-  `/opt/microsoft/aznfs/data/turbo_*.log` until remounted, and watchdogs started before the upgrade keep logging to
-  `/opt/microsoft/aznfs/data/aznfs.log` until restarted, these are rotated with the same policy. NFSv4 TLS mounts made
+- Watchdogs started before upgrading to a version with syslog support keep logging to
+  `/opt/microsoft/aznfs/data/aznfs.log` until restarted, this is rotated with the same policy. NFSv4 TLS mounts made
   before the upgrade keep logging to `/etc/stunnel/microsoft/aznfs/nfsv4_fileShare/logs` until unmounted.
 
 ## Implementation Details
