@@ -62,7 +62,10 @@ OPTIMIZE_GET_FREE_LOCAL_IP=true
 #
 ensure_mountmapv4notls_exist_nolock()
 {
-    ensure_mountmap_exist_nolock "$MOUNTMAPv4NOTLS" "$1"
+    # Append the crc32 (control/virtual file name) so the watchdog can poll for
+    # server-signalled account migration. Format: "host localip storageip crc32".
+    local l_crc32=$(get_aznfs_ctrl_filename "$nfs_host")
+    ensure_mountmap_exist_nolock "$MOUNTMAPv4NOTLS" "$1 $l_crc32"
 }
 
 #
@@ -549,7 +552,25 @@ tls_nfsv4_files_share_mount()
             current_timestamp=$(date +%s)
             mount_timeout=$(($current_timestamp + $MOUNT_TIMEOUT_IN_SECONDS))
 
-            out=$(sed "\#$stunnel_conf_file;#s#\(.*;\)[^;]*;\([0-9]*\)#\1waiting;${mount_timeout}#" $MOUNTMAPv4)
+            #
+            # Rebuild the entry deterministically instead of a positional sed.
+            # crc32 is now the trailing field, so the old "last two fields" sed
+            # would corrupt the line. Parse the existing entry (old 7-field,
+            # 8-field, or 9-field-with-crc32), then rewrite as the canonical
+            # 9-field form using the known hostname and computed crc32. This also
+            # upgrades any legacy entry to the current schema.
+            #
+            local ex_field_count=$(echo "$existing_mountmap_entry" | awk -F';' '{print NF}')
+            if [ "$ex_field_count" -ge 8 ]; then
+                IFS=';' read _e_host e_ip e_conf e_log e_pid e_cksum _e_status _e_timeout _e_crc32 <<< "$existing_mountmap_entry"
+            else
+                # Old 7-field format: no hostname.
+                IFS=';' read e_ip e_conf e_log e_pid e_cksum _e_status _e_timeout <<< "$existing_mountmap_entry"
+            fi
+            local e_crc32=$(get_aznfs_ctrl_filename "$nfs_host")
+            local new_mountmap_entry="${nfs_host};${e_ip};${e_conf};${e_log};${e_pid};${e_cksum};waiting;${mount_timeout};${e_crc32}"
+
+            out=$(sed "\#${stunnel_conf_file};#c\\${new_mountmap_entry}" $MOUNTMAPv4)
             ret=$?
             if [ $ret -eq 0 ]; then
                 #
@@ -696,7 +717,7 @@ tls_nfsv4_files_share_mount()
         # Mounted: mount command is executed successfully. If the mount is unmounted, watchdog can remove this entry.
         # Failed: mount command failed. Watchdog can remove this entry.
 
-        local mountmap_entry="$nfs_host;$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout"
+        local mountmap_entry="$nfs_host;$storageaccount_ip;$stunnel_conf_file;$stunnel_log_file;$stunnel_pid_file;$checksumHash;waiting;$mount_timeout;$(get_aznfs_ctrl_filename "$nfs_host")"
         chattr -f -i $MOUNTMAPv4
         echo "$mountmap_entry" >> $MOUNTMAPv4
         if [ $? -ne 0 ]; then
@@ -909,7 +930,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
 
         if [ -f "$stunnel_conf_file" ]; then
             accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
-            findmnt=$(findmnt | grep 'nfs4\|$LOCALHOST' 2>&1)
+            findmnt=$(findmnt | grep "nfs4\|$LOCALHOST" 2>&1)
 
             if echo "$findmnt" | grep "$accept_port" >/dev/null; then
                 eecho "There is a share mounted on $storageaccount_ip using TLS. Cannot unmount the share without TLS."
@@ -1016,7 +1037,7 @@ if [[ "$MOUNT_OPTIONS" == *"notls"* ]]; then
     if [ $mount_status -ne 0 ]; then
         eecho "Mount failed!"
         # Clean up the mountmap entry and DNAT rule on failure.
-        ensure_mountmap_not_exist "$MOUNTMAPv4NOTLS" "$nfs_host $LOCAL_IP $storageaccount_ip"
+        ensure_mountmap_not_exist "$MOUNTMAPv4NOTLS" "$nfs_host $LOCAL_IP $storageaccount_ip $(get_aznfs_ctrl_filename "$nfs_host")"
         exit 1
     else
         vecho "Mount completed: ${LOCAL_IP}:${nfs_dir} on $mount_point (DNAT to $storageaccount_ip)"
