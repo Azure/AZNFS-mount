@@ -197,7 +197,7 @@ parse_user_config()
     fi
 
     # Read the value of AUTO_UPDATE_AZNFS from the configuration file.
-    AUTO_UPDATE_AZNFS=$(egrep -o '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]*' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
+    AUTO_UPDATE_AZNFS=$(grep -Eo '^AUTO_UPDATE_AZNFS[[:space:]]*=[[:space:]]*[^[:space:]]+' "$CONFIG_FILE" | tr -d '[:blank:]' | cut -d '=' -f2)
     if [ -z "$AUTO_UPDATE_AZNFS" ]; then
         eecho "AUTO_UPDATE_AZNFS is missing in '$CONFIG_FILE'."
         exit 1
@@ -232,6 +232,9 @@ create_flag_file()
         eecho "AZNFS auto-update can only be invoked by aznfswatchdog!"
         exit 1
     fi
+
+    # Never leave a stale flag behind (e.g. failed update), it would make the next manual upgrade skip the watchdog restart.
+    trap 'rm -f "$FLAG_FILE"' EXIT
 }
 
 ######################
@@ -338,8 +341,9 @@ if [ $package_updated -eq 1 ]; then
     secho "Successfully updated AZNFS version '$current_version' to '$available_upgrade_version'."
     pecho "Restarting aznfs watchdog service to apply changes..."
     systemctl daemon-reload
-    systemctl restart aznfswatchdog
     systemctl restart aznfswatchdogv4
+    # This script runs inside aznfswatchdog, so restarting it also terminates this script. Keep it last.
+    systemctl restart aznfswatchdog
 else
     pecho "aznfs is already up-to-date."
 fi
