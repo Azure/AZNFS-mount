@@ -754,13 +754,26 @@ if ! (umask 022; mkdir -p "$STUNNELPIDDIR"); then
     eecho "Not able to create ${STUNNELPIDDIR}!"
 fi
 
+# Need to acquire lock on mountmap while validating chattr functionality
+exec {fd_check}<$MOUNTMAPv4
+flock -e $fd_check
+
 if ! chattr -f +i $MOUNTMAPv4; then
     wecho "chattr does not work for ${MOUNTMAPv4}!"
 fi
 
+flock -u $fd_check
+exec {fd_check}<&-
+
+exec {fd_check}<$MOUNTMAPv4NOTLS
+flock -e $fd_check
+
 if ! chattr -f +i $MOUNTMAPv4NOTLS; then
     wecho "chattr does not work for ${MOUNTMAPv4NOTLS}!"
 fi
+
+flock -u $fd_check
+exec {fd_check}<&-
 
 while :; do
     sleep $MONITOR_INTERVAL_SECS
