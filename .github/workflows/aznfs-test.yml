@@ -45,6 +45,7 @@ jobs:
             "/lib/common.sh"
             "/scripts/aznfs_install.sh"
             "/testing/testscript.sh"
+            "/testing/test_mountmap_lock.sh"
           )
 
           # To track whether any file has errors.
@@ -84,6 +85,11 @@ jobs:
         uses: ./.github/actions/aznfs-prep-machine
         with:
           RUNS_ON: '${{ matrix.os }}'
+
+      - name: Run Mountmap Lock Regression Tests
+        shell: bash
+        run: |
+          sudo bash $GITHUB_WORKSPACE/testing/test_mountmap_lock.sh
 
       - name: Run Test Script
         shell: bash
