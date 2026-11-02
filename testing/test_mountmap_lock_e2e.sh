@@ -19,10 +19,11 @@
 # this one checks the locking holds up with real mounts.
 #
 # Must run as root. Like testscript.sh, when RELEASE_NUMBER is set it installs
-# that AZNFS release first and removes it again at the end. Otherwise it tests
-# the AZNFS version already installed, and leaves it installed. Either way it
-# only creates mount points under a new directory in /mnt and restarts
-# aznfswatchdogv4, and leaves no mount behind.
+# that AZNFS release first and removes it again at the end, it refuses to run
+# then if AZNFS is already installed. Otherwise it tests the AZNFS version
+# already installed, and leaves it installed. Either way it only creates mount
+# points under a new directory in /mnt and restarts aznfswatchdogv4, and leaves
+# no mount behind.
 #
 # Usage: sudo NFSV4_STORAGE_ACCOUNTS="<account> [...]" ./testing/test_mountmap_lock_e2e.sh
 #
@@ -42,7 +43,15 @@ WORKERS=${AZNFS_LOCK_E2E_WORKERS:-10}
 OPTIONS=${AZNFS_LOCK_E2E_OPTIONS:-vers=4,minorversion=1,sec=sys,nconnect=4}
 MOUNTMAPv3=/opt/microsoft/aznfs/data/mountmap
 MOUNTMAPv4=/opt/microsoft/aznfs/data/mountmapv4
+MOUNTMAPv4NOTLS=/opt/microsoft/aznfs/data/mountmapv4notls
 WATCHDOG=aznfswatchdogv4
+
+# The mountmap the test's mounts are recorded in, as nfsv4mountscript.sh picks it.
+if [[ "$OPTIONS" == *notls* ]]; then
+    MOUNTMAP=$MOUNTMAPv4NOTLS
+else
+    MOUNTMAP=$MOUNTMAPv4
+fi
 
 # Mount helper output when an update of a mountmap was refused.
 MOUNTMAP_ERRORS='Operation not permitted|inconsistent state|failed to update .*mountmap|failed to add to .*mountmap|Failed to touch'
@@ -85,10 +94,19 @@ fi
 
 INSTALLED_BY_TEST=
 
-# Same as testscript.sh.
+#
+# Same as testscript.sh. Refuses to install over an AZNFS that is already
+# there, the test removes what it installed at the end and must not remove an
+# installation it did not make.
+#
 install_release()
 {
     local release_url="https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_install.sh"
+
+    if [ -e /sbin/mount.aznfs ]; then
+        echo "AZNFS is already installed. Remove it, or unset RELEASE_NUMBER to test the installed version."
+        exit 1
+    fi
 
     if ! command -v wget >/dev/null 2>&1; then
         echo "'wget' is not installed, cannot install AZNFS ${RELEASE_NUMBER}."
@@ -97,7 +115,9 @@ install_release()
 
     echo "Installing AZNFS ${RELEASE_NUMBER} from $release_url"
     export AZNFS_NONINTERACTIVE_INSTALL=1
-    if ! wget -O - -q "$release_url" | bash; then
+
+    # pipefail, else a failed download runs an empty script and succeeds.
+    if ! (set -o pipefail; wget -O - -q "$release_url" | bash); then
         echo "[ERROR] Not able to install AZNFS ${RELEASE_NUMBER}."
         exit 1
     fi
@@ -111,15 +131,16 @@ has_entries()
 
 #
 # Like testscript.sh. Package removal refuses to proceed while a mountmap has
-# entries, so first give the watchdog the time to remove the ones for the
-# share this test unmounted.
+# entries, and stops the watchdog that removes them along with the DNAT rules
+# of non-TLS mounts, so first give the watchdog the time to remove the ones for
+# the share this test unmounted.
 #
 remove_release()
 {
     local distro_id i rc
 
     for ((i = 0; i < 60; i++)); do
-        has_entries "$MOUNTMAPv4" || has_entries "$MOUNTMAPv3" || break
+        has_entries "$MOUNTMAPv4" || has_entries "$MOUNTMAPv4NOTLS" || has_entries "$MOUNTMAPv3" || break
         sleep 2
     done
 
@@ -371,11 +392,11 @@ else
     fail "run not representative: $ok mounts succeeded, $((restarts + stop_starts)) restarts, $start_failures failed watchdog start(s)"
 fi
 
-if mountpoint -q "$ANCHOR" && grep -q . "$MOUNTMAPv4" &&
-   [[ "$(lsattr -d "$MOUNTMAPv4" 2>/dev/null | awk '{print $1}')" == *i* ]]; then
-    pass "mount kept up during the run is still mounted, $MOUNTMAPv4 is not empty and is immutable"
+if mountpoint -q "$ANCHOR" && grep -q . "$MOUNTMAP" &&
+   [[ "$(lsattr -d "$MOUNTMAP" 2>/dev/null | awk '{print $1}')" == *i* ]]; then
+    pass "mount kept up during the run is still mounted, $MOUNTMAP is not empty and is immutable"
 else
-    fail "mount kept up during the run, or $MOUNTMAPv4, not in the expected state"
+    fail "mount kept up during the run, or $MOUNTMAP, not in the expected state"
 fi
 
 echo
