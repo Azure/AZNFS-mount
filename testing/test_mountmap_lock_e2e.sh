@@ -5,7 +5,7 @@
 # --------------------------------------------------------------------------------------------
 #
 # End-to-end test for the NFSv4 watchdog mountmap locking, with REAL Azure Files
-# NFSv4 mounts made through the installed AZNFS package.
+# NFSv4 mounts made through an installed AZNFS package.
 #
 # Workers mount and unmount the share in parallel, each on its own mount point,
 # while aznfswatchdogv4 is restarted, or stopped and started again, every few
@@ -18,13 +18,16 @@
 # every run. testing/test_mountmap_lock.sh is the deterministic regression test,
 # this one checks the locking holds up with real mounts.
 #
-# Must run as root on a machine with AZNFS installed, it tests whatever version
-# is installed. It only creates mount points under a new directory in /mnt and
-# restarts aznfswatchdogv4, it does not change the installed package. The
-# watchdog is left running when the test ends.
+# Must run as root. Like testscript.sh, when RELEASE_NUMBER is set it installs
+# that AZNFS release first and removes it again at the end. Otherwise it tests
+# the AZNFS version already installed, and leaves it installed. Either way it
+# only creates mount points under a new directory in /mnt and restarts
+# aznfswatchdogv4, and leaves no mount behind.
 #
 # Usage: sudo NFSV4_STORAGE_ACCOUNTS="<account> [...]" ./testing/test_mountmap_lock_e2e.sh
 #
+# RELEASE_NUMBER             AZNFS release to install for the test and remove
+#                            afterwards.
 # NFSV4_STORAGE_ACCOUNTS     Space-separated Azure Files storage accounts with an
 #                            NFS file share named githubtest. The first one is
 #                            used.
@@ -37,6 +40,7 @@
 DURATION=${AZNFS_LOCK_E2E_SECS:-120}
 WORKERS=${AZNFS_LOCK_E2E_WORKERS:-10}
 OPTIONS=${AZNFS_LOCK_E2E_OPTIONS:-vers=4,minorversion=1,sec=sys,nconnect=4}
+MOUNTMAPv3=/opt/microsoft/aznfs/data/mountmap
 MOUNTMAPv4=/opt/microsoft/aznfs/data/mountmapv4
 WATCHDOG=aznfswatchdogv4
 
@@ -61,11 +65,6 @@ for cmd in mount umount mountpoint systemctl timeout lsattr; do
     fi
 done
 
-if [ ! -x /sbin/mount.aznfs ] || ! systemctl cat $WATCHDOG.service >/dev/null 2>&1; then
-    echo "AZNFS is not installed, cannot run the test."
-    exit 1
-fi
-
 for var in DURATION WORKERS; do
     if ! [[ "${!var}" =~ ^[1-9][0-9]*$ ]]; then
         echo "Invalid $var '${!var}', must be a positive number."
@@ -83,6 +82,72 @@ else
     fi
     SHARE="${account}.file.core.windows.net:/${account}/githubtest"
 fi
+
+INSTALLED_BY_TEST=
+
+# Same as testscript.sh.
+install_release()
+{
+    local release_url="https://github.com/Azure/AZNFS-mount/releases/download/${RELEASE_NUMBER}/aznfs_install.sh"
+
+    if ! command -v wget >/dev/null 2>&1; then
+        echo "'wget' is not installed, cannot install AZNFS ${RELEASE_NUMBER}."
+        exit 1
+    fi
+
+    echo "Installing AZNFS ${RELEASE_NUMBER} from $release_url"
+    export AZNFS_NONINTERACTIVE_INSTALL=1
+    if ! wget -O - -q "$release_url" | bash; then
+        echo "[ERROR] Not able to install AZNFS ${RELEASE_NUMBER}."
+        exit 1
+    fi
+    INSTALLED_BY_TEST=1
+}
+
+has_entries()
+{
+    [ -f "$1" ] && grep -q '^[^[:space:]]' "$1"
+}
+
+#
+# Like testscript.sh. Package removal refuses to proceed while a mountmap has
+# entries, so first give the watchdog the time to remove the ones for the
+# share this test unmounted.
+#
+remove_release()
+{
+    local distro_id i rc
+
+    for ((i = 0; i < 60; i++)); do
+        has_entries "$MOUNTMAPv4" || has_entries "$MOUNTMAPv3" || break
+        sleep 2
+    done
+
+    if [ -f /etc/centos-release ]; then
+        distro_id="centos"
+    else
+        distro_id=$(sed -n 's/^ID=//p' /etc/os-release 2>/dev/null | tr -d '"' | tr '[:upper:]' '[:lower:]')
+    fi
+
+    case "$distro_id" in
+        ubuntu|debian)
+            apt-get purge -y aznfs ;;
+        centos|rocky|rhel|almalinux|ol|azurelinux|mariner)
+            yum remove -y aznfs ;;
+        sles|suse|opensuse*)
+            zypper remove -y aznfs_sles ;;
+        *)
+            echo "[ERROR] Unknown Linux distribution '$distro_id', not able to remove AZNFS."
+            return 1 ;;
+    esac
+    rc=$?
+
+    if [ $rc -ne 0 ]; then
+        echo "[ERROR] Not able to remove AZNFS ${RELEASE_NUMBER}, exit code $rc."
+        return 1
+    fi
+    echo "Removed AZNFS ${RELEASE_NUMBER}."
+}
 
 #
 # A new directory for every run, so the test never mounts over, or unmounts,
@@ -127,6 +192,25 @@ start_watchdog()
     systemctl start $WATCHDOG
 }
 
+#
+# Unmounts $1 until nothing is mounted on it any more, retrying for a while as
+# a share can still be busy right after it was mounted. Fails, with the last
+# umount error in UMOUNT_ERROR, if something is still mounted there.
+#
+unmount()
+{
+    local mp=$1 i
+
+    UMOUNT_ERROR=
+    for ((i = 0; i < 10; i++)); do
+        mountpoint -q "$mp" || return 0
+        UMOUNT_ERROR=$(umount "$mp" 2>&1) || sleep 1
+    done
+    ! mountpoint -q "$mp"
+}
+
+CLEANUP_FAILED=
+
 cleanup()
 {
     local mp
@@ -136,7 +220,10 @@ cleanup()
 
     for mp in "$MPROOT"/worker*; do
         [ -d "$mp" ] || continue
-        mountpoint -q "$mp" && umount "$mp"
+        if ! unmount "$mp"; then
+            echo "[ERROR] Not able to unmount $mp: $UMOUNT_ERROR"
+            CLEANUP_FAILED=1
+        fi
     done
 
     #
@@ -147,21 +234,40 @@ cleanup()
     #
     if mountpoint -q "$ANCHOR"; then
         systemctl stop $WATCHDOG
-        umount "$ANCHOR"
+        if ! unmount "$ANCHOR"; then
+            echo "[ERROR] Not able to unmount $ANCHOR: $UMOUNT_ERROR"
+            CLEANUP_FAILED=1
+        fi
     fi
-    start_watchdog
+    systemctl cat $WATCHDOG.service >/dev/null 2>&1 && start_watchdog
 
     for mp in "$MPROOT"/worker* "$ANCHOR"; do
         mountpoint -q "$mp" 2>/dev/null || rmdir "$mp" 2>/dev/null
     done
     rm -rf "$RESULTS" "$STOP"
     rmdir "$MPROOT" 2>/dev/null
+
+    if [ -n "$INSTALLED_BY_TEST" ] && ! remove_release; then
+        CLEANUP_FAILED=1
+    fi
+
+    # A test that left the machine in a bad state must not pass.
+    [ -n "$CLEANUP_FAILED" ] && exit 1
 }
 trap cleanup EXIT
 
+[ -n "$RELEASE_NUMBER" ] && install_release
+
+if [ ! -x /sbin/mount.aznfs ] || ! systemctl cat $WATCHDOG.service >/dev/null 2>&1; then
+    echo "AZNFS is not installed, cannot run the test."
+    exit 1
+fi
+
 #
 # Mounts and unmounts the share on its own mount point until $STOP appears or
-# the time is up, recording "<rc> <mount helper output>" for every mount.
+# the time is up, recording "<rc> <mount helper output>" for every mount. A
+# mount point that cannot be unmounted is recorded in umount<id> and ends the
+# worker, mounting on it again would stack mounts.
 #
 worker()
 {
@@ -172,7 +278,11 @@ worker()
         out=$(timeout -s KILL $MOUNT_TIMEOUT mount -t aznfs "$SHARE" "$mp" -o "$OPTIONS" 2>&1)
         rc=$?
         echo "$rc $(echo "$out" | sed 's/\x1b\[[0-9;]*m//g' | tr '\n' ' ')" >> "$RESULTS/worker$id"
-        mountpoint -q "$mp" && umount "$mp"
+        if ! unmount "$mp"; then
+            echo "$mp: $UMOUNT_ERROR" | tr '\n' ' ' >> "$RESULTS/umount$id"
+            echo >> "$RESULTS/umount$id"
+            break
+        fi
         sleep "0.$((RANDOM % 5))"
     done
 }
@@ -217,7 +327,9 @@ wait $WORKER_PIDS
 WORKER_PIDS=
 
 cat "$RESULTS"/worker* > "$RESULTS/all" 2>/dev/null
+cat "$RESULTS"/umount* > "$RESULTS/umount" 2>/dev/null
 total=$(grep -c . "$RESULTS/all")
+umount_failures=$(grep -c . "$RESULTS/umount")
 mountmap_errors=$(grep -cE "$MOUNTMAP_ERRORS" "$RESULTS/all")
 hung=$(grep -c '^137 ' "$RESULTS/all")
 refused=$(grep -v '^0 ' "$RESULTS/all" | grep -vE "$MOUNTMAP_ERRORS" | grep -c "$WATCHDOG_DOWN")
@@ -240,6 +352,13 @@ if [ $hung -eq 0 ] && [ $other -eq 0 ]; then
 else
     fail "$hung mount(s) hung, $other failed for another reason"
     grep -v '^0 ' "$RESULTS/all" | grep -vE "$MOUNTMAP_ERRORS|$WATCHDOG_DOWN" | head -5 | cut -c1-300 | sed 's/^/    /'
+fi
+
+if [ $umount_failures -eq 0 ]; then
+    pass "every mount was unmounted again"
+else
+    fail "$umount_failures worker(s) stopped early, not able to unmount their mount point"
+    head -5 "$RESULTS/umount" | cut -c1-300 | sed 's/^/    /'
 fi
 
 #

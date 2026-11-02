@@ -105,4 +105,4 @@ jobs:
       - name: Run Mountmap Lock End-to-End Tests
         shell: bash
         run: |
-          sudo NFSV4_STORAGE_ACCOUNTS="$NFSV4_STORAGE_ACCOUNTS" bash $GITHUB_WORKSPACE/testing/test_mountmap_lock_e2e.sh
+          sudo RELEASE_NUMBER="$RELEASE_NUMBER" NFSV4_STORAGE_ACCOUNTS="$NFSV4_STORAGE_ACCOUNTS" bash $GITHUB_WORKSPACE/testing/test_mountmap_lock_e2e.sh
