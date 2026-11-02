@@ -278,9 +278,16 @@ void nfs_client::periodic_updater()
      *       commit completes, else we will account for write cache as read.
      */
     const uint64_t cache = bytes_chunk_cache::bytes_allocated_g;
-    const uint64_t wcache = bytes_chunk_cache::bytes_dirty_g +
-                            bytes_chunk_cache::bytes_commit_pending_g;
-    const uint64_t rcache = (uint64_t) std::max((int64_t)(cache - wcache), 0L);
+    const uint64_t sampled_wcache = bytes_chunk_cache::bytes_dirty_g +
+                                    bytes_chunk_cache::bytes_commit_pending_g;
+
+    /*
+     * These counters are independent atomics, so their samples do not form a
+     * coherent snapshot. Clamp writer usage to the sampled total before
+     * deriving reader usage.
+     */
+    const uint64_t wcache = std::min(sampled_wcache, cache);
+    const uint64_t rcache = cache - wcache;
 
     /*
      * Read cache usage as percent of max_cache.
@@ -309,7 +316,7 @@ void nfs_client::periodic_updater()
     const double pct_cache = (cache * 100.0) / max_cache;
 
     assert(pct_cache <= 100.0);
-    assert((pct_rcache + pct_wcache) <= pct_cache);
+    assert((rcache + wcache) == cache);
 
     double rscale = 1.0;
     double wscale = 1.0;
@@ -1150,6 +1157,12 @@ struct nfs_context* nfs_client::get_nfs_context(conn_sched_t csched,
     return transport.get_nfs_context(csched, fh_hash);
 }
 
+std::recursive_mutex& nfs_client::get_credential_mutex(
+    const struct nfs_context *nfs) const
+{
+    return transport.get_credential_mutex(nfs);
+}
+
 void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_LOOKUP);
@@ -1230,14 +1243,13 @@ static void lookup_sync_callback(
 
 int nfs_client::lookup_sync(fuse_ino_t parent_ino,
                             const char* name,
-                            fuse_ino_t& child_ino)
+                            fuse_ino_t& child_ino,
+                            fuse_req_t req)
 {
     assert(name != nullptr);
 
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
-    const uint32_t fh_hash = parent_inode->get_crc();
-    struct nfs_context *nfs_context =
-        get_nfs_context(CONN_SCHED_FH_HASH, fh_hash);
+    struct nfs_context *nfs_context = nullptr;
     struct rpc_task *task = nullptr;
     struct sync_rpc_context *ctx = nullptr;
     struct rpc_pdu *pdu = nullptr;
@@ -1259,8 +1271,9 @@ try_again:
         }
 
         task = get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
-        task->init_lookup(nullptr /* fuse_req */, name, parent_ino);
+        task->init_lookup(req, name, parent_ino);
         task->rpc_api->pvt = &child_ino;
+        nfs_context = task->get_nfs_context();
 
         if (ctx) {
             delete ctx;
@@ -1272,8 +1285,12 @@ try_again:
 
         rpc_retry = false;
         task->get_stats().on_rpc_issue();
-        if ((pdu = rpc_nfs3_lookup_task(rpc, lookup_sync_callback,
-                                        &args, ctx)) == NULL) {
+        pdu = task->issue_rpc_with_credentials(
+            [&](struct rpc_context *locked_rpc) {
+                return rpc_nfs3_lookup_task(
+                    locked_rpc, lookup_sync_callback, &args, ctx);
+            });
+        if (pdu == NULL) {
             task->get_stats().on_rpc_cancel();
             /*
              * This call fails due to internal issues like OOM etc
@@ -1461,7 +1478,7 @@ bool nfs_client::silly_rename(
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
     // Inode of the file being silly renamed.
     int lookup_status = -1;
-    struct nfs_inode *inode = parent_inode->lookup(name, &lookup_status);
+    struct nfs_inode *inode = parent_inode->lookup(name, &lookup_status, req);
     /*
      * Is this silly rename called to silly rename an outgoing file in a
      * rename workflow as opposed to silly renaming a to-be-unlinked file.
@@ -1566,11 +1583,15 @@ void nfs_client::unlink(
     fuse_req_t req,
     fuse_ino_t parent_ino,
     const char* name,
-    bool for_silly_rename)
+    bool for_silly_rename,
+    const auth_unix_credential_snapshot *credentials)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_UNLINK);
 
     tsk->init_unlink(req, parent_ino, name, for_silly_rename);
+    if (credentials != nullptr) {
+        tsk->inherit_caller_credentials(*credentials);
+    }
     tsk->run_unlink();
 }
 
@@ -1581,7 +1602,7 @@ void nfs_client::rmdir(
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RMDIR);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
-    struct nfs_inode *inode = parent_inode->lookup(name);
+    struct nfs_inode *inode = parent_inode->lookup(name, nullptr, req);
 
     if (parent_inode->has_dircache()) {
         parent_inode->get_dircache()->dnlc_remove(name);
@@ -1793,7 +1814,7 @@ void nfs_client::read(
      * to the server even while application read causes us to block.
      */
     [[maybe_unused]] const int num_ra =
-        inode->get_rastate()->issue_readaheads();
+        inode->get_rastate()->issue_readaheads(*tsk);
 
     AZLogDebug("[{}] {} readaheads issued for client read offset: {} size: {}",
                ino, num_ra, off, size);
@@ -1825,6 +1846,7 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
         get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
     commit_task->init_flush(nullptr /* fuse_req */,
                             rpc_api->flush_task.get_ino());
+    commit_task->inherit_caller_credentials(*rpc_api);
     commit_task->rpc_api->pvt = rpc_api->pvt;
     rpc_api->pvt = nullptr;
 
@@ -1854,6 +1876,7 @@ void nfs_client::jukebox_write(struct api_task_info *rpc_api)
     struct rpc_task *write_task =
         get_rpc_task_helper()->alloc_rpc_task(FUSE_WRITE);
     write_task->init_write_be(rpc_api->write_task.get_ino());
+    write_task->inherit_caller_credentials(*rpc_api);
 
     // Any new task should start fresh as a parent task.
     assert(write_task->rpc_api->parent_task == nullptr);
@@ -1892,7 +1915,8 @@ void nfs_client::jukebox_write(struct api_task_info *rpc_api)
         // At least this child task has not completed.
         assert(rpc_api->parent_task->num_ongoing_backend_writes > 0);
 
-        write_task->rpc_api->parent_task = rpc_api->parent_task;
+        write_task->set_parent_task(rpc_api->parent_task);
+        write_task->inherit_caller_credentials(*rpc_api);
     }
 
     write_task->issue_write_rpc();
@@ -1925,7 +1949,7 @@ void nfs_client::jukebox_read(struct api_task_info *rpc_api)
     // At least this child task has not completed.
     assert(rpc_api->parent_task->num_ongoing_backend_reads > 0);
 
-    child_tsk->rpc_api->parent_task = rpc_api->parent_task;
+    child_tsk->set_parent_task(rpc_api->parent_task);
 
     [[maybe_unused]]  const struct rpc_task *const parent_task =
         child_tsk->rpc_api->parent_task;
@@ -2351,8 +2375,12 @@ try_again:
         if (task) {
             task->get_stats().on_rpc_issue();
         }
-        if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_sync_callback,
-                                         &args, ctx)) == NULL) {
+        pdu = issue_rpc_with_service_credentials(
+            nfs_context, [&](struct rpc_context *locked_rpc) {
+                return rpc_nfs3_getattr_task(
+                    locked_rpc, getattr_sync_callback, &args, ctx);
+            });
+        if (pdu == NULL) {
             if (task) {
                 task->get_stats().on_rpc_cancel();
             }

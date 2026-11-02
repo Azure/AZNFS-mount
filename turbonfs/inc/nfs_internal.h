@@ -1,7 +1,36 @@
 #ifndef __NFS_INTERNAL_H__
 #define __NFS_INTERNAL_H__
 
+#include <array>
+
 #include "aznfsc.h"
+
+struct auth_unix_credential_snapshot
+{
+    static constexpr uint32_t MAX_AUXILIARY_GIDS = 16;
+
+    bool valid = false;
+    uid_t uid = 0;
+    gid_t gid = 0;
+    uint32_t auxiliary_gid_count = 0;
+    std::array<uint32_t, MAX_AUXILIARY_GIDS> auxiliary_gids{};
+
+    void clear()
+    {
+        valid = false;
+        uid = 0;
+        gid = 0;
+        auxiliary_gid_count = 0;
+        auxiliary_gids.fill(0);
+    }
+
+    bool operator==(const auth_unix_credential_snapshot& other) const
+    {
+        return valid == other.valid && uid == other.uid && gid == other.gid &&
+            auxiliary_gid_count == other.auxiliary_gid_count &&
+            auxiliary_gids == other.auxiliary_gids;
+    }
+};
 
 struct mount_options
 {

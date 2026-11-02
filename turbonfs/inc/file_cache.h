@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "aznfsc.h"
+#include "nfs_internal.h"
 #include "rpc_stats.h"
 #include "fcsm.h"
 
@@ -383,7 +384,20 @@ struct membuf
     }
 
     void set_flushing();
-    void clear_flushing();
+    void clear_flushing(bool write_failed = false);
+
+    void set_write_credentials(
+        const auth_unix_credential_snapshot& credentials)
+    {
+        assert(is_locked());
+        write_credentials = credentials;
+    }
+
+    const auth_unix_credential_snapshot& get_write_credentials() const
+    {
+        assert(is_locked());
+        return write_credentials;
+    }
 
     bool is_commit_pending() const
     {
@@ -539,6 +553,8 @@ private:
      *    the reader.
      */
     std::mutex mb_lock_44;
+
+    auth_unix_credential_snapshot write_credentials;
 
     /*
      * Flag bitmap for correctly defining the state of this membuf.
