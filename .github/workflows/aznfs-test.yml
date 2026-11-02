@@ -9,10 +9,14 @@ on:
       storageAccounts:
         description: 'Space-separated Storage Accounts (must have a container named githubtest)'
         required: true
+      nfsv4StorageAccounts:
+        description: 'Space-separated Azure Files Storage Accounts for NFSv4 (must have an NFS file share named githubtest)'
+        required: true
 
 env:
   RELEASE_NUMBER: ${{ github.event.inputs.versionName }}
   STORAGE_ACCOUNTS: ${{ github.event.inputs.storageAccounts }}
+  NFSV4_STORAGE_ACCOUNTS: ${{ github.event.inputs.nfsv4StorageAccounts }}
 
 jobs:
   run_shellcheck:
@@ -45,6 +49,8 @@ jobs:
             "/lib/common.sh"
             "/scripts/aznfs_install.sh"
             "/testing/testscript.sh"
+            "/testing/test_mountmap_lock.sh"
+            "/testing/test_mountmap_lock_e2e.sh"
           )
 
           # To track whether any file has errors.
@@ -85,8 +91,18 @@ jobs:
         with:
           RUNS_ON: '${{ matrix.os }}'
 
+      - name: Run Mountmap Lock Regression Tests
+        shell: bash
+        run: |
+          sudo bash $GITHUB_WORKSPACE/testing/test_mountmap_lock.sh
+
       - name: Run Test Script
         shell: bash
         run: |
           chmod +x $GITHUB_WORKSPACE/testing/testscript.sh
           $GITHUB_WORKSPACE/testing/testscript.sh
+
+      - name: Run Mountmap Lock End-to-End Tests
+        shell: bash
+        run: |
+          sudo RELEASE_NUMBER="$RELEASE_NUMBER" NFSV4_STORAGE_ACCOUNTS="$NFSV4_STORAGE_ACCOUNTS" bash $GITHUB_WORKSPACE/testing/test_mountmap_lock_e2e.sh
