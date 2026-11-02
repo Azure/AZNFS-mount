@@ -348,9 +348,9 @@ add_stunnel_configuration()
 
     stunnel_log_file="$STUNNEL_LOG_FILE_DIR/stunnel_$storageaccount_ip.log"
 
-    # Without an output file stunnel logs to syslog.
+    # Without an output file stunnel logs to syslog, with one only to that file.
     if [ -n "$AZNFS_LOGDIR" ]; then
-        echo "output = $stunnel_log_file" >> $stunnel_conf_file
+        printf 'output = %s\nsyslog = no\n' "$stunnel_log_file" >> $stunnel_conf_file
         if [ $? -ne 0 ]; then
             chattr -f +i $stunnel_conf_file
             eecho "Failed to add log file path to $stunnel_conf_file!"

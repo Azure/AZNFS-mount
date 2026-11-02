@@ -124,7 +124,7 @@ AZNFS is supported on following Linux distros:
   echo 'AZNFS_LOGDIR=/var/log/aznfs' | sudo tee -a /opt/microsoft/aznfs/data/config
   sudo systemctl restart aznfswatchdogv4
   ```
-  NFSv4 logs then go to `aznfs.log` and `stunnel_<ip>.log` in that directory, which is created if
+  NFSv4 logs then go to `aznfs.log` and `stunnel_<ip>.log` in that directory (and not to syslog), which is created if
   missing. New mounts use it right away, existing mounts keep logging to the old location until remounted.
   NFSv4 TLS mounts to the same storage account share one stunnel, which keeps its log location until all of those
   shares are unmounted and the watchdog has cleaned it up, so unmount all of them before remounting.
@@ -140,7 +140,9 @@ AZNFS is supported on following Linux distros:
   ```
   sudo semanage fcontext -a -t var_log_t '/data/aznfs-logs(/.*)?' && sudo restorecon -R /data/aznfs-logs
   ```
-- NFSv4 log files are rotated via the generated `/etc/logrotate.d/aznfs` (20M size, 7 rotations). This file is updated on
+- NFSv4 log files are rotated via the generated `/etc/logrotate.d/aznfs` (20M size, 7 rotations). The size can be changed
+  with `AZNFS_LOGROTATE_SIZE` in `/opt/microsoft/aznfs/data/config`, a number followed by `k`, `M` or `G` (f.e.
+  `AZNFS_LOGROTATE_SIZE=50M`), applied at the next mount or `aznfswatchdogv4` restart. This file is updated on
   aznfs upgrades, unless it has been edited locally, in which case the local edits are kept until `AZNFS_LOGDIR` is changed.
   After `AZNFS_LOGDIR` changes, the previous directory keeps being rotated while its logs are still open or were written
   in the last 7 days, since mounts made before the change keep logging there. When it is dropped, aznfs logs

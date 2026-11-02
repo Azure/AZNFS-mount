@@ -296,6 +296,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
         echo "AUTO_UPDATE_AZNFS=false" > "$CONFIG_FILE"
         echo "# Uncomment to log NFSv4 (incl. stunnel) to files in this directory (rotated via logrotate) instead of syslog." >> "$CONFIG_FILE"
         echo "#AZNFS_LOGDIR=/var/log/aznfs" >> "$CONFIG_FILE"
+        echo "# Size at which those log files are rotated (7 copies kept), a number followed by k, M or G." >> "$CONFIG_FILE"
+        echo "#AZNFS_LOGROTATE_SIZE=20M" >> "$CONFIG_FILE"
 
         # Set the permissions for the config file.
         chmod 0644 "$CONFIG_FILE"

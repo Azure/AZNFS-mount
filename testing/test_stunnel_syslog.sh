@@ -213,6 +213,13 @@ else
         fail "file mode: unexpected '$(grep '^output' "$conf")'"
     fi
 
+    if grep -qx "syslog = no" "$conf"; then
+        pass "file mode: config has 'syslog = no'"
+    else
+        fail "file mode: config has no 'syslog = no'"
+    fi
+
+    since=$(date '+%Y-%m-%d %H:%M:%S')
     if ! daemon_pid=$(run_stunnel "$conf"); then
         fail "file mode: stunnel did not start"
     else
@@ -227,6 +234,12 @@ else
             pass "file mode: stunnel logged the connection to $log_file"
         else
             fail "file mode: no 'accepted connection' in $log_file"
+        fi
+
+        if [ -z "$(syslog_lines "$daemon_pid" "$since")" ]; then
+            pass "file mode: stunnel logged nothing to syslog"
+        else
+            fail "file mode: stunnel[$daemon_pid] also logged to syslog"
         fi
     fi
 fi
