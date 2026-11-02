@@ -33,14 +33,15 @@
 #                            NFS file share named githubtest. The first one is
 #                            used.
 # AZNFS_LOCK_E2E_SHARE       Share to mount instead, <host>:/<account>/<share>.
-# AZNFS_LOCK_E2E_OPTIONS     Mount options, default
-#                            vers=4,minorversion=1,sec=sys,nconnect=4.
+# AZNFS_LOCK_E2E_OPTIONS     Mount options, default vers=4,minorversion=1,sec=sys.
+#                            nconnect is left out by default, the kernels of
+#                            some supported distros (f.e. RHEL 7) lack it.
 # AZNFS_LOCK_E2E_SECS        Seconds to run, default 120.
 # AZNFS_LOCK_E2E_WORKERS     Parallel mount workers, default 10.
 #
 DURATION=${AZNFS_LOCK_E2E_SECS:-120}
 WORKERS=${AZNFS_LOCK_E2E_WORKERS:-10}
-OPTIONS=${AZNFS_LOCK_E2E_OPTIONS:-vers=4,minorversion=1,sec=sys,nconnect=4}
+OPTIONS=${AZNFS_LOCK_E2E_OPTIONS:-vers=4,minorversion=1,sec=sys}
 MOUNTMAPv3=/opt/microsoft/aznfs/data/mountmap
 MOUNTMAPv4=/opt/microsoft/aznfs/data/mountmapv4
 MOUNTMAPv4NOTLS=/opt/microsoft/aznfs/data/mountmapv4notls
@@ -61,6 +62,12 @@ WATCHDOG_DOWN='service not running'
 
 # A single mount is not expected to take longer than this.
 MOUNT_TIMEOUT=120
+
+#
+# Nor a single unmount. A hard mount's unmount can otherwise wait for the
+# server indefinitely, and with it the test.
+#
+UMOUNT_TIMEOUT=30
 
 if [ "$(id -u)" != "0" ]; then
     echo "Must be run as root."
@@ -144,6 +151,15 @@ remove_release()
         sleep 2
     done
 
+    #
+    # Not removed then. The package's removal checks only some of the
+    # mountmaps, and would leave the DNAT rules of non-TLS mounts behind.
+    #
+    if has_entries "$MOUNTMAPv4" || has_entries "$MOUNTMAPv4NOTLS" || has_entries "$MOUNTMAPv3"; then
+        echo "[ERROR] Mountmaps still have entries, not removing AZNFS ${RELEASE_NUMBER}."
+        return 1
+    fi
+
     if [ -f /etc/centos-release ]; then
         distro_id="centos"
     else
@@ -215,17 +231,21 @@ start_watchdog()
 
 #
 # Unmounts $1 until nothing is mounted on it any more, retrying for a while as
-# a share can still be busy right after it was mounted. Fails, with the last
-# umount error in UMOUNT_ERROR, if something is still mounted there.
+# a share can still be busy right after it was mounted. Every attempt is
+# bounded by UMOUNT_TIMEOUT. Fails, with the last umount error in UMOUNT_ERROR,
+# if something is still mounted there, which is then left for cleanup.
 #
 unmount()
 {
-    local mp=$1 i
+    local mp=$1 i rc
 
     UMOUNT_ERROR=
-    for ((i = 0; i < 10; i++)); do
+    for ((i = 0; i < 5; i++)); do
         mountpoint -q "$mp" || return 0
-        UMOUNT_ERROR=$(umount "$mp" 2>&1) || sleep 1
+        UMOUNT_ERROR=$(timeout -s KILL $UMOUNT_TIMEOUT umount "$mp" 2>&1)
+        rc=$?
+        [ $rc -eq 137 ] && UMOUNT_ERROR="umount did not complete within ${UMOUNT_TIMEOUT}s"
+        [ $rc -ne 0 ] && sleep 1
     done
     ! mountpoint -q "$mp"
 }
@@ -260,7 +280,14 @@ cleanup()
             CLEANUP_FAILED=1
         fi
     fi
-    systemctl cat $WATCHDOG.service >/dev/null 2>&1 && start_watchdog
+    #
+    # Mounts made before the test, and any this test could not unmount, must
+    # not be left without the watchdog.
+    #
+    if systemctl cat $WATCHDOG.service >/dev/null 2>&1 && ! start_watchdog; then
+        echo "[ERROR] Not able to start $WATCHDOG again."
+        CLEANUP_FAILED=1
+    fi
 
     for mp in "$MPROOT"/worker* "$ANCHOR"; do
         mountpoint -q "$mp" 2>/dev/null || rmdir "$mp" 2>/dev/null
