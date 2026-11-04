@@ -1,3 +1,59 @@
+##############################################
+##### REMOVE FROM RELEASE BRANCHES START #####
+##############################################
+
+#
+# Share details
+# These will ONLY be used if the user runs the binary directly or passes
+# "none" as source in the mount command. In that case account and container
+# are mandatory, cloud_suffix can be guessed and port is default 2048.
+#
+# For accessing the secondary endpoint (RA-GRS), append "-secondary" to the
+# account name, e.g., "myaccount-secondary".
+#
+account: nfsv3acc1bl2prdev13a
+container: nfsv3test
+
+#cloud_suffix: blob.core.windows.net
+cloud_suffix: blob.preprod.core.windows.net
+#port: 2048
+
+#
+# Misc options
+# fuse_* config variables control some fuse configurable value.
+# fuse_max_threads has the same effect as fuse cmdline option "-o max_threads=".
+# fuse_max_idle_threads has the same effect as fuse cmdline option "-o max_idle_threads=".
+# Value of -1 for these imply "use fuse defaults". Fuse defaults must be fine for most cases.
+#
+debug: false
+fuse_max_threads: -1
+fuse_max_idle_threads: -1
+fuse_max_background: 4096
+
+#
+# These are currently not supported.
+#
+#filecache.enable: false
+#filecache.cachedir: /mnt
+#filecache.max_size_gb: 1000
+#cache_max_mb: 4096
+
+#
+# Config controlling misc system behaviour.
+#
+sys.force_stable_writes: true
+sys.resolve_before_reconnect: true
+sys.nodrc.remove_noent_as_success: true
+sys.nodrc.rename_noent_as_success: true
+sys.nodrc.create_exist_as_success: true
+
+############################################
+##### REMOVE FROM RELEASE BRANCHES END #####
+############################################
+
+###################
+##### Phase 1 #####
+###################
 #
 # NFS mount options
 # These have the same name and meaning as Linux NFS client mount options.
@@ -135,3 +191,20 @@ cache.data.kernel.enable: false
 # aznfsclient to do that, set this to false.
 #
 oom_kill_disable: true
+
+###################
+##### Phase 2 #####
+###################
+
+#
+# Auth Config
+#
+auth: false
+
+#
+# Option controlling transport security. Only "none" is supported.
+# RPC-with-TLS support (and its GnuTLS dependency) has been removed, so the
+# transport is always non-TLS.
+# none: do not use TLS encryption.
+#
+xprtsec: none
