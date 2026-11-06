@@ -197,9 +197,6 @@ check_turbo_option()
     fi
 }
 
-# [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
-vecho "Got arguments: [$*]"
-
 mount_point="$2"
 
 OPTIONS=
@@ -207,6 +204,18 @@ MOUNT_OPTIONS=
 AZ_PREFIX=
 
 parse_arguments "$@"
+
+nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
+nfs_vers_status=$?
+
+# NFSv4 mounts log to syslog (or AZNFS_LOGDIR), others to aznfs.log as before.
+if [ "$nfs_vers" == "4.1" ]; then
+    prefix="[v4] "
+    init_logging
+fi
+
+# [account.blob.core.windows.net:/account/container /mnt/aznfs -o rw,tcp,nolock,nconnect=16]
+vecho "Got arguments: [$*]"
 
 #
 # The usual mount command looks like:
@@ -221,8 +230,7 @@ parse_arguments "$@"
 #
 check_turbo_option "$MOUNT_OPTIONS"
 
-nfs_vers=$(get_version_from_mount_options "$MOUNT_OPTIONS")
-if [ $? -ne 0 ]; then
+if [ $nfs_vers_status -ne 0 ]; then
     eecho "$nfs_vers"
     eecho "Mount failed!"
     exit 1
