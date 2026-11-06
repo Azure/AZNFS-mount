@@ -318,6 +318,7 @@ init_logging()
 {
     local logdir
     local size
+    local size_warning=
     local warning=
     local nosyslog=
 
@@ -328,7 +329,7 @@ init_logging()
     if [[ "$size" =~ ^[1-9][0-9]{0,5}[kMG]$ ]]; then
         LOGROTATE_SIZE=$size
     elif [ -n "$size" ]; then
-        wecho "Invalid AZNFS_LOGROTATE_SIZE '${size}' in ${AZNFS_CONFIG_FILE}, must be a number followed by k, M or G, using ${LOGROTATE_SIZE}!"
+        size_warning="Invalid AZNFS_LOGROTATE_SIZE '${size}' in ${AZNFS_CONFIG_FILE}, must be a number followed by k, M or G, using ${LOGROTATE_SIZE}!"
     fi
 
     logdir=$(sed -n 's/^AZNFS_LOGDIR[[:space:]]*=[[:space:]]*//p' "$AZNFS_CONFIG_FILE" 2>/dev/null | tail -n1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e 's#/*$##')
@@ -359,6 +360,10 @@ init_logging()
     fi
 
     [ -n "$AZNFS_LOGDIR" ] && LOGFILE="$AZNFS_LOGDIR/${APPNAME}.log"
+
+    if [ -n "$size_warning" ]; then
+        wecho "$size_warning"
+    fi
 
     if [ -n "$warning" ]; then
         wecho "${warning}, logging to ${LOGFILE:-syslog} instead!"
