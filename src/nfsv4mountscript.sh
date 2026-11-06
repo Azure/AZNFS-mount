@@ -597,7 +597,8 @@ tls_nfsv4_files_share_mount()
             accept_port=$(cat $stunnel_conf_file | grep accept | cut -d ':' -f 2)
             # Configs created before the pid files moved to STUNNELPIDDIR have them under /etc.
             stunnel_pid_file=$(sed -n 's/^pid = //p' $stunnel_conf_file)
-            stunnel_log_file="$STUNNEL_LOG_FILE_DIR/stunnel_$storageaccount_ip.log"
+            # No output entry when stunnel logs to syslog.
+            stunnel_log_file=$(sed -n 's/^output = //p' $stunnel_conf_file)
 
             if [ -f "$stunnel_pid_file" ]; then
                 pid=$(cat $stunnel_pid_file)
