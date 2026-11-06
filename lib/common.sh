@@ -354,7 +354,8 @@ init_logging()
 
     if [ -n "$logdir" ]; then
         if usable_logdir "$logdir"; then
-            AZNFS_LOGDIR="$logdir"
+            # Resolved, stunnel keeps its log open where it was even if a symlink is repointed.
+            AZNFS_LOGDIR=$(readlink -f "$logdir")
         else
             warning="Invalid AZNFS_LOGDIR '${logdir}' in ${AZNFS_CONFIG_FILE}, ${LOGDIR_ERROR}"
         fi
@@ -367,7 +368,7 @@ init_logging()
     if [ -z "$AZNFS_LOGDIR" ] && { ! command -v logger &> /dev/null || [ ! -S /dev/log ]; }; then
         nosyslog=1
         if usable_logdir "$FALLBACK_LOGDIR"; then
-            AZNFS_LOGDIR="$FALLBACK_LOGDIR"
+            AZNFS_LOGDIR=$(readlink -f "$FALLBACK_LOGDIR")
         elif { [ ! -e "$DEFAULT_LOGFILE" ] || [ -f "$DEFAULT_LOGFILE" ]; } && (umask 022; touch "$DEFAULT_LOGFILE") 2>/dev/null; then
             AZNFS_LOGDIR="$OPTDIRDATA"
             warning="${warning:+${warning}. }Not able to use ${FALLBACK_LOGDIR}, ${LOGDIR_ERROR}"
