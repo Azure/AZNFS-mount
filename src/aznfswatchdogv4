@@ -686,7 +686,7 @@ process_nfsv4_mounts()
                         eecho "It's recommended to unmount all shares from $l_ip and then remount shares using aznfs mount helper!"
                     else
                         eecho "[FATAL] watchdog service is unable to start stunnel process for '${l_conf}'!"
-                        if [ -f "$l_log" ]; then
+                        if grep -q '^output = ' "$l_conf"; then
                             eecho "Please check the stunnel logs in $l_log for more details."
                         else
                             eecho "Please check the stunnel logs in syslog (journalctl -t stunnel) for more details."
