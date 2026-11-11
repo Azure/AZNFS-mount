@@ -210,7 +210,7 @@ process_nfsv3_mounts()
             "$INSTALLSCRIPT" "auto-update"
         else
             wecho "[FATAL] $INSTALLSCRIPT not found. This is an unexpected error!"
-            Wecho "[FATAL] Please contact Microsoft support."
+            wecho "[FATAL] Please contact Microsoft support."
         fi
     fi
 
