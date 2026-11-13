@@ -60,12 +60,22 @@ if [ "$init" != "systemd" ]; then
 	exit 1
 fi
 
+#
+# Remove $1 only if it is the directory mktemp creates below to build stunnel in,
+# anything else is left alone.
+#
+is_stunnel_build_dir()
+{
+	[[ "$1" =~ ^/tmp/aznfs-stunnel\.[A-Za-z0-9]{10}$ ]] && [ -d "$1" ] && [ ! -L "$1" ]
+}
+
 cleanup_stunnel_files()
 {
-	local stunnel_dir=$1
-	cd -
-	rm -rf /tmp/${stunnel_dir}
-	rm -f /tmp/stunnel-latest.tar.gz
+	local build_dir=$1
+	cd /
+	if is_stunnel_build_dir "$build_dir"; then
+		rm -rf "${build_dir}"
+	fi
 }
 
 # Function to check if stunnel meets minimum version requirement
@@ -105,44 +115,97 @@ if [[ "$(grep '^VERSION_ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"' | cut -
 	else
 		# Install stunnel from source.
 		echo "Installing stunnel from source"
-		wget https://www.stunnel.org/downloads/stunnel-latest.tar.gz -P /tmp
+
+		#
+		# stunnel-latest.tar.gz is verified against the SHA-256 the stunnel
+		# maintainers publish next to it, stunnel-latest.tar.gz.sha256, which
+		# is downloaded first. A mismatch, f.e. a corrupt download or a new
+		# release landing in between the two downloads, stops the install.
+		#
+		# All of it happens in a private directory that only root can access, so
+		# nobody else can supply or modify what gets built and installed here as root.
+		#
+		stunnel_url="https://www.stunnel.org/downloads/stunnel-latest.tar.gz"
+
+		build_dir=$(mktemp -d /tmp/aznfs-stunnel.XXXXXXXXXX)
+		if [ $? -ne 0 ] || ! is_stunnel_build_dir "$build_dir"; then
+			echo "Failed to create a directory to build stunnel in. Please install stunnel and try again."
+			exit 1
+		fi
+
+		#
+		# mktemp creates it fresh, owned by us and accessible only to us. Make
+		# sure of it, as everything from the checksum check to the build relies
+		# on nobody else being able to add, replace or modify files in it.
+		#
+		if [ "$(stat -c '%%u %%a' "$build_dir")" != "$(id -u) 700" ]; then
+			echo "Directory to build stunnel in is not private. Please install stunnel and try again."
+			cleanup_stunnel_files "$build_dir"
+			exit 1
+		fi
+		stunnel_tarball="${build_dir}/stunnel-latest.tar.gz"
+		stunnel_checksum="${stunnel_tarball}.sha256"
+
+		wget -q -O "$stunnel_checksum" "${stunnel_url}.sha256"
+		if [ $? -ne 0 ]; then
+			echo "Failed to download stunnel source code checksum. Please install stunnel and try again."
+			cleanup_stunnel_files "$build_dir"
+			exit 1
+		fi
+
+		wget -q -O "$stunnel_tarball" "$stunnel_url"
 		if [ $? -ne 0 ]; then
 			echo "Failed to download stunnel source code. Please install stunnel and try again."
+			cleanup_stunnel_files "$build_dir"
 			exit 1
 		fi
 
-		tar -xvf /tmp/stunnel-latest.tar.gz -C /tmp
-		if [ $? -ne 0 ]; then
+		#
+		# The checksum file names the versioned tarball, stunnel-<version>.tar.gz,
+		# so compare the hash itself rather than using "sha256sum -c".
+		#
+		expected_sha256=$(awk 'NR == 1 { print tolower($1) }' "$stunnel_checksum")
+		actual_sha256=$(sha256sum "$stunnel_tarball" | awk '{ print $1 }')
+		if ! [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]] || [ "$expected_sha256" != "$actual_sha256" ]; then
+			echo "Checksum verification of the stunnel source code failed. Please install stunnel and try again."
+			cleanup_stunnel_files "$build_dir"
+			exit 1
+		fi
+
+		stunnel_dir=$(tar -tzf "$stunnel_tarball" | head -n 1 | cut -f1 -d'/')
+
+		# Owned by root regardless of the owner recorded in the archive.
+		tar --no-same-owner -xzf "$stunnel_tarball" -C "$build_dir"
+		if [ $? -ne 0 ] || [ -z "$stunnel_dir" ] || [ "$stunnel_dir" = "." ] || [ "$stunnel_dir" = ".." ] ||
+		   [ ! -d "${build_dir}/${stunnel_dir}" ]; then
 			echo "Failed to extract stunnel tarball. Please install stunnel and try again."
-			rm -f /tmp/stunnel-latest.tar.gz
+			cleanup_stunnel_files "$build_dir"
 			exit 1
 		fi
 
-		stunnel_dir=$(tar -tf /tmp/stunnel-latest.tar.gz | head -n 1 | cut -f1 -d'/')
-
-		cd /tmp/$stunnel_dir
+		cd "${build_dir}/${stunnel_dir}"
 		./configure
 		if [ $? -ne 0 ]; then
 			echo "Failed to configure the build. Please install stunnel and try again."
-			cleanup_stunnel_files $stunnel_dir
+			cleanup_stunnel_files "$build_dir"
 			exit 1
 		fi
 
 		make
 		if [ $? -ne 0 ]; then
 			echo "Failed to build stunnel. Please install stunnel and try again."
-			cleanup_stunnel_files $stunnel_dir
+			cleanup_stunnel_files "$build_dir"
 			exit 1
 		fi
 
 		make install
 		if [ $? -ne 0 ]; then
 			echo "Failed to install stunnel. Please install stunnel and try again."
-			cleanup_stunnel_files $stunnel_dir
+			cleanup_stunnel_files "$build_dir"
 			exit 1
 		fi
 
-		cleanup_stunnel_files $stunnel_dir
+		cleanup_stunnel_files "$build_dir"
 
 		# Remove the old link and create a symlink to stunnel binary.
 		[ -f /bin/stunnel ] && mv /bin/stunnel /bin/stunnel.old
