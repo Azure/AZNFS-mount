@@ -33,6 +33,9 @@ AZNFS_TIMEWAIT_TIMEOUT="${AZNFS_TIMEWAIT_TIMEOUT:-65}"
 #
 AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS="${AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS:-1}"
 
+AZNFS_PUBLIC_DNS_SERVER="${AZNFS_PUBLIC_DNS_SERVER:-1.1.1.1}"
+AZNFS_PRIVATE_ENDPOINT_HOSTS="${AZNFS_PRIVATE_ENDPOINT_HOSTS:-}"
+
 next_ip_change_detection_epoch=0
 
 #
@@ -64,6 +67,91 @@ chattr -f +i $RANDBYTES
 declare -A ip_change_count
 declare -A last_ip_change_time
 declare -A regional_accounts
+declare -A private_endpoint_public_ips
+
+get_endpoint_type()
+{
+    local l_host="${1,,}"
+    local output owners owner override
+    local IFS=$' \t\n'
+    local -a private_hosts
+
+    l_host="${l_host%.}"
+    read -r -a private_hosts <<< "$AZNFS_PRIVATE_ENDPOINT_HOSTS"
+    for override in "${private_hosts[@]}"; do
+        override="${override,,}"
+        if [ "${override%.}" == "$l_host" ]; then
+            echo private
+            return 0
+        fi
+    done
+
+    if ! output=$(host -W 5 -R 2 -4 -t A "$l_host" 2>&1); then
+        eecho "Cannot determine endpoint type for $l_host: $output"
+        return 1
+    fi
+
+    # Public DNS can also contain a privatelink CNAME, but continues to a storage
+    # hostname. Only an A record owned by the privatelink name identifies the private path.
+    owners=$(echo "$output" | awk '$2 == "has" && $3 == "address" {print tolower($1)}')
+    if [ -z "$owners" ]; then
+        eecho "Cannot determine endpoint type for $l_host: DNS returned no IPv4 addresses: $output"
+        return 1
+    fi
+    while IFS= read -r owner; do
+        if [[ "$owner" == *.privatelink.blob.* ]]; then
+            echo private
+            return 0
+        fi
+    done <<< "$owners"
+
+    echo public
+}
+
+resolve_public_ipv4()
+{
+    local l_host="${1/.privatelink./.}"
+    local output addresses address
+
+    if ! output=$(host -W 5 -R 2 -4 -t A "$l_host" "$AZNFS_PUBLIC_DNS_SERVER" 2>&1); then
+        eecho "Public DNS lookup for $l_host using $AZNFS_PUBLIC_DNS_SERVER failed: $output"
+        return 1
+    fi
+
+    # Compare the complete address set, not the order of round-robin DNS answers.
+    addresses=$(echo "$output" | awk '/ has address / {print $NF}' | LC_ALL=C sort -u)
+    if [ -z "$addresses" ]; then
+        eecho "Public DNS lookup for $l_host returned no IPv4 addresses: $output"
+        return 1
+    fi
+
+    while IFS= read -r address; do
+        if ! is_valid_ipv4_address "$address" || is_private_ip "$address"; then
+            eecho "Public DNS lookup for $l_host returned non-public IPv4 address $address; check AZNFS_PUBLIC_DNS_SERVER."
+            return 1
+        fi
+    done <<< "$addresses"
+
+    echo "$addresses"
+}
+
+reconnect_private_endpoint()
+{
+    local l_ip=$1
+    local output
+
+    # Removing conntrack alone cannot reset a connection to an unchanged endpoint.
+    # The socket destination is the proxy IP, before DNAT, and covers all nconnect sockets.
+    if ! output=$(ss -Ktn dst "$l_ip" 2>&1 >/dev/null); then
+        eecho "Failed to reset TCP connections to proxy IP $l_ip: $output"
+        return 1
+    fi
+    # Some ss versions report per-socket SOCK_DESTROY errors but still exit successfully.
+    if [ -n "$output" ]; then
+        eecho "Failed to reset TCP connections to proxy IP $l_ip: $output"
+        return 1
+    fi
+}
 
 #
 # Checks the passed in account FQDN and tells if the IP change detection has to be skipped as it is a regional account.
@@ -328,7 +416,10 @@ process_nfsv3_mounts()
                 # it's safe to update the MOUNTMAPv3, so update mtime_mountmap to the
                 # mtime after this update.
                 #
-                [ $? -eq 0 ] && mtime_mountmap=$l_mtime
+                if [ $? -eq 0 ]; then
+                    unset 'private_endpoint_public_ips[$l_host $l_ip $l_nfsip]'
+                    mtime_mountmap=$l_mtime
+                fi
                 continue
             fi
         else
@@ -359,9 +450,6 @@ process_nfsv3_mounts()
             continue
         fi
 
-        #
-        # See if the account is regional account and we need to skip IP change detection for that.
-        #
         if should_skip_regional_account "$l_host"; then
             continue
         fi
@@ -391,10 +479,18 @@ process_nfsv3_mounts()
             continue
         fi
 
+        if ! endpoint_type=$(get_endpoint_type "$l_host"); then
+            continue
+        fi
+        if [ "$endpoint_type" == "public" ]; then
+            unset 'private_endpoint_public_ips[$l_host $l_ip $l_nfsip]'
+        fi
+
         #
         # If the IP changed for the Blob endpoint, we need to update the DNAT rule.
         # This will take care of migration/failover causing the Blob endpoint IP to change.
         #
+        endpoint_changed=false
         if [ "$new_ip" != "$l_nfsip" ]; then
             pecho "IP for $l_host changed [$l_nfsip -> $new_ip]."
             check_for_regional_account "$l_host"
@@ -403,11 +499,34 @@ process_nfsv3_mounts()
             if ! update_mountmapv3_entry "$line" "$l_host $l_ip $new_ip"; then
                 eecho "Will reattempt the operation in next iteration."
             else
-                mountpoint2048=$(echo "$findmnt" 2>/dev/null | egrep -m1 " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}')
-                mountpoint2048=$(echo -e "$mountpoint2048")
-                if [ -n "$mountpoint2048" ]; then
-                    ping_new_endpoint "$mountpoint2048" &
+                unset 'private_endpoint_public_ips[$l_host $l_ip $l_nfsip]'
+                endpoint_changed=true
+            fi
+        elif [ "$endpoint_type" == "private" ]; then
+            public_ip_key="$l_host $l_ip $l_nfsip"
+            if ! public_ips=$(resolve_public_ipv4 "$l_host"); then
+                continue
+            fi
+
+            if [ -n "${private_endpoint_public_ips[$public_ip_key]}" ] &&
+               [ "${private_endpoint_public_ips[$public_ip_key]}" != "$public_ips" ]; then
+                pecho "Public IP addresses for $l_host changed; reconnecting through private endpoint $l_nfsip."
+                if ! reconnect_private_endpoint "$l_ip"; then
+                    eecho "Will reattempt private endpoint reconnection in next iteration."
+                    continue
                 fi
+                # Do not count retries of a failed reset as additional DNS changes.
+                check_for_regional_account "$l_host"
+                endpoint_changed=true
+            fi
+            private_endpoint_public_ips[$public_ip_key]=$public_ips
+        fi
+
+        if $endpoint_changed; then
+            mountpoint2048=$(echo "$findmnt" 2>/dev/null | egrep -m1 " nfs ${l_ip}:.*\<port=2048\>" | awk '{print $4}')
+            mountpoint2048=$(echo -e "$mountpoint2048")
+            if [ -n "$mountpoint2048" ]; then
+                ping_new_endpoint "$mountpoint2048" &
             fi
         fi
     done

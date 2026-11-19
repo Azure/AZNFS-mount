@@ -46,6 +46,7 @@ jobs:
             "/scripts/aznfs_install.sh"
             "/testing/testscript.sh"
             "/testing/test_stunnel_syslog.sh"
+            "/testing/test_nfsv3_private_endpoint.sh"
           )
 
           # To track whether any file has errors.
@@ -97,3 +98,7 @@ jobs:
         shell: bash
         run: |
           sudo bash $GITHUB_WORKSPACE/testing/test_stunnel_syslog.sh || [ $? -eq 77 ]
+
+      - name: Run NFSv3 private endpoint unit test
+        shell: bash
+        run: bash $GITHUB_WORKSPACE/testing/test_nfsv3_private_endpoint.sh
