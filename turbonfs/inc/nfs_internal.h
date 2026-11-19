@@ -32,8 +32,8 @@ struct mount_options
     const int nfs_port;
 
     /*
-     * Option to use transport security (TLS), it takes following values:
-     * tls: use TLS encryption.
+     * Transport security option. Only "none" is supported since RPC-with-TLS
+     * support (and its GnuTLS dependency) has been removed.
      * none: do not use TLS encryption.
      */
     const std::string xprtsec;
