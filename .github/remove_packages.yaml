@@ -33,9 +33,9 @@ pr:
   - none
 
 stages:
-  - stage: RemoveAllPackage
+  - stage: RemoveSpecificPackageVersion
     jobs:
-      - job: RemovePackage
+      - job: RemoveVersion
         timeoutInMinutes: 120
       
         pool:
@@ -47,6 +47,7 @@ stages:
           - task: PipAuthenticate@1
             inputs:
               artifactFeeds: 'One/aznfs'
+
           - script: pip install pmc-cli
             displayName: 'Install pmc-cli'
 
@@ -58,49 +59,30 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
 
-                  # Define the package name
-                  PACKAGE_NAME="aznfs"
+                # Define the package name and target version
+                PACKAGE_NAME="aznfs"
+                TARGET_VERSION="${{ parameters.versionName }}"
 
-                  echo "package list ...... deb:"
-                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name "$PACKAGE_NAME"
+                echo "Looking for .deb packages with version: $TARGET_VERSION"
 
-                  for id in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name "$PACKAGE_NAME" | jq -r '.results[].id'); do
-
-                    echo "Package ID: $id"
-
-                    # Remove the package from all repositories
-                    for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
-                      echo "Removing package from repo: $repo"
-                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages "$id" "$repo"
-
-                      echo "Republishing repo: $repo"
-                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish "$repo"
-                    done
+                for id in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package deb list --name "$PACKAGE_NAME" | jq -r --arg ver "$TARGET_VERSION" '.results[] | select(.version == $ver) | .id'); do
+                  echo "Found .deb package ID: $id (version $TARGET_VERSION)"
+                  for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+                    echo "Removing .deb package from repo: $repo"
+                    pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages "$id" "$repo"
+                    echo "Republishing repo: $repo"
+                    pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish "$repo"
                   done
+                done
 
-                  echo "package list ...... rpm:"
-                  pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name "$PACKAGE_NAME"
+                echo "Looking for .rpm packages with version: $TARGET_VERSION"
 
-
-                  for id in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name "$PACKAGE_NAME" | jq -r '.results[].id'); do
-
-                    echo "Package ID: $id"
-
-                    # Remove the package from all repositories
-                    for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
-                      echo "Removing package from repo: $repo"
-                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages "$id" "$repo"
-
-                      echo "Republishing repo: $repo"
-                      pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish "$repo"
-                    done
+                for id in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package rpm list --name "$PACKAGE_NAME" | jq -r --arg ver "$TARGET_VERSION" '.results[] | select(.version == $ver) | .id'); do
+                  echo "Found .rpm package ID: $id (version $TARGET_VERSION)"
+                  for repo in $(pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --package "$id" | jq -r '.results[].name'); do
+                    echo "Removing .rpm package from repo: $repo"
+                    pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --remove-packages "$id" "$repo"
+                    echo "Republishing repo: $repo"
+                    pmc --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish "$repo"
                   done
-
-                  
-
-
-                  
-
-
-
-
+                done
