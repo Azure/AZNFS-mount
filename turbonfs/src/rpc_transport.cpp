@@ -239,3 +239,16 @@ struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
 
     return nfs_connections[idx]->get_nfs_context();
 }
+
+std::recursive_mutex& rpc_transport::get_credential_mutex(
+    const struct nfs_context *nfs) const
+{
+    for (struct nfs_connection *connection : nfs_connections) {
+        if (connection->get_nfs_context() == nfs) {
+            return connection->get_credential_mutex();
+        }
+    }
+
+    assert(0);
+    __builtin_unreachable();
+}

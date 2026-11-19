@@ -1,6 +1,8 @@
 #ifndef __RPC_TASK_H__
 #define __RPC_TASK_H__
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <string>
 #include <mutex>
@@ -1383,6 +1385,8 @@ struct api_task_info
      */
     fuse_req *req = nullptr;
 
+    auth_unix_credential_snapshot caller_credentials;
+
 
     /*
      * Only valid for FUSE_READ and FUSE_WRITE.
@@ -1597,6 +1601,7 @@ struct api_task_info
         assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
 
         req = nullptr;
+        caller_credentials.clear();
         parent_task = nullptr;
         bc = nullptr;
         pvt = nullptr;
@@ -2074,6 +2079,38 @@ public:
     void set_fuse_req(fuse_req *request)
     {
         rpc_api->req = request;
+        rpc_api->caller_credentials.clear();
+
+        if (request == nullptr) {
+            return;
+        }
+
+        const fuse_ctx *ctx = fuse_req_ctx(request);
+        if (ctx == nullptr) {
+            return;
+        }
+
+        rpc_api->caller_credentials.uid = ctx->uid;
+        rpc_api->caller_credentials.gid = ctx->gid;
+
+        std::array<gid_t, auth_unix_credential_snapshot::MAX_AUXILIARY_GIDS>
+            fuse_gids{};
+        const int group_count = fuse_req_getgroups(
+            request, static_cast<int>(fuse_gids.size()), fuse_gids.data());
+        if (group_count < 0) {
+            AZLogWarn("Failed to get supplementary groups for uid={} pid={}: {}",
+                      ctx->uid, ctx->pid, group_count);
+        }
+        const int gids_to_copy = std::clamp(
+            group_count, 0,
+            static_cast<int>(auth_unix_credential_snapshot::MAX_AUXILIARY_GIDS));
+        for (int i = 0; i < gids_to_copy; i++) {
+            rpc_api->caller_credentials.auxiliary_gids[i] =
+                static_cast<uint32_t>(fuse_gids[i]);
+        }
+        rpc_api->caller_credentials.auxiliary_gid_count =
+            static_cast<uint32_t>(gids_to_copy);
+        rpc_api->caller_credentials.valid = true;
     }
 
     struct fuse_req *get_fuse_req() const
@@ -2115,9 +2152,84 @@ public:
 
     struct nfs_context *get_nfs_context() const;
 
-    struct rpc_context *get_rpc_ctx() const
+    /**
+     * Set RPC AUTH_UNIX credentials to match the FUSE caller's uid/gid/groups.
+     *
+     * The FUSE daemon runs as root, so libnfs defaults to uid=0/gid=0
+     * in the RPC AUTH_UNIX header. With root_squash enabled on the
+     * server, this causes ALL operations to be squashed to nobody.
+     *
+      * Credential updates and PDU allocation must hold the selected
+      * connection's credential mutex as one operation. Child/backend tasks
+      * carry a snapshot of the originating request credentials. Tasks without
+      * an originating request use the root service identity deliberately.
+     */
+    void set_caller_credentials(struct nfs_context *nfs)
     {
-        return nfs_get_rpc_context(get_nfs_context());
+        auth_unix_credential_snapshot& credentials =
+            rpc_api->caller_credentials;
+
+        if (!credentials.valid) {
+            nfs_set_uid(nfs, 0);
+            nfs_set_gid(nfs, 0);
+            nfs_set_auxiliary_gids(nfs, 0, nullptr);
+            return;
+        }
+
+        nfs_set_uid(nfs, credentials.uid);
+        nfs_set_gid(nfs, credentials.gid);
+        nfs_set_auxiliary_gids(nfs,
+                               credentials.auxiliary_gid_count,
+                               credentials.auxiliary_gids.data());
+    }
+
+    void inherit_caller_credentials(const api_task_info& source)
+    {
+        rpc_api->caller_credentials = source.caller_credentials;
+    }
+
+    void inherit_caller_credentials(
+        const auth_unix_credential_snapshot& credentials)
+    {
+        rpc_api->caller_credentials = credentials;
+    }
+
+    void inherit_caller_credentials(const rpc_task& source)
+    {
+        inherit_caller_credentials(*source.rpc_api);
+    }
+
+    void set_parent_task(rpc_task *parent_task)
+    {
+        assert(parent_task != nullptr);
+        rpc_api->parent_task = parent_task;
+        inherit_caller_credentials(*parent_task);
+    }
+
+    template <typename Args>
+    struct rpc_pdu *issue_rpc_with_credentials(
+        struct rpc_pdu *(*issue_rpc)(struct rpc_context *, rpc_cb, Args *,
+                                     void *),
+        rpc_cb callback,
+        Args *args,
+        void *private_data)
+    {
+        struct nfs_context *nfs = get_nfs_context();
+        std::lock_guard<std::recursive_mutex> lock(
+            client->get_credential_mutex(nfs));
+        set_caller_credentials(nfs);
+        return issue_rpc(nfs_get_rpc_context(nfs), callback, args,
+                         private_data);
+    }
+
+    template <typename IssueRpc>
+    struct rpc_pdu *issue_rpc_with_credentials(IssueRpc issue_rpc)
+    {
+        struct nfs_context *nfs = get_nfs_context();
+        std::lock_guard<std::recursive_mutex> lock(
+            client->get_credential_mutex(nfs));
+        set_caller_credentials(nfs);
+        return issue_rpc(nfs_get_rpc_context(nfs));
     }
 
     nfs_client *get_client() const

@@ -199,6 +199,7 @@ struct nfs_inode
     std::string silly_renamed_name;
     fuse_ino_t parent_ino = 0;
     int silly_rename_level = 0;
+    auth_unix_credential_snapshot silly_rename_credentials;
 
 private:
     /*
@@ -1224,7 +1225,8 @@ public:
      * This calls revalidate().
      */
     struct nfs_inode *lookup(const char *filename,
-                             int *failure_status = nullptr);
+                             int *failure_status = nullptr,
+                             fuse_req_t req = nullptr);
 
     /**
      * Note usecs when the last cached write was received for this inode.
@@ -1479,7 +1481,8 @@ public:
      * error. This can be passed as-is to the rpc_task reply_error() method to
      * convey the error to fuse.
      * EAGAIN is the special error code that would mean that caller must retry
-     * the current copy_to_cache() call.
+    * the current copy_to_cache() call. flush_required is set when dirty data
+    * from another caller must be flushed before that retry.
      *
      * Note: The membufs to which the data is copied will be marked dirty and
      *       uptodate once copy_to_cache() returns.
@@ -1487,7 +1490,9 @@ public:
     int copy_to_cache(const struct fuse_bufvec* bufv,
                       off_t offset,
                       uint64_t *extent_left,
-                      uint64_t *extent_right);
+                      uint64_t *extent_right,
+                      const auth_unix_credential_snapshot& credentials,
+                      bool *flush_required);
 
     /**
      * Flush the dirty file cache represented by filecache_handle and wait
