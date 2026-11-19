@@ -178,6 +178,63 @@ IP prefixes with either 2 or 3 octets can be set `f.e. 10.100 10.100.100 172.16 
 It starts a systemd service named **aznfswatchdog** which monitors the change in IP address for all the mounted Azure
 Blob NFS shares. If it detects a change in endpoint IP, aznfswatchdog will update the iptables DNAT rule and NFS
 traffic will be forwarded to new endpoint IP.
+
+For NFSv3 private endpoints, the private IP can remain unchanged when the storage
+account moves to another tenant. The watchdog also queries the account's public DNS A records every
+60 seconds, using `1.1.1.1` by default. The first successful lookup establishes a baseline. If the set
+of public addresses changes, it resets all TCP connections to that account's local proxy IP using
+`ss -K`, allowing the NFS client to reconnect to the **same private IP**. The DNAT rule and mountmap
+entry are not changed. DNS answer reordering does not trigger a reset or count toward regional-account
+classification. Changes to the public DNS address set use the same regional-account heuristic as
+public endpoints: three changes within five minutes mark the account as regional. Failed socket-reset
+retries do not count as additional changes. Once classified, both private and public endpoints skip
+further DNS-change detection by default. Set `AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS=0`
+in the watchdog service environment to continue monitoring regional accounts. The existing daily
+reset clears regional classifications so accounts can be evaluated again.
+
+Private endpoints are detected from the **local resolver's** DNS chain: the terminal A record must
+belong to a `*.privatelink.blob.*` hostname. For example, `account.blob.core.windows.net` resolving
+through `account.privatelink.blob.core.windows.net` directly to an IP is the private path. If that
+name instead continues to a storage hostname such as `blob.byaprdstr18a.store.core.windows.net`,
+the connection uses the public path. A `privatelink` CNAME alone is not sufficient, because it can
+appear in both paths. Detection does not depend on RFC1918 address ranges.
+
+If custom DNS hides the `privatelink` chain, set `AZNFS_PRIVATE_ENDPOINT_HOSTS` in the watchdog's
+service environment to a space-separated list of mounted endpoint FQDNs to treat as private:
+```ini
+[Service]
+Environment="AZNFS_PRIVATE_ENDPOINT_HOSTS=account.blob.core.windows.net custom.example.com"
+```
+Names are matched exactly, ignoring case and a trailing dot; other endpoints retain automatic
+detection. The listed name must also resolve through `AZNFS_PUBLIC_DNS_SERVER` for public-IP
+monitoring; this override does not make an internal-only DNS alias publicly resolvable.
+Restart `aznfswatchdog` after changing its environment. Classification lookup failures
+are logged and retried without resetting connections or changing their mappings.
+
+To use a different public DNS resolver, set `AZNFS_PUBLIC_DNS_SERVER` in the `aznfswatchdog` service
+environment (for example with `systemctl edit aznfswatchdog`) and restart the service:
+```ini
+[Service]
+Environment="AZNFS_PUBLIC_DNS_SERVER=1.1.1.1"
+```
+The resolver must be reachable over DNS and return public answers rather than private-zone answers.
+NFS traffic still uses the private endpoint; only the DNS queries go to this resolver. Lookup failures
+or private answers are logged and retried without resetting connections or deleting the private
+mapping. Socket reset failures are also logged and retried. This requires kernel support for
+`ss -K` (`CONFIG_INET_DIAG_DESTROY`). The public DNS baseline is kept in memory and is re-established
+after a watchdog restart.
+
+To keep the watchdog responsive, the DNS lookups added for private endpoint detection (endpoint
+classification and the public DNS query) are each bounded to 8 seconds; the existing endpoint
+resolution is unchanged. Failed public DNS lookups are retried with exponential backoff (1, 2, 4 and 8
+minutes, then every 10 minutes). If the resolver itself is unreachable, lookups for all private endpoints
+back off together. An endpoint's private/public classification is reused for 5 minutes, so public
+endpoints are not looked up twice per cycle. If the classification cannot be determined, the endpoint's
+DNAT handling is not affected: only private endpoint recovery is skipped until the next cycle. A reset
+that fails is retried up to
+3 times; after that the new addresses are accepted, an error is logged, and a share that does not recover
+must be remounted. A socket that closes by itself while being reset is not treated as a failure.
+
 > [!NOTE]
 > 1. Ensure that all mounted Azure Blob NFS shares are unmounted before setting the AZNFS_IP_PREFIXES environment variable.
 > 2. After an Azure Blob NFS endpoint is unmounted, the local proxy IP-to-endpoint mapping remains cached in the mountmap. **aznfswatchdog** takes 5 minutes from the last unmount to remove this entry. Once the entry is cleared, a fresh mount will honor the `AZNFS_IP_PREFIXES` variable, but only for 2 or 3 octets. If the same endpoint is remounted within this 5-minute period, it will automatically reuse the previous proxy IP address and ignore the `AZNFS_IP_PREFIXES` environment variable if it is set.
