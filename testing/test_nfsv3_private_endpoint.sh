@@ -18,7 +18,7 @@ check()
     fi
 }
 
-for function in get_endpoint_type resolve_public_ipv4 reconnect_private_endpoint should_skip_regional_account check_for_regional_account run_daily_once process_nfsv3_mounts; do
+for function in dns_host forget_private_endpoint_state forget_private_endpoint public_dns_lookup_allowed note_public_dns_failure note_public_dns_success get_endpoint_type lookup_endpoint_type resolve_public_ipv4 reconnect_private_endpoint should_skip_regional_account check_for_regional_account run_daily_once process_nfsv3_mounts; do
     source <(sed -n "/^${function}()/,/^}$/p" "$WATCHDOG")
     declare -F "$function" >/dev/null || exit 1
 done
@@ -28,6 +28,16 @@ for function in is_valid_ipv4_address is_private_ip; do
 done
 
 declare -A regional_accounts ip_change_count last_ip_change_time private_endpoint_public_ips
+declare -A private_endpoint_reset_failures public_dns_failures public_dns_retry_epoch
+declare -A endpoint_type_cache endpoint_type_cache_expiry
+# Classification is not cached unless a test enables it.
+ENDPOINT_TYPE_CACHE_SECS=0
+public_dns_resolver_retry_epoch=0
+DNS_LOOKUP_TIMEOUT_SECS=3
+DNS_LOOKUP_RETRIES=1
+DNS_LOOKUP_DEADLINE_SECS=8
+PUBLIC_DNS_MAX_BACKOFF_SECS=600
+PRIVATE_ENDPOINT_MAX_RESET_ATTEMPTS=3
 AZNFS_PUBLIC_DNS_SERVER=1.1.1.1
 AZNFS_PRIVATE_ENDPOINT_HOSTS=
 AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS=1
@@ -61,6 +71,14 @@ KEY="$HOST $PROXY $LOCAL_DNS_IP"
 MOUNT_OUTPUT="0:1 nfs $PROXY:/account/container /mnt/test rw,vers=3,port=2048"
 
 eecho() { echo "$*" >> "$ERROR_LOG"; }
+timeout() { shift; "$@"; }
+reset_dns_backoff()
+{
+    public_dns_failures=()
+    public_dns_retry_epoch=()
+    public_dns_resolver_retry_epoch=0
+}
+line_count() { wc -l < "$1" | tr -d ' '; }
 wecho() { echo "$*" >> "$ERROR_LOG"; }
 pecho() { :; }
 vecho() { :; }
@@ -114,7 +132,7 @@ cycle()
 
 # A privatelink CNAME can occur in both paths; the A-record owner distinguishes them.
 check test "$(get_endpoint_type "$HOST")" = private
-check grep -Fxq -- "-W|5|-R|2|-4|-t|A|$HOST|" "$LOCAL_HOST_LOG"
+check grep -Fxq -- "-W|3|-R|1|-4|-t|A|$HOST|" "$LOCAL_HOST_LOG"
 PUBLIC_CHAIN=$'account.blob.core.windows.net is an alias for account.privatelink.blob.core.windows.net.\naccount.privatelink.blob.core.windows.net is an alias for blob.byaprdstr18a.store.core.windows.net.'
 LOCAL_HOST_OUTPUT="$PUBLIC_CHAIN"$'\nblob.byaprdstr18a.store.core.windows.net has address 135.130.66.1'
 check test "$(get_endpoint_type "$HOST")" = public
@@ -139,7 +157,7 @@ cycle
 check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.1
 check test ! -s "$SOCKET_LOG"
 check test ! -s "$UPDATE_LOG"
-check grep -Fxq -- '-W|5|-R|2|-4|-t|A|account.blob.core.windows.net|1.1.1.1|' "$HOST_LOG"
+check grep -Fxq -- '-W|3|-R|1|-4|-t|A|account.blob.core.windows.net|1.1.1.1|' "$HOST_LOG"
 
 HOST_OUTPUT=$'account.blob.core.windows.net has address 20.60.0.2\naccount.blob.core.windows.net has address 20.60.0.1'
 cycle
@@ -201,10 +219,48 @@ HOST_STATUS=0
 for HOST_OUTPUT in 'no A records' \
     'account.blob.core.windows.net has address 10.20.0.4' \
     'account.blob.core.windows.net has address 999.1.2.3'; do
+    reset_dns_backoff
     cycle
     check test ! -s "$SOCKET_LOG"
     check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.3
 done
+
+# Failed lookups back off, and an unreachable resolver backs off for every endpoint.
+reset_dns_backoff
+: > "$HOST_LOG"
+HOST_STATUS=1
+HOST_OUTPUT=';; connection timed out; no servers could be reached'
+cycle
+check test "$(line_count "$HOST_LOG")" = 1
+check test "${public_dns_failures[resolver]}" = 1
+check test -z "${public_dns_failures[$KEY]}"
+cycle
+check test "$(line_count "$HOST_LOG")" = 2
+cycle
+check test "$(line_count "$HOST_LOG")" = 2
+HOST_STATUS=124
+HOST_OUTPUT=
+reset_dns_backoff
+cycle
+check test "${public_dns_failures[resolver]}" = 1
+HOST_STATUS=0
+HOST_OUTPUT='account.blob.core.windows.net has address 20.60.0.3'
+cycle
+check test "$(line_count "$HOST_LOG")" = 4
+cycle
+check test "$(line_count "$HOST_LOG")" = 5
+check test -z "${public_dns_failures[resolver]}"
+check test "$public_dns_resolver_retry_epoch" = 0
+
+# A lookup failing for one name only delays that name.
+HOST_STATUS=1
+HOST_OUTPUT=NXDOMAIN
+cycle
+check test "${public_dns_failures[$KEY]}" = 1
+check test -z "${public_dns_failures[resolver]}"
+check test "$public_dns_resolver_retry_epoch" = 0
+reset_dns_backoff
+HOST_STATUS=0
 
 # Both command failures and per-socket errors must leave the change pending.
 HOST_OUTPUT='account.blob.core.windows.net has address 20.60.0.4'
@@ -224,10 +280,51 @@ cycle
 check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.4
 check test "${ip_change_count[$HOST]}" = 1
 
+# A socket that disappeared on its own is not a failed reset, but a silent ss failure is.
+HOST_OUTPUT='account.blob.core.windows.net has address 20.60.0.6'
+SOCKET_STATUS=1
+SOCKET_ERROR='SOCK_DESTROY answers: No such file or directory'
+cycle
+check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.6
+SOCKET_ERROR=
+HOST_OUTPUT='account.blob.core.windows.net has address 20.60.0.7'
+cycle
+check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.6
+check grep -q 'ss exited with status 1' "$ERROR_LOG"
+SOCKET_STATUS=0
+
+# A reset that keeps failing is attempted a bounded number of times, then the change is accepted.
+private_endpoint_reset_failures=()
+: > "$SOCKET_LOG"
+SOCKET_ERROR='SOCK_DESTROY answers: Operation not supported'
+HOST_OUTPUT='account.blob.core.windows.net has address 20.60.0.8'
+cycle
+cycle
+check test "$(line_count "$SOCKET_LOG")" = 2
+check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.6
+cycle
+check test "$(line_count "$SOCKET_LOG")" = 3
+check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.8
+check test -z "${private_endpoint_reset_failures[$KEY]}"
+check grep -q 'Giving up resetting connections' "$ERROR_LOG"
+cycle
+check test "$(line_count "$SOCKET_LOG")" = 3
+
+# After giving up, a further change is handled normally.
+SOCKET_ERROR=
+HOST_OUTPUT='account.blob.core.windows.net has address 20.60.0.4'
+cycle
+check test "$(line_count "$SOCKET_LOG")" = 4
+check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.4
+regional_accounts=()
+ip_change_count=()
+last_ip_change_time=()
+reset_dns_backoff
+
 # Use the configurable resolver and normalize explicit privatelink hostnames.
 AZNFS_PUBLIC_DNS_SERVER=8.8.8.8
 resolve_public_ipv4 account.privatelink.blob.core.windows.net >/dev/null
-check grep -Fxq -- '-W|5|-R|2|-4|-t|A|account.blob.core.windows.net|8.8.8.8|' "$HOST_LOG"
+check grep -Fxq -- '-W|3|-R|1|-4|-t|A|account.blob.core.windows.net|8.8.8.8|' "$HOST_LOG"
 
 # Do not query public DNS more often than the existing detection interval.
 : > "$HOST_LOG"
@@ -367,5 +464,67 @@ check test ! -s "$UPDATE_LOG"
 AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS=0
 cycle
 check test "$(cat "$MOUNTMAPv3")" = "$HOST $PROXY 20.60.0.204"
+
+# Backoff doubles from the detection interval and is capped, as documented.
+reset_dns_backoff
+expected_backoffs=(60 120 240 480 600 600)
+for expected in "${expected_backoffs[@]}"; do
+    note_public_dns_failure "$KEY" 1
+    check test "$((public_dns_retry_epoch[$KEY] - TEST_EPOCH))" = "$expected"
+done
+reset_dns_backoff
+
+# Failing to classify an endpoint must never block the DNAT update for a changed endpoint IP.
+regional_accounts=()
+ip_change_count=()
+last_ip_change_time=()
+LOCAL_HOST_STATUS=1
+LOCAL_HOST_OUTPUT='DNS query timed out'
+echo "$HOST $PROXY 20.60.1.44" > "$MOUNTMAPv3"
+LOCAL_DNS_IP=20.60.1.45
+: > "$UPDATE_LOG"
+cycle
+check test "$(cat "$MOUNTMAPv3")" = "$HOST $PROXY 20.60.1.45"
+check test -s "$UPDATE_LOG"
+# An unknown classification also leaves an existing private endpoint baseline untouched.
+LOCAL_HOST_OUTPUT=
+LOCAL_HOST_STATUS=0
+LOCAL_DNS_IP=100.64.0.4
+echo "$KEY" > "$MOUNTMAPv3"
+AZNFS_PRIVATE_ENDPOINT_HOSTS=
+HOST_OUTPUT='account.blob.core.windows.net has address 20.60.0.4'
+cycle
+check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.4
+LOCAL_HOST_STATUS=1
+LOCAL_HOST_OUTPUT='DNS query timed out'
+: > "$SOCKET_LOG"
+cycle
+check test "${private_endpoint_public_ips[$KEY]}" = 20.60.0.4
+check test ! -s "$SOCKET_LOG"
+LOCAL_HOST_STATUS=0
+LOCAL_HOST_OUTPUT=
+
+# Classification is reused for ENDPOINT_TYPE_CACHE_SECS, not looked up every cycle.
+ENDPOINT_TYPE_CACHE_SECS=300
+forget_private_endpoint "$KEY"
+: > "$LOCAL_HOST_LOG"
+cycle
+cycle
+check test "$(line_count "$LOCAL_HOST_LOG")" = 1
+TEST_EPOCH=$((TEST_EPOCH + 300))
+cycle
+check test "$(line_count "$LOCAL_HOST_LOG")" = 2
+# A failed classification is not cached, so it is retried next cycle.
+forget_private_endpoint "$KEY"
+LOCAL_HOST_STATUS=1
+LOCAL_HOST_OUTPUT='DNS query timed out'
+: > "$LOCAL_HOST_LOG"
+cycle
+cycle
+check test "$(line_count "$LOCAL_HOST_LOG")" = 2
+check test -z "${endpoint_type_cache[$KEY]}"
+LOCAL_HOST_STATUS=0
+LOCAL_HOST_OUTPUT=
+ENDPOINT_TYPE_CACHE_SECS=0
 
 exit "$FAILED"

@@ -224,6 +224,17 @@ mapping. Socket reset failures are also logged and retried. This requires kernel
 `ss -K` (`CONFIG_INET_DIAG_DESTROY`). The public DNS baseline is kept in memory and is re-established
 after a watchdog restart.
 
+To keep the watchdog responsive, the DNS lookups added for private endpoint detection (endpoint
+classification and the public DNS query) are each bounded to 8 seconds; the existing endpoint
+resolution is unchanged. Failed public DNS lookups are retried with exponential backoff (1, 2, 4 and 8
+minutes, then every 10 minutes). If the resolver itself is unreachable, lookups for all private endpoints
+back off together. An endpoint's private/public classification is reused for 5 minutes, so public
+endpoints are not looked up twice per cycle. If the classification cannot be determined, the endpoint's
+DNAT handling is not affected: only private endpoint recovery is skipped until the next cycle. A reset
+that fails is retried up to
+3 times; after that the new addresses are accepted, an error is logged, and a share that does not recover
+must be remounted. A socket that closes by itself while being reset is not treated as a failure.
+
 > [!NOTE]
 > 1. Ensure that all mounted Azure Blob NFS shares are unmounted before setting the AZNFS_IP_PREFIXES environment variable.
 > 2. After an Azure Blob NFS endpoint is unmounted, the local proxy IP-to-endpoint mapping remains cached in the mountmap. **aznfswatchdog** takes 5 minutes from the last unmount to remove this entry. Once the entry is cleared, a fresh mount will honor the `AZNFS_IP_PREFIXES` variable, but only for 2 or 3 octets. If the same endpoint is remounted within this 5-minute period, it will automatically reuse the previous proxy IP address and ignore the `AZNFS_IP_PREFIXES` environment variable if it is set.

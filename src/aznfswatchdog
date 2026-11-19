@@ -36,6 +36,23 @@ AZNFS_SKIP_IP_CHANGE_DETECTION_FOR_REGIONAL_ACCOUNTS="${AZNFS_SKIP_IP_CHANGE_DET
 AZNFS_PUBLIC_DNS_SERVER="${AZNFS_PUBLIC_DNS_SERVER:-1.1.1.1}"
 AZNFS_PRIVATE_ENDPOINT_HOSTS="${AZNFS_PRIVATE_ENDPOINT_HOSTS:-}"
 
+#
+# Bound how long one DNS lookup can block the watchdog loop. The deadline is enforced with
+# timeout(1); host's own timeout and retries multiply and are not a reliable upper bound.
+#
+DNS_LOOKUP_TIMEOUT_SECS=3
+DNS_LOOKUP_RETRIES=1
+DNS_LOOKUP_DEADLINE_SECS=8
+
+# Failed public DNS lookups are retried with exponential backoff, starting at IP_CHANGE_DETECTION_FREQUENCY.
+PUBLIC_DNS_MAX_BACKOFF_SECS=600
+
+# How long the private/public classification of an endpoint is reused before it's looked up again.
+ENDPOINT_TYPE_CACHE_SECS=300
+
+# After this many failed attempts to reset connections for one change, accept the new public IPs and stop retrying.
+PRIVATE_ENDPOINT_MAX_RESET_ATTEMPTS=3
+
 next_ip_change_detection_epoch=0
 
 #
@@ -68,6 +85,71 @@ declare -A ip_change_count
 declare -A last_ip_change_time
 declare -A regional_accounts
 declare -A private_endpoint_public_ips
+declare -A private_endpoint_reset_failures
+declare -A public_dns_failures
+declare -A public_dns_retry_epoch
+declare -A endpoint_type_cache
+declare -A endpoint_type_cache_expiry
+public_dns_resolver_retry_epoch=0
+
+dns_host()
+{
+    timeout "$DNS_LOOKUP_DEADLINE_SECS" host -W "$DNS_LOOKUP_TIMEOUT_SECS" -R "$DNS_LOOKUP_RETRIES" -4 -t A "$@"
+}
+
+# Forget the private endpoint recovery state, $1 is "<host> <proxy ip> <endpoint ip>".
+forget_private_endpoint_state()
+{
+    unset "private_endpoint_public_ips[$1]" "private_endpoint_reset_failures[$1]" \
+          "public_dns_failures[$1]" "public_dns_retry_epoch[$1]"
+}
+
+# Forget everything about an endpoint, including its cached classification.
+forget_private_endpoint()
+{
+    forget_private_endpoint_state "$1"
+    unset "endpoint_type_cache[$1]" "endpoint_type_cache_expiry[$1]"
+}
+
+public_dns_lookup_allowed()
+{
+    local now
+    now=$(date +%s)
+
+    [ "$now" -ge "$public_dns_resolver_retry_epoch" ] && [ "$now" -ge "${public_dns_retry_epoch[$1]:-0}" ]
+}
+
+#
+# $1 is the endpoint key, $2 is the resolve_public_ipv4() status. Status 2 means the resolver
+# itself is unreachable, so all lookups back off, not just this one.
+#
+note_public_dns_failure()
+{
+    local l_key=$1
+    local l_status=$2
+    local l_scope=$l_key
+    local failures backoff
+
+    [ "$l_status" -eq 2 ] && l_scope=resolver
+    failures=$(( ${public_dns_failures[$l_scope]:-0} + 1 ))
+    public_dns_failures[$l_scope]=$failures
+
+    backoff=$(( IP_CHANGE_DETECTION_FREQUENCY * (1 << (failures > 11 ? 10 : failures - 1)) ))
+    [ "$backoff" -gt "$PUBLIC_DNS_MAX_BACKOFF_SECS" ] && backoff=$PUBLIC_DNS_MAX_BACKOFF_SECS
+
+    if [ "$l_scope" == "resolver" ]; then
+        public_dns_resolver_retry_epoch=$(( $(date +%s) + backoff ))
+    else
+        public_dns_retry_epoch[$l_key]=$(( $(date +%s) + backoff ))
+    fi
+    vecho "Public DNS lookups for [$l_key] suspended for ${backoff}s after $failures consecutive failures."
+}
+
+note_public_dns_success()
+{
+    unset "public_dns_failures[$1]" "public_dns_retry_epoch[$1]" "public_dns_failures[resolver]"
+    public_dns_resolver_retry_epoch=0
+}
 
 get_endpoint_type()
 {
@@ -86,7 +168,7 @@ get_endpoint_type()
         fi
     done
 
-    if ! output=$(host -W 5 -R 2 -4 -t A "$l_host" 2>&1); then
+    if ! output=$(dns_host "$l_host" 2>&1); then
         eecho "Cannot determine endpoint type for $l_host: $output"
         return 1
     fi
@@ -108,13 +190,45 @@ get_endpoint_type()
     echo public
 }
 
+#
+# Sets endpoint_type for the endpoint key $2 (<host> <proxy ip> <endpoint ip>), reusing a recent
+# classification instead of querying DNS every cycle. This must not run in a subshell or the
+# cache would be lost. Nothing is cached on failure, so the next cycle looks it up again.
+#
+lookup_endpoint_type()
+{
+    local l_host=$1
+    local l_key=$2
+    local now
+    now=$(date +%s)
+
+    if [ -n "${endpoint_type_cache[$l_key]}" ] && [ "$now" -lt "${endpoint_type_cache_expiry[$l_key]:-0}" ]; then
+        endpoint_type=${endpoint_type_cache[$l_key]}
+        return 0
+    fi
+
+    if ! endpoint_type=$(get_endpoint_type "$l_host"); then
+        endpoint_type=
+        return 1
+    fi
+
+    endpoint_type_cache[$l_key]=$endpoint_type
+    endpoint_type_cache_expiry[$l_key]=$(( now + ENDPOINT_TYPE_CACHE_SECS ))
+}
+
 resolve_public_ipv4()
 {
     local l_host="${1/.privatelink./.}"
-    local output addresses address
+    local output addresses address status
 
-    if ! output=$(host -W 5 -R 2 -4 -t A "$l_host" "$AZNFS_PUBLIC_DNS_SERVER" 2>&1); then
+    output=$(dns_host "$l_host" "$AZNFS_PUBLIC_DNS_SERVER" 2>&1)
+    status=$?
+    if [ $status -ne 0 ]; then
         eecho "Public DNS lookup for $l_host using $AZNFS_PUBLIC_DNS_SERVER failed: $output"
+        # 124 is timeout(1) giving up. Status 2 tells the caller the resolver, not the name, is the problem.
+        if [ $status -eq 124 ] || echo "$output" | grep -qiE 'timed out|no servers could be reached|unreachable|connection refused'; then
+            return 2
+        fi
         return 1
     fi
 
@@ -138,17 +252,19 @@ resolve_public_ipv4()
 reconnect_private_endpoint()
 {
     local l_ip=$1
-    local output
+    local output errors status
 
     # Removing conntrack alone cannot reset a connection to an unchanged endpoint.
     # The socket destination is the proxy IP, before DNAT, and covers all nconnect sockets.
-    if ! output=$(ss -Ktn dst "$l_ip" 2>&1 >/dev/null); then
-        eecho "Failed to reset TCP connections to proxy IP $l_ip: $output"
-        return 1
-    fi
+    output=$(ss -Ktn dst "$l_ip" 2>&1 >/dev/null)
+    status=$?
+
+    # A socket that closed by itself between ss listing and destroying it needs no reset.
+    errors=$(echo "$output" | grep -v 'No such file or directory')
+
     # Some ss versions report per-socket SOCK_DESTROY errors but still exit successfully.
-    if [ -n "$output" ]; then
-        eecho "Failed to reset TCP connections to proxy IP $l_ip: $output"
+    if [ -n "$errors" ] || { [ $status -ne 0 ] && [ -z "$output" ]; }; then
+        eecho "Failed to reset TCP connections to proxy IP $l_ip: ${errors:-ss exited with status $status}"
         return 1
     fi
 }
@@ -417,7 +533,7 @@ process_nfsv3_mounts()
                 # mtime after this update.
                 #
                 if [ $? -eq 0 ]; then
-                    unset 'private_endpoint_public_ips[$l_host $l_ip $l_nfsip]'
+                    forget_private_endpoint "$l_host $l_ip $l_nfsip"
                     mtime_mountmap=$l_mtime
                 fi
                 continue
@@ -479,16 +595,10 @@ process_nfsv3_mounts()
             continue
         fi
 
-        if ! endpoint_type=$(get_endpoint_type "$l_host"); then
-            continue
-        fi
-        if [ "$endpoint_type" == "public" ]; then
-            unset 'private_endpoint_public_ips[$l_host $l_ip $l_nfsip]'
-        fi
-
         #
         # If the IP changed for the Blob endpoint, we need to update the DNAT rule.
         # This will take care of migration/failover causing the Blob endpoint IP to change.
+        # This must not depend on classifying the endpoint, so it can never be blocked by it.
         #
         endpoint_changed=false
         if [ "$new_ip" != "$l_nfsip" ]; then
@@ -499,22 +609,58 @@ process_nfsv3_mounts()
             if ! update_mountmapv3_entry "$line" "$l_host $l_ip $new_ip"; then
                 eecho "Will reattempt the operation in next iteration."
             else
-                unset 'private_endpoint_public_ips[$l_host $l_ip $l_nfsip]'
+                forget_private_endpoint "$l_host $l_ip $l_nfsip"
                 endpoint_changed=true
             fi
-        elif [ "$endpoint_type" == "private" ]; then
+        else
             public_ip_key="$l_host $l_ip $l_nfsip"
-            if ! public_ips=$(resolve_public_ipv4 "$l_host"); then
+
+            #
+            # If we cannot tell whether this is a private endpoint, leave its state alone and
+            # try again next cycle. The DNAT handling above is unaffected.
+            #
+            if ! lookup_endpoint_type "$l_host" "$public_ip_key"; then
                 continue
             fi
+
+            if [ "$endpoint_type" == "public" ]; then
+                forget_private_endpoint_state "$public_ip_key"
+                continue
+            fi
+
+            if ! public_dns_lookup_allowed "$public_ip_key"; then
+                continue
+            fi
+
+            public_ips=$(resolve_public_ipv4 "$l_host")
+            public_dns_status=$?
+            if [ $public_dns_status -ne 0 ]; then
+                note_public_dns_failure "$public_ip_key" $public_dns_status
+                continue
+            fi
+            note_public_dns_success "$public_ip_key"
 
             if [ -n "${private_endpoint_public_ips[$public_ip_key]}" ] &&
                [ "${private_endpoint_public_ips[$public_ip_key]}" != "$public_ips" ]; then
                 pecho "Public IP addresses for $l_host changed; reconnecting through private endpoint $l_nfsip."
                 if ! reconnect_private_endpoint "$l_ip"; then
-                    eecho "Will reattempt private endpoint reconnection in next iteration."
+                    reset_failures=$(( ${private_endpoint_reset_failures[$public_ip_key]:-0} + 1 ))
+                    if [ $reset_failures -lt $PRIVATE_ENDPOINT_MAX_RESET_ATTEMPTS ]; then
+                        private_endpoint_reset_failures[$public_ip_key]=$reset_failures
+                        eecho "Will reattempt private endpoint reconnection in next iteration [$reset_failures/$PRIVATE_ENDPOINT_MAX_RESET_ATTEMPTS attempts]."
+                        continue
+                    fi
+
+                    #
+                    # Repeating a partly failing reset would keep aborting connections that have
+                    # already recovered. Accept the new addresses so only a further change retriggers.
+                    #
+                    eecho "Giving up resetting connections for $l_host after $reset_failures attempts; remount if the share does not recover."
+                    unset "private_endpoint_reset_failures[$public_ip_key]"
+                    private_endpoint_public_ips[$public_ip_key]=$public_ips
                     continue
                 fi
+                unset "private_endpoint_reset_failures[$public_ip_key]"
                 # Do not count retries of a failed reset as additional DNS changes.
                 check_for_regional_account "$l_host"
                 endpoint_changed=true
