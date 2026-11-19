@@ -635,6 +635,44 @@ auth_token_cb_res *get_auth_token_and_setargs_cb(struct auth_context *auth)
     return cb_res;
 }
 
+// Timer callback function called every 5 minutes
+void timer_dump_stats(union sigval arg) {
+    // Call the signal handler to dump stats
+    handle_usr1(SIGUSR1);
+}
+
+// Create a timer to periodically dump statistics to log.
+bool create_stats_timer()
+{
+    timer_t timer_id;
+    struct sigevent sev;
+    struct itimerspec its;
+
+    // Set up the event to call our handler in a separate thread
+    sev.sigev_notify = SIGEV_THREAD;
+    sev.sigev_value.sival_ptr = &timer_id;
+    sev.sigev_notify_function = timer_dump_stats;
+    sev.sigev_notify_attributes = NULL;
+
+    if (timer_create(CLOCK_REALTIME, &sev, &timer_id) == -1) {
+        AZLogError("Failed to create timer");
+        return false;
+    }
+
+    // Fire every 5 minutes
+    its.it_value.tv_sec = 300;      // initial expiration
+    its.it_value.tv_nsec = 0;
+    its.it_interval.tv_sec = 300; // periodic interval
+    its.it_interval.tv_nsec = 0;
+
+    if (timer_settime(timer_id, 0, &its, NULL) == -1) {
+        perror("timer_settime");
+        return false;
+    }
+
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
     // Initialize logger first thing.
@@ -829,6 +867,12 @@ int main(int argc, char *argv[])
 
     if (fuse_daemonize(opts.foreground) != 0) {
         AZLogError("fuse_daemonize failed");
+        goto err_out4;
+    }
+
+    // Create a timer to periodically dump stats.
+    if (!create_stats_timer()) {
+        AZLogError("Failed to create timer to dump stats");
         goto err_out4;
     }
 
