@@ -269,6 +269,7 @@ static void readahead_callback (
                 task->rpc_api->read_task.get_ino(),
                 new_size,
                 new_offset);
+            partial_read_tsk->inherit_caller_credentials(*task);
 
             ctx->task = partial_read_tsk;
 
@@ -294,13 +295,13 @@ static void readahead_callback (
                  *       as we are holding all the needed locks and refs.
                  */
                 partial_read_tsk->get_stats().on_rpc_issue();
-                if (rpc_nfs3_read_task(
-                        partial_read_tsk->get_rpc_ctx(),
-                        readahead_callback,
+                if (partial_read_tsk->issue_rpc_with_credentials(
+                    [&](struct rpc_context *rpc) {
+                        return rpc_nfs3_read_task(
+                        rpc, readahead_callback,
                         bc->get_buffer() + bc->pvt,
-                        new_size,
-                        &new_args,
-                        (void *) ctx) == NULL) {
+                        new_size, &new_args, (void *) ctx);
+                    }) == NULL) {
                     partial_read_tsk->get_stats().on_rpc_cancel();
                     /*
                      * This call fails due to internal issues like OOM
@@ -495,7 +496,7 @@ int64_t ra_state::get_next_ra(uint64_t length)
 /**
  * Note: This takes shared lock on ilock_1.
  */
-int ra_state::issue_readaheads()
+int ra_state::issue_readaheads(const struct rpc_task& source_task)
 {
     int64_t ra_offset;
 
@@ -592,6 +593,7 @@ int ra_state::issue_readaheads()
             tsk->init_read_be(inode->get_fuse_ino(),  /* ino */
                               bc.length,              /* size */
                               bc.offset);             /* offset */
+            tsk->inherit_caller_credentials(source_task);
 
             // No reads should be issued to backend at this point.
             assert(bc.num_backend_calls_issued == 0);
@@ -632,20 +634,19 @@ int ra_state::issue_readaheads()
                        args.count);
 
             /*
-             * tsk->get_rpc_ctx() call below will round robin readahead
-             * requests across all available connections.
+             * The task issuer round robins readahead requests across all
+             * available connections.
              *
              * TODO: See if issuing a batch of reads over one connection
              *       before moving to the other connection helps.
              */
             tsk->get_stats().on_rpc_issue();
-            if (rpc_nfs3_read_task(
-                        tsk->get_rpc_ctx(),
-                        readahead_callback,
-                        bc.get_buffer(),
-                        bc.length,
-                        &args,
-                        ctx) == NULL) {
+            if (tsk->issue_rpc_with_credentials(
+                    [&](struct rpc_context *rpc) {
+                        return rpc_nfs3_read_task(
+                            rpc, readahead_callback, bc.get_buffer(),
+                            bc.length, &args, ctx);
+                    }) == NULL) {
                 tsk->get_stats().on_rpc_cancel();
                 /*
                  * This call failed due to internal issues like OOM etc

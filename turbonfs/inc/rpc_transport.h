@@ -163,6 +163,9 @@ public:
     struct nfs_context *get_nfs_context(conn_sched_t csched = CONN_SCHED_FIRST,
                                         uint32_t fh_hash = 0) const;
 
+    std::recursive_mutex& get_credential_mutex(
+        const struct nfs_context *nfs) const;
+
     const std::vector<struct nfs_connection*>& get_all_connections() const
     {
         return nfs_connections;

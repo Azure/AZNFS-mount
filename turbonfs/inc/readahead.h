@@ -9,6 +9,7 @@
 // Forward declarations.
 struct nfs_inode;
 struct nfs_client;
+struct rpc_task;
 
 namespace aznfsc {
 
@@ -261,10 +262,11 @@ public:
      * application read pattern is seen to not benefit from readahead, then
      * issue_readaheads() will be a no-op.
      * It'll call on_readahead_complete() as readahead callbacks are called.
+    * source_task provides the originating request's credential snapshot.
      *
      * It returns the number of readahead read RPCs dispatched.
      */
-    int issue_readaheads();
+    int issue_readaheads(const struct rpc_task& source_task);
 
     /**
      * Hook for reporting completion of a readahead read.
